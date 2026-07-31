@@ -200,16 +200,11 @@ final class VideoComposer {
         logger.info("내보내기 시작: 사진 랜덤 줌인·줌아웃 합성 적용")
         await progressHandler(0.86)
         try Task.checkCancellation()
-        let cancellationSession = ExportSessionReference(exporter)
-
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                exporter.exportAsynchronously {
-                    continuation.resume()
-                }
-            }
-        } onCancel: {
-            cancellationSession.value.cancelExport()
+        try await export(
+            exporter,
+            cancellationSession: ExportSessionReference(exporter)
+        ) { exportProgress in
+            await progressHandler(0.86 + exportProgress * 0.14)
         }
 
         try Task.checkCancellation()
@@ -225,6 +220,36 @@ final class VideoComposer {
         await progressHandler(1)
         logger.info("영상 생성 완료")
         return outputURL
+    }
+
+    private func export(
+        _ exporter: AVAssetExportSession,
+        cancellationSession: ExportSessionReference,
+        progressHandler: @escaping @Sendable (Double) async -> Void
+    ) async throws {
+        try await withTaskCancellationHandler {
+            let exportTask = Task {
+                await withCheckedContinuation { continuation in
+                    exporter.exportAsynchronously {
+                        continuation.resume()
+                    }
+                }
+            }
+
+            while exporter.status == .unknown
+                || exporter.status == .waiting
+                || exporter.status == .exporting {
+                try Task.checkCancellation()
+                await progressHandler(
+                    min(0.99, max(0, Double(exporter.progress)))
+                )
+                try await Task.sleep(for: .milliseconds(250))
+            }
+
+            await exportTask.value
+        } onCancel: {
+            cancellationSession.value.cancelExport()
+        }
     }
 
     private func resolveSource(

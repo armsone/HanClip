@@ -3,9 +3,7 @@ import SwiftUI
 struct ClipRow: View {
     let position: Int
     @Binding var clip: ClipItem
-    let onDelete: () -> Void
     let onSelect: () -> Void
-    @State private var showDeleteConfirmation = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -131,21 +129,6 @@ struct ClipRow: View {
                                     isSmall: true
                                 )
                             }
-
-                            Button {
-                                showDeleteConfirmation = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(HanClipTheme.onSecondary)
-                                    .frame(width: 22, height: 22)
-                                    .background(
-                                        HanClipTheme.secondary,
-                                        in: Circle()
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("이 클립 삭제")
                         }
                     }
                 }
@@ -158,16 +141,6 @@ struct ClipRow: View {
             } else {
                 clip.photoDuration = duration
             }
-        }
-        .confirmationDialog(
-            "\(position)번째 클립을 삭제할까요?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("삭제", role: .destructive) {
-                onDelete()
-            }
-            Button("취소", role: .cancel) {}
         }
     }
 

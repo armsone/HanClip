@@ -402,6 +402,9 @@ final class EditorViewModel: ObservableObject {
 
     private func updatePreviewProgress(_ progress: Double) {
         previewProgress = 0.10 + progress * 0.85
+        if progress >= 0.86 {
+            progressMessage = "Rendering in progress"
+        }
         guard !clips.isEmpty else { return }
         let index = min(
             Int(progress * Double(clips.count)),

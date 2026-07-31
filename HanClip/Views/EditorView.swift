@@ -891,24 +891,14 @@ struct EditorView: View {
                 Spacer()
                 }
                 .contentShape(Rectangle())
-                .gesture(
-                    LongPressGesture(minimumDuration: 0.6)
-                        .exclusively(before: TapGesture())
-                        .onEnded { result in
-                            switch result {
-                            case .first(true):
-                                withAnimation {
-                                    model.toggleProjectPin(id: project.id)
-                                }
-                            case .second(_):
-                                model.loadProjectAndImportPending(
-                                    id: project.id
-                                )
-                            default:
-                                break
-                            }
-                        }
-                )
+                .onTapGesture {
+                    model.loadProjectAndImportPending(id: project.id)
+                }
+                .onLongPressGesture(minimumDuration: 0.6) {
+                    withAnimation {
+                        model.toggleProjectPin(id: project.id)
+                    }
+                }
                 .accessibilityElement(children: .combine)
                 .accessibilityHint(
                     "한 번 누르면 프로젝트를 열고, 길게 누르면 상단 고정을 전환합니다."
@@ -963,7 +953,7 @@ struct EditorView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
-            if project.clipCount > 7 {
+            if project.clipCount > 9 {
                 Text("....")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(HanClipTheme.text.opacity(0.62))
@@ -1026,9 +1016,6 @@ struct EditorView: View {
                             } ?? 0
                         ) + 1,
                         clip: $clip,
-                        onDelete: {
-                            model.removeClip(id: clip.id)
-                        },
                         onSelect: {
                             selectedClipID = clip.id
                         }
@@ -1157,7 +1144,7 @@ struct EditorView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Image(systemName: "hourglass")
+                        Image(systemName: "stopwatch")
                             .accessibilityHidden(true)
 
                         Text("기본 재생 시간")
@@ -2159,16 +2146,14 @@ private struct SwipeToDeleteRow<Content: View>: View {
     }
 
     private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
+        DragGesture(minimumDistance: 24)
             .updating($dragTranslation) { value, state, _ in
-                guard abs(value.translation.width)
-                        > abs(value.translation.height)
+                guard isHorizontalSwipe(value)
                 else { return }
                 state = value.translation.width
             }
             .onEnded { value in
-                guard abs(value.translation.width)
-                        > abs(value.translation.height)
+                guard isHorizontalSwipe(value)
                 else { return }
 
                 let projectedOffset = restingOffset
@@ -2179,6 +2164,10 @@ private struct SwipeToDeleteRow<Content: View>: View {
                         : 0
                 }
             }
+    }
+
+    private func isHorizontalSwipe(_ value: DragGesture.Value) -> Bool {
+        abs(value.translation.width) > abs(value.translation.height) * 1.35
     }
 }
 

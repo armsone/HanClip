@@ -588,7 +588,7 @@ private struct StoredProject: Codable {
             thumbnailFilename: clips.first?.thumbnailFilename,
             thumbnailFilenames: clips
                 .dropFirst()
-                .prefix(6)
+                .prefix(8)
                 .map(\.thumbnailFilename),
             memo: memo ?? "",
             renderedVideoByteCount: renderedVideoByteCount,

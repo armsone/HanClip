@@ -200,12 +200,20 @@ enum HanClipTheme {
 
 @main
 struct HanClipApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             EditorView()
                 .tint(HanClipTheme.primary)
                 .foregroundStyle(HanClipTheme.text)
                 .background(HanClipTheme.backgroundGradient)
+                .onAppear {
+                    UIApplication.shared.isIdleTimerDisabled = true
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    UIApplication.shared.isIdleTimerDisabled = phase == .active
+                }
         }
     }
 }
