@@ -1,0 +1,462 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* HanClip/App/HanClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* HanClip/App/HanClipApp.swift */; };
+		100000000000000000000002 /* HanClip/Models/ClipItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* HanClip/Models/ClipItem.swift */; };
+		100000000000000000000003 /* HanClip/Models/VideoFileDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* HanClip/Models/VideoFileDocument.swift */; };
+		100000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift */; };
+		100000000000000000000005 /* HanClip/Services/PhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* HanClip/Services/PhotoPicker.swift */; };
+		100000000000000000000006 /* HanClip/Services/VideoComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* HanClip/Services/VideoComposer.swift */; };
+		100000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift */; };
+		100000000000000000000008 /* HanClip/Views/ClipRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* HanClip/Views/ClipRow.swift */; };
+		100000000000000000000009 /* HanClip/Views/EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* HanClip/Views/EditorView.swift */; };
+		10000000000000000000000A /* Shared/SharedImportRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* Shared/SharedImportRecord.swift */; };
+		10000000000000000000000B /* Shared/SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* Shared/SharedInbox.swift */; };
+		10000000000000000000000C /* HanClipShare/ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* HanClipShare/ShareViewController.swift */; };
+		10000000000000000000000D /* Shared/SharedImportRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* Shared/SharedImportRecord.swift */; };
+		10000000000000000000000E /* Shared/SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* Shared/SharedInbox.swift */; };
+		10000000000000000000000F /* HanClipShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* HanClipShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		100000000000000000000010 /* HanClip/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* HanClip/Assets.xcassets */; };
+		110000000000000000000001 /* HanClip/Services/ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* HanClip/Services/ProjectStore.swift */; };
+		110000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */; };
+		110000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		300000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 400000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 500000000000000000000002;
+			remoteInfo = HanClipShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		600000000000000000000004 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				10000000000000000000000F /* HanClipShare.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* HanClip/App/HanClipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/App/HanClipApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* HanClip/Models/ClipItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Models/ClipItem.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* HanClip/Models/VideoFileDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Models/VideoFileDocument.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/PhotoLibraryService.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* HanClip/Services/PhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/PhotoPicker.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* HanClip/Services/VideoComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/VideoComposer.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/ViewModels/EditorViewModel.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* HanClip/Views/ClipRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Views/ClipRow.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* HanClip/Views/EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Views/EditorView.swift; sourceTree = "<group>"; };
+		20000000000000000000000A /* Shared/SharedImportRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SharedImportRecord.swift; sourceTree = "<group>"; };
+		20000000000000000000000B /* Shared/SharedInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SharedInbox.swift; sourceTree = "<group>"; };
+		20000000000000000000000C /* HanClipShare/ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClipShare/ShareViewController.swift; sourceTree = "<group>"; };
+		20000000000000000000000D /* HanClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HanClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000E /* HanClipShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HanClipShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000F /* HanClip/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HanClip/Info.plist; sourceTree = "<group>"; };
+		200000000000000000000010 /* HanClip/HanClip.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanClip/HanClip.entitlements; sourceTree = "<group>"; };
+		200000000000000000000011 /* HanClipShare/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HanClipShare/Info.plist; sourceTree = "<group>"; };
+		200000000000000000000012 /* HanClipShare/HanClipShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanClipShare/HanClipShare.entitlements; sourceTree = "<group>"; };
+		200000000000000000000013 /* HanClip/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = HanClip/Assets.xcassets; sourceTree = "<group>"; };
+		210000000000000000000001 /* HanClip/Services/ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/ProjectStore.swift; sourceTree = "<group>"; };
+		210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/AudioAnalysisService.swift; sourceTree = "<group>"; };
+		210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Views/VideoTrimEditor.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		600000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		600000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		700000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				700000000000000000000003 /* HanClip */,
+				700000000000000000000004 /* Shared */,
+				700000000000000000000005 /* HanClipShare */,
+				700000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		700000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000D /* HanClip.app */,
+				20000000000000000000000E /* HanClipShare.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		700000000000000000000003 /* HanClip */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* HanClip/App/HanClipApp.swift */,
+				200000000000000000000002 /* HanClip/Models/ClipItem.swift */,
+				200000000000000000000003 /* HanClip/Models/VideoFileDocument.swift */,
+				200000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift */,
+				200000000000000000000005 /* HanClip/Services/PhotoPicker.swift */,
+				200000000000000000000006 /* HanClip/Services/VideoComposer.swift */,
+				200000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift */,
+				200000000000000000000008 /* HanClip/Views/ClipRow.swift */,
+				200000000000000000000009 /* HanClip/Views/EditorView.swift */,
+				210000000000000000000001 /* HanClip/Services/ProjectStore.swift */,
+				210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */,
+				210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */,
+				20000000000000000000000F /* HanClip/Info.plist */,
+				200000000000000000000010 /* HanClip/HanClip.entitlements */,
+				200000000000000000000013 /* HanClip/Assets.xcassets */,
+			);
+			name = HanClip;
+			sourceTree = "<group>";
+		};
+		700000000000000000000004 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000A /* Shared/SharedImportRecord.swift */,
+				20000000000000000000000B /* Shared/SharedInbox.swift */,
+			);
+			name = Shared;
+			sourceTree = "<group>";
+		};
+		700000000000000000000005 /* HanClipShare */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000C /* HanClipShare/ShareViewController.swift */,
+				200000000000000000000011 /* HanClipShare/Info.plist */,
+				200000000000000000000012 /* HanClipShare/HanClipShare.entitlements */,
+			);
+			name = HanClipShare;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		500000000000000000000001 /* HanClip */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 800000000000000000000002 /* Build configuration list for PBXNativeTarget "HanClip" */;
+			buildPhases = (
+				600000000000000000000001 /* Sources */,
+				600000000000000000000002 /* Frameworks */,
+				600000000000000000000003 /* Resources */,
+				600000000000000000000004 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				900000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = HanClip;
+			productName = HanClip;
+			productReference = 20000000000000000000000D /* HanClip.app */;
+			productType = "com.apple.product-type.application";
+		};
+		500000000000000000000002 /* HanClipShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 800000000000000000000003 /* Build configuration list for PBXNativeTarget "HanClipShare" */;
+			buildPhases = (
+				600000000000000000000005 /* Sources */,
+				600000000000000000000006 /* Frameworks */,
+				600000000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HanClipShare;
+			productName = HanClipShare;
+			productReference = 20000000000000000000000E /* HanClipShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		400000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					500000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					500000000000000000000002 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = 800000000000000000000001 /* Build configuration list for PBXProject "HanClip" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 700000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 700000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				500000000000000000000001 /* HanClip */,
+				500000000000000000000002 /* HanClipShare */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		600000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000010 /* HanClip/Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		600000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		600000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* HanClip/App/HanClipApp.swift in Sources */,
+				100000000000000000000002 /* HanClip/Models/ClipItem.swift in Sources */,
+				100000000000000000000003 /* HanClip/Models/VideoFileDocument.swift in Sources */,
+				100000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift in Sources */,
+				100000000000000000000005 /* HanClip/Services/PhotoPicker.swift in Sources */,
+				100000000000000000000006 /* HanClip/Services/VideoComposer.swift in Sources */,
+				100000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift in Sources */,
+				100000000000000000000008 /* HanClip/Views/ClipRow.swift in Sources */,
+				100000000000000000000009 /* HanClip/Views/EditorView.swift in Sources */,
+				10000000000000000000000A /* Shared/SharedImportRecord.swift in Sources */,
+				10000000000000000000000B /* Shared/SharedInbox.swift in Sources */,
+				110000000000000000000001 /* HanClip/Services/ProjectStore.swift in Sources */,
+				110000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift in Sources */,
+				110000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		600000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000C /* HanClipShare/ShareViewController.swift in Sources */,
+				10000000000000000000000D /* Shared/SharedImportRecord.swift in Sources */,
+				10000000000000000000000E /* Shared/SharedInbox.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		900000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 500000000000000000000002 /* HanClipShare */;
+			targetProxy = 300000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B7J3T2P8ZW;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HanClip/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hanclip.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B7J3T2P8ZW;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HanClip/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hanclip.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A00000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B7J3T2P8ZW;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HanClipShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hanclip.app.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A00000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B7J3T2P8ZW;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HanClipShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hanclip.app.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		800000000000000000000001 /* Build configuration list for PBXProject "HanClip" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000001 /* Debug */,
+				A00000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		800000000000000000000002 /* Build configuration list for PBXNativeTarget "HanClip" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000003 /* Debug */,
+				A00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		800000000000000000000003 /* Build configuration list for PBXNativeTarget "HanClipShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000005 /* Debug */,
+				A00000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 400000000000000000000001 /* Project object */;
+}
