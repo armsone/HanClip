@@ -214,6 +214,10 @@ enum ProjectStore {
                 throw ProjectStoreError.missingProjectFile
             }
 
+            let restoredSource = try restoreSource(
+                storedClip.source,
+                in: directory
+            )
             let livePhotoMode = LivePhotoMode(
                 rawValue: storedClip.livePhotoMode
             ) ?? .still
@@ -224,7 +228,8 @@ enum ProjectStore {
                 ?? (storedClip.isLivePhoto
                     ? stored.defaultDuration
                     : storedClip.duration)
-            let livePhotoDuration = storedClip.livePhotoDuration
+            let livePhotoDuration = storedClip.sourceDuration
+                ?? storedClip.livePhotoDuration
                 ?? (storedClip.isLivePhoto ? storedClip.duration : nil)
             let activeDuration = mediaKind == .video
                 ? storedClip.duration
@@ -236,10 +241,7 @@ enum ProjectStore {
 
             return ClipItem(
                 id: storedClip.id,
-                source: try restoreSource(
-                    storedClip.source,
-                    in: directory
-                ),
+                source: restoredSource,
                 thumbnail: thumbnail,
                 duration: activeDuration,
                 photoDuration: photoDuration,

@@ -197,6 +197,7 @@ final class EditorViewModel: ObservableObject {
             }
             return adjusted
         })
+        refreshLivePhotoDurations()
     }
 
     func applyDefaultDurationToAll() {
@@ -221,6 +222,21 @@ final class EditorViewModel: ObservableObject {
             clips[index].photoDuration = defaultDuration
             if !clips[index].isLivePhoto
                 || clips[index].livePhotoMode == .still {
+                clips[index].duration = defaultDuration
+            }
+        }
+    }
+
+    func applyLivePhotoModeToAll(_ mode: LivePhotoMode) {
+        for index in clips.indices where clips[index].isLivePhoto {
+            clips[index].livePhotoMode = mode
+
+            if mode == .motion {
+                clips[index].duration = clips[index].sourceDuration
+                    ?? clips[index].livePhotoDuration
+                    ?? clips[index].duration
+            } else {
+                clips[index].photoDuration = defaultDuration
                 clips[index].duration = defaultDuration
             }
         }
@@ -437,6 +453,7 @@ final class EditorViewModel: ObservableObject {
             showPreview = false
             activeProjectID = project.id
             isProjectOpen = true
+            refreshLivePhotoDurations()
         } catch {
             alertMessage = error.localizedDescription
             reloadProjects()
@@ -676,6 +693,7 @@ final class EditorViewModel: ObservableObject {
                                     livePhotoDuration: duration,
                                     isLivePhoto: true,
                                     livePhotoMode: .motion,
+                                    sourceDuration: duration,
                                     sourcePixelSize: image.size
                                 )
                             )
@@ -702,6 +720,7 @@ final class EditorViewModel: ObservableObject {
                                     isLivePhoto: true,
                                     livePhotoMode: .motion,
                                     mediaKind: .livePhoto,
+                                    sourceDuration: duration,
                                     sourcePixelSize: CGSize(
                                         width: asset.pixelWidth,
                                         height: asset.pixelHeight
@@ -903,6 +922,48 @@ final class EditorViewModel: ObservableObject {
         )
     }
 
+    private func refreshLivePhotoDurations() {
+        let liveClipIDs = clips
+            .filter(\.isLivePhoto)
+            .map(\.id)
+        guard !liveClipIDs.isEmpty else { return }
+
+        Task {
+            for id in liveClipIDs {
+                guard let clip = clips.first(where: { $0.id == id }),
+                      let duration = await livePhotoDuration(for: clip)
+                else { continue }
+
+                guard let index = clips.firstIndex(where: { $0.id == id })
+                else { continue }
+
+                clips[index].sourceDuration = duration
+                clips[index].livePhotoDuration = duration
+                if clips[index].livePhotoMode == .motion {
+                    clips[index].duration = duration
+                }
+            }
+        }
+    }
+
+    private func livePhotoDuration(for clip: ClipItem) async -> Double? {
+        switch clip.source {
+        case .photoAsset(let identifier):
+            guard let asset = PhotoLibraryService.asset(
+                localIdentifier: identifier
+            ) else { return nil }
+            return try? await PhotoLibraryService.livePhotoVideoDuration(
+                for: asset
+            )
+
+        case .livePhotoFiles(_, let videoURL):
+            return try? await PhotoLibraryService.videoDuration(at: videoURL)
+
+        case .imageFile, .videoFile:
+            return nil
+        }
+    }
+
     private func makeVideoClip(from url: URL) async throws -> ClipItem {
         let thumbnail = try await videoThumbnail(for: url)
         let duration = try await PhotoLibraryService.videoDuration(at: url)
@@ -974,6 +1035,7 @@ final class EditorViewModel: ObservableObject {
             isLivePhoto: isLive,
             livePhotoMode: isLive ? .motion : .still,
             mediaKind: isLive ? .livePhoto : .photo,
+            sourceDuration: isLive ? duration : nil,
             sourcePixelSize: CGSize(
                 width: asset.pixelWidth,
                 height: asset.pixelHeight

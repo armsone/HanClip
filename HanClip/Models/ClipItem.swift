@@ -139,6 +139,7 @@ struct ClipItem: Identifiable {
         self.mediaKind = mediaKind
             ?? (isLivePhoto ? .livePhoto : .photo)
         self.sourceDuration = sourceDuration
+            ?? (isLivePhoto ? self.livePhotoDuration : nil)
         self.trimStart = trimStart
         self.audioWaveform = audioWaveform
         self.audioPeakTime = audioPeakTime

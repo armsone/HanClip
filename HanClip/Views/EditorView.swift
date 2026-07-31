@@ -13,6 +13,7 @@ struct EditorView: View {
     @State private var draggedClipID: UUID?
     @State private var isDeleteDropTargeted = false
     @State private var isSharedInboxBannerDismissed = false
+    @State private var bulkLivePhotoMode = LivePhotoMode.motion
     @AppStorage("hanClipThemeMode") private var themeModeRaw =
         HanClipThemeMode.automatic.rawValue
     @Environment(\.scenePhase) private var scenePhase
@@ -236,6 +237,7 @@ struct EditorView: View {
                         / max(1, model.outputRenderSize.height),
                     currentPosition: index + 1,
                     totalClipCount: model.clips.count,
+                    defaultDuration: model.defaultDuration,
                     totalDurationText: model.totalDurationText,
                     canGoPrevious: index > model.clips.startIndex,
                     canGoNext: index < model.clips.index(
@@ -1046,6 +1048,7 @@ struct EditorView: View {
                             } ?? 0
                         ) + 1,
                         clip: $clip,
+                        defaultDuration: model.defaultDuration,
                         onSelect: {
                             selectedClipID = clip.id
                         }
@@ -1127,10 +1130,12 @@ struct EditorView: View {
         HStack(spacing: 6) {
             Image(systemName: "photo.stack.fill")
                 .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(HanClipTheme.secondary)
                 .accessibilityHidden(true)
 
             Text("클립 \(model.clips.count)개")
                 .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(HanClipTheme.secondary)
 
             Spacer()
 
@@ -1172,35 +1177,31 @@ struct EditorView: View {
     private var defaultDurationPanel: some View {
         VStack(spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stopwatch")
-                            .accessibilityHidden(true)
+                HStack(spacing: 6) {
+                    Image(systemName: "stopwatch")
+                        .accessibilityHidden(true)
 
-                        Text("기본 재생 시간")
-                    }
-                        .font(.system(size: 18, weight: .semibold))
+                    Text("기본재생시간")
 
-                    Text("새로 추가되는 미디어에 적용됩니다.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(
-                            HanClipTheme.text.opacity(0.62)
-                        )
+                    Text(
+                        "\(model.defaultDuration, specifier: "%.1f")초"
+                    )
+                    .font(.system(size: 16, weight: .semibold))
+                    .monospacedDigit()
                 }
+                .font(.system(size: 16))
+                .foregroundStyle(HanClipTheme.secondary)
 
                 Spacer()
 
                 CompactDurationStepper(
                     value: $model.defaultDuration,
                     range: 0.5...30,
-                    step: 0.5
+                    step: 0.5,
+                    controlWidth: 88,
+                    controlHeight: 24.2,
+                    iconSize: 19.8
                 )
-
-                Text(
-                    "\(model.defaultDuration, specifier: "%.1f")초"
-                )
-                .font(.system(size: 16))
-                .monospacedDigit()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -1212,9 +1213,9 @@ struct EditorView: View {
 
             HStack(spacing: 0) {
                 Button {
-                    model.applyDefaultDurationToAll()
+                    model.selectFullRangeForAllVideoClips()
                 } label: {
-                    Text("모든 클립에 적용")
+                    Text("select all")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(HanClipTheme.secondary)
                         .frame(maxWidth: .infinity)
@@ -1228,10 +1229,33 @@ struct EditorView: View {
                         HanClipTheme.secondary.opacity(0.30)
                     )
 
+                LivePhotoModeSegmentedControl(
+                    mode: Binding(
+                        get: { bulkLivePhotoMode },
+                        set: { mode in
+                            bulkLivePhotoMode = mode
+                            model.applyLivePhotoModeToAll(mode)
+                        }
+                    ),
+                    tint: HanClipTheme.secondary,
+                    width: 112,
+                    height: 30
+                )
+                .padding(.horizontal, 12)
+                .accessibilityLabel("모든 Live Photo 사용 방식")
+                .accessibilityValue(bulkLivePhotoMode.rawValue)
+                .accessibilityHint("모든 Live Photo 클립을 포토 또는 Live 모드로 전환합니다.")
+
+                Divider()
+                    .frame(height: 24)
+                    .overlay(
+                        HanClipTheme.secondary.opacity(0.30)
+                    )
+
                 Button {
-                    model.selectFullRangeForAllVideoClips()
+                    model.applyDefaultDurationToAll()
                 } label: {
-                    Text("클립 전체 선택")
+                    Text("Apply to all")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(HanClipTheme.secondary)
                         .frame(maxWidth: .infinity)

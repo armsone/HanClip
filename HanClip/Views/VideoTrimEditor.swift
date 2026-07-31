@@ -7,6 +7,7 @@ struct VideoTrimEditor: View {
     let previewAspectRatio: CGFloat
     let currentPosition: Int
     let totalClipCount: Int
+    let defaultDuration: Double
     let totalDurationText: String
     let canGoPrevious: Bool
     let canGoNext: Bool
@@ -241,7 +242,7 @@ struct VideoTrimEditor: View {
         HStack {
             Text(
                 clip.isLivePhoto
-                    ? "Live"
+                    ? clip.livePhotoMode.rawValue
                     : "Photo"
             )
             .font(.system(size: 16, weight: .semibold))
@@ -261,40 +262,46 @@ struct VideoTrimEditor: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Text(
-                "전체 \(totalClipCount)개 중 \(currentPosition)번째 파일"
-                    + " · \(mediaTypeTitle)"
-            )
-                .font(.system(size: 18, weight: .semibold))
+        ZStack {
+            HStack(spacing: 10) {
+                Text("\(currentPosition) / \(totalClipCount)")
+                    .font(.system(size: 18, weight: .semibold))
 
-            Spacer()
+                Spacer()
 
-            Button {
-                showDeleteConfirmation = true
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 28)
-                    .background(
-                        HanClipTheme.primary,
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
+                Button {
+                    showDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 28)
+                        .background(
+                            HanClipTheme.primary,
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("현재 미디어 삭제")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("현재 미디어 삭제")
-        }
-    }
 
-    private var mediaTypeTitle: String {
-        if clip.isVideoClip {
-            return "Clip"
+            if clip.isLivePhoto {
+                LivePhotoModeSegmentedControl(
+                    mode: Binding(
+                        get: { clip.livePhotoMode },
+                        set: { mode in
+                            setLivePhotoMode(mode)
+                        }
+                    ),
+                    tint: HanClipTheme.primary,
+                    width: 124,
+                    height: 28
+                )
+                .accessibilityLabel("Live Photo 사용 방식")
+                .accessibilityValue(clip.livePhotoMode.rawValue)
+                .accessibilityHint("포토와 라이브 모드를 전환합니다.")
+            }
         }
-        if clip.isLivePhoto {
-            return "Live"
-        }
-        return "Photo"
     }
 
     private var footerActions: some View {
@@ -776,6 +783,31 @@ struct VideoTrimEditor: View {
                 isLoadingPlayableMedia = false
             }
             mediaLoadTask = nil
+        }
+    }
+
+    private func setLivePhotoMode(_ mode: LivePhotoMode) {
+        guard clip.isLivePhoto, clip.livePhotoMode != mode else { return }
+
+        if mode == .still {
+            clip.livePhotoMode = .still
+            clip.photoDuration = defaultDuration
+            clip.duration = defaultDuration
+            releasePlayer()
+            return
+        }
+
+        clip.livePhotoMode = .motion
+        clip.duration = clip.sourceDuration
+            ?? clip.livePhotoDuration
+            ?? clip.duration
+        playbackProgress = 0
+        releasePlayer()
+
+        if let sourceURL {
+            configurePlayer(with: sourceURL)
+        } else {
+            loadLivePhotoMotionIfNeeded()
         }
     }
 

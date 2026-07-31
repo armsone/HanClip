@@ -3,12 +3,13 @@ import SwiftUI
 struct ClipRow: View {
     let position: Int
     @Binding var clip: ClipItem
+    let defaultDuration: Double
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
             Text("\(position)")
-                .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                .font(.system(size: 14).monospacedDigit())
                 .foregroundStyle(HanClipTheme.primary)
                 .frame(width: 18, alignment: .center)
                 .accessibilityLabel("\(position)번째 클립")
@@ -23,7 +24,7 @@ struct ClipRow: View {
                         .overlay(alignment: .topTrailing) {
                             if clip.isLivePhoto {
                                 Image(systemName: "livephoto")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .font(.system(size: 8))
                                     .foregroundStyle(.white)
                                     .padding(3)
                                     .background(.black.opacity(0.65), in: Circle())
@@ -40,6 +41,7 @@ struct ClipRow: View {
                         HStack {
                             Text("\(clip.duration, specifier: "%.1f")초")
                                 .font(.system(size: 12).monospacedDigit())
+                                .offset(x: 8, y: 6)
                             Spacer(minLength: 0)
                         }
                         .frame(maxWidth: .infinity)
@@ -50,27 +52,23 @@ struct ClipRow: View {
 
                     HStack(spacing: 8) {
                         if clip.isLivePhoto {
-                            Picker("Live Photo 사용 방식", selection: $clip.livePhotoMode) {
-                                ForEach(LivePhotoMode.allCases) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .controlSize(.small)
-                            .frame(width: 96, height: 24)
-                            .tint(HanClipTheme.secondary)
+                            LivePhotoModeSegmentedControl(
+                                mode: $clip.livePhotoMode,
+                                tint: HanClipTheme.secondary,
+                                width: 112,
+                                height: 30
+                            )
                             .onChange(of: clip.livePhotoMode) {
-                                previousMode,
+                                _,
                                 selectedMode in
-                                if previousMode == .motion {
-                                    clip.livePhotoDuration = clip.duration
+                                if selectedMode == .motion {
+                                    clip.duration = clip.sourceDuration
+                                        ?? clip.livePhotoDuration
+                                        ?? clip.duration
                                 } else {
-                                    clip.photoDuration = clip.duration
+                                    clip.photoDuration = defaultDuration
+                                    clip.duration = defaultDuration
                                 }
-
-                                clip.duration = selectedMode == .motion
-                                    ? (clip.livePhotoDuration ?? clip.duration)
-                                    : clip.photoDuration
                             }
 
                             editorAreaButton
@@ -84,17 +82,16 @@ struct ClipRow: View {
                                         )
                                         .font(
                                             .system(
-                                                size: 16,
-                                                weight: .bold
+                                                size: 16
                                             )
                                         )
                                         .opacity(0.60)
+                                        .offset(x: 1)
                                     } else {
                                         Image(systemName: "photo.fill")
                                             .font(
                                                 .system(
-                                                    size: 16,
-                                                    weight: .bold
+                                                    size: 16
                                                 )
                                             )
                                             .opacity(0.60)
@@ -105,7 +102,7 @@ struct ClipRow: View {
                                     height: 24,
                                     alignment: .leading
                                 )
-                                .offset(y: 4)
+                                .offset(x: 8, y: 4)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -123,7 +120,7 @@ struct ClipRow: View {
                                 VideoDurationStepper(clip: $clip)
                             } else {
                                 CompactDurationStepper(
-                                    value: $clip.duration,
+                                    value: durationBinding,
                                     range: 0.5...30,
                                     step: 0.5,
                                     isSmall: true
@@ -135,13 +132,21 @@ struct ClipRow: View {
             }
         }
         .frame(minHeight: 62)
-        .onChange(of: clip.duration) { _, duration in
-            if clip.isLivePhoto, clip.livePhotoMode == .motion {
-                clip.livePhotoDuration = duration
-            } else {
-                clip.photoDuration = duration
+    }
+
+    private var durationBinding: Binding<Double> {
+        Binding(
+            get: { clip.duration },
+            set: { duration in
+                clip.duration = duration
+
+                if clip.isLivePhoto, clip.livePhotoMode == .motion {
+                    return
+                } else {
+                    clip.photoDuration = duration
+                }
             }
-        }
+        )
     }
 
     private var editorAreaButton: some View {
@@ -236,11 +241,92 @@ private struct VideoDurationStepper: View {
     }
 }
 
+struct LivePhotoModeSegmentedControl: View {
+    @Binding var mode: LivePhotoMode
+    let tint: Color
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            segment(
+                mode: .still,
+                title: "포토",
+                systemImage: "photo"
+            )
+
+            segment(
+                mode: .motion,
+                title: "Live",
+                systemImage: "livephoto"
+            )
+        }
+        .padding(2)
+        .frame(width: width, height: height)
+        .background(
+            tint.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: height / 2)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func segment(
+        mode segmentMode: LivePhotoMode,
+        title: String,
+        systemImage: String
+    ) -> some View {
+        let isSelected = mode == segmentMode
+
+        return Button {
+            mode = segmentMode
+        } label: {
+            HStack(spacing: 2) {
+                Image(systemName: systemImage)
+                    .font(
+                        .system(
+                            size: height <= 24 ? 9 : 10,
+                            weight: .semibold
+                        )
+                    )
+
+                Text(title)
+                    .font(
+                        .system(
+                            size: height <= 24 ? 10 : 11,
+                            weight: .semibold
+                        )
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
+                    .fill(tint)
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
 struct CompactDurationStepper: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     var isSmall = false
+    var controlWidth: CGFloat = 80
+    var controlHeight: CGFloat?
+    var iconSize: CGFloat?
+
+    private var resolvedHeight: CGFloat {
+        controlHeight ?? (isSmall ? 22 : 30)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -253,7 +339,7 @@ struct CompactDurationStepper: View {
 
             Rectangle()
                 .fill(Color.white.opacity(0.45))
-                .frame(width: 1, height: isSmall ? 12 : 18)
+                .frame(width: 1, height: resolvedHeight * 0.55)
 
             stepButton(
                 systemImage: "plus",
@@ -262,7 +348,7 @@ struct CompactDurationStepper: View {
                 value = min(range.upperBound, value + step)
             }
         }
-        .frame(width: 80, height: isSmall ? 22 : 30)
+        .frame(width: controlWidth, height: resolvedHeight)
         .background(HanClipTheme.secondary, in: Capsule())
         .accessibilityElement(children: .contain)
     }
@@ -276,7 +362,7 @@ struct CompactDurationStepper: View {
             Image(systemName: systemImage)
                 .font(
                     .system(
-                        size: isSmall ? 18 : 14,
+                        size: iconSize ?? (isSmall ? 18 : 14),
                         weight: .bold
                     )
                 )
@@ -286,8 +372,8 @@ struct CompactDurationStepper: View {
                 .opacity(isEnabled ? 1 : 0.4)
         }
         .frame(
-            width: isSmall ? 38 : nil,
-            height: isSmall ? 22 : nil
+            width: isSmall ? controlWidth / 2 - 2 : nil,
+            height: isSmall ? resolvedHeight : nil
         )
         .contentShape(Rectangle())
         .buttonStyle(.plain)

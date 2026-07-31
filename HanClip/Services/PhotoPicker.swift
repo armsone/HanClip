@@ -74,6 +74,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                                 isLivePhoto: isLive,
                                 livePhotoMode: isLive ? .motion : .still,
                                 mediaKind: isLive ? .livePhoto : .photo,
+                                sourceDuration: isLive ? duration : nil,
                                 sourcePixelSize: CGSize(
                                     width: asset.pixelWidth,
                                     height: asset.pixelHeight
