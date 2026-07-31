@@ -33,8 +33,10 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var activeProjectID: UUID?
     @Published private(set) var isProjectOpen = false
     @Published private(set) var pendingSharedItemCount = 0
+    @Published private(set) var pendingSharedThumbnails: [UIImage] = []
     @Published private(set) var newlySavedProjectID: UUID?
     private var previewTask: Task<Void, Never>?
+    private var pendingThumbnailTask: Task<Void, Never>?
     private var pendingPhotoAlbumName = ""
     private var previewSaveRequest: PreviewSaveRequest?
 
@@ -414,7 +416,23 @@ final class EditorViewModel: ObservableObject {
     }
 
     func refreshPendingSharedItems() {
-        pendingSharedItemCount = SharedInbox.pendingRecords().count
+        let records = SharedInbox.pendingRecords()
+        let thumbnailRecords = Array(records.prefix(5))
+        pendingSharedItemCount = records.count
+        pendingSharedThumbnails = []
+        pendingThumbnailTask?.cancel()
+
+        guard !thumbnailRecords.isEmpty else { return }
+        let recordIDs = records.map(\.id)
+        pendingThumbnailTask = Task {
+            let thumbnails = await Self.makePendingSharedThumbnails(
+                for: thumbnailRecords
+            )
+            guard !Task.isCancelled,
+                  SharedInbox.pendingRecords().map(\.id) == recordIDs
+            else { return }
+            pendingSharedThumbnails = thumbnails
+        }
     }
 
     func handlePendingSharedItemsOnActivation() {
@@ -449,6 +467,7 @@ final class EditorViewModel: ObservableObject {
     func deletePendingSharedItems() {
         SharedInbox.clearPendingImports()
         pendingSharedItemCount = 0
+        pendingSharedThumbnails = []
     }
 
     func loadProjectAndImportPending(id: UUID) {
@@ -798,6 +817,32 @@ final class EditorViewModel: ObservableObject {
                 actualTime: nil
             )
             return UIImage(cgImage: image)
+        }.value
+    }
+
+    private static func makePendingSharedThumbnails(
+        for records: [SharedImportRecord]
+    ) async -> [UIImage] {
+        await Task.detached {
+            records.compactMap { record in
+                guard let url = try? SharedInbox.fileURL(
+                    named: record.primaryFilename
+                ) else { return nil }
+
+                switch record.kind {
+                case .image, .livePhoto:
+                    return UIImage(contentsOfFile: url.path)
+                case .video:
+                    let asset = AVURLAsset(url: url)
+                    let generator = AVAssetImageGenerator(asset: asset)
+                    generator.appliesPreferredTrackTransform = true
+                    guard let image = try? generator.copyCGImage(
+                        at: .zero,
+                        actualTime: nil
+                    ) else { return nil }
+                    return UIImage(cgImage: image)
+                }
+            }
         }.value
     }
 

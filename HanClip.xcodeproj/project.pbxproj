@@ -23,6 +23,7 @@
 		10000000000000000000000E /* Shared/SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* Shared/SharedInbox.swift */; };
 		10000000000000000000000F /* HanClipShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* HanClipShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		100000000000000000000010 /* HanClip/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* HanClip/Assets.xcassets */; };
+		100000000000000000000011 /* HanClip/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* HanClip/Assets.xcassets */; };
 		110000000000000000000001 /* HanClip/Services/ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* HanClip/Services/ProjectStore.swift */; };
 		110000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */; };
 		110000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */; };
@@ -245,6 +246,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000011 /* HanClip/Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -3,10 +3,26 @@ import UIKit
 import UniformTypeIdentifiers
 
 final class ShareViewController: UIViewController {
+    private let pointColor = UIColor(
+        red: 0,
+        green: 118 / 255,
+        blue: 68 / 255,
+        alpha: 1
+    )
+    private let secondaryColor = UIColor(
+        red: 41 / 255,
+        green: 171 / 255,
+        blue: 135 / 255,
+        alpha: 1
+    )
+    private let logoStack = UIStackView()
+    private let logoImageView = UIImageView()
+    private let logoTitleLabel = UILabel()
     private let statusLabel = UILabel()
-    private let activityIndicator = UIActivityIndicatorView(style: .large)
+    private let descriptionLabel = UILabel()
     private let thumbnailContainer = UIView()
     private let thumbnailView = UIImageView()
+    private let progressLabel = UILabel()
     private let progressView = UIProgressView(progressViewStyle: .default)
     private let cancelButton = UIButton(type: .system)
     private var importTask: Task<Void, Never>?
@@ -20,32 +36,73 @@ final class ShareViewController: UIViewController {
     private func configureView() {
         view.backgroundColor = .systemBackground
 
-        statusLabel.text = "HanClip으로 가져오는 중…"
+        logoImageView.image = UIImage(named: "LogoMarkV2")
+        logoImageView.contentMode = .scaleAspectFit
+        logoImageView.tintColor = pointColor
+        logoImageView.translatesAutoresizingMaskIntoConstraints = false
+
+        logoTitleLabel.text = "HanClip"
+        logoTitleLabel.font = .systemFont(ofSize: 26, weight: .semibold)
+        logoTitleLabel.textColor = pointColor
+
+        logoStack.axis = .horizontal
+        logoStack.alignment = .center
+        logoStack.distribution = .fill
+        logoStack.spacing = 6
+        logoStack.isLayoutMarginsRelativeArrangement = true
+        logoStack.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: 16,
+            leading: 0,
+            bottom: 0,
+            trailing: 0
+        )
+        logoStack.addArrangedSubview(logoImageView)
+        logoStack.addArrangedSubview(logoTitleLabel)
+        logoStack.setContentHuggingPriority(.required, for: .horizontal)
+        logoStack.setContentCompressionResistancePriority(
+            .required,
+            for: .horizontal
+        )
+
+        statusLabel.text = "공유 파일을 준비하는 중입니다."
         statusLabel.font = .preferredFont(forTextStyle: .headline)
         statusLabel.textAlignment = .center
         statusLabel.numberOfLines = 0
 
-        activityIndicator.startAnimating()
+        descriptionLabel.text =
+            "확인을 누른 뒤 HanClip을 열면 공유 파일을 새 프로젝트나 "
+            + "기존 프로젝트에 추가할 수 있습니다."
+        descriptionLabel.font = .preferredFont(forTextStyle: .footnote)
+        descriptionLabel.textAlignment = .center
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.numberOfLines = 0
 
+        thumbnailContainer.backgroundColor = secondaryColor.withAlphaComponent(
+            0.10
+        )
+        thumbnailContainer.layer.cornerRadius = 18
+        thumbnailContainer.clipsToBounds = true
         thumbnailView.contentMode = .scaleAspectFill
         thumbnailView.clipsToBounds = true
-        thumbnailView.layer.cornerRadius = 16
         thumbnailView.translatesAutoresizingMaskIntoConstraints = false
         thumbnailContainer.addSubview(thumbnailView)
-        thumbnailContainer.isHidden = true
+        thumbnailView.image = UIImage(systemName: "photo.on.rectangle.angled")
+        thumbnailView.tintColor = secondaryColor
 
         NSLayoutConstraint.activate([
+            logoImageView.widthAnchor.constraint(equalToConstant: 35.2),
+            logoImageView.heightAnchor.constraint(equalToConstant: 35.2),
             thumbnailView.centerXAnchor.constraint(
                 equalTo: thumbnailContainer.centerXAnchor
             ),
-            thumbnailView.topAnchor.constraint(
-                equalTo: thumbnailContainer.topAnchor
-            ),
-            thumbnailView.bottomAnchor.constraint(
-                equalTo: thumbnailContainer.bottomAnchor
+            thumbnailView.centerYAnchor.constraint(
+                equalTo: thumbnailContainer.centerYAnchor
             ),
             thumbnailView.widthAnchor.constraint(
-                equalTo: thumbnailView.heightAnchor
+                equalTo: thumbnailContainer.widthAnchor
+            ),
+            thumbnailView.heightAnchor.constraint(
+                equalTo: thumbnailContainer.heightAnchor
             ),
             thumbnailContainer.heightAnchor.constraint(
                 equalTo: thumbnailContainer.widthAnchor
@@ -53,33 +110,40 @@ final class ShareViewController: UIViewController {
         ])
 
         progressView.progress = 0
-        progressView.progressTintColor = UIColor(
-            red: 0,
-            green: 118 / 255,
-            blue: 68 / 255,
-            alpha: 1
+        progressView.transform = CGAffineTransform(scaleX: 1, y: 2)
+        progressView.progressTintColor = secondaryColor
+        progressView.trackTintColor = secondaryColor.withAlphaComponent(0.18)
+
+        progressLabel.text = "0%"
+        progressLabel.font = .monospacedDigitSystemFont(
+            ofSize: 13,
+            weight: .semibold
         )
+        progressLabel.textColor = secondaryColor
+        progressLabel.textAlignment = .right
+        progressLabel.setContentHuggingPriority(.required, for: .horizontal)
+        progressLabel.setContentCompressionResistancePriority(
+            .required,
+            for: .horizontal
+        )
+
+        let progressStack = UIStackView(
+            arrangedSubviews: [
+                progressLabel,
+                progressView
+            ]
+        )
+        progressStack.axis = .horizontal
+        progressStack.alignment = .center
+        progressStack.spacing = 10
 
         cancelButton.setTitle("취소", for: .normal)
         cancelButton.titleLabel?.font = .systemFont(
             ofSize: 18,
             weight: .semibold
         )
-        cancelButton.setTitleColor(
-            UIColor(
-                red: 0,
-                green: 118 / 255,
-                blue: 68 / 255,
-                alpha: 1
-            ),
-            for: .normal
-        )
-        cancelButton.backgroundColor = UIColor(
-            red: 41 / 255,
-            green: 171 / 255,
-            blue: 135 / 255,
-            alpha: 0.16
-        )
+        cancelButton.setTitleColor(.white, for: .normal)
+        cancelButton.backgroundColor = pointColor
         cancelButton.layer.cornerRadius = 12
         cancelButton.addTarget(
             self,
@@ -89,22 +153,26 @@ final class ShareViewController: UIViewController {
 
         let stack = UIStackView(
             arrangedSubviews: [
-                activityIndicator,
-                statusLabel,
+                logoStack,
                 thumbnailContainer,
-                progressView,
-                cancelButton
+                progressStack,
+                statusLabel,
+                cancelButton,
+                descriptionLabel
             ]
         )
         stack.axis = .vertical
-        stack.alignment = .fill
-        stack.spacing = 16
+        stack.alignment = .leading
+        stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
 
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            stack.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -60
+            ),
             stack.leadingAnchor.constraint(
                 equalTo: view.leadingAnchor,
                 constant: 24
@@ -112,6 +180,15 @@ final class ShareViewController: UIViewController {
             stack.trailingAnchor.constraint(
                 equalTo: view.trailingAnchor,
                 constant: -24
+            ),
+            thumbnailContainer.widthAnchor.constraint(
+                equalTo: stack.widthAnchor
+            ),
+            progressStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            cancelButton.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            descriptionLabel.widthAnchor.constraint(
+                equalTo: stack.widthAnchor
             ),
             cancelButton.heightAnchor.constraint(equalToConstant: 48)
         ])
@@ -145,10 +222,13 @@ final class ShareViewController: UIViewController {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     let completed = index + 1
+                    let progress = Float(completed) / Float(providers.count)
                     self.progressView.setProgress(
-                        Float(completed) / Float(providers.count),
+                        progress,
                         animated: true
                     )
+                    self.progressLabel.text =
+                        "\(Int((progress * 100).rounded()))%"
                     self.statusLabel.text =
                         "\(completed)/\(providers.count)개 파일을 "
                         + "복사하는 중입니다."
@@ -428,16 +508,16 @@ final class ShareViewController: UIViewController {
     }
 
     private func showResult(count: Int) {
-        activityIndicator.stopAnimating()
         if count > 0 {
             progressView.progress = 1
+            progressLabel.text = "100%"
             statusLabel.text =
-                "\(count)개 파일 복사가 완료되었습니다.\n"
-                + "확인을 누른 뒤 HanClip을 직접 실행해 주세요."
+                "\(count)개 파일 복사가 완료되었습니다."
             cancelButton.setTitle("확인", for: .normal)
         } else {
             statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다."
             progressView.isHidden = true
+            progressLabel.isHidden = true
             cancelButton.setTitle("확인", for: .normal)
         }
     }
@@ -463,8 +543,8 @@ final class ShareViewController: UIViewController {
         }
 
         guard let image else { return }
+        thumbnailView.contentMode = .scaleAspectFill
         thumbnailView.image = image
-        thumbnailContainer.isHidden = false
     }
 
     @objc private func cancelImport() {

@@ -21,6 +21,12 @@ struct EditorView: View {
         HanClipThemeMode(rawValue: themeModeRaw) ?? .automatic
     }
 
+    private var isSharedInboxBannerVisible: Bool {
+        !model.isProjectOpen
+            && model.pendingSharedItemCount > 0
+            && !isSharedInboxBannerDismissed
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -101,14 +107,33 @@ struct EditorView: View {
                     makeButton
                 }
             }
-            .blur(radius: isBusyOverlayVisible ? 2 : 0)
+            .blur(
+                radius: isBusyOverlayVisible || isSharedInboxBannerVisible
+                    ? 2
+                    : 0
+            )
             .animation(
                 .easeInOut(duration: 0.20),
                 value: isBusyOverlayVisible
             )
+            .animation(
+                .easeInOut(duration: 0.20),
+                value: isSharedInboxBannerVisible
+            )
             .overlay {
                 if isBusyOverlayVisible {
                     progressOverlay
+                }
+            }
+            .overlay {
+                if isSharedInboxBannerVisible {
+                    HanClipTheme.secondary
+                        .opacity(0.05)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissSharedInboxBanner()
+                        }
                 }
             }
             .overlay(alignment: .top) {
@@ -124,12 +149,10 @@ struct EditorView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if !model.isProjectOpen,
-                   model.pendingSharedItemCount > 0,
-                   !isSharedInboxBannerDismissed {
+                if isSharedInboxBannerVisible {
                     sharedInboxBanner
                         .padding(.horizontal, 12)
-                        .padding(.top, themeNotice == nil ? 8 : 52)
+                        .padding(.top, 10)
                         .transition(
                             .move(edge: .top).combined(with: .opacity)
                         )
@@ -325,7 +348,7 @@ struct EditorView: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: "tray.and.arrow.down.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 36, weight: .semibold))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("공유 파일 \(model.pendingSharedItemCount)개")
@@ -333,6 +356,8 @@ struct EditorView: View {
                     Text("사진 및 영상 선택 또는 프로젝트를 열면 추가됩니다.")
                         .font(.system(size: 12))
                         .opacity(0.82)
+                    sharedInboxThumbnailStrip
+                        .padding(.top, 3)
                 }
 
                 Spacer(minLength: 4)
@@ -363,15 +388,11 @@ struct EditorView: View {
             )
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.snappy) {
-                    isSharedInboxBannerDismissed = true
-                }
+                dismissSharedInboxBanner()
             }
 
             Button {
-                withAnimation(.snappy) {
-                    isSharedInboxBannerDismissed = true
-                }
+                dismissSharedInboxBanner()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .bold))
@@ -394,6 +415,33 @@ struct EditorView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("알림 닫기")
             .accessibilityHint("공유 파일은 보관하고 알림만 닫습니다.")
+        }
+    }
+
+    private var sharedInboxThumbnailStrip: some View {
+        HStack(spacing: 3) {
+            ForEach(
+                Array(model.pendingSharedThumbnails.enumerated()),
+                id: \.offset
+            ) { _, thumbnail in
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 35, height: 35)
+                    .clipped()
+            }
+
+            if model.pendingSharedItemCount > 5 {
+                Text("....")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+        }
+    }
+
+    private func dismissSharedInboxBanner() {
+        withAnimation(.snappy) {
+            isSharedInboxBannerDismissed = true
         }
     }
 
