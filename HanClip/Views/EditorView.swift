@@ -101,13 +101,13 @@ struct EditorView: View {
                     makeButton
                 }
             }
-            .blur(radius: model.isExporting ? 2 : 0)
+            .blur(radius: isBusyOverlayVisible ? 2 : 0)
             .animation(
                 .easeInOut(duration: 0.20),
-                value: model.isExporting
+                value: isBusyOverlayVisible
             )
             .overlay {
-                if model.isExporting {
+                if isBusyOverlayVisible {
                     progressOverlay
                 }
             }
@@ -1722,6 +1722,18 @@ struct EditorView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(HanClipTheme.primary)
+                } else if model.isImportingSharedItems {
+                    ProgressView(value: model.sharedImportProgress, total: 1)
+                        .progressViewStyle(.linear)
+                        .tint(HanClipTheme.primary)
+                        .frame(width: 300)
+
+                    Text(
+                        "\(Int((model.sharedImportProgress * 100).rounded()))%"
+                    )
+                    .font(.system(size: 16, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(HanClipTheme.primary)
                 } else {
                     ProgressView()
                         .controlSize(.large)
@@ -1753,6 +1765,10 @@ struct EditorView: View {
             }
             .offset(y: -30)
         }
+    }
+
+    private var isBusyOverlayVisible: Bool {
+        model.isExporting || model.isImportingSharedItems
     }
 
     private func generationProgressThumbnail(

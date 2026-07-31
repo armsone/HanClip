@@ -22,6 +22,8 @@ final class EditorViewModel: ObservableObject {
     @Published var progressMessage = ""
     @Published var previewProgress = 0.0
     @Published var isPreviewRendering = false
+    @Published var isImportingSharedItems = false
+    @Published var sharedImportProgress = 0.0
     @Published var previewThumbnail: UIImage?
     @Published var exportedURL: URL?
     @Published var showPreview = false
@@ -215,6 +217,8 @@ final class EditorViewModel: ObservableObject {
         progressMessage = ""
         previewProgress = 0
         isPreviewRendering = false
+        isImportingSharedItems = false
+        sharedImportProgress = 0
         previewThumbnail = nil
         exportedURL = nil
         showPreview = false
@@ -525,11 +529,15 @@ final class EditorViewModel: ObservableObject {
         let records = SharedInbox.consumePendingRecords()
         guard !records.isEmpty else { return }
         pendingSharedItemCount = 0
+        isImportingSharedItems = true
+        sharedImportProgress = 0
+        progressMessage =
+            "공유한 파일 \(records.count)개를 불러오는 중…"
 
         Task {
             var imported: [ClipItem] = []
             var unresolvedLivePhotoCount = 0
-            for record in records {
+            for (index, record) in records.enumerated() {
                 do {
                     let primary = try SharedInbox.fileURL(
                         named: record.primaryFilename
@@ -625,7 +633,19 @@ final class EditorViewModel: ObservableObject {
                 } catch {
                     continue
                 }
+
+                let completedCount = index + 1
+                sharedImportProgress =
+                    Double(completedCount) / Double(records.count)
+                progressMessage =
+                    "공유한 파일 \(completedCount)/\(records.count)개를 "
+                    + "불러오는 중…"
             }
+
+            isImportingSharedItems = false
+            progressMessage = ""
+            sharedImportProgress = 0
+
             if !imported.isEmpty {
                 switch requestedDestination {
                 case .newProject:
@@ -648,6 +668,9 @@ final class EditorViewModel: ObservableObject {
                     alertMessage =
                         "공유한 항목 \(imported.count)개를 가져왔습니다."
                 }
+            } else {
+                alertMessage =
+                    "공유한 항목을 불러오지 못했습니다."
             }
         }
     }

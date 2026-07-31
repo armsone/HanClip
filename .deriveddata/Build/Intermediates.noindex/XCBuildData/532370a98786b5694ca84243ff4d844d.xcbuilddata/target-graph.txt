@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'HanClip' in project 'HanClip'
+➜ Explicit dependency on target 'HanClipShare' in project 'HanClip'
+Target 'HanClipShare' in project 'HanClip' (no dependencies)

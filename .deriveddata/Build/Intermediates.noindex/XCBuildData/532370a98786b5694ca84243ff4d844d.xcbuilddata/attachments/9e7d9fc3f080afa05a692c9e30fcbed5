@@ -1,0 +1,39 @@
+{
+  "" : {
+    "diagnostics" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/HanClipShare-primary.dia",
+    "emit-module-dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/HanClipShare-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/HanClipShare-primary-emit-module.dia",
+    "pch" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/HanClipShare-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/HanClipShare-primary.swiftdeps"
+  },
+  "/Users/armsone/git/HanClip/HanClipShare/ShareViewController.swift" : {
+    "const-values" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.swiftconstvalues",
+    "dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.d",
+    "diagnostics" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.dia",
+    "index-unit-output-path" : "/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.o",
+    "llvm-bc" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.bc",
+    "object" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.o",
+    "swift-dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController.swiftdeps",
+    "swiftmodule" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/ShareViewController~partial.swiftmodule"
+  },
+  "/Users/armsone/git/HanClip/Shared/SharedImportRecord.swift" : {
+    "const-values" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.swiftconstvalues",
+    "dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.d",
+    "diagnostics" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.dia",
+    "index-unit-output-path" : "/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.o",
+    "llvm-bc" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.bc",
+    "object" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.o",
+    "swift-dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord.swiftdeps",
+    "swiftmodule" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedImportRecord~partial.swiftmodule"
+  },
+  "/Users/armsone/git/HanClip/Shared/SharedInbox.swift" : {
+    "const-values" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.swiftconstvalues",
+    "dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.d",
+    "diagnostics" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.dia",
+    "index-unit-output-path" : "/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.o",
+    "llvm-bc" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.bc",
+    "object" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.o",
+    "swift-dependencies" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox.swiftdeps",
+    "swiftmodule" : "/Users/armsone/git/HanClip/.deriveddata/Build/Intermediates.noindex/HanClip.build/Debug-iphoneos/HanClipShare.build/Objects-normal/arm64/SharedInbox~partial.swiftmodule"
+  }
+}
