@@ -517,7 +517,7 @@ final class ShareViewController: UIViewController {
             statusLabel.text =
                 "\(count)개 파일 복사가 완료되었습니다."
             cancelButton.setTitle("앱열기", for: .normal)
-            openHostApp()
+            openHostApp(completeAfterAttempt: false)
         } else {
             isImportComplete = false
             statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다."
@@ -560,13 +560,13 @@ final class ShareViewController: UIViewController {
                 withError: MediaShareError.cancelled
             )
         } else if isImportComplete {
-            openHostApp()
+            openHostApp(completeAfterAttempt: true)
         } else {
             completeExtension()
         }
     }
 
-    private func openHostApp() {
+    private func openHostApp(completeAfterAttempt: Bool) {
         guard !isOpeningHostApp else { return }
         guard let url = URL(string: "hanclip://shared-import") else {
             completeExtension()
@@ -582,13 +582,22 @@ final class ShareViewController: UIViewController {
                 self.isOpeningHostApp = false
                 self.cancelButton.isEnabled = true
 
-                if success {
-                    self.completeExtension()
-                } else if self.openHostAppFromResponderChain(url) {
-                    self.statusLabel.text = "HanClip을 여는 중입니다."
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.completeExtension()
+                if completeAfterAttempt {
+                    if !success {
+                        _ = self.openHostAppFromResponderChain(url)
                     }
+                    self.completeExtension()
+                    return
+                }
+
+                if success {
+                    self.statusLabel.text =
+                        "앱 실행을 시도했습니다. 열리지 않으면 앱열기를 다시 눌러 주세요."
+                    self.cancelButton.setTitle("앱열기", for: .normal)
+                } else if self.openHostAppFromResponderChain(url) {
+                    self.statusLabel.text =
+                        "앱 실행을 다시 시도했습니다. 열리지 않으면 앱열기를 다시 눌러 주세요."
+                    self.cancelButton.setTitle("앱열기", for: .normal)
                 } else {
                     self.statusLabel.text =
                         "자동 실행에 실패했습니다. 앱열기를 눌러 HanClip을 여세요."

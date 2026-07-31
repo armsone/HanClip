@@ -229,8 +229,9 @@ struct EditorView: View {
         ) {
             if let id = selectedClipID,
                let index = model.clips.firstIndex(where: { $0.id == id }) {
+                let presentedClip = model.clips[index]
                 VideoTrimEditor(
-                    clip: $model.clips[index],
+                    clip: bindingForClip(id: id, fallback: presentedClip),
                     previewAspectRatio: model.outputRenderSize.width
                         / max(1, model.outputRenderSize.height),
                     currentPosition: index + 1,
@@ -255,13 +256,7 @@ struct EditorView: View {
                         ].id
                     },
                     onDelete: {
-                        selectedClipID = nil
-                        Task { @MainActor in
-                            try? await Task.sleep(
-                                for: .milliseconds(300)
-                            )
-                            model.removeClip(id: id)
-                        }
+                        deleteClipFromEditor(id: id)
                     },
                     onPreview: {
                         selectedClipID = nil
@@ -978,6 +973,41 @@ struct EditorView: View {
             countStyle: .file
         )
         return " · \(formatted)"
+    }
+
+    private func deleteClipFromEditor(id: UUID) {
+        guard let index = model.clips.firstIndex(where: { $0.id == id })
+        else {
+            selectedClipID = nil
+            return
+        }
+
+        let nextIndex = model.clips.index(after: index)
+        let nextClipID = nextIndex < model.clips.endIndex
+            ? model.clips[nextIndex].id
+            : nil
+
+        withAnimation(.snappy) {
+            selectedClipID = nextClipID
+            model.removeClip(id: id)
+        }
+    }
+
+    private func bindingForClip(
+        id: UUID,
+        fallback: ClipItem
+    ) -> Binding<ClipItem> {
+        Binding(
+            get: {
+                model.clips.first(where: { $0.id == id }) ?? fallback
+            },
+            set: { updatedClip in
+                guard let index = model.clips.firstIndex(
+                    where: { $0.id == id }
+                ) else { return }
+                model.clips[index] = updatedClip
+            }
+        )
     }
 
     private var clipEditor: some View {
