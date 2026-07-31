@@ -26,6 +26,8 @@ final class ShareViewController: UIViewController {
     private let progressView = UIProgressView(progressViewStyle: .default)
     private let cancelButton = UIButton(type: .system)
     private var importTask: Task<Void, Never>?
+    private var isImportComplete = false
+    private var isOpeningHostApp = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -509,12 +511,15 @@ final class ShareViewController: UIViewController {
 
     private func showResult(count: Int) {
         if count > 0 {
+            isImportComplete = true
             progressView.progress = 1
             progressLabel.text = "100%"
             statusLabel.text =
                 "\(count)개 파일 복사가 완료되었습니다."
-            cancelButton.setTitle("확인", for: .normal)
+            cancelButton.setTitle("앱열기", for: .normal)
+            openHostApp()
         } else {
+            isImportComplete = false
             statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다."
             progressView.isHidden = true
             progressLabel.isHidden = true
@@ -554,12 +559,60 @@ final class ShareViewController: UIViewController {
             extensionContext?.cancelRequest(
                 withError: MediaShareError.cancelled
             )
+        } else if isImportComplete {
+            openHostApp()
         } else {
-            finish()
+            completeExtension()
         }
     }
 
-    private func finish() {
+    private func openHostApp() {
+        guard !isOpeningHostApp else { return }
+        guard let url = URL(string: "hanclip://shared-import") else {
+            completeExtension()
+            return
+        }
+
+        isOpeningHostApp = true
+        cancelButton.isEnabled = false
+        statusLabel.text = "HanClip을 여는 중입니다."
+        extensionContext?.open(url) { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isOpeningHostApp = false
+                self.cancelButton.isEnabled = true
+
+                if success {
+                    self.completeExtension()
+                } else if self.openHostAppFromResponderChain(url) {
+                    self.statusLabel.text = "HanClip을 여는 중입니다."
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.completeExtension()
+                    }
+                } else {
+                    self.statusLabel.text =
+                        "자동 실행에 실패했습니다. 앱열기를 눌러 HanClip을 여세요."
+                    self.cancelButton.setTitle("앱열기", for: .normal)
+                }
+            }
+        }
+    }
+
+    private func openHostAppFromResponderChain(_ url: URL) -> Bool {
+        let selector = NSSelectorFromString("openURL:")
+        var responder: UIResponder? = self
+
+        while let currentResponder = responder {
+            if currentResponder.responds(to: selector) {
+                currentResponder.perform(selector, with: url)
+                return true
+            }
+            responder = currentResponder.next
+        }
+        return false
+    }
+
+    private func completeExtension() {
         extensionContext?.completeRequest(
             returningItems: nil,
             completionHandler: nil

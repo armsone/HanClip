@@ -6,7 +6,7 @@ enum SharedImportDestination: String {
 }
 
 enum SharedInbox {
-    static let appGroup = "group.com.hanclip.shared"
+    static let appGroup = "group.com.intosharp.hanclip"
     private static let queueKey = "pending-import-records"
     private static let destinationKey = "pending-import-destination"
 
