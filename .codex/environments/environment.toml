@@ -6,9 +6,15 @@ name = "HanClip"
 script = ""
 
 [[actions]]
-name = "git - pull"
+name = "깃 땡겨오기"
 icon = "run"
 command = '''
 cd /Users/armsone/git/HanClip
 
 git pull'''
+
+[[actions]]
+name = "코덱스로 크레딧 확인"
+icon = "run"
+command = "codex"
+platform = "darwin"

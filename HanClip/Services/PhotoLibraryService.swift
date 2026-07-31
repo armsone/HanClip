@@ -23,6 +23,105 @@ enum PhotoLibraryService {
         ).firstObject
     }
 
+    static func mediaDates(in month: Date, calendar: Calendar) -> Set<Date> {
+        Set(mediaCounts(
+            in: month,
+            calendar: calendar,
+            progress: nil
+        ).keys)
+    }
+
+    static func mediaDates(
+        in month: Date,
+        calendar: Calendar,
+        progress: (@MainActor (Double) -> Void)?
+    ) -> Set<Date> {
+        Set(mediaCounts(
+            in: month,
+            calendar: calendar,
+            progress: progress
+        ).keys)
+    }
+
+    static func mediaCounts(
+        in month: Date,
+        calendar: Calendar,
+        progress: (@MainActor (Double) -> Void)?
+    ) -> [Date: Int] {
+        guard let interval = calendar.dateInterval(of: .month, for: month)
+        else { return [:] }
+
+        let options = PHFetchOptions()
+        options.predicate = mediaPredicate(
+            from: interval.start,
+            to: interval.end
+        )
+        options.sortDescriptors = [
+            NSSortDescriptor(key: "creationDate", ascending: true)
+        ]
+
+        let assets = PHAsset.fetchAssets(with: options)
+        var counts: [Date: Int] = [:]
+        let totalCount = max(assets.count, 1)
+        assets.enumerateObjects { asset, index, _ in
+            guard let creationDate = asset.creationDate else { return }
+            let date = calendar.startOfDay(for: creationDate)
+            counts[date, default: 0] += 1
+            guard index % 25 == 0 || index == assets.count - 1
+            else { return }
+            Task { @MainActor in
+                progress?(Double(index + 1) / Double(totalCount))
+            }
+        }
+        if assets.count == 0 {
+            Task { @MainActor in
+                progress?(1)
+            }
+        }
+        return counts
+    }
+
+    static func mediaAssets(
+        on dates: Set<Date>,
+        calendar: Calendar
+    ) -> [PHAsset] {
+        dates
+            .sorted()
+            .flatMap { date in
+                guard let nextDay = calendar.date(
+                    byAdding: .day,
+                    value: 1,
+                    to: date
+                ) else { return [PHAsset]() }
+
+                let options = PHFetchOptions()
+                options.predicate = mediaPredicate(from: date, to: nextDay)
+                options.sortDescriptors = [
+                    NSSortDescriptor(key: "creationDate", ascending: true)
+                ]
+
+                let result = PHAsset.fetchAssets(with: options)
+                var assets: [PHAsset] = []
+                result.enumerateObjects { asset, _, _ in
+                    assets.append(asset)
+                }
+                return assets
+            }
+    }
+
+    private static func mediaPredicate(from start: Date, to end: Date)
+        -> NSPredicate
+    {
+        NSPredicate(
+            format: "creationDate >= %@ AND creationDate < %@ AND "
+                + "(mediaType == %d OR mediaType == %d)",
+            start as NSDate,
+            end as NSDate,
+            PHAssetMediaType.image.rawValue,
+            PHAssetMediaType.video.rawValue
+        )
+    }
+
     static func livePhotoAsset(
         matchingOriginalFilename originalFilename: String
     ) -> PHAsset? {

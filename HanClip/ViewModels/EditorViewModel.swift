@@ -17,8 +17,13 @@ final class EditorViewModel: ObservableObject {
         height: 1
     )
     @Published var isPickerPresented = false
+    @Published var isCalendarPickerPresented = false
     @Published var isFileImporterPresented = false
     @Published var isExporting = false
+    @Published var isLoadingCalendarPicker = false
+    @Published var calendarPickerLoadProgress = 0.0
+    @Published var isImportingCalendarMedia = false
+    @Published var calendarImportProgress = 0.0
     @Published var progressMessage = ""
     @Published var previewProgress = 0.0
     @Published var isPreviewRendering = false
@@ -35,6 +40,15 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var pendingSharedItemCount = 0
     @Published private(set) var pendingSharedThumbnails: [UIImage] = []
     @Published private(set) var newlySavedProjectID: UUID?
+    @Published private(set) var initialCalendarMonth = Calendar.current
+        .date(
+            from: Calendar.current.dateComponents(
+                [.year, .month],
+                from: Date()
+            )
+        ) ?? Date()
+    @Published private(set) var initialCalendarMediaDates: Set<Date> = []
+    @Published private(set) var initialCalendarMediaCounts: [Date: Int] = [:]
     private var previewTask: Task<Void, Never>?
     private var pendingThumbnailTask: Task<Void, Never>?
     private var pendingPhotoAlbumName = ""
@@ -96,6 +110,53 @@ final class EditorViewModel: ObservableObject {
                 alertMessage = "사진 보관함 접근을 허용해 주세요."
             }
         }
+    }
+
+    func openCalendarPicker() {
+        if !isProjectOpen {
+            beginNewProject()
+            importPendingItemsIntoNewProject()
+        }
+        Task {
+            if await PhotoLibraryService.requestReadAccess() {
+                await prepareCalendarPicker()
+                isCalendarPickerPresented = true
+            } else {
+                alertMessage = "사진 보관함 접근을 허용해 주세요."
+            }
+        }
+    }
+
+    private func prepareCalendarPicker() async {
+        let calendar = Calendar.current
+        let month = calendar.date(
+            from: calendar.dateComponents(
+                [.year, .month],
+                from: Date()
+            )
+        ) ?? Date()
+
+        isLoadingCalendarPicker = true
+        calendarPickerLoadProgress = 0
+        progressMessage = "달력을 불러오는 중…"
+
+        let counts = await Task.detached {
+            PhotoLibraryService.mediaCounts(
+                in: month,
+                calendar: calendar
+            ) { progress in
+                Task { @MainActor in
+                    self.calendarPickerLoadProgress = progress
+                }
+            }
+        }.value
+
+        initialCalendarMonth = month
+        initialCalendarMediaCounts = counts
+        initialCalendarMediaDates = Set(counts.keys)
+        calendarPickerLoadProgress = 1
+        progressMessage = ""
+        isLoadingCalendarPicker = false
     }
 
     func openFilePicker() {
@@ -214,8 +275,13 @@ final class EditorViewModel: ObservableObject {
         previewTask = nil
         releaseEditingMemory()
         isPickerPresented = false
+        isCalendarPickerPresented = false
         isFileImporterPresented = false
         isExporting = false
+        isLoadingCalendarPicker = false
+        calendarPickerLoadProgress = 0
+        isImportingCalendarMedia = false
+        calendarImportProgress = 0
         progressMessage = ""
         previewProgress = 0
         isPreviewRendering = false
@@ -351,6 +417,9 @@ final class EditorViewModel: ObservableObject {
         automaticSourceSize = CGSize(width: 1, height: 1)
         isPickerPresented = false
         isFileImporterPresented = false
+        isCalendarPickerPresented = false
+        isLoadingCalendarPicker = false
+        calendarPickerLoadProgress = 0
         activeProjectID = nil
     }
 
@@ -761,6 +830,54 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    func importMediaFromCalendarDates(_ dates: Set<Date>) {
+        guard !dates.isEmpty else { return }
+        let selectedDates = Set(
+            dates.map { Calendar.current.startOfDay(for: $0) }
+        )
+        isCalendarPickerPresented = false
+        isImportingCalendarMedia = true
+        calendarImportProgress = 0
+        progressMessage = "선택한 날짜의 미디어를 불러오는 중…"
+
+        Task {
+            let assets = PhotoLibraryService.mediaAssets(
+                on: selectedDates,
+                calendar: .current
+            )
+            var imported: [ClipItem] = []
+
+            for (index, asset) in assets.enumerated() {
+                do {
+                    let thumbnail = try await PhotoLibraryService.thumbnail(
+                        for: asset
+                    )
+                    if let item = try await makeClip(from: asset, thumbnail) {
+                        imported.append(item)
+                    }
+                } catch {
+                    continue
+                }
+
+                calendarImportProgress = assets.isEmpty
+                    ? 1
+                    : Double(index + 1) / Double(assets.count)
+                progressMessage =
+                    "선택한 날짜의 미디어 \(index + 1)/\(assets.count)개를 "
+                    + "불러오는 중…"
+            }
+
+            isImportingCalendarMedia = false
+            calendarImportProgress = 0
+            progressMessage = ""
+            addPickedItems(imported)
+
+            alertMessage = imported.isEmpty
+                ? "선택한 날짜에 가져올 수 있는 미디어가 없습니다."
+                : "선택한 날짜의 미디어 \(imported.count)개를 가져왔습니다."
+        }
+    }
+
     func updateVideoTrim(
         id: UUID,
         start: Double,
@@ -804,6 +921,60 @@ final class EditorViewModel: ObservableObject {
             audioWaveform: analysis?.waveform ?? [],
             audioPeakTime: peak,
             sourcePixelSize: thumbnail.size
+        )
+    }
+
+    private func makeClip(
+        from asset: PHAsset,
+        _ thumbnail: UIImage
+    ) async throws -> ClipItem? {
+        if asset.mediaType == .video {
+            let url = try await PhotoLibraryService.exportVideo(for: asset)
+            let duration = try await PhotoLibraryService.videoDuration(at: url)
+            let analysis = try? await AudioAnalysisService.analyze(url: url)
+            let selectedDuration = min(defaultDuration, duration)
+            let peak = analysis?.peakTime ?? duration / 2
+            let start = max(
+                0,
+                min(duration - selectedDuration, peak - selectedDuration / 2)
+            )
+            return ClipItem(
+                source: .videoFile(url),
+                thumbnail: thumbnail,
+                duration: selectedDuration,
+                photoDuration: selectedDuration,
+                mediaKind: .video,
+                sourceDuration: duration,
+                trimStart: start,
+                audioWaveform: analysis?.waveform ?? [],
+                audioPeakTime: peak,
+                sourcePixelSize: CGSize(
+                    width: asset.pixelWidth,
+                    height: asset.pixelHeight
+                )
+            )
+        }
+
+        guard asset.mediaType == .image else { return nil }
+        let isLive = asset.mediaSubtypes.contains(.photoLive)
+        let duration = isLive
+            ? (try? await PhotoLibraryService.livePhotoVideoDuration(
+                for: asset
+            )) ?? defaultDuration
+            : defaultDuration
+        return ClipItem(
+            source: .photoAsset(localIdentifier: asset.localIdentifier),
+            thumbnail: thumbnail,
+            duration: duration,
+            photoDuration: defaultDuration,
+            livePhotoDuration: isLive ? duration : nil,
+            isLivePhoto: isLive,
+            livePhotoMode: isLive ? .motion : .still,
+            mediaKind: isLive ? .livePhoto : .photo,
+            sourcePixelSize: CGSize(
+                width: asset.pixelWidth,
+                height: asset.pixelHeight
+            )
         )
     }
 
