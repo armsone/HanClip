@@ -1,1 +1,0 @@
-@rpath/HanClipShare.debug.dylib

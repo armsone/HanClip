@@ -7,26 +7,26 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		100000000000000000000001 /* HanClip/App/HanClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* HanClip/App/HanClipApp.swift */; };
-		100000000000000000000002 /* HanClip/Models/ClipItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* HanClip/Models/ClipItem.swift */; };
-		100000000000000000000003 /* HanClip/Models/VideoFileDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* HanClip/Models/VideoFileDocument.swift */; };
-		100000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift */; };
-		100000000000000000000005 /* HanClip/Services/PhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* HanClip/Services/PhotoPicker.swift */; };
-		100000000000000000000006 /* HanClip/Services/VideoComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* HanClip/Services/VideoComposer.swift */; };
-		100000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift */; };
-		100000000000000000000008 /* HanClip/Views/ClipRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* HanClip/Views/ClipRow.swift */; };
-		100000000000000000000009 /* HanClip/Views/EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* HanClip/Views/EditorView.swift */; };
-		10000000000000000000000A /* Shared/SharedImportRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* Shared/SharedImportRecord.swift */; };
-		10000000000000000000000B /* Shared/SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* Shared/SharedInbox.swift */; };
-		10000000000000000000000C /* HanClipShare/ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* HanClipShare/ShareViewController.swift */; };
-		10000000000000000000000D /* Shared/SharedImportRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* Shared/SharedImportRecord.swift */; };
-		10000000000000000000000E /* Shared/SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* Shared/SharedInbox.swift */; };
+		100000000000000000000001 /* HanClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* HanClipApp.swift */; };
+		100000000000000000000002 /* ClipItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* ClipItem.swift */; };
+		100000000000000000000003 /* VideoFileDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* VideoFileDocument.swift */; };
+		100000000000000000000004 /* PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* PhotoLibraryService.swift */; };
+		100000000000000000000005 /* PhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* PhotoPicker.swift */; };
+		100000000000000000000006 /* VideoComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* VideoComposer.swift */; };
+		100000000000000000000007 /* EditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* EditorViewModel.swift */; };
+		100000000000000000000008 /* ClipRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* ClipRow.swift */; };
+		100000000000000000000009 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* EditorView.swift */; };
+		10000000000000000000000A /* SharedImportRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* SharedImportRecord.swift */; };
+		10000000000000000000000B /* SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* SharedInbox.swift */; };
+		10000000000000000000000C /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* ShareViewController.swift */; };
+		10000000000000000000000D /* SharedImportRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* SharedImportRecord.swift */; };
+		10000000000000000000000E /* SharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* SharedInbox.swift */; };
 		10000000000000000000000F /* HanClipShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* HanClipShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		100000000000000000000010 /* HanClip/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* HanClip/Assets.xcassets */; };
-		100000000000000000000011 /* HanClip/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* HanClip/Assets.xcassets */; };
-		110000000000000000000001 /* HanClip/Services/ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* HanClip/Services/ProjectStore.swift */; };
-		110000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */; };
-		110000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */; };
+		100000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* Assets.xcassets */; };
+		100000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* Assets.xcassets */; };
+		110000000000000000000001 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* ProjectStore.swift */; };
+		110000000000000000000002 /* AudioAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* AudioAnalysisService.swift */; };
+		110000000000000000000003 /* VideoTrimEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* VideoTrimEditor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,28 +54,28 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		200000000000000000000001 /* HanClip/App/HanClipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/App/HanClipApp.swift; sourceTree = "<group>"; };
-		200000000000000000000002 /* HanClip/Models/ClipItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Models/ClipItem.swift; sourceTree = "<group>"; };
-		200000000000000000000003 /* HanClip/Models/VideoFileDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Models/VideoFileDocument.swift; sourceTree = "<group>"; };
-		200000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/PhotoLibraryService.swift; sourceTree = "<group>"; };
-		200000000000000000000005 /* HanClip/Services/PhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/PhotoPicker.swift; sourceTree = "<group>"; };
-		200000000000000000000006 /* HanClip/Services/VideoComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/VideoComposer.swift; sourceTree = "<group>"; };
-		200000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/ViewModels/EditorViewModel.swift; sourceTree = "<group>"; };
-		200000000000000000000008 /* HanClip/Views/ClipRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Views/ClipRow.swift; sourceTree = "<group>"; };
-		200000000000000000000009 /* HanClip/Views/EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Views/EditorView.swift; sourceTree = "<group>"; };
-		20000000000000000000000A /* Shared/SharedImportRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SharedImportRecord.swift; sourceTree = "<group>"; };
-		20000000000000000000000B /* Shared/SharedInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SharedInbox.swift; sourceTree = "<group>"; };
-		20000000000000000000000C /* HanClipShare/ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClipShare/ShareViewController.swift; sourceTree = "<group>"; };
+		200000000000000000000001 /* HanClipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClipApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* ClipItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipItem.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* VideoFileDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFileDocument.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* PhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPicker.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* VideoComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoComposer.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* EditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorViewModel.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* ClipRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRow.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
+		20000000000000000000000A /* SharedImportRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedImportRecord.swift; sourceTree = "<group>"; };
+		20000000000000000000000B /* SharedInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedInbox.swift; sourceTree = "<group>"; };
+		20000000000000000000000C /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		20000000000000000000000D /* HanClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HanClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000E /* HanClipShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HanClipShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		20000000000000000000000F /* HanClip/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HanClip/Info.plist; sourceTree = "<group>"; };
-		200000000000000000000010 /* HanClip/HanClip.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanClip/HanClip.entitlements; sourceTree = "<group>"; };
-		200000000000000000000011 /* HanClipShare/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HanClipShare/Info.plist; sourceTree = "<group>"; };
-		200000000000000000000012 /* HanClipShare/HanClipShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanClipShare/HanClipShare.entitlements; sourceTree = "<group>"; };
-		200000000000000000000013 /* HanClip/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = HanClip/Assets.xcassets; sourceTree = "<group>"; };
-		210000000000000000000001 /* HanClip/Services/ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/ProjectStore.swift; sourceTree = "<group>"; };
-		210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Services/AudioAnalysisService.swift; sourceTree = "<group>"; };
-		210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClip/Views/VideoTrimEditor.swift; sourceTree = "<group>"; };
+		20000000000000000000000F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000010 /* HanClip.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanClip.entitlements; sourceTree = "<group>"; };
+		200000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000012 /* HanClipShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanClipShare.entitlements; sourceTree = "<group>"; };
+		200000000000000000000013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		210000000000000000000001 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		210000000000000000000002 /* AudioAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAnalysisService.swift; sourceTree = "<group>"; };
+		210000000000000000000003 /* VideoTrimEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,42 +118,82 @@
 		700000000000000000000003 /* HanClip */ = {
 			isa = PBXGroup;
 			children = (
-				200000000000000000000001 /* HanClip/App/HanClipApp.swift */,
-				200000000000000000000002 /* HanClip/Models/ClipItem.swift */,
-				200000000000000000000003 /* HanClip/Models/VideoFileDocument.swift */,
-				200000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift */,
-				200000000000000000000005 /* HanClip/Services/PhotoPicker.swift */,
-				200000000000000000000006 /* HanClip/Services/VideoComposer.swift */,
-				200000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift */,
-				200000000000000000000008 /* HanClip/Views/ClipRow.swift */,
-				200000000000000000000009 /* HanClip/Views/EditorView.swift */,
-				210000000000000000000001 /* HanClip/Services/ProjectStore.swift */,
-				210000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift */,
-				210000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift */,
-				20000000000000000000000F /* HanClip/Info.plist */,
-				200000000000000000000010 /* HanClip/HanClip.entitlements */,
-				200000000000000000000013 /* HanClip/Assets.xcassets */,
+				700000000000000000000006 /* App */,
+				700000000000000000000007 /* Models */,
+				700000000000000000000008 /* Services */,
+				700000000000000000000009 /* ViewModels */,
+				70000000000000000000000A /* Views */,
+				20000000000000000000000F /* Info.plist */,
+				200000000000000000000010 /* HanClip.entitlements */,
+				200000000000000000000013 /* Assets.xcassets */,
 			);
-			name = HanClip;
+			path = HanClip;
 			sourceTree = "<group>";
 		};
 		700000000000000000000004 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
-				20000000000000000000000A /* Shared/SharedImportRecord.swift */,
-				20000000000000000000000B /* Shared/SharedInbox.swift */,
+				20000000000000000000000A /* SharedImportRecord.swift */,
+				20000000000000000000000B /* SharedInbox.swift */,
 			);
-			name = Shared;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		700000000000000000000005 /* HanClipShare */ = {
 			isa = PBXGroup;
 			children = (
-				20000000000000000000000C /* HanClipShare/ShareViewController.swift */,
-				200000000000000000000011 /* HanClipShare/Info.plist */,
-				200000000000000000000012 /* HanClipShare/HanClipShare.entitlements */,
+				20000000000000000000000C /* ShareViewController.swift */,
+				200000000000000000000011 /* Info.plist */,
+				200000000000000000000012 /* HanClipShare.entitlements */,
 			);
-			name = HanClipShare;
+			path = HanClipShare;
+			sourceTree = "<group>";
+		};
+		700000000000000000000006 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* HanClipApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		700000000000000000000007 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000002 /* ClipItem.swift */,
+				200000000000000000000003 /* VideoFileDocument.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		700000000000000000000008 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000004 /* PhotoLibraryService.swift */,
+				200000000000000000000005 /* PhotoPicker.swift */,
+				200000000000000000000006 /* VideoComposer.swift */,
+				210000000000000000000001 /* ProjectStore.swift */,
+				210000000000000000000002 /* AudioAnalysisService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		700000000000000000000009 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000007 /* EditorViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		70000000000000000000000A /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000008 /* ClipRow.swift */,
+				200000000000000000000009 /* EditorView.swift */,
+				210000000000000000000003 /* VideoTrimEditor.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -238,7 +278,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100000000000000000000010 /* HanClip/Assets.xcassets in Resources */,
+				100000000000000000000010 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,7 +286,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100000000000000000000011 /* HanClip/Assets.xcassets in Resources */,
+				100000000000000000000011 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -257,20 +297,20 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100000000000000000000001 /* HanClip/App/HanClipApp.swift in Sources */,
-				100000000000000000000002 /* HanClip/Models/ClipItem.swift in Sources */,
-				100000000000000000000003 /* HanClip/Models/VideoFileDocument.swift in Sources */,
-				100000000000000000000004 /* HanClip/Services/PhotoLibraryService.swift in Sources */,
-				100000000000000000000005 /* HanClip/Services/PhotoPicker.swift in Sources */,
-				100000000000000000000006 /* HanClip/Services/VideoComposer.swift in Sources */,
-				100000000000000000000007 /* HanClip/ViewModels/EditorViewModel.swift in Sources */,
-				100000000000000000000008 /* HanClip/Views/ClipRow.swift in Sources */,
-				100000000000000000000009 /* HanClip/Views/EditorView.swift in Sources */,
-				10000000000000000000000A /* Shared/SharedImportRecord.swift in Sources */,
-				10000000000000000000000B /* Shared/SharedInbox.swift in Sources */,
-				110000000000000000000001 /* HanClip/Services/ProjectStore.swift in Sources */,
-				110000000000000000000002 /* HanClip/Services/AudioAnalysisService.swift in Sources */,
-				110000000000000000000003 /* HanClip/Views/VideoTrimEditor.swift in Sources */,
+				100000000000000000000001 /* HanClipApp.swift in Sources */,
+				100000000000000000000002 /* ClipItem.swift in Sources */,
+				100000000000000000000003 /* VideoFileDocument.swift in Sources */,
+				100000000000000000000004 /* PhotoLibraryService.swift in Sources */,
+				100000000000000000000005 /* PhotoPicker.swift in Sources */,
+				100000000000000000000006 /* VideoComposer.swift in Sources */,
+				100000000000000000000007 /* EditorViewModel.swift in Sources */,
+				100000000000000000000008 /* ClipRow.swift in Sources */,
+				100000000000000000000009 /* EditorView.swift in Sources */,
+				10000000000000000000000A /* SharedImportRecord.swift in Sources */,
+				10000000000000000000000B /* SharedInbox.swift in Sources */,
+				110000000000000000000001 /* ProjectStore.swift in Sources */,
+				110000000000000000000002 /* AudioAnalysisService.swift in Sources */,
+				110000000000000000000003 /* VideoTrimEditor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -278,9 +318,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				10000000000000000000000C /* HanClipShare/ShareViewController.swift in Sources */,
-				10000000000000000000000D /* Shared/SharedImportRecord.swift in Sources */,
-				10000000000000000000000E /* Shared/SharedInbox.swift in Sources */,
+				10000000000000000000000C /* ShareViewController.swift in Sources */,
+				10000000000000000000000D /* SharedImportRecord.swift in Sources */,
+				10000000000000000000000E /* SharedInbox.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
