@@ -444,7 +444,7 @@ struct EditorView: View {
                 model.openPicker()
             } label: {
                 Label(
-                    "사진앱",
+                    "사진",
                     systemImage: "photo.on.rectangle"
                 )
             }
@@ -452,13 +452,13 @@ struct EditorView: View {
             Button {
                 model.openCalendarPicker()
             } label: {
-                Label("달력에서", systemImage: "calendar")
+                Label("달력", systemImage: "calendar")
             }
 
             Button {
                 model.openFilePicker()
             } label: {
-                Label("파일앱", systemImage: "folder")
+                Label("파일", systemImage: "folder")
             }
         } label: {
             label()
@@ -751,13 +751,16 @@ struct EditorView: View {
                                     Image(systemName: "film")
                                 }
                                 .font(.system(size: 24, weight: .semibold))
+                                .foregroundStyle(HanClipTheme.secondary)
 
                                 Text(
                                     "영상이나 사진이나 Live Photo를 선택하시면\n하나의 영상으로 이어 붙여 드립니다."
                                 )
                                 .font(.system(size: 16))
                                 .multilineTextAlignment(.center)
-                                .foregroundStyle(HanClipTheme.text.opacity(0.70))
+                                .foregroundStyle(
+                                    HanClipTheme.secondary.opacity(0.70)
+                                )
 
                                 Label(
                                     "사진 및 영상 선택",
@@ -863,7 +866,9 @@ struct EditorView: View {
                             time: .shortened
                         ))
                         .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.black.opacity(0.6))
                         .lineLimit(1)
+                        .offset(y: 2)
 
                         if model.newlySavedProjectID == project.id {
                             Text("NEW")
@@ -881,8 +886,10 @@ struct EditorView: View {
                     )
                     .font(.system(size: 12))
                     .foregroundStyle(HanClipTheme.text.opacity(0.62))
+                    .offset(y: -2)
 
                     projectThumbnailStrip(project)
+                        .offset(y: -4)
                 }
 
                 Spacer()

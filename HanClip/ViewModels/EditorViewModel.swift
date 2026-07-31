@@ -9,8 +9,15 @@ private enum PreviewSaveRequest {
 
 @MainActor
 final class EditorViewModel: ObservableObject {
+    private static let defaultDurationStorageKey = "hanClipDefaultDuration"
+    private static let fallbackDefaultDuration = 3.0
+
     @Published var clips: [ClipItem] = []
-    @Published var defaultDuration: Double = 3
+    @Published var defaultDuration: Double = EditorViewModel.storedDefaultDuration() {
+        didSet {
+            Self.storeDefaultDuration(defaultDuration)
+        }
+    }
     @Published var outputAspectRatio: OutputAspectRatio?
     @Published private(set) var automaticSourceSize = CGSize(
         width: 1,
@@ -57,6 +64,28 @@ final class EditorViewModel: ObservableObject {
     init() {
         reloadProjects()
         refreshPendingSharedItems()
+    }
+
+    private static func storedDefaultDuration() -> Double {
+        guard UserDefaults.standard.object(
+            forKey: defaultDurationStorageKey
+        ) != nil else {
+            return fallbackDefaultDuration
+        }
+        return normalizedDefaultDuration(
+            UserDefaults.standard.double(forKey: defaultDurationStorageKey)
+        )
+    }
+
+    private static func storeDefaultDuration(_ duration: Double) {
+        UserDefaults.standard.set(
+            normalizedDefaultDuration(duration),
+            forKey: defaultDurationStorageKey
+        )
+    }
+
+    private static func normalizedDefaultDuration(_ duration: Double) -> Double {
+        min(max(duration, 0.5), 30)
     }
 
     var totalDuration: Double {
@@ -431,7 +460,7 @@ final class EditorViewModel: ObservableObject {
 
     private func releaseEditingMemory() {
         clips = []
-        defaultDuration = 3
+        defaultDuration = Self.storedDefaultDuration()
         outputAspectRatio = nil
         automaticSourceSize = CGSize(width: 1, height: 1)
         isPickerPresented = false
