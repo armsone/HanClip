@@ -75,7 +75,8 @@ final class VideoComposer {
                 preferredTimescale: 600
             )
 
-            if item.mediaKind == .video {
+            if item.mediaKind == .video
+                || (item.isLivePhoto && item.livePhotoMode == .motion) {
                 let sourceStart = CMTime(
                     seconds: max(0, item.trimStart),
                     preferredTimescale: 600

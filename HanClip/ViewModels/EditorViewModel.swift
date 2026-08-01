@@ -107,7 +107,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     var totalDuration: Double {
-        clips.reduce(0) { $0 + $1.duration }
+        renderableClips.reduce(0) { $0 + $1.duration }
     }
 
     var totalDurationText: String {
@@ -126,6 +126,33 @@ final class EditorViewModel: ObservableObject {
     var outputRenderSize: CGSize {
         outputAspectRatio?.renderSize
             ?? OutputAspectRatio.renderSize(for: automaticSourceSize)
+    }
+
+    var renderableClips: [ClipItem] {
+        clips.filter(\.isRenderableClip)
+    }
+
+    func childSegmentCount(for parentID: UUID) -> Int {
+        clips.filter { $0.videoSegmentParentID == parentID }.count
+    }
+
+    func childSegmentDuration(for parentID: UUID) -> Double {
+        clips
+            .filter { $0.videoSegmentParentID == parentID }
+            .reduce(0) { $0 + $1.duration }
+    }
+
+    func canUseMultipleVideoSegments(for id: UUID) -> Bool {
+        guard let clip = clips.first(where: { $0.id == id }),
+              clip.mediaKind == .video,
+              !clip.isVideoSegmentChild
+        else { return false }
+
+        let sourceDuration = clip.sourceDuration ?? clip.duration
+        return normalizedPeakTimes(
+            for: clip,
+            sourceDuration: sourceDuration
+        ).count > 1
     }
 
     func selectOutputAspectRatio(_ ratio: OutputAspectRatio?) {
@@ -242,6 +269,18 @@ final class EditorViewModel: ObservableObject {
                         peak - selectedDuration / 2
                     )
                 )
+            } else if item.isLivePhoto,
+                      item.livePhotoMode == .motion {
+                let sourceDuration = item.sourceDuration
+                    ?? item.livePhotoDuration
+                    ?? item.duration
+                adjusted.sourceDuration = sourceDuration
+                adjusted.livePhotoDuration = sourceDuration
+                adjusted.duration = min(defaultDuration, sourceDuration)
+                adjusted.trimStart = max(
+                    0,
+                    (sourceDuration - adjusted.duration) / 2
+                )
             }
             return adjusted
         })
@@ -280,12 +319,11 @@ final class EditorViewModel: ObservableObject {
             clips[index].livePhotoMode = mode
 
             if mode == .motion {
-                clips[index].duration = clips[index].sourceDuration
-                    ?? clips[index].livePhotoDuration
-                    ?? clips[index].duration
+                applyLivePhotoPlaybackWindow(at: index)
             } else {
                 clips[index].photoDuration = defaultDuration
                 clips[index].duration = defaultDuration
+                clips[index].trimStart = 0
             }
         }
     }
@@ -302,11 +340,16 @@ final class EditorViewModel: ObservableObject {
     }
 
     func removeClip(id: UUID) {
-        clips.removeAll { $0.id == id }
+        clips.removeAll { clip in
+            clip.id == id || clip.videoSegmentParentID == id
+        }
     }
 
     func removeClips(at offsets: IndexSet) {
-        clips.remove(atOffsets: offsets)
+        let ids = offsets.compactMap { offset in
+            clips.indices.contains(offset) ? clips[offset].id : nil
+        }
+        ids.forEach(removeClip)
     }
 
     func moveClips(from offsets: IndexSet, to destination: Int) {
@@ -341,6 +384,11 @@ final class EditorViewModel: ObservableObject {
         reloadProjects()
     }
 
+    func returnHomeWithoutSaving() {
+        clips = []
+        reset()
+    }
+
     func saveProjectAndReturnHome() {
         guard !clips.isEmpty, !isExporting else {
             if clips.isEmpty {
@@ -369,11 +417,12 @@ final class EditorViewModel: ObservableObject {
     }
 
     func saveProjectAndOpenPreview() {
-        guard !clips.isEmpty, !isExporting else { return }
+        let compositionItems = renderableClips
+        guard !compositionItems.isEmpty, !isExporting else { return }
         isExporting = true
         isPreviewRendering = true
         previewProgress = 0
-        previewThumbnail = clips.first?.thumbnail
+        previewThumbnail = compositionItems.first?.thumbnail
         progressMessage = "프로젝트를 저장하는 중…"
 
         previewTask = Task {
@@ -394,7 +443,7 @@ final class EditorViewModel: ObservableObject {
                 previewProgress = 0.10
                 progressMessage = "미리보기 영상을 만드는 중…"
                 let output = try await VideoComposer().compose(
-                    items: clips,
+                    items: compositionItems,
                     renderSize: outputRenderSize
                 ) { [self] progress in
                     await updatePreviewProgress(progress)
@@ -448,12 +497,13 @@ final class EditorViewModel: ObservableObject {
         if progress >= 0.86 {
             progressMessage = "Rendering in progress"
         }
-        guard !clips.isEmpty else { return }
+        let compositionItems = renderableClips
+        guard !compositionItems.isEmpty else { return }
         let index = min(
-            Int(progress * Double(clips.count)),
-            clips.count - 1
+            Int(progress * Double(compositionItems.count)),
+            compositionItems.count - 1
         )
-        previewThumbnail = clips[index].thumbnail
+        previewThumbnail = compositionItems[index].thumbnail
     }
 
     private func releaseEditingMemory() {
@@ -693,7 +743,7 @@ final class EditorViewModel: ObservableObject {
 
                     case .video:
                         imported.append(
-                            try await makeVideoClip(from: primary)
+                            contentsOf: try await makeVideoClips(from: primary)
                         )
 
                     case .livePhoto:
@@ -867,7 +917,9 @@ final class EditorViewModel: ObservableObject {
                         .appendingPathComponent(UUID().uuidString)
                         .appendingPathExtension(ext)
                     try FileManager.default.copyItem(at: source, to: local)
-                    imported.append(try await makeVideoClip(from: local))
+                    imported.append(
+                        contentsOf: try await makeVideoClips(from: local)
+                    )
                 } catch {
                     continue
                 }
@@ -901,8 +953,9 @@ final class EditorViewModel: ObservableObject {
                     let thumbnail = try await PhotoLibraryService.thumbnail(
                         for: asset
                     )
-                    if let item = try await makeClip(from: asset, thumbnail) {
-                        imported.append(item)
+                    let items = try await makeClips(from: asset, thumbnail)
+                    if !items.isEmpty {
+                        imported.append(contentsOf: items)
                     }
                 } catch {
                     continue
@@ -949,6 +1002,180 @@ final class EditorViewModel: ObservableObject {
         )
     }
 
+    func setVideoSegmentMode(id: UUID, mode: VideoSegmentMode) {
+        guard let index = clips.firstIndex(where: { $0.id == id }),
+              clips[index].mediaKind == .video,
+              !clips[index].isVideoSegmentChild
+        else { return }
+
+        guard mode == .single || canUseMultipleVideoSegments(for: id) else {
+            clips[index].videoSegmentMode = .single
+            clips[index].isVideoSegmentParent = false
+            clips.removeAll { $0.videoSegmentParentID == id }
+            return
+        }
+
+        clips[index].videoSegmentMode = mode
+        guard mode == .multiple else {
+            clips[index].isVideoSegmentParent = false
+            clips.removeAll { $0.videoSegmentParentID == id }
+            return
+        }
+
+        let sourceClip = clips[index]
+        let sourceDuration = sourceClip.sourceDuration
+            ?? sourceClip.duration
+        let peaks = normalizedPeakTimes(
+            for: sourceClip,
+            sourceDuration: sourceDuration
+        )
+        guard peaks.count > 1 else {
+            reanalyzeAndSplitVideoClip(sourceClip)
+            return
+        }
+
+        splitVideoClip(at: index, sourceClip: sourceClip, peaks: peaks)
+    }
+
+    private func reanalyzeAndSplitVideoClip(_ sourceClip: ClipItem) {
+        guard case .videoFile(let url) = sourceClip.source else {
+            resetVideoSegmentModeAfterMissingPeaks(id: sourceClip.id)
+            return
+        }
+
+        Task {
+            let analysis = try? await AudioAnalysisService.analyze(url: url)
+            guard let index = clips.firstIndex(where: { $0.id == sourceClip.id })
+            else { return }
+
+            if let analysis {
+                clips[index].audioWaveform = analysis.waveform
+                clips[index].audioPeakTime = analysis.peakTime
+                clips[index].audioPeakTimes = analysis.peakTimes
+            }
+
+            let updatedClip = clips[index]
+            let sourceDuration = updatedClip.sourceDuration
+                ?? updatedClip.duration
+            let peaks = normalizedPeakTimes(
+                for: updatedClip,
+                sourceDuration: sourceDuration
+            )
+
+            guard peaks.count > 1 else {
+                resetVideoSegmentModeAfterMissingPeaks(id: updatedClip.id)
+                return
+            }
+
+            splitVideoClip(at: index, sourceClip: updatedClip, peaks: peaks)
+        }
+    }
+
+    private func resetVideoSegmentModeAfterMissingPeaks(id: UUID) {
+        if let index = clips.firstIndex(where: { $0.id == id }) {
+            clips[index].videoSegmentMode = .single
+            clips[index].isVideoSegmentParent = false
+            clips.removeAll { $0.videoSegmentParentID == id }
+        }
+        alertMessage = "이 영상에서 나눌 수 있는 추가 사운드 피크를 찾지 못했습니다."
+    }
+
+    private func splitVideoClip(
+        at index: Int,
+        sourceClip: ClipItem,
+        peaks: [Double]
+    ) {
+        let sourceDuration = sourceClip.sourceDuration
+            ?? sourceClip.duration
+        clips.removeAll { $0.videoSegmentParentID == sourceClip.id }
+        guard let parentIndex = clips.firstIndex(where: { $0.id == sourceClip.id })
+        else { return }
+
+        clips[parentIndex].videoSegmentMode = .multiple
+        clips[parentIndex].isVideoSegmentParent = true
+
+        let childClips = peaks.map { peak in
+            let duration = min(sourceClip.duration, sourceDuration)
+            let start = max(
+                0,
+                min(sourceDuration - duration, peak - duration / 2)
+            )
+            return ClipItem(
+                source: sourceClip.source,
+                thumbnail: sourceClip.thumbnail,
+                duration: duration,
+                photoDuration: duration,
+                mediaKind: .video,
+                sourceDuration: sourceDuration,
+                trimStart: start,
+                audioWaveform: sourceClip.audioWaveform,
+                audioPeakTime: peak,
+                audioPeakTimes: peaks,
+                videoSegmentMode: .single,
+                videoSegmentParentID: sourceClip.id,
+                sourcePixelSize: sourceClip.sourcePixelSize
+            )
+        }
+
+        clips.insert(
+            contentsOf: childClips,
+            at: clips.index(after: parentIndex)
+        )
+        refreshSegmentChildThumbnails(
+            parentID: sourceClip.id,
+            sourceClip: sourceClip
+        )
+    }
+
+    private func refreshSegmentChildThumbnails(
+        parentID: UUID,
+        sourceClip: ClipItem
+    ) {
+        guard case .videoFile(let url) = sourceClip.source else { return }
+        let childTargets = clips
+            .filter { $0.videoSegmentParentID == parentID }
+            .map { ($0.id, $0.trimStart + $0.duration / 2) }
+        guard !childTargets.isEmpty else { return }
+
+        Task {
+            for (id, midpoint) in childTargets {
+                guard let thumbnail = try? await videoThumbnail(
+                    for: url,
+                    at: midpoint
+                ) else { continue }
+                guard let index = clips.firstIndex(where: { $0.id == id }),
+                      clips[index].videoSegmentParentID == parentID
+                else { continue }
+                clips[index].thumbnail = thumbnail
+            }
+        }
+    }
+
+    private func normalizedPeakTimes(
+        for clip: ClipItem,
+        sourceDuration: Double
+    ) -> [Double] {
+        let fallbackPeak = clip.audioPeakTime
+            ?? (clip.trimStart + clip.duration / 2)
+        let rawPeaks = clip.audioPeakTimes.isEmpty
+            ? [fallbackPeak]
+            : clip.audioPeakTimes
+        let deduplicatedPeaks = rawPeaks
+            .map { min(max(0, $0), sourceDuration) }
+            .reduce(into: [Double]()) { result, peak in
+                guard !result.contains(where: { abs($0 - peak) < 0.05 })
+                else { return }
+                result.append(peak)
+            }
+
+        return VideoClipSegmenter.nonOverlappingPeaks(
+            rankedPeaks: deduplicatedPeaks,
+            sourceDuration: sourceDuration,
+            selectedDuration: min(clip.duration, sourceDuration),
+            limit: VideoClipSegmenter.allowedSegmentCounts.upperBound
+        )
+    }
+
     private func refreshLivePhotoDurations() {
         let liveClipIDs = clips
             .filter(\.isLivePhoto)
@@ -967,10 +1194,26 @@ final class EditorViewModel: ObservableObject {
                 clips[index].sourceDuration = duration
                 clips[index].livePhotoDuration = duration
                 if clips[index].livePhotoMode == .motion {
-                    clips[index].duration = duration
+                    applyLivePhotoPlaybackWindow(at: index)
                 }
             }
         }
+    }
+
+    private func applyLivePhotoPlaybackWindow(at index: Int) {
+        guard clips.indices.contains(index),
+              clips[index].isLivePhoto,
+              clips[index].livePhotoMode == .motion
+        else { return }
+
+        let sourceDuration = clips[index].sourceDuration
+            ?? clips[index].livePhotoDuration
+            ?? clips[index].duration
+        let selectedDuration = min(defaultDuration, sourceDuration)
+        clips[index].sourceDuration = sourceDuration
+        clips[index].livePhotoDuration = sourceDuration
+        clips[index].duration = selectedDuration
+        clips[index].trimStart = max(0, (sourceDuration - selectedDuration) / 2)
     }
 
     private func livePhotoDuration(for clip: ClipItem) async -> Double? {
@@ -991,54 +1234,36 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    private func makeVideoClip(from url: URL) async throws -> ClipItem {
+    private func makeVideoClips(from url: URL) async throws -> [ClipItem] {
         let thumbnail = try await videoThumbnail(for: url)
         let duration = try await PhotoLibraryService.videoDuration(at: url)
         let analysis = try? await AudioAnalysisService.analyze(url: url)
-        let selectedDuration = min(defaultDuration, duration)
-        let peak = analysis?.peakTime ?? duration / 2
-        let start = max(
-            0,
-            min(duration - selectedDuration, peak - selectedDuration / 2)
-        )
-        return ClipItem(
+        return VideoClipSegmenter.makeClips(
             source: .videoFile(url),
             thumbnail: thumbnail,
-            duration: selectedDuration,
-            photoDuration: selectedDuration,
-            mediaKind: .video,
             sourceDuration: duration,
-            trimStart: start,
-            audioWaveform: analysis?.waveform ?? [],
-            audioPeakTime: peak,
+            selectedDuration: min(defaultDuration, duration),
+            segmentCount: 1,
+            analysis: analysis,
             sourcePixelSize: thumbnail.size
         )
     }
 
-    private func makeClip(
+    private func makeClips(
         from asset: PHAsset,
         _ thumbnail: UIImage
-    ) async throws -> ClipItem? {
+    ) async throws -> [ClipItem] {
         if asset.mediaType == .video {
             let url = try await PhotoLibraryService.exportVideo(for: asset)
             let duration = try await PhotoLibraryService.videoDuration(at: url)
             let analysis = try? await AudioAnalysisService.analyze(url: url)
-            let selectedDuration = min(defaultDuration, duration)
-            let peak = analysis?.peakTime ?? duration / 2
-            let start = max(
-                0,
-                min(duration - selectedDuration, peak - selectedDuration / 2)
-            )
-            return ClipItem(
+            return VideoClipSegmenter.makeClips(
                 source: .videoFile(url),
                 thumbnail: thumbnail,
-                duration: selectedDuration,
-                photoDuration: selectedDuration,
-                mediaKind: .video,
                 sourceDuration: duration,
-                trimStart: start,
-                audioWaveform: analysis?.waveform ?? [],
-                audioPeakTime: peak,
+                selectedDuration: min(defaultDuration, duration),
+                segmentCount: 1,
+                analysis: analysis,
                 sourcePixelSize: CGSize(
                     width: asset.pixelWidth,
                     height: asset.pixelHeight
@@ -1046,37 +1271,45 @@ final class EditorViewModel: ObservableObject {
             )
         }
 
-        guard asset.mediaType == .image else { return nil }
+        guard asset.mediaType == .image else { return [] }
         let isLive = asset.mediaSubtypes.contains(.photoLive)
         let duration = isLive
             ? (try? await PhotoLibraryService.livePhotoVideoDuration(
                 for: asset
             )) ?? defaultDuration
             : defaultDuration
-        return ClipItem(
-            source: .photoAsset(localIdentifier: asset.localIdentifier),
-            thumbnail: thumbnail,
-            duration: duration,
-            photoDuration: defaultDuration,
-            livePhotoDuration: isLive ? duration : nil,
-            isLivePhoto: isLive,
-            livePhotoMode: isLive ? .motion : .still,
-            mediaKind: isLive ? .livePhoto : .photo,
-            sourceDuration: isLive ? duration : nil,
-            sourcePixelSize: CGSize(
-                width: asset.pixelWidth,
-                height: asset.pixelHeight
+        return [
+            ClipItem(
+                source: .photoAsset(localIdentifier: asset.localIdentifier),
+                thumbnail: thumbnail,
+                duration: duration,
+                photoDuration: defaultDuration,
+                livePhotoDuration: isLive ? duration : nil,
+                isLivePhoto: isLive,
+                livePhotoMode: isLive ? .motion : .still,
+                mediaKind: isLive ? .livePhoto : .photo,
+                sourceDuration: isLive ? duration : nil,
+                sourcePixelSize: CGSize(
+                    width: asset.pixelWidth,
+                    height: asset.pixelHeight
+                )
             )
-        )
+        ]
     }
 
-    private func videoThumbnail(for url: URL) async throws -> UIImage {
+    private func videoThumbnail(
+        for url: URL,
+        at seconds: Double = 0
+    ) async throws -> UIImage {
         try await Task.detached {
             let asset = AVURLAsset(url: url)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             let image = try generator.copyCGImage(
-                at: .zero,
+                at: CMTime(
+                    seconds: max(0, seconds),
+                    preferredTimescale: 600
+                ),
                 actualTime: nil
             )
             return UIImage(cgImage: image)

@@ -10,7 +10,9 @@ struct EditorView: View {
     @State private var showResetConfirmation = false
     @State private var showThemeSelection = false
     @State private var themeNotice: String?
+    @State private var importSelectionNotice: String?
     @State private var selectedClipID: UUID?
+    @State private var shouldAutoplaySelectedClip = false
     @State private var draggedClipID: UUID?
     @State private var isDeleteDropTargeted = false
     @State private var isSharedInboxBannerDismissed = false
@@ -139,6 +141,18 @@ struct EditorView: View {
                 }
             }
             .overlay(alignment: .top) {
+                if let importSelectionNotice {
+                    Text(importSelectionNotice)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(HanClipTheme.secondary, in: Capsule())
+                        .padding(.top, themeNotice == nil ? 8 : 52)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .top) {
                 if isSharedInboxBannerVisible {
                     sharedInboxBanner
                         .padding(.horizontal, 12)
@@ -235,32 +249,41 @@ struct EditorView: View {
             )
         ) {
             if let id = selectedClipID,
-               let index = model.clips.firstIndex(where: { $0.id == id }) {
-                let presentedClip = model.clips[index]
+               let index = model.renderableClips.firstIndex(where: {
+                   $0.id == id
+               }) {
+                let presentedClip = model.renderableClips[index]
                 VideoTrimEditor(
                     clip: bindingForClip(id: id, fallback: presentedClip),
                     previewAspectRatio: model.outputRenderSize.width
                         / max(1, model.outputRenderSize.height),
                     currentPosition: index + 1,
-                    totalClipCount: model.clips.count,
+                    totalClipCount: model.renderableClips.count,
                     defaultDuration: model.defaultDuration,
                     totalDurationText: model.totalDurationText,
-                    canGoPrevious: index > model.clips.startIndex,
-                    canGoNext: index < model.clips.index(
-                        before: model.clips.endIndex
+                    autoplayOnLoad: true,
+                    onAutoplayConsumed: {
+                        shouldAutoplaySelectedClip = false
+                    },
+                    canGoPrevious: index > model.renderableClips.startIndex,
+                    canGoNext: index < model.renderableClips.index(
+                        before: model.renderableClips.endIndex
                     ),
                     onPrevious: {
-                        guard index > model.clips.startIndex else { return }
-                        selectedClipID = model.clips[
-                            model.clips.index(before: index)
+                        guard index > model.renderableClips.startIndex
+                        else { return }
+                        shouldAutoplaySelectedClip = true
+                        selectedClipID = model.renderableClips[
+                            model.renderableClips.index(before: index)
                         ].id
                     },
                     onNext: {
-                        guard index < model.clips.index(
-                            before: model.clips.endIndex
+                        guard index < model.renderableClips.index(
+                            before: model.renderableClips.endIndex
                         ) else { return }
-                        selectedClipID = model.clips[
-                            model.clips.index(after: index)
+                        shouldAutoplaySelectedClip = true
+                        selectedClipID = model.renderableClips[
+                            model.renderableClips.index(after: index)
                         ].id
                     },
                     onDelete: {
@@ -483,7 +506,9 @@ struct EditorView: View {
     ) -> some View {
         Menu {
             Button {
-                model.openPicker()
+                selectMediaImportSource("사진") {
+                    model.openPicker()
+                }
             } label: {
                 Label(
                     "사진",
@@ -492,13 +517,17 @@ struct EditorView: View {
             }
 
             Button {
-                model.openCalendarPicker()
+                selectMediaImportSource("달력") {
+                    model.openCalendarPicker()
+                }
             } label: {
                 Label("달력", systemImage: "calendar")
             }
 
             Button {
-                model.openFilePicker()
+                selectMediaImportSource("파일") {
+                    model.openFilePicker()
+                }
             } label: {
                 Label("파일", systemImage: "folder")
             }
@@ -507,10 +536,35 @@ struct EditorView: View {
         }
     }
 
+    private func selectMediaImportSource(
+        _ title: String,
+        action: () -> Void
+    ) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let notice = "\(title) 선택"
+
+        withAnimation(.snappy) {
+            importSelectionNotice = notice
+        }
+
+        action()
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(900))
+            await MainActor.run {
+                guard importSelectionNotice == notice else { return }
+                withAnimation(.snappy) {
+                    importSelectionNotice = nil
+                }
+            }
+        }
+    }
+
     private var resetConfirmationPopup: some View {
         VStack(spacing: 12) {
             VStack(spacing: 18) {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button {
                         withAnimation(.snappy) {
                             showResetConfirmation = false
@@ -518,21 +572,47 @@ struct EditorView: View {
                             model.saveProjectAndReturnHome()
                         }
                     } label: {
-                        Text("첫 화면으로 이동")
-                            .frame(width: 236)
+                        HStack(spacing: 8) {
+                            FloppyDiskIcon()
+                                .frame(width: 20, height: 20)
+                            Text("홈 + 저장")
+                        }
+                            .frame(maxWidth: .infinity)
                     }
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .buttonStyle(.borderedProminent)
                     .tint(HanClipTheme.primary)
+
+                    Button {
+                        withAnimation(.snappy) {
+                            showResetConfirmation = false
+                            selectedClipID = nil
+                            draggedClipID = nil
+                            isReordering = false
+                            model.returnHomeWithoutSaving()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "house.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .frame(width: 20, height: 20)
+                            Text("홈으로")
+                        }
+                            .frame(maxWidth: .infinity)
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondary)
+                    .buttonStyle(.bordered)
+                    .tint(HanClipTheme.secondary)
                 }
                 .controlSize(.large)
 
                 VStack(spacing: 6) {
-                    Text("첫 화면으로 이동할까요?")
+                    Text("홈으로 이동할까요?")
                         .font(.system(size: 16, weight: .semibold))
 
-                    Text("현재 편집 내용을 프로젝트로 저장한 뒤 첫 화면으로 이동합니다.")
+                    Text("저장하고 이동하거나, 저장 없이 홈으로 이동할 수 있습니다.")
                         .font(.system(size: 14))
                         .foregroundStyle(HanClipTheme.text.opacity(0.62))
                         .multilineTextAlignment(.center)
@@ -1027,16 +1107,22 @@ struct EditorView: View {
     }
 
     private func deleteClipFromEditor(id: UUID) {
-        guard let index = model.clips.firstIndex(where: { $0.id == id })
+        let editableClips = model.renderableClips
+        guard let index = editableClips.firstIndex(where: { $0.id == id })
         else {
             selectedClipID = nil
             return
         }
 
-        let nextIndex = model.clips.index(after: index)
-        let nextClipID = nextIndex < model.clips.endIndex
-            ? model.clips[nextIndex].id
-            : nil
+        let nextIndex = editableClips.index(after: index)
+        let nextClipID: UUID?
+        if nextIndex < editableClips.endIndex {
+            nextClipID = editableClips[nextIndex].id
+        } else if index > editableClips.startIndex {
+            nextClipID = editableClips[editableClips.index(before: index)].id
+        } else {
+            nextClipID = nil
+        }
 
         withAnimation(.snappy) {
             selectedClipID = nextClipID
@@ -1063,18 +1149,17 @@ struct EditorView: View {
 
     private var clipEditor: some View {
         VStack(spacing: 0) {
-            defaultDurationPanel
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
-
-            clipModeHeader
-
             if isReordering {
                 ScrollView {
-                    reorderGrid
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                    VStack(spacing: 0) {
+                        clipEditorSettings
+
+                        clipModeHeader
+
+                        reorderGrid
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    }
                 }
                 .scrollIndicators(.hidden)
                 .background(
@@ -1089,17 +1174,60 @@ struct EditorView: View {
     private var clipList: some View {
         List {
             Section {
+                clipEditorSettings
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: 0,
+                            leading: 0,
+                            bottom: 0,
+                            trailing: 0
+                        )
+                    )
+
+                clipModeHeader
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: 0,
+                            leading: 0,
+                            bottom: 0,
+                            trailing: 0
+                        )
+                    )
+
                 ForEach($model.clips) { $clip in
                     ClipRow(
                         position: clipPosition(for: clip.id),
                         clip: $clip,
                         defaultDuration: model.defaultDuration,
+                        childSegmentCount: model.childSegmentCount(
+                            for: clip.id
+                        ),
+                        childSegmentDuration: model.childSegmentDuration(
+                            for: clip.id
+                        ),
+                        canShowVideoSegmentSwitch: model
+                            .canUseMultipleVideoSegments(for: clip.id),
+                        onSelectVideoSegmentMode: { mode in
+                            withAnimation(.snappy) {
+                                model.setVideoSegmentMode(
+                                    id: clip.id,
+                                    mode: mode
+                                )
+                            }
+                        },
                         onSelect: {
+                            guard !clip.isVideoSegmentParent else { return }
                             selectedClipID = clip.id
                         }
                     )
                         .listRowBackground(
-                            HanClipTheme.secondary.opacity(0.06)
+                            clip.isVideoSegmentParent
+                                ? HanClipTheme.secondary.opacity(0.16)
+                                : HanClipTheme.secondary.opacity(0.06)
                         )
                         .listRowInsets(
                             clipRowInsets(for: clip.id)
@@ -1136,24 +1264,17 @@ struct EditorView: View {
                 .onDelete(perform: model.removeClips)
                 .onMove(perform: model.moveClips)
 
-                mediaImportMenu {
-                    circularMediaAddControl
-                }
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(
-                    EdgeInsets(
-                        top: 10,
-                        leading: 0,
-                        bottom: 18,
-                        trailing: 0
+                clipListFooterControls
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: 10,
+                            leading: 0,
+                            bottom: 18,
+                            trailing: 0
+                        )
                     )
-                )
-                .accessibilityLabel("미디어 추가")
-                .accessibilityHint(
-                    "현재 프로젝트의 마지막에 사진이나 영상을 추가합니다."
-                )
             }
         }
         .scrollContentBackground(.hidden)
@@ -1162,15 +1283,82 @@ struct EditorView: View {
         .environment(\.defaultMinListRowHeight, 0)
     }
 
-    private func clipPosition(for id: UUID) -> Int {
-        (model.clips.firstIndex { $0.id == id } ?? 0) + 1
+    private var clipEditorSettings: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+
+                Text("PROJECT EDIT")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.gray.opacity(0.70))
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+
+            defaultDurationPanel
+                .padding(.horizontal, 16)
+                .padding(.top, 0)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private var clipListFooterControls: some View {
+        HStack(spacing: 12) {
+            mediaImportMenu {
+                circularMediaAddControl(systemImage: "plus")
+            }
+            .accessibilityLabel("미디어 추가")
+            .accessibilityHint(
+                "현재 프로젝트의 마지막에 사진이나 영상을 추가합니다."
+            )
+
+            if model.clips.isEmpty {
+                Button {
+                    withAnimation(.snappy) {
+                        selectedClipID = nil
+                        draggedClipID = nil
+                        isReordering = false
+                        model.reset()
+                    }
+                } label: {
+                    circularMediaAddControl(systemImage: "xmark")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("첫 화면으로 이동")
+                .accessibilityHint("현재 빈 프로젝트를 닫고 첫 화면으로 돌아갑니다.")
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func clipPosition(for id: UUID) -> Int? {
+        guard let index = model.renderableClips.firstIndex(where: {
+            $0.id == id
+        }) else {
+            return nil
+        }
+        return index + 1
     }
 
     private func clipRowInsets(for id: UUID) -> EdgeInsets {
-        EdgeInsets(
-            top: model.clips.first?.id == id ? 18 : 5,
+        let clipIndex = model.clips.firstIndex { $0.id == id }
+        let isVideoSegmentChild = clipIndex.map {
+            model.clips[$0].isVideoSegmentChild
+        } ?? false
+        let isFollowedByVideoSegmentChild = clipIndex.map { index in
+            let nextIndex = model.clips.index(after: index)
+            return nextIndex < model.clips.endIndex
+                && model.clips[nextIndex].isVideoSegmentChild
+        } ?? false
+        return EdgeInsets(
+            top: isVideoSegmentChild
+                ? 0
+                : model.clips.first?.id == id ? 18 : 5,
             leading: 4,
-            bottom: model.clips.last?.id == id ? 18 : 5,
+            bottom: isVideoSegmentChild || isFollowedByVideoSegmentChild
+                ? 0
+                : model.clips.last?.id == id ? 18 : 5,
             trailing: 16
         )
     }
@@ -1182,7 +1370,7 @@ struct EditorView: View {
                 .foregroundStyle(HanClipTheme.secondary)
                 .accessibilityHidden(true)
 
-            Text("클립 \(model.clips.count)개")
+            Text("클립 \(model.renderableClips.count)개")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(HanClipTheme.secondary)
 
@@ -1467,9 +1655,9 @@ struct EditorView: View {
     }
 
     @ViewBuilder
-    private var circularMediaAddControl: some View {
+    private func circularMediaAddControl(systemImage: String) -> some View {
         if #available(iOS 26.0, *) {
-            mediaAddCircleIcon
+            mediaCircleIcon(systemImage: systemImage)
                 .background(
                     Color.white.opacity(0.42),
                     in: Circle()
@@ -1493,7 +1681,7 @@ struct EditorView: View {
                     y: 4
                 )
         } else {
-            mediaAddCircleIcon
+            mediaCircleIcon(systemImage: systemImage)
                 .background(.ultraThinMaterial, in: Circle())
                 .overlay {
                     Circle()
@@ -1515,8 +1703,8 @@ struct EditorView: View {
         }
     }
 
-    private var mediaAddCircleIcon: some View {
-        Image(systemName: "plus")
+    private func mediaCircleIcon(systemImage: String) -> some View {
+        Image(systemName: systemImage)
             .font(.system(size: 24, weight: .semibold))
             .foregroundStyle(HanClipTheme.secondary)
             .frame(width: 52, height: 52)
@@ -2194,6 +2382,52 @@ private struct AspectRatioIcon: View {
                     .stroke(HanClipTheme.secondary, lineWidth: 1)
             }
         }
+    }
+}
+
+private struct FloppyDiskIcon: View {
+    var body: some View {
+        GeometryReader { geometry in
+            let size = min(geometry.size.width, geometry.size.height)
+            let lineWidth = max(1.2, size * 0.08)
+            let frame = CGRect(
+                x: (geometry.size.width - size) / 2 + size * 0.09,
+                y: (geometry.size.height - size) / 2 + size * 0.08,
+                width: size * 0.82,
+                height: size * 0.84
+            )
+            let labelWidth = size * 0.46
+            let labelHeight = size * 0.24
+
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.06)
+                    .stroke(lineWidth: lineWidth)
+                    .frame(width: frame.width, height: frame.height)
+                    .position(x: frame.midX, y: frame.midY)
+
+                Path { path in
+                    path.move(to: CGPoint(x: frame.minX + size * 0.12, y: frame.minY))
+                    path.addLine(to: CGPoint(x: frame.maxX - size * 0.14, y: frame.minY))
+                    path.addLine(to: CGPoint(x: frame.maxX - size * 0.14, y: frame.minY + size * 0.30))
+                    path.addLine(to: CGPoint(x: frame.minX + size * 0.12, y: frame.minY + size * 0.30))
+                    path.closeSubpath()
+                }
+                .stroke(lineWidth: lineWidth)
+
+                Rectangle()
+                    .frame(width: size * 0.10, height: size * 0.22)
+                    .position(
+                        x: frame.maxX - size * 0.23,
+                        y: frame.minY + size * 0.15
+                    )
+
+                RoundedRectangle(cornerRadius: size * 0.025)
+                    .stroke(lineWidth: lineWidth)
+                    .frame(width: labelWidth, height: labelHeight)
+                    .position(x: frame.midX, y: frame.maxY - size * 0.23)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
     }
 }
 
@@ -3052,7 +3286,7 @@ private struct CalendarMediaPickerView: View {
                 moveMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(monthArrowIconColor)
                     .shadow(color: monthArrowIconShadowColor, radius: 1.5)
                     .frame(width: 44, height: 44)
@@ -3080,7 +3314,7 @@ private struct CalendarMediaPickerView: View {
                             )
                             .font(
                                 .system(
-                                    size: 11,
+                                    size: 12,
                                     weight: .semibold,
                                     design: .monospaced
                                 )
@@ -3105,7 +3339,7 @@ private struct CalendarMediaPickerView: View {
                 moveMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(monthArrowIconColor)
                     .shadow(color: monthArrowIconShadowColor, radius: 1.5)
                     .frame(width: 44, height: 44)
@@ -3244,7 +3478,7 @@ private struct CalendarMediaPickerView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Text("날짜 \(selectedDates.count)일, 미디어 \(selectedMediaCount)개")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .monospacedDigit()
 
                 Spacer()
@@ -3643,7 +3877,7 @@ private struct CalendarMediaPickerView: View {
                     .foregroundStyle(dateTextColor(for: date))
 
                 if let holidayName {
-                    Text(String(holidayName.prefix(5)))
+                    Text(String(holidayName.prefix(7)))
                         .font(.system(size: 8, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)

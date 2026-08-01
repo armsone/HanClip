@@ -9,6 +9,8 @@ struct VideoTrimEditor: View {
     let totalClipCount: Int
     let defaultDuration: Double
     let totalDurationText: String
+    let autoplayOnLoad: Bool
+    let onAutoplayConsumed: () -> Void
     let canGoPrevious: Bool
     let canGoNext: Bool
     let onPrevious: () -> Void
@@ -19,6 +21,7 @@ struct VideoTrimEditor: View {
     @State private var player = AVPlayer()
     @State private var temporaryLivePhotoURL: URL?
     @State private var mediaLoadTask: Task<Void, Never>?
+    @State private var audioAnalysisTask: Task<Void, Never>?
     @State private var isLoadingPlayableMedia = false
     @State private var initialTrimStart: Double?
     @State private var initialDuration: Double?
@@ -30,6 +33,7 @@ struct VideoTrimEditor: View {
     @State private var playbackProgress = 0.0
     @State private var wasPlayingBeforeScrub = false
     @State private var restartPlaybackAtSelectionStart = true
+    @State private var shouldAutoplayAfterNavigation = false
     @State private var selectionCenterMarkerTime: Double?
     @State private var showDeleteConfirmation = false
 
@@ -61,7 +65,7 @@ struct VideoTrimEditor: View {
 
             previewWithNavigation
 
-            if clip.isVideoClip {
+            if hasPlayableMedia {
                 waveform
                     .frame(maxWidth: .infinity)
                     .frame(height: 60)
@@ -73,13 +77,8 @@ struct VideoTrimEditor: View {
                 nonVideoInformation
                     .padding(.horizontal, 20)
 
-                if hasPlayableMedia {
-                    playbackControls
-                        .padding(.horizontal, 20)
-                } else {
-                    Color.clear
-                        .frame(height: 44)
-                }
+                Color.clear
+                    .frame(height: 44)
             }
 
             footerActions
@@ -90,6 +89,12 @@ struct VideoTrimEditor: View {
         .presentationDetents([.height(710)])
         .presentationDragIndicator(.visible)
         .onAppear(perform: preparePlayer)
+        .onChange(of: clip.id) { _, _ in
+            releasePlayer()
+            playbackProgress = 0
+            restartPlaybackAtSelectionStart = true
+            preparePlayer()
+        }
         .onDisappear(perform: releasePlayer)
         .onReceive(
             Timer.publish(
@@ -249,7 +254,7 @@ struct VideoTrimEditor: View {
 
             Spacer()
 
-            Text("\(clip.duration, specifier: "%.1f")초")
+            Text(nonVideoDurationText)
                 .font(.system(size: 14).monospacedDigit())
                 .foregroundStyle(HanClipTheme.text.opacity(0.66))
         }
@@ -269,9 +274,7 @@ struct VideoTrimEditor: View {
 
                 Spacer()
 
-                Button {
-                    showDeleteConfirmation = true
-                } label: {
+                Button(action: deleteCurrentMedia) {
                     Image(systemName: "trash")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
@@ -302,6 +305,27 @@ struct VideoTrimEditor: View {
                 .accessibilityHint("포토와 라이브 모드를 전환합니다.")
             }
         }
+    }
+
+    private var nonVideoDurationText: String {
+        if clip.isLivePhoto, clip.livePhotoMode == .motion {
+            return String(
+                format: "%.1f / 전체 %@",
+                clip.duration,
+                totalSourceDurationText
+            )
+        }
+        return String(format: "%.1f초", clip.duration)
+    }
+
+    private var totalSourceDurationText: String {
+        let totalSeconds = max(
+            0,
+            Int((clip.sourceDuration ?? clip.livePhotoDuration ?? clip.duration).rounded())
+        )
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 
     private var footerActions: some View {
@@ -391,11 +415,15 @@ struct VideoTrimEditor: View {
 
                 unselectedArea(
                     width: startX,
-                    alignment: .leading
+                    alignment: .leading,
+                    edge: .leading,
+                    waveformWidth: width
                 )
                 unselectedArea(
                     width: width - endX,
-                    alignment: .trailing
+                    alignment: .trailing,
+                    edge: .trailing,
+                    waveformWidth: width
                 )
 
                 movableSelection(
@@ -473,14 +501,37 @@ struct VideoTrimEditor: View {
         .allowsHitTesting(false)
     }
 
+    @ViewBuilder
     private func unselectedArea(
         width: CGFloat,
-        alignment: Alignment
+        alignment: Alignment,
+        edge: TrimEdge,
+        waveformWidth: CGFloat
     ) -> some View {
-        Color.black.opacity(0.42)
+        let interactiveArea = Color.black.opacity(0.42)
             .frame(width: max(0, width))
-            .frame(maxWidth: .infinity, alignment: alignment)
-            .allowsHitTesting(false)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                trimGesture(
+                    edge: edge,
+                    waveformWidth: waveformWidth
+                ),
+                including: .all
+            )
+
+        if alignment == .leading {
+            HStack(spacing: 0) {
+                interactiveArea
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+            }
+        } else {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+                interactiveArea
+            }
+        }
     }
 
     private func movableSelection(
@@ -517,8 +568,8 @@ struct VideoTrimEditor: View {
         ZStack {
             RoundedRectangle(cornerRadius: 4)
                 .fill(HanClipTheme.primary)
-                .frame(width: 4, height: geometry.size.height)
-                .offset(x: edge == .leading ? 2 : -2)
+                .frame(width: 8, height: geometry.size.height)
+                .offset(x: edge == .leading ? 4 : -4)
 
             Image(
                 systemName: edge == .leading
@@ -538,14 +589,11 @@ struct VideoTrimEditor: View {
             y: geometry.size.height / 2
         )
         .highPriorityGesture(
-            trimGesture(
-                edge: edge,
-                waveformWidth: geometry.size.width
-            ),
+            moveSelectionGesture(width: geometry.size.width),
             including: .all
         )
         .accessibilityLabel(
-            edge == .leading ? "시작 지점 조절" : "종료 지점 조절"
+            edge == .leading ? "선택 구간 왼쪽 이동" : "선택 구간 오른쪽 이동"
         )
     }
 
@@ -559,6 +607,16 @@ struct VideoTrimEditor: View {
         )
         .onChanged { value in
             pausePlayback()
+            if shouldMoveSelectionWhenDraggingHandle(
+                waveformWidth: waveformWidth
+            ) {
+                moveSelection(
+                    translationWidth: value.translation.width,
+                    waveformWidth: waveformWidth
+                )
+                return
+            }
+
             let currentBoundary = edge == .leading
                 ? clip.trimStart
                 : clip.trimEnd
@@ -605,37 +663,57 @@ struct VideoTrimEditor: View {
         .onEnded { _ in
             trimDragEdge = nil
             trimDragBoundaryOrigin = nil
+            selectionMoveOrigin = nil
+            selectionMoveDuration = nil
         }
+    }
+
+    private func shouldMoveSelectionWhenDraggingHandle(
+        waveformWidth: CGFloat
+    ) -> Bool {
+        let selectionWidth = CGFloat(clip.duration / sourceDuration)
+            * waveformWidth
+        let visibleGap = selectionWidth - 8
+        return visibleGap <= 4
     }
 
     private func moveSelectionGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
                 pausePlayback()
-                if selectionMoveOrigin == nil {
-                    selectionMoveOrigin = clip.trimStart
-                    selectionMoveDuration = clip.duration
-                }
-                let origin = selectionMoveOrigin ?? clip.trimStart
-                let fixedDuration = selectionMoveDuration ?? clip.duration
-                let delta = Double(
-                    value.translation.width / max(1, width)
-                ) * sourceDuration
-                clip.duration = fixedDuration
-                clip.photoDuration = fixedDuration
-                clip.trimStart = max(
-                    0,
-                    min(sourceDuration - fixedDuration, origin + delta)
+                moveSelection(
+                    translationWidth: value.translation.width,
+                    waveformWidth: width
                 )
-                selectionCenterMarkerTime =
-                    clip.trimStart + fixedDuration / 2
-                updatePlaybackBoundary()
-                showSelectionMidpoint()
             }
             .onEnded { _ in
                 selectionMoveOrigin = nil
                 selectionMoveDuration = nil
             }
+    }
+
+    private func moveSelection(
+        translationWidth: CGFloat,
+        waveformWidth: CGFloat
+    ) {
+        if selectionMoveOrigin == nil {
+            selectionMoveOrigin = clip.trimStart
+            selectionMoveDuration = clip.duration
+        }
+        let origin = selectionMoveOrigin ?? clip.trimStart
+        let fixedDuration = selectionMoveDuration ?? clip.duration
+        let delta = Double(
+            translationWidth / max(1, waveformWidth)
+        ) * sourceDuration
+        clip.duration = fixedDuration
+        clip.photoDuration = fixedDuration
+        clip.trimStart = max(
+            0,
+            min(sourceDuration - fixedDuration, origin + delta)
+        )
+        selectionCenterMarkerTime = clip.trimStart + fixedDuration / 2
+        updatePlaybackBoundary()
+        showSelectionMidpoint()
     }
 
     private var playbackControls: some View {
@@ -742,13 +820,39 @@ struct VideoTrimEditor: View {
 
     private func configurePlayer(with sourceURL: URL) {
         player.replaceCurrentItem(with: AVPlayerItem(url: sourceURL))
+        analyzePlayableAudioIfNeeded(from: sourceURL)
         updatePlaybackBoundary()
         showSelectionMidpoint()
+        if shouldAutoplayAfterNavigation || autoplayOnLoad {
+            shouldAutoplayAfterNavigation = false
+            onAutoplayConsumed()
+            playFromSelectionStart()
+        }
+    }
+
+    private func playFromSelectionStart() {
+        guard hasPlayableMedia, player.currentItem != nil else { return }
+        restartPlaybackAtSelectionStart = false
+        updatePlaybackBoundary()
+        player.seek(
+            to: CMTime(seconds: clip.trimStart, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        ) { finished in
+            Task { @MainActor in
+                guard finished else { return }
+                playbackProgress = 0
+                player.play()
+                isPlaying = true
+            }
+        }
     }
 
     private func releasePlayer() {
         mediaLoadTask?.cancel()
         mediaLoadTask = nil
+        audioAnalysisTask?.cancel()
+        audioAnalysisTask = nil
         pausePlayback()
         player.replaceCurrentItem(with: nil)
         if let temporaryLivePhotoURL {
@@ -756,6 +860,27 @@ struct VideoTrimEditor: View {
             self.temporaryLivePhotoURL = nil
         }
         isLoadingPlayableMedia = false
+    }
+
+    private func analyzePlayableAudioIfNeeded(from url: URL) {
+        guard clip.isLivePhoto,
+              clip.livePhotoMode == .motion,
+              clip.audioWaveform.isEmpty
+        else { return }
+
+        let clipID = clip.id
+        audioAnalysisTask?.cancel()
+        audioAnalysisTask = Task {
+            guard let analysis = try? await AudioAnalysisService.analyze(url: url)
+            else { return }
+            await MainActor.run {
+                guard clip.id == clipID else { return }
+                clip.audioWaveform = analysis.waveform
+                clip.audioPeakTime = analysis.peakTime
+                clip.audioPeakTimes = analysis.peakTimes
+                selectionCenterMarkerTime = analysis.peakTime
+            }
+        }
     }
 
     private func loadLivePhotoMotionIfNeeded() {
@@ -798,9 +923,7 @@ struct VideoTrimEditor: View {
         }
 
         clip.livePhotoMode = .motion
-        clip.duration = clip.sourceDuration
-            ?? clip.livePhotoDuration
-            ?? clip.duration
+        applyLivePhotoPlaybackWindow()
         playbackProgress = 0
         releasePlayer()
 
@@ -833,6 +956,17 @@ struct VideoTrimEditor: View {
         isPlaying = true
     }
 
+    private func applyLivePhotoPlaybackWindow() {
+        let sourceDuration = clip.sourceDuration
+            ?? clip.livePhotoDuration
+            ?? clip.duration
+        let selectedDuration = min(defaultDuration, sourceDuration)
+        clip.sourceDuration = sourceDuration
+        clip.livePhotoDuration = sourceDuration
+        clip.duration = selectedDuration
+        clip.trimStart = max(0, (sourceDuration - selectedDuration) / 2)
+    }
+
     private func togglePlaybackFromPreview() {
         togglePlayback()
     }
@@ -843,14 +977,25 @@ struct VideoTrimEditor: View {
         onPreview()
     }
 
+    private func deleteCurrentMedia() {
+        pausePlayback()
+        if clip.isVideoSegmentChild {
+            onDelete()
+            return
+        }
+        showDeleteConfirmation = true
+    }
+
     private func navigateToPrevious() {
         guard canGoPrevious else { return }
+        shouldAutoplayAfterNavigation = true
         pausePlayback()
         onPrevious()
     }
 
     private func navigateToNext() {
         guard canGoNext else { return }
+        shouldAutoplayAfterNavigation = true
         pausePlayback()
         onNext()
     }

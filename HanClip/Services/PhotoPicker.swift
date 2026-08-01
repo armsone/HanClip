@@ -51,11 +51,11 @@ struct PhotoPicker: UIViewControllerRepresentable {
                         for: asset
                        ) {
                         if asset.mediaType == .video,
-                           let item = try? await Self.makeVideoItem(
+                           let videoItems = try? await Self.makeVideoItems(
                             asset: asset,
                             thumbnail: thumbnail
                            ) {
-                            items.append(item)
+                            items.append(contentsOf: videoItems)
                             continue
                         }
                         let isLive = asset.mediaSubtypes.contains(.photoLive)
@@ -81,8 +81,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
                                 )
                             )
                         )
-                    } else if let item = await Self.loadFallback(result) {
-                        items.append(item)
+                    } else if let fallbackItems = await Self.loadFallback(
+                        result
+                    ) {
+                        items.append(contentsOf: fallbackItems)
                     }
                 }
                 onComplete(items)
@@ -92,11 +94,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
         @MainActor
         private static func loadFallback(
             _ result: PHPickerResult
-        ) async -> ClipItem? {
+        ) async -> [ClipItem]? {
             if result.itemProvider.hasItemConformingToTypeIdentifier(
                 UTType.movie.identifier
-            ), let item = try? await loadFallbackVideo(result.itemProvider) {
-                return item
+            ), let items = try? await loadFallbackVideo(
+                result.itemProvider
+            ) {
+                return items
             }
             guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
                 return nil
@@ -119,11 +123,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     do {
                         try data.write(to: url)
                         continuation.resume(
-                            returning: ClipItem(
-                                source: .imageFile(url),
-                                thumbnail: image,
-                                sourcePixelSize: image.size
-                            )
+                            returning: [
+                                ClipItem(
+                                    source: .imageFile(url),
+                                    thumbnail: image,
+                                    sourcePixelSize: image.size
+                                )
+                            ]
                         )
                     } catch {
                         continuation.resume(returning: nil)
@@ -132,29 +138,20 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
         }
 
-        private static func makeVideoItem(
+        private static func makeVideoItems(
             asset: PHAsset,
             thumbnail: UIImage
-        ) async throws -> ClipItem {
+        ) async throws -> [ClipItem] {
             let url = try await PhotoLibraryService.exportVideo(for: asset)
             let duration = try await PhotoLibraryService.videoDuration(at: url)
             let analysis = try? await AudioAnalysisService.analyze(url: url)
-            let selectedDuration = min(4, duration)
-            let peak = analysis?.peakTime ?? duration / 2
-            let start = max(
-                0,
-                min(duration - selectedDuration, peak - selectedDuration / 2)
-            )
-            return ClipItem(
+            return VideoClipSegmenter.makeClips(
                 source: .videoFile(url),
                 thumbnail: thumbnail,
-                duration: selectedDuration,
-                photoDuration: selectedDuration,
-                mediaKind: .video,
                 sourceDuration: duration,
-                trimStart: start,
-                audioWaveform: analysis?.waveform ?? [],
-                audioPeakTime: peak,
+                selectedDuration: min(4, duration),
+                segmentCount: 1,
+                analysis: analysis,
                 sourcePixelSize: CGSize(
                     width: asset.pixelWidth,
                     height: asset.pixelHeight
@@ -164,7 +161,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         private static func loadFallbackVideo(
             _ provider: NSItemProvider
-        ) async throws -> ClipItem {
+        ) async throws -> [ClipItem] {
             let url = try await withCheckedThrowingContinuation {
                 (continuation: CheckedContinuation<URL, Error>) in
                 provider.loadFileRepresentation(
@@ -205,22 +202,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
             let cgImage = try generator.copyCGImage(at: .zero, actualTime: nil)
             let thumbnail = UIImage(cgImage: cgImage)
             let analysis = try? await AudioAnalysisService.analyze(url: url)
-            let selectedDuration = min(4, duration)
-            let peak = analysis?.peakTime ?? duration / 2
-            let start = max(
-                0,
-                min(duration - selectedDuration, peak - selectedDuration / 2)
-            )
-            return ClipItem(
+            return VideoClipSegmenter.makeClips(
                 source: .videoFile(url),
                 thumbnail: thumbnail,
-                duration: selectedDuration,
-                photoDuration: selectedDuration,
-                mediaKind: .video,
                 sourceDuration: duration,
-                trimStart: start,
-                audioWaveform: analysis?.waveform ?? [],
-                audioPeakTime: peak,
+                selectedDuration: min(4, duration),
+                segmentCount: 1,
+                analysis: analysis,
                 sourcePixelSize: thumbnail.size
             )
         }

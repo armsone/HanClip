@@ -4,10 +4,17 @@ import Foundation
 struct AudioAnalysisResult: Sendable {
     let waveform: [Double]
     let peakTime: Double
+    let peakTimes: [Double]
+
+    init(waveform: [Double], peakTime: Double, peakTimes: [Double]? = nil) {
+        self.waveform = waveform
+        self.peakTime = peakTime
+        self.peakTimes = peakTimes ?? [peakTime]
+    }
 }
 
 enum AudioAnalysisService {
-    static func analyze(url: URL, bucketCount: Int = 96) async throws
+    static func analyze(url: URL, bucketCount: Int = 192) async throws
         -> AudioAnalysisResult {
         try await Task.detached(priority: .userInitiated) {
             let bucketCount = max(1, bucketCount)
@@ -88,25 +95,74 @@ enum AudioAnalysisService {
             let maximum = max(values.max() ?? 0, 0.000_1)
             values = values.map { max(0.04, min(1, $0 / maximum)) }
 
-            var bestIndex = bucketCount / 2
-            var bestRise = -Double.infinity
+            var candidates: [(index: Int, score: Double)] = []
+            var bestCandidate = (
+                index: bucketCount / 2,
+                score: -Double.infinity
+            )
             for index in 1..<bucketCount {
                 let historyStart = max(0, index - 5)
                 let history = values[historyStart..<index]
                 let baseline = history.reduce(0, +)
                     / Double(max(1, history.count))
                 let rise = values[index] - baseline
-                if rise > bestRise {
-                    bestRise = rise
-                    bestIndex = index
+                let score = rise + values[index] * 0.25
+                if score > bestCandidate.score {
+                    bestCandidate = (index, score)
                 }
+                let previous = values[index - 1]
+                let next = index + 1 < bucketCount ? values[index + 1] : 0
+                if rise > 0.04 {
+                    candidates.append((index, score))
+                }
+                if values[index] >= previous, values[index] >= next {
+                    candidates.append((index, score))
+                }
+            }
+
+            if !candidates.contains(
+                where: { $0.index == bestCandidate.index }
+            ) {
+                candidates.append(bestCandidate)
+            }
+
+            for candidate in strongestEnergyCandidates(values: values) {
+                candidates.append(candidate)
+            }
+
+            let bucketsPerSecond = Double(bucketCount) / max(duration, 0.1)
+            let minimumSeparation = max(1, Int((bucketsPerSecond * 0.45).rounded()))
+            var selected: [(index: Int, score: Double)] = []
+            for candidate in candidates.sorted(by: { $0.score > $1.score }) {
+                guard selected.allSatisfy({
+                    abs($0.index - candidate.index) >= minimumSeparation
+                }) else { continue }
+                selected.append(candidate)
+                if selected.count >= 12 {
+                    break
+                }
+            }
+
+            if selected.isEmpty {
+                selected.append(bestCandidate)
             }
 
             return AudioAnalysisResult(
                 waveform: values,
-                peakTime: (Double(bestIndex) + 0.5)
-                    / Double(bucketCount) * duration
+                peakTime: (Double(selected[0].index) + 0.5)
+                    / Double(bucketCount) * duration,
+                peakTimes: selected.map {
+                    (Double($0.index) + 0.5) / Double(bucketCount) * duration
+                }
             )
         }.value
+    }
+
+    private static func strongestEnergyCandidates(
+        values: [Double]
+    ) -> [(index: Int, score: Double)] {
+        values.enumerated().map { index, value in
+            (index: index, score: value * 0.55)
+        }
     }
 }

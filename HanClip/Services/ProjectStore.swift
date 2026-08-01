@@ -108,6 +108,10 @@ enum ProjectStore {
                         trimStart: clip.trimStart,
                         audioWaveform: clip.audioWaveform,
                         audioPeakTime: clip.audioPeakTime,
+                        audioPeakTimes: clip.audioPeakTimes,
+                        videoSegmentMode: clip.videoSegmentMode.rawValue,
+                        isVideoSegmentParent: clip.isVideoSegmentParent,
+                        videoSegmentParentID: clip.videoSegmentParentID,
                         sourceWidth: clip.sourcePixelSize.width,
                         sourceHeight: clip.sourcePixelSize.height
                     )
@@ -253,6 +257,11 @@ enum ProjectStore {
                 trimStart: storedClip.trimStart ?? 0,
                 audioWaveform: storedClip.audioWaveform ?? [],
                 audioPeakTime: storedClip.audioPeakTime,
+                audioPeakTimes: storedClip.audioPeakTimes ?? [],
+                videoSegmentMode: storedClip.videoSegmentMode
+                    .map(VideoSegmentMode.init(storedValue:)) ?? .single,
+                isVideoSegmentParent: storedClip.isVideoSegmentParent ?? false,
+                videoSegmentParentID: storedClip.videoSegmentParentID,
                 sourcePixelSize: CGSize(
                     width: storedClip.sourceWidth,
                     height: storedClip.sourceHeight
@@ -585,10 +594,15 @@ private struct StoredProject: Codable {
             createdAt: createdAt,
             updatedAt: updatedAt,
             isPinned: isPinned,
-            clipCount: clips.count,
-            totalDuration: clips.reduce(0) { $0 + $1.duration },
-            thumbnailFilename: clips.first?.thumbnailFilename,
+            clipCount: clips.filter { $0.isVideoSegmentParent != true }.count,
+            totalDuration: clips
+                .filter { $0.isVideoSegmentParent != true }
+                .reduce(0) { $0 + $1.duration },
+            thumbnailFilename: clips
+                .first { $0.isVideoSegmentParent != true }?
+                .thumbnailFilename,
             thumbnailFilenames: clips
+                .filter { $0.isVideoSegmentParent != true }
                 .dropFirst()
                 .prefix(8)
                 .map(\.thumbnailFilename),
@@ -613,6 +627,10 @@ private struct StoredClip: Codable {
     let trimStart: Double?
     let audioWaveform: [Double]?
     let audioPeakTime: Double?
+    let audioPeakTimes: [Double]?
+    let videoSegmentMode: String?
+    let isVideoSegmentParent: Bool?
+    let videoSegmentParentID: UUID?
     let sourceWidth: Double
     let sourceHeight: Double
 }

@@ -90,6 +90,24 @@ enum ClipMediaKind: String {
     case video
 }
 
+enum VideoSegmentMode: String, CaseIterable, Identifiable {
+    case single = "단일"
+    case multiple = "다중"
+
+    var id: String { rawValue }
+
+    init(storedValue: String) {
+        switch storedValue {
+        case "1개":
+            self = .single
+        case "여러개", "여러 개":
+            self = .multiple
+        default:
+            self = VideoSegmentMode(rawValue: storedValue) ?? .single
+        }
+    }
+}
+
 struct ClipItem: Identifiable {
     let id: UUID
     let source: ClipSource
@@ -104,6 +122,10 @@ struct ClipItem: Identifiable {
     var trimStart: Double
     var audioWaveform: [Double]
     var audioPeakTime: Double?
+    var audioPeakTimes: [Double]
+    var videoSegmentMode: VideoSegmentMode
+    var isVideoSegmentParent: Bool
+    var videoSegmentParentID: UUID?
     let sourcePixelSize: CGSize
 
     var sourceAspectRatio: CGFloat {
@@ -124,6 +146,10 @@ struct ClipItem: Identifiable {
         trimStart: Double = 0,
         audioWaveform: [Double] = [],
         audioPeakTime: Double? = nil,
+        audioPeakTimes: [Double] = [],
+        videoSegmentMode: VideoSegmentMode = .single,
+        isVideoSegmentParent: Bool = false,
+        videoSegmentParentID: UUID? = nil,
         sourcePixelSize: CGSize? = nil
     ) {
         self.id = id
@@ -143,6 +169,10 @@ struct ClipItem: Identifiable {
         self.trimStart = trimStart
         self.audioWaveform = audioWaveform
         self.audioPeakTime = audioPeakTime
+        self.audioPeakTimes = audioPeakTimes
+        self.videoSegmentMode = videoSegmentMode
+        self.isVideoSegmentParent = isVideoSegmentParent
+        self.videoSegmentParentID = videoSegmentParentID
         self.sourcePixelSize = sourcePixelSize ?? thumbnail.size
     }
 
@@ -152,5 +182,102 @@ struct ClipItem: Identifiable {
 
     var isVideoClip: Bool {
         mediaKind == .video
+    }
+
+    var isVideoSegmentChild: Bool {
+        videoSegmentParentID != nil
+    }
+
+    var isRenderableClip: Bool {
+        !isVideoSegmentParent
+    }
+}
+
+enum VideoClipSegmenter {
+    static let allowedSegmentCounts = 1...12
+
+    static func normalizedSegmentCount(_ count: Int) -> Int {
+        min(
+            max(count, allowedSegmentCounts.lowerBound),
+            allowedSegmentCounts.upperBound
+        )
+    }
+
+    static func makeClips(
+        source: ClipSource,
+        thumbnail: UIImage,
+        sourceDuration: Double,
+        selectedDuration: Double,
+        segmentCount: Int,
+        analysis: AudioAnalysisResult?,
+        sourcePixelSize: CGSize
+    ) -> [ClipItem] {
+        let safeDuration = min(max(0.5, selectedDuration), sourceDuration)
+        let safeSegmentCount = normalizedSegmentCount(segmentCount)
+        let fallbackPeak = sourceDuration / 2
+        let rankedPeaks = analysis?.peakTimes.isEmpty == false
+            ? analysis?.peakTimes ?? [fallbackPeak]
+            : [analysis?.peakTime ?? fallbackPeak]
+        let peaks = nonOverlappingPeaks(
+            rankedPeaks: rankedPeaks,
+            sourceDuration: sourceDuration,
+            selectedDuration: safeDuration,
+            limit: safeSegmentCount
+        )
+
+        return peaks.map { peak in
+            let start = max(
+                0,
+                min(sourceDuration - safeDuration, peak - safeDuration / 2)
+            )
+            return ClipItem(
+                source: source,
+                thumbnail: thumbnail,
+                duration: safeDuration,
+                photoDuration: safeDuration,
+                mediaKind: .video,
+                sourceDuration: sourceDuration,
+                trimStart: start,
+                audioWaveform: analysis?.waveform ?? [],
+                audioPeakTime: peak,
+                audioPeakTimes: rankedPeaks,
+                videoSegmentMode: segmentCount > 1 ? .multiple : .single,
+                sourcePixelSize: sourcePixelSize
+            )
+        }
+    }
+
+    static func nonOverlappingPeaks(
+        rankedPeaks: [Double],
+        sourceDuration: Double,
+        selectedDuration: Double,
+        limit: Int
+    ) -> [Double] {
+        let safeDuration = min(max(0.5, selectedDuration), sourceDuration)
+        let safeLimit = normalizedSegmentCount(limit)
+        var selected: [(peak: Double, start: Double, end: Double)] = []
+
+        for peak in rankedPeaks {
+            let clampedPeak = min(max(0, peak), sourceDuration)
+            let start = max(
+                0,
+                min(
+                    sourceDuration - safeDuration,
+                    clampedPeak - safeDuration / 2
+                )
+            )
+            let end = start + safeDuration
+
+            guard selected.allSatisfy({
+                end <= $0.start + 0.001 || start >= $0.end - 0.001
+            }) else { continue }
+
+            selected.append((clampedPeak, start, end))
+            if selected.count >= safeLimit {
+                break
+            }
+        }
+
+        return selected.map(\.peak).sorted()
     }
 }

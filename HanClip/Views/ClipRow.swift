@@ -1,18 +1,18 @@
 import SwiftUI
 
 struct ClipRow: View {
-    let position: Int
+    let position: Int?
     @Binding var clip: ClipItem
     let defaultDuration: Double
+    let childSegmentCount: Int
+    let childSegmentDuration: Double
+    let canShowVideoSegmentSwitch: Bool
+    let onSelectVideoSegmentMode: (VideoSegmentMode) -> Void
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("\(position)")
-                .font(.system(size: 14).monospacedDigit())
-                .foregroundStyle(HanClipTheme.primary)
-                .frame(width: 18, alignment: .center)
-                .accessibilityLabel("\(position)번째 클립")
+            positionCell
 
             HStack(spacing: 14) {
                 Button(action: onSelect) {
@@ -33,13 +33,14 @@ struct ClipRow: View {
                         }
                         .contentShape(Rectangle())
                 }
+                .offset(x: clip.isVideoSegmentChild ? 10 : 0)
                 .buttonStyle(.plain)
                 .accessibilityLabel("에디터 열기")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Button(action: onSelect) {
                         HStack {
-                            Text("\(clip.duration, specifier: "%.1f")초")
+                            Text(primaryTimeText)
                                 .font(.system(size: 12).monospacedDigit())
                                 .foregroundStyle(HanClipTheme.defaultTextBlack)
                                 .offset(x: 8, y: 6)
@@ -53,65 +54,125 @@ struct ClipRow: View {
 
                     HStack(spacing: 8) {
                         if clip.isLivePhoto {
-                            LivePhotoModeSegmentedControl(
-                                mode: $clip.livePhotoMode,
-                                tint: HanClipTheme.secondary,
-                                width: 112,
-                                height: 30
-                            )
-                            .onChange(of: clip.livePhotoMode) {
-                                _,
-                                selectedMode in
-                                if selectedMode == .motion {
-                                    clip.duration = clip.sourceDuration
-                                        ?? clip.livePhotoDuration
-                                        ?? clip.duration
-                                } else {
-                                    clip.photoDuration = defaultDuration
-                                    clip.duration = defaultDuration
+                            HStack(spacing: 7) {
+                                Button(action: onSelect) {
+                                    Image(systemName: "livephoto")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .opacity(0.60)
+                                        .foregroundStyle(
+                                            HanClipTheme.defaultTextBlack
+                                        )
+                                        .frame(
+                                            width: 28,
+                                            height: 24,
+                                            alignment: .leading
+                                        )
+                                        .offset(x: 10)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Live Photo 에디터 열기")
+
+                                LivePhotoModeSegmentedControl(
+                                    mode: $clip.livePhotoMode,
+                                    tint: HanClipTheme.secondary,
+                                    width: 112,
+                                    height: 30
+                                )
+                                .onChange(of: clip.livePhotoMode) {
+                                    _,
+                                    selectedMode in
+                                    if selectedMode == .motion {
+                                        clip.duration = clip.sourceDuration
+                                            ?? clip.livePhotoDuration
+                                            ?? clip.duration
+                                    } else {
+                                        clip.photoDuration = defaultDuration
+                                        clip.duration = defaultDuration
+                                    }
                                 }
                             }
 
                             editorAreaButton
                         } else {
-                            Button(action: onSelect) {
-                                Group {
-                                    if clip.isVideoClip {
+                            if clip.isVideoClip {
+                                HStack(spacing: 7) {
+                                    Button(action: onSelect) {
                                         FilmCameraIcon()
                                             .frame(width: 21, height: 17)
-                                        .opacity(0.60)
-                                        .offset(x: 1)
-                                    } else {
-                                        Image(systemName: "photo.fill")
-                                            .font(
-                                                .system(
-                                                    size: 16
-                                                )
-                                            )
                                             .opacity(0.60)
+                                            .foregroundStyle(
+                                                HanClipTheme.defaultTextBlack
+                                            )
+                                            .frame(
+                                                width: 28,
+                                                height: 24,
+                                                alignment: .leading
+                                            )
+                                            .offset(x: 10)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("영상 클립 에디터 열기")
+
+                                    if canShowVideoSegmentSwitch {
+                                        VideoSegmentModeSegmentedControl(
+                                            mode: videoSegmentModeBinding,
+                                            tint: HanClipTheme.secondary,
+                                            width: 102,
+                                            height: 30
+                                        )
+
+                                        if clip.isVideoSegmentParent {
+                                            Text("(\(childSegmentCount)개)")
+                                                .font(
+                                                    .system(
+                                                        size: 12,
+                                                        weight: .semibold
+                                                    )
+                                                )
+                                                .foregroundStyle(
+                                                    HanClipTheme.secondary
+                                                )
+                                                .monospacedDigit()
+                                        }
                                     }
                                 }
-                                .foregroundStyle(HanClipTheme.defaultTextBlack)
-                                .frame(
-                                    width: 96,
-                                    height: 24,
-                                    alignment: .leading
-                                )
-                                .offset(x: 8, y: 4)
-                                .contentShape(Rectangle())
+                            } else {
+                                Button(action: onSelect) {
+                                    Image(systemName: "photo.fill")
+                                        .font(
+                                            .system(
+                                                size: 16
+                                            )
+                                        )
+                                        .opacity(0.60)
+                                        .foregroundStyle(
+                                            HanClipTheme.defaultTextBlack
+                                        )
+                                        .frame(
+                                            width: 96,
+                                            height: 24,
+                                            alignment: .leading
+                                        )
+                                        .offset(x: 8, y: 4)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("사진 에디터 열기")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(
-                                clip.isVideoClip
-                                    ? "영상 클립 에디터 열기"
-                                    : "사진 에디터 열기"
-                            )
 
-                            editorAreaButton
+                            if clip.isVideoSegmentParent {
+                                rowFillSpacer
+                            } else {
+                                editorAreaButton
+                            }
                         }
 
                         HStack(spacing: 32) {
-                            if clip.isVideoClip {
+                            if clip.isVideoSegmentParent {
+                                EmptyView()
+                            } else if clip.isVideoClip {
                                 VideoDurationStepper(clip: $clip)
                             } else {
                                 CompactDurationStepper(
@@ -129,6 +190,72 @@ struct ClipRow: View {
         .frame(minHeight: 62)
     }
 
+    private var positionText: String {
+        if clip.isVideoSegmentParent {
+            return "·"
+        }
+        return "\(position ?? 0)"
+    }
+
+    private var positionAccessibilityLabel: String {
+        if clip.isVideoSegmentParent {
+            return "모영상"
+        }
+        return "\(position ?? 0)번째 클립"
+    }
+
+    private var positionCell: some View {
+        Text(positionText)
+            .font(.system(size: 14).monospacedDigit())
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 18, alignment: .center)
+            .frame(height: 62)
+            .background(alignment: .trailing) {
+                if clip.isVideoSegmentChild {
+                    Rectangle()
+                        .fill(HanClipTheme.secondary.opacity(0.16))
+                        .frame(width: 22)
+                }
+            }
+            .accessibilityLabel(positionAccessibilityLabel)
+    }
+
+    private var primaryTimeText: String {
+        if clip.isVideoSegmentParent {
+            return String(
+                format: "%@ / 전체 %@",
+                durationText(childSegmentDuration),
+                totalSourceDurationText
+            )
+        }
+        if clip.isLivePhoto, clip.livePhotoMode == .motion {
+            return String(
+                format: "%@ / 전체 %@",
+                durationText(clip.duration),
+                totalSourceDurationText
+            )
+        }
+        if clip.isVideoClip {
+            return String(
+                format: "%@ / 전체 %@",
+                durationText(clip.duration),
+                totalSourceDurationText
+            )
+        }
+        return String(format: "%.1f초", clip.duration)
+    }
+
+    private var totalSourceDurationText: String {
+        durationText(clip.sourceDuration ?? clip.duration)
+    }
+
+    private func durationText(_ seconds: Double) -> String {
+        let tenths = max(Int((seconds * 10).rounded()), 0)
+        let minutes = tenths / 600
+        let remainingSeconds = Double(tenths % 600) / 10
+        return String(format: "%d:%04.1f", minutes, remainingSeconds)
+    }
+
     private var durationBinding: Binding<Double> {
         Binding(
             get: { clip.duration },
@@ -144,6 +271,16 @@ struct ClipRow: View {
         )
     }
 
+    private var videoSegmentModeBinding: Binding<VideoSegmentMode> {
+        Binding(
+            get: { clip.videoSegmentMode },
+            set: { mode in
+                clip.videoSegmentMode = mode
+                onSelectVideoSegmentMode(mode)
+            }
+        )
+    }
+
     private var editorAreaButton: some View {
         Button(action: onSelect) {
             Color.clear
@@ -152,6 +289,13 @@ struct ClipRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("에디터 열기")
+    }
+
+    private var rowFillSpacer: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -316,17 +460,28 @@ struct LivePhotoModeSegmentedControl: View {
     let height: CGFloat
 
     var body: some View {
-        HStack(spacing: 0) {
-            segment(
-                mode: .still,
-                title: "포토",
-                systemImage: "photo"
-            )
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                segment(
+                    mode: .still,
+                    title: "포토",
+                    systemImage: "photo"
+                )
 
-            segment(
-                mode: .motion,
-                title: "Live",
-                systemImage: "livephoto"
+                segment(
+                    mode: .motion,
+                    title: "Live",
+                    systemImage: "livephoto"
+                )
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onEnded { value in
+                        mode = value.location.x < proxy.size.width / 2
+                            ? .still
+                            : .motion
+                    }
             )
         }
         .padding(2)
@@ -345,33 +500,28 @@ struct LivePhotoModeSegmentedControl: View {
     ) -> some View {
         let isSelected = mode == segmentMode
 
-        return Button {
-            mode = segmentMode
-        } label: {
-            HStack(spacing: 2) {
-                Image(systemName: systemImage)
-                    .font(
-                        .system(
-                            size: height <= 24 ? 9 : 10,
-                            weight: .semibold
-                        )
+        return HStack(spacing: 2) {
+            Image(systemName: systemImage)
+                .font(
+                    .system(
+                        size: height <= 24 ? 9 : 10,
+                        weight: .semibold
                     )
+                )
 
-                Text(title)
-                    .font(
-                        .system(
-                            size: height <= 24 ? 10 : 11,
-                            weight: .semibold
-                        )
+            Text(title)
+                .font(
+                    .system(
+                        size: height <= 24 ? 10 : 11,
+                        weight: .semibold
                     )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            }
-            .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
         .background {
             if isSelected {
                 RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
@@ -380,6 +530,85 @@ struct LivePhotoModeSegmentedControl: View {
         }
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+struct VideoSegmentModeSegmentedControl: View {
+    @Binding var mode: VideoSegmentMode
+    let tint: Color
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                segment(
+                    mode: .single,
+                    title: VideoSegmentMode.single.rawValue,
+                    systemImage: "film"
+                )
+
+                segment(
+                    mode: .multiple,
+                    title: VideoSegmentMode.multiple.rawValue,
+                    systemImage: "film.stack"
+                )
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onEnded { value in
+                        mode = value.location.x < proxy.size.width / 2
+                            ? .single
+                            : .multiple
+                    }
+            )
+        }
+        .padding(2)
+        .frame(width: width, height: height)
+        .background(
+            tint.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: height / 2)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func segment(
+        mode segmentMode: VideoSegmentMode,
+        title: String,
+        systemImage: String
+    ) -> some View {
+        let isSelected = mode == segmentMode
+
+        return HStack(spacing: 2) {
+            Image(systemName: systemImage)
+                .font(
+                    .system(
+                        size: height <= 24 ? 9 : 10,
+                        weight: .semibold
+                    )
+                )
+
+            Text(title)
+                .font(
+                    .system(
+                        size: height <= 24 ? 10 : 12,
+                        weight: .semibold
+                    )
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
+                    .fill(tint)
+            }
+        }
+        .accessibilityLabel("영상 세그먼트 \(title)")
     }
 }
 
