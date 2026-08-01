@@ -1,4 +1,5 @@
 import AVFoundation
+import Foundation
 import Photos
 import UIKit
 
@@ -21,26 +22,6 @@ enum PhotoLibraryService {
             withLocalIdentifiers: [localIdentifier],
             options: nil
         ).firstObject
-    }
-
-    static func mediaDates(in month: Date, calendar: Calendar) -> Set<Date> {
-        Set(mediaCounts(
-            in: month,
-            calendar: calendar,
-            progress: nil
-        ).keys)
-    }
-
-    static func mediaDates(
-        in month: Date,
-        calendar: Calendar,
-        progress: (@MainActor (Double) -> Void)?
-    ) -> Set<Date> {
-        Set(mediaCounts(
-            in: month,
-            calendar: calendar,
-            progress: progress
-        ).keys)
     }
 
     static func mediaCounts(
@@ -109,6 +90,87 @@ enum PhotoLibraryService {
             }
     }
 
+    static func closestMediaDate(to targetDate: Date, calendar: Calendar)
+        -> Date?
+    {
+        let targetDay = calendar.startOfDay(for: targetDate)
+        guard let nextDay = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: targetDay
+        ) else { return nil }
+
+        if mediaAssetDate(from: targetDay, to: nextDay, ascending: true)
+            != nil {
+            return targetDay
+        }
+
+        let previousDate = previousMediaDate(
+            before: targetDay,
+            calendar: calendar
+        )
+        let nextDate = mediaAssetDate(
+            from: nextDay,
+            to: Date.distantFuture,
+            ascending: true,
+            calendar: calendar
+        )
+
+        switch (previousDate, nextDate) {
+        case let (previousDate?, nextDate?):
+            let previousDistance = targetDay.timeIntervalSince(previousDate)
+            let nextDistance = nextDate.timeIntervalSince(targetDay)
+            return previousDistance <= nextDistance ? previousDate : nextDate
+        case let (previousDate?, nil):
+            return previousDate
+        case let (nil, nextDate?):
+            return nextDate
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    static func previousMediaDate(before targetDate: Date, calendar: Calendar)
+        -> Date?
+    {
+        let targetDay = calendar.startOfDay(for: targetDate)
+        let options = PHFetchOptions()
+        options.predicate = mediaPredicate(
+            from: Date.distantPast,
+            to: targetDay
+        )
+        options.sortDescriptors = [
+            NSSortDescriptor(key: "creationDate", ascending: false)
+        ]
+        options.fetchLimit = 1
+
+        guard let asset = PHAsset.fetchAssets(with: options).firstObject,
+              let creationDate = asset.creationDate
+        else { return nil }
+
+        return calendar.startOfDay(for: creationDate)
+    }
+
+    private static func mediaAssetDate(
+        from start: Date,
+        to end: Date,
+        ascending: Bool,
+        calendar: Calendar = .current
+    ) -> Date? {
+        let options = PHFetchOptions()
+        options.predicate = mediaPredicate(from: start, to: end)
+        options.sortDescriptors = [
+            NSSortDescriptor(key: "creationDate", ascending: ascending)
+        ]
+        options.fetchLimit = 1
+
+        guard let asset = PHAsset.fetchAssets(with: options).firstObject,
+              let creationDate = asset.creationDate
+        else { return nil }
+
+        return calendar.startOfDay(for: creationDate)
+    }
+
     private static func mediaPredicate(from start: Date, to end: Date)
         -> NSPredicate
     {
@@ -168,6 +230,7 @@ enum PhotoLibraryService {
         size: CGSize = CGSize(width: 320, height: 320)
     ) async throws -> UIImage {
         try await withCheckedThrowingContinuation { continuation in
+            var didResume = false
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
@@ -178,6 +241,17 @@ enum PhotoLibraryService {
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
+                guard !didResume else { return }
+                if info?[PHImageResultIsDegradedKey] as? Bool == true {
+                    return
+                }
+                if info?[PHImageCancelledKey] as? Bool == true {
+                    didResume = true
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+
+                didResume = true
                 if let error = info?[PHImageErrorKey] as? Error {
                     continuation.resume(throwing: error)
                 } else if let image {
@@ -191,6 +265,7 @@ enum PhotoLibraryService {
 
     static func fullImage(for asset: PHAsset) async throws -> UIImage {
         try await withCheckedThrowingContinuation { continuation in
+            var didResume = false
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.version = .current
@@ -200,6 +275,14 @@ enum PhotoLibraryService {
                 for: asset,
                 options: options
             ) { data, _, _, info in
+                guard !didResume else { return }
+                if info?[PHImageCancelledKey] as? Bool == true {
+                    didResume = true
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+
+                didResume = true
                 if let error = info?[PHImageErrorKey] as? Error {
                     continuation.resume(throwing: error)
                 } else if let data, let image = UIImage(data: data) {
@@ -353,11 +436,114 @@ enum PhotoLibraryService {
     }
 }
 
+enum KoreanHolidayService {
+    private static let cacheKey = "hanClipKoreanHolidayJSON"
+    private static let endpoint =
+        "https://holidays.hyunbin.page/basic.json"
+
+    static func cachedHolidayNames(for year: Int, calendar: Calendar)
+        -> [Date: String]
+    {
+        holidayNames(
+            from: cachedHolidayMap(),
+            year: year,
+            calendar: calendar
+        )
+    }
+
+    static func refreshedHolidayNames(for year: Int, calendar: Calendar)
+        async -> [Date: String]
+    {
+        do {
+            let holidayMap = try await fetchHolidayMap()
+            cache(holidayMap)
+            return holidayNames(
+                from: holidayMap,
+                year: year,
+                calendar: calendar
+            )
+        } catch {
+            return cachedHolidayNames(for: year, calendar: calendar)
+        }
+    }
+
+    private static func fetchHolidayMap() async throws
+        -> [String: [String]]
+    {
+        guard let url = URL(string: endpoint) else { return [:] }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode)
+        else { return [:] }
+
+        return try decodeHolidayMap(from: data)
+    }
+
+    private static func cachedHolidayMap() -> [String: [String]] {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+              let dates = try? decodeHolidayMap(from: data)
+        else { return [:] }
+        return dates
+    }
+
+    private static func cache(_ holidayMap: [String: [String]]) {
+        guard let data = try? JSONEncoder().encode(holidayMap) else { return }
+        UserDefaults.standard.set(data, forKey: cacheKey)
+    }
+
+    private static func decodeHolidayMap(from data: Data) throws
+        -> [String: [String]]
+    {
+        if let years = try? JSONDecoder()
+            .decode([String: [String: [String]]].self, from: data) {
+            return years.values.reduce(into: [String: [String]]()) {
+                result,
+                holidays in
+                holidays.forEach { date, names in
+                    result[date] = names
+                }
+            }
+        }
+
+        if let dates = try? JSONDecoder().decode([String: [String]].self, from: data) {
+            return dates
+        }
+
+        return try JSONDecoder()
+            .decode([String: String].self, from: data)
+            .mapValues { [$0] }
+    }
+
+    private static func holidayNames(
+        from holidayMap: [String: [String]],
+        year: Int,
+        calendar: Calendar
+    ) -> [Date: String] {
+        let prefix = "\(year)-"
+        return holidayMap.reduce(into: [Date: String]()) { result, item in
+            let key = item.key
+            guard key.hasPrefix(prefix) else { return }
+            let parts = key.split(separator: "-").compactMap {
+                Int(String($0))
+            }
+            guard parts.count == 3 else { return }
+            guard let date = calendar.date(
+                from: DateComponents(
+                    year: parts[0],
+                    month: parts[1],
+                    day: parts[2]
+                )
+            ) else { return }
+            guard let name = item.value.first else { return }
+            result[calendar.startOfDay(for: date)] = name
+        }
+    }
+}
+
 enum MediaError: LocalizedError {
     case imageUnavailable
     case livePhotoVideoUnavailable
     case photoLibraryDenied
-    case unsupportedSharedItem
     case videoTrackUnavailable
     case exportFailed(String)
 
@@ -369,8 +555,6 @@ enum MediaError: LocalizedError {
             "Live Photo의 움직임 영상을 읽을 수 없습니다."
         case .photoLibraryDenied:
             "사진 보관함 사용 권한이 필요합니다."
-        case .unsupportedSharedItem:
-            "지원하지 않는 공유 항목입니다."
         case .videoTrackUnavailable:
             "영상 트랙을 읽을 수 없습니다."
         case .exportFailed(let message):

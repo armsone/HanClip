@@ -10,11 +10,11 @@ enum HanClipThemeMode: String, CaseIterable {
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .light:
+        case .light, .rosyBrown, .electricCobalt:
             return .light
         case .dark:
             return .dark
-        case .automatic, .rosyBrown, .electricCobalt:
+        case .automatic:
             return nil
         }
     }
@@ -85,7 +85,11 @@ enum HanClipTheme {
             return rosyBrown
         case .electricCobalt:
             return electricCobalt
-        case .light, .dark, .automatic:
+        case .light:
+            return golfPrimary
+        case .dark:
+            return golfSecondary
+        case .automatic:
             return UIColor { traits in
                 traits.userInterfaceStyle == .dark
                     ? golfSecondary
@@ -100,13 +104,25 @@ enum HanClipTheme {
             return dimGray
         case .electricCobalt:
             return gray50
-        case .light, .dark, .automatic:
+        case .light:
+            return golfSecondary
+        case .dark:
+            return golfPrimary
+        case .automatic:
             return UIColor { traits in
                 traits.userInterfaceStyle == .dark
                     ? golfPrimary
                     : golfSecondary
             }
         }
+    }
+
+    static var rosyBrownPrimary: Color {
+        Color(uiColor: rosyBrown)
+    }
+
+    static var lightSecondary: Color {
+        Color(uiColor: golfSecondary)
     }
 
     private static var selectedMode: HanClipThemeMode {
@@ -153,38 +169,65 @@ enum HanClipTheme {
         blue: 128.0 / 255.0,
         alpha: 1
     )
-    static let background = adaptiveColor(
-        light: .white,
-        dark: UIColor(
-            red: 55.0 / 255.0,
-            green: 58.0 / 255.0,
-            blue: 54.0 / 255.0,
-            alpha: 1
+    static var background: Color {
+        themedColor(light: .white, dark: darkBackground)
+    }
+
+    static var backgroundWithBlack: Color {
+        themedColor(light: lightBackgroundWithBlack, dark: darkBackgroundWithBlack)
+    }
+
+    static var backgroundGradient: LinearGradient {
+        LinearGradient(
+            colors: [backgroundWithBlack, background],
+            startPoint: .top,
+            endPoint: .bottom
         )
+    }
+
+    static var text: Color {
+        themedColor(light: black90, dark: .white)
+    }
+
+    static var defaultTextBlack: Color {
+        Color(uiColor: black90)
+    }
+
+    private static let darkBackground = UIColor(
+        red: 55.0 / 255.0,
+        green: 58.0 / 255.0,
+        blue: 54.0 / 255.0,
+        alpha: 1
     )
-    static let backgroundWithBlack = adaptiveColor(
-        light: UIColor(
-            red: 0.96,
-            green: 0.96,
-            blue: 0.96,
-            alpha: 1
-        ),
-        dark: UIColor(
-            red: (55.0 / 255.0) * 0.96,
-            green: (58.0 / 255.0) * 0.96,
-            blue: (54.0 / 255.0) * 0.96,
-            alpha: 1
-        )
+    private static let lightBackgroundWithBlack = UIColor(
+        red: 0.96,
+        green: 0.96,
+        blue: 0.96,
+        alpha: 1
     )
-    static let backgroundGradient = LinearGradient(
-        colors: [backgroundWithBlack, background],
-        startPoint: .top,
-        endPoint: .bottom
+    private static let darkBackgroundWithBlack = UIColor(
+        red: (55.0 / 255.0) * 0.96,
+        green: (58.0 / 255.0) * 0.96,
+        blue: (54.0 / 255.0) * 0.96,
+        alpha: 1
     )
-    static let text = adaptiveColor(
-        light: .black,
-        dark: .white
+    private static let black90 = UIColor(
+        red: 26.0 / 255.0,
+        green: 26.0 / 255.0,
+        blue: 26.0 / 255.0,
+        alpha: 1
     )
+
+    private static func themedColor(light: UIColor, dark: UIColor) -> Color {
+        switch selectedMode {
+        case .light, .rosyBrown, .electricCobalt:
+            return Color(uiColor: light)
+        case .dark:
+            return Color(uiColor: dark)
+        case .automatic:
+            return adaptiveColor(light: light, dark: dark)
+        }
+    }
 
     private static func adaptiveColor(
         light: UIColor,
@@ -198,13 +241,156 @@ enum HanClipTheme {
     }
 }
 
+enum HanClipQuickAction: Equatable {
+    case photo
+    case calendar
+    case files
+
+    init?(url: URL) {
+        guard url.scheme == "hanclip" else { return nil }
+
+        let actionName = url.host ?? url.pathComponents.dropFirst().first
+        switch actionName {
+        case "photo":
+            self = .photo
+        case "calendar":
+            self = .calendar
+        case "files":
+            self = .files
+        default:
+            return nil
+        }
+    }
+
+    init?(shortcutItem: UIApplicationShortcutItem) {
+        switch shortcutItem.type {
+        case "com.intosharp.hanclip.photo":
+            self = .photo
+        case "com.intosharp.hanclip.calendar":
+            self = .calendar
+        case "com.intosharp.hanclip.files":
+            self = .files
+        default:
+            return nil
+        }
+    }
+}
+
+@MainActor
+final class HanClipQuickActionRouter: ObservableObject {
+    static let shared = HanClipQuickActionRouter()
+
+    @Published var pendingAction: HanClipQuickAction?
+
+    func handle(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
+        guard let action = HanClipQuickAction(shortcutItem: shortcutItem)
+        else { return false }
+
+        pendingAction = action
+        return true
+    }
+
+    func handle(_ url: URL) -> Bool {
+        guard let action = HanClipQuickAction(url: url) else { return false }
+
+        pendingAction = action
+        return true
+    }
+
+    func clear(_ action: HanClipQuickAction) {
+        if pendingAction == action {
+            pendingAction = nil
+        }
+    }
+}
+
+final class HanClipAppDelegate: NSObject, UIApplicationDelegate {
+    let quickActionRouter = HanClipQuickActionRouter.shared
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [
+            UIApplication.LaunchOptionsKey: Any
+        ]?
+    ) -> Bool {
+        if let shortcutItem = launchOptions?[.shortcutItem]
+            as? UIApplicationShortcutItem {
+            return !quickActionRouter.handle(shortcutItem)
+        }
+
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        if let url = options.urlContexts.first?.url {
+            _ = quickActionRouter.handle(url)
+        }
+
+        if let shortcutItem = options.shortcutItem {
+            _ = quickActionRouter.handle(shortcutItem)
+        }
+
+        let configuration = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+        configuration.delegateClass = HanClipSceneDelegate.self
+        return configuration
+    }
+
+    func application(
+        _ application: UIApplication,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(quickActionRouter.handle(shortcutItem))
+    }
+}
+
+final class HanClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        if let url = connectionOptions.urlContexts.first?.url {
+            _ = HanClipQuickActionRouter.shared.handle(url)
+        }
+    }
+
+    func scene(
+        _ scene: UIScene,
+        openURLContexts URLContexts: Set<UIOpenURLContext>
+    ) {
+        guard let url = URLContexts.first?.url else { return }
+        _ = HanClipQuickActionRouter.shared.handle(url)
+    }
+
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(
+            HanClipQuickActionRouter.shared.handle(shortcutItem)
+        )
+    }
+}
+
 @main
 struct HanClipApp: App {
+    @UIApplicationDelegateAdaptor(HanClipAppDelegate.self)
+    private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             EditorView()
+                .environmentObject(appDelegate.quickActionRouter)
                 .tint(HanClipTheme.primary)
                 .foregroundStyle(HanClipTheme.text)
                 .background(HanClipTheme.backgroundGradient)

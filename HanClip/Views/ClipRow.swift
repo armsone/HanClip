@@ -41,6 +41,7 @@ struct ClipRow: View {
                         HStack {
                             Text("\(clip.duration, specifier: "%.1f")초")
                                 .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(HanClipTheme.defaultTextBlack)
                                 .offset(x: 8, y: 6)
                             Spacer(minLength: 0)
                         }
@@ -76,15 +77,8 @@ struct ClipRow: View {
                             Button(action: onSelect) {
                                 Group {
                                     if clip.isVideoClip {
-                                        Image(
-                                            systemName:
-                                                "rectangle.stack.badge.play.fill"
-                                        )
-                                        .font(
-                                            .system(
-                                                size: 16
-                                            )
-                                        )
+                                        FilmCameraIcon()
+                                            .frame(width: 21, height: 17)
                                         .opacity(0.60)
                                         .offset(x: 1)
                                     } else {
@@ -97,6 +91,7 @@ struct ClipRow: View {
                                             .opacity(0.60)
                                     }
                                 }
+                                .foregroundStyle(HanClipTheme.defaultTextBlack)
                                 .frame(
                                     width: 96,
                                     height: 24,
@@ -157,6 +152,79 @@ struct ClipRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("에디터 열기")
+    }
+}
+
+struct FilmCameraIcon: View {
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let reelSize = height * 0.56
+            let bodyHeight = height * 0.56
+            let bodyY = height * 0.40
+
+            ZStack {
+                CameraReel()
+                    .fill(style: FillStyle(eoFill: true))
+                    .frame(width: reelSize, height: reelSize)
+                    .position(x: width * 0.26, y: height * 0.26)
+
+                CameraReel()
+                    .fill(style: FillStyle(eoFill: true))
+                    .frame(width: reelSize, height: reelSize)
+                    .position(x: width * 0.58, y: height * 0.26)
+
+                RoundedRectangle(cornerRadius: height * 0.13)
+                    .frame(
+                        width: width * 0.64,
+                        height: bodyHeight
+                    )
+                    .position(x: width * 0.38, y: bodyY + bodyHeight / 2)
+
+                CameraLens()
+                    .frame(width: width * 0.30, height: bodyHeight * 0.86)
+                    .position(x: width * 0.80, y: bodyY + bodyHeight / 2)
+            }
+        }
+        .aspectRatio(21 / 17, contentMode: .fit)
+    }
+}
+
+struct CameraReel: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addEllipse(in: rect)
+
+        let holeSize = min(rect.width, rect.height) * 0.34
+        let holeRect = CGRect(
+            x: rect.midX - holeSize / 2,
+            y: rect.midY - holeSize / 2,
+            width: holeSize,
+            height: holeSize
+        )
+        path.addEllipse(in: holeRect)
+
+        return path
+    }
+}
+
+struct CameraLens: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX * 0.82, y: rect.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.18),
+            control: CGPoint(x: rect.maxX, y: rect.minY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - rect.height * 0.18))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX * 0.82, y: rect.maxY),
+            control: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 

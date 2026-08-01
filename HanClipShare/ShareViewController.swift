@@ -22,8 +22,10 @@ final class ShareViewController: UIViewController {
     private let descriptionLabel = UILabel()
     private let thumbnailContainer = UIView()
     private let thumbnailView = UIImageView()
+    private let stack = UIStackView()
     private let progressLabel = UILabel()
     private let progressView = UIProgressView(progressViewStyle: .default)
+    private let actionButtonsStack = UIStackView()
     private let cancelButton = UIButton(type: .system)
     private var importTask: Task<Void, Never>?
     private var isImportComplete = false
@@ -53,7 +55,7 @@ final class ShareViewController: UIViewController {
         logoStack.spacing = 6
         logoStack.isLayoutMarginsRelativeArrangement = true
         logoStack.directionalLayoutMargins = NSDirectionalEdgeInsets(
-            top: 16,
+            top: 8,
             leading: 0,
             bottom: 0,
             trailing: 0
@@ -72,7 +74,7 @@ final class ShareViewController: UIViewController {
         statusLabel.numberOfLines = 0
 
         descriptionLabel.text =
-            "확인을 누른 뒤 HanClip을 열면 공유 파일을 새 프로젝트나 "
+            "복사가 끝난 뒤 항목을 선택하면 공유 파일을 새 프로젝트나 "
             + "기존 프로젝트에 추가할 수 있습니다."
         descriptionLabel.font = .preferredFont(forTextStyle: .footnote)
         descriptionLabel.textAlignment = .center
@@ -107,7 +109,8 @@ final class ShareViewController: UIViewController {
                 equalTo: thumbnailContainer.heightAnchor
             ),
             thumbnailContainer.heightAnchor.constraint(
-                equalTo: thumbnailContainer.widthAnchor
+                equalTo: thumbnailContainer.widthAnchor,
+                multiplier: 0.64
             )
         ])
 
@@ -123,6 +126,8 @@ final class ShareViewController: UIViewController {
         )
         progressLabel.textColor = secondaryColor
         progressLabel.textAlignment = .right
+        progressLabel.adjustsFontSizeToFitWidth = true
+        progressLabel.minimumScaleFactor = 0.82
         progressLabel.setContentHuggingPriority(.required, for: .horizontal)
         progressLabel.setContentCompressionResistancePriority(
             .required,
@@ -139,41 +144,32 @@ final class ShareViewController: UIViewController {
         progressStack.alignment = .center
         progressStack.spacing = 10
 
-        cancelButton.setTitle("취소", for: .normal)
-        cancelButton.titleLabel?.font = .systemFont(
-            ofSize: 18,
-            weight: .semibold
-        )
-        cancelButton.setTitleColor(.white, for: .normal)
-        cancelButton.backgroundColor = pointColor
-        cancelButton.layer.cornerRadius = 12
-        cancelButton.addTarget(
-            self,
-            action: #selector(cancelImport),
-            for: .touchUpInside
-        )
+        configureActionButtons()
+        configureCancelButton()
 
-        let stack = UIStackView(
-            arrangedSubviews: [
-                logoStack,
-                thumbnailContainer,
-                progressStack,
-                statusLabel,
-                cancelButton,
-                descriptionLabel
-            ]
-        )
         stack.axis = .vertical
         stack.alignment = .leading
-        stack.spacing = 14
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
+        [
+            logoStack,
+            thumbnailContainer,
+            progressStack,
+            statusLabel,
+            actionButtonsStack,
+            descriptionLabel
+        ].forEach(stack.addArrangedSubview)
         view.addSubview(stack)
+        view.addSubview(cancelButton)
 
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.topAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.topAnchor,
+                constant: 10
+            ),
             stack.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                constant: -60
+                lessThanOrEqualTo: cancelButton.topAnchor,
+                constant: -12
             ),
             stack.leadingAnchor.constraint(
                 equalTo: view.leadingAnchor,
@@ -187,12 +183,123 @@ final class ShareViewController: UIViewController {
                 equalTo: stack.widthAnchor
             ),
             progressStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            progressLabel.widthAnchor.constraint(equalToConstant: 44),
             statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            cancelButton.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            actionButtonsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             descriptionLabel.widthAnchor.constraint(
                 equalTo: stack.widthAnchor
             ),
+            cancelButton.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor,
+                constant: 24
+            ),
+            cancelButton.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor,
+                constant: -24
+            ),
+            cancelButton.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -12
+            ),
             cancelButton.heightAnchor.constraint(equalToConstant: 48)
+        ])
+    }
+
+    private func configureActionButtons() {
+        actionButtonsStack.axis = .horizontal
+        actionButtonsStack.alignment = .fill
+        actionButtonsStack.distribution = .fillEqually
+        actionButtonsStack.spacing = 8
+        actionButtonsStack.isHidden = true
+
+        [
+            makeActionButton(
+                title: "사진",
+                image: UIImage(systemName: "photo.on.rectangle"),
+                action: #selector(openPhoto)
+            ),
+            makeActionButton(
+                title: "달력",
+                image: UIImage(systemName: "calendar"),
+                action: #selector(openCalendar)
+            ),
+            makeActionButton(
+                title: "파일",
+                image: UIImage(systemName: "folder"),
+                action: #selector(openFiles)
+            ),
+            makeActionButton(
+                title: "실행",
+                image: UIImage(named: "LogoMarkV2"),
+                action: #selector(openApp)
+            )
+        ].forEach(actionButtonsStack.addArrangedSubview)
+    }
+
+    private func makeActionButton(
+        title: String,
+        image: UIImage?,
+        action: Selector
+    ) -> UIButton {
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = title
+        configuration.image = image
+        configuration.imagePlacement = .top
+        configuration.imagePadding = 6
+        configuration.baseForegroundColor = .white
+        configuration.baseBackgroundColor = secondaryColor
+            .withAlphaComponent(0.88)
+        configuration.cornerStyle = .medium
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 10,
+            leading: 6,
+            bottom: 10,
+            trailing: 6
+        )
+
+        let button = UIButton(configuration: configuration)
+        button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+
+    private func configureCancelButton() {
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.setTitle("취소", for: .normal)
+        cancelButton.titleLabel?.font = .systemFont(
+            ofSize: 18,
+            weight: .semibold
+        )
+        cancelButton.setTitleColor(.white, for: .normal)
+        cancelButton.backgroundColor = .white.withAlphaComponent(0.18)
+        cancelButton.layer.cornerRadius = 12
+        cancelButton.layer.borderColor = UIColor.white
+            .withAlphaComponent(0.55)
+            .cgColor
+        cancelButton.layer.borderWidth = 1
+        cancelButton.addTarget(
+            self,
+            action: #selector(cancelImport),
+            for: .touchUpInside
+        )
+
+        let blurView = UIVisualEffectView(
+            effect: UIBlurEffect(style: .systemUltraThinMaterialLight)
+        )
+        blurView.isUserInteractionEnabled = false
+        blurView.layer.cornerRadius = 12
+        blurView.clipsToBounds = true
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.insertSubview(blurView, at: 0)
+        NSLayoutConstraint.activate([
+            blurView.leadingAnchor.constraint(
+                equalTo: cancelButton.leadingAnchor
+            ),
+            blurView.trailingAnchor.constraint(
+                equalTo: cancelButton.trailingAnchor
+            ),
+            blurView.topAnchor.constraint(equalTo: cancelButton.topAnchor),
+            blurView.bottomAnchor.constraint(equalTo: cancelButton.bottomAnchor)
         ])
     }
 
@@ -515,15 +622,14 @@ final class ShareViewController: UIViewController {
             progressView.progress = 1
             progressLabel.text = "100%"
             statusLabel.text =
-                "\(count)개 파일 복사가 완료되었습니다."
-            cancelButton.setTitle("앱열기", for: .normal)
-            openHostApp(completeAfterAttempt: false)
+                "\(count)개 파일 복사가 완료되었습니다. 열 항목을 선택해 주세요."
+            actionButtonsStack.isHidden = false
         } else {
             isImportComplete = false
             statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다."
             progressView.isHidden = true
             progressLabel.isHidden = true
-            cancelButton.setTitle("확인", for: .normal)
+            actionButtonsStack.isHidden = true
         }
     }
 
@@ -559,51 +665,61 @@ final class ShareViewController: UIViewController {
             extensionContext?.cancelRequest(
                 withError: MediaShareError.cancelled
             )
-        } else if isImportComplete {
-            openHostApp(completeAfterAttempt: true)
         } else {
             completeExtension()
         }
     }
 
-    private func openHostApp(completeAfterAttempt: Bool) {
+    @objc private func openPhoto() {
+        openHostApp(path: "photo")
+    }
+
+    @objc private func openCalendar() {
+        openHostApp(path: "calendar")
+    }
+
+    @objc private func openFiles() {
+        openHostApp(path: "files")
+    }
+
+    @objc private func openApp() {
+        openHostApp(path: "open")
+    }
+
+    private func openHostApp(path: String) {
         guard !isOpeningHostApp else { return }
-        guard let url = URL(string: "hanclip://shared-import") else {
+        guard let url = URL(string: "hanclip://\(path)") else {
             completeExtension()
             return
         }
 
         isOpeningHostApp = true
+        setActionButtonsEnabled(false)
         cancelButton.isEnabled = false
         statusLabel.text = "HanClip을 여는 중입니다."
         extensionContext?.open(url) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isOpeningHostApp = false
+                self.setActionButtonsEnabled(true)
                 self.cancelButton.isEnabled = true
 
-                if completeAfterAttempt {
-                    if !success {
-                        _ = self.openHostAppFromResponderChain(url)
-                    }
+                if success || self.openHostAppFromResponderChain(url) {
                     self.completeExtension()
                     return
                 }
 
-                if success {
-                    self.statusLabel.text =
-                        "앱 실행을 시도했습니다. 열리지 않으면 앱열기를 다시 눌러 주세요."
-                    self.cancelButton.setTitle("앱열기", for: .normal)
-                } else if self.openHostAppFromResponderChain(url) {
-                    self.statusLabel.text =
-                        "앱 실행을 다시 시도했습니다. 열리지 않으면 앱열기를 다시 눌러 주세요."
-                    self.cancelButton.setTitle("앱열기", for: .normal)
-                } else {
-                    self.statusLabel.text =
-                        "자동 실행에 실패했습니다. 앱열기를 눌러 HanClip을 여세요."
-                    self.cancelButton.setTitle("앱열기", for: .normal)
-                }
+                self.statusLabel.text =
+                    "앱 실행에 실패했습니다. 아이콘을 다시 눌러 주세요."
             }
+        }
+    }
+
+    private func setActionButtonsEnabled(_ isEnabled: Bool) {
+        actionButtonsStack.arrangedSubviews.forEach { view in
+            guard let button = view as? UIButton else { return }
+            button.isEnabled = isEnabled
+            button.alpha = isEnabled ? 1 : 0.55
         }
     }
 

@@ -10,6 +10,8 @@ private enum PreviewSaveRequest {
 @MainActor
 final class EditorViewModel: ObservableObject {
     private static let defaultDurationStorageKey = "hanClipDefaultDuration"
+    private static let defaultAspectRatioStorageKey = "hanClipDefaultAspectRatio"
+    private static let automaticAspectRatioStorageValue = "automatic"
     private static let fallbackDefaultDuration = 3.0
 
     @Published var clips: [ClipItem] = []
@@ -18,7 +20,8 @@ final class EditorViewModel: ObservableObject {
             Self.storeDefaultDuration(defaultDuration)
         }
     }
-    @Published var outputAspectRatio: OutputAspectRatio?
+    @Published var outputAspectRatio: OutputAspectRatio? =
+        EditorViewModel.storedDefaultAspectRatio()
     @Published private(set) var automaticSourceSize = CGSize(
         width: 1,
         height: 1
@@ -88,6 +91,21 @@ final class EditorViewModel: ObservableObject {
         min(max(duration, 0.5), 30)
     }
 
+    private static func storedDefaultAspectRatio() -> OutputAspectRatio? {
+        guard let rawValue = UserDefaults.standard.string(
+            forKey: defaultAspectRatioStorageKey
+        ) else { return nil }
+        guard rawValue != automaticAspectRatioStorageValue else { return nil }
+        return OutputAspectRatio(rawValue: rawValue)
+    }
+
+    private static func storeDefaultAspectRatio(_ ratio: OutputAspectRatio?) {
+        UserDefaults.standard.set(
+            ratio?.rawValue ?? automaticAspectRatioStorageValue,
+            forKey: defaultAspectRatioStorageKey
+        )
+    }
+
     var totalDuration: Double {
         clips.reduce(0) { $0 + $1.duration }
     }
@@ -110,8 +128,9 @@ final class EditorViewModel: ObservableObject {
             ?? OutputAspectRatio.renderSize(for: automaticSourceSize)
     }
 
-    var automaticAspectRatioTitle: String {
-        "첫 사진"
+    func selectOutputAspectRatio(_ ratio: OutputAspectRatio?) {
+        outputAspectRatio = ratio
+        Self.storeDefaultAspectRatio(ratio)
     }
 
     func beginNewProject() {
@@ -202,7 +221,7 @@ final class EditorViewModel: ObservableObject {
         }
         if clips.isEmpty, let first = newItems.first {
             automaticSourceSize = first.sourcePixelSize
-            outputAspectRatio = nil
+            outputAspectRatio = Self.storedDefaultAspectRatio()
         }
         clips.append(contentsOf: newItems.map { item in
             var adjusted = item
@@ -282,33 +301,12 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    func resetAllVideoClipRanges() {
-        for index in clips.indices
-        where clips[index].mediaKind == .video {
-            let sourceDuration = clips[index].sourceDuration
-                ?? clips[index].duration
-            let selectedDuration = min(defaultDuration, sourceDuration)
-            let peak = clips[index].audioPeakTime
-                ?? sourceDuration / 2
-
-            clips[index].duration = selectedDuration
-            clips[index].photoDuration = selectedDuration
-            clips[index].trimStart = max(
-                0,
-                min(
-                    sourceDuration - selectedDuration,
-                    peak - selectedDuration / 2
-                )
-            )
-        }
+    func removeClip(id: UUID) {
+        clips.removeAll { $0.id == id }
     }
 
     func removeClips(at offsets: IndexSet) {
         clips.remove(atOffsets: offsets)
-    }
-
-    func removeClip(id: UUID) {
-        clips.removeAll { $0.id == id }
     }
 
     func moveClips(from offsets: IndexSet, to destination: Int) {
@@ -461,7 +459,7 @@ final class EditorViewModel: ObservableObject {
     private func releaseEditingMemory() {
         clips = []
         defaultDuration = Self.storedDefaultDuration()
-        outputAspectRatio = nil
+        outputAspectRatio = Self.storedDefaultAspectRatio()
         automaticSourceSize = CGSize(width: 1, height: 1)
         isPickerPresented = false
         isFileImporterPresented = false

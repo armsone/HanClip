@@ -1,4 +1,5 @@
 import AVKit
+import Photos
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -16,6 +17,8 @@ struct EditorView: View {
     @State private var bulkLivePhotoMode = LivePhotoMode.motion
     @AppStorage("hanClipThemeMode") private var themeModeRaw =
         HanClipThemeMode.automatic.rawValue
+    @EnvironmentObject private var quickActionRouter:
+        HanClipQuickActionRouter
     @Environment(\.scenePhase) private var scenePhase
 
     private var themeMode: HanClipThemeMode {
@@ -198,11 +201,11 @@ struct EditorView: View {
                 }
             }
         }
-        .sheet(isPresented: $model.isPickerPresented) {
+        .fullScreenCover(isPresented: $model.isPickerPresented) {
             PhotoPicker(onComplete: model.addPickedItems)
                 .ignoresSafeArea()
         }
-        .sheet(isPresented: $model.isCalendarPickerPresented) {
+        .fullScreenCover(isPresented: $model.isCalendarPickerPresented) {
             CalendarMediaPickerView(
                 initialMonth: model.initialCalendarMonth,
                 initialMediaDates: model.initialCalendarMediaDates,
@@ -210,17 +213,20 @@ struct EditorView: View {
                 onConfirm: model.importMediaFromCalendarDates
             )
         }
-        .fileImporter(
-            isPresented: $model.isFileImporterPresented,
-            allowedContentTypes: [.movie],
-            allowsMultipleSelection: true
-        ) { result in
-            switch result {
-            case .success(let urls):
-                model.importFiles(urls)
-            case .failure(let error):
-                model.alertMessage = error.localizedDescription
+        .fullScreenCover(isPresented: $model.isFileImporterPresented) {
+            FilePicker(
+                allowedContentTypes: [.movie],
+                allowsMultipleSelection: true
+            ) { result in
+                model.isFileImporterPresented = false
+                switch result {
+                case .success(let urls):
+                    model.importFiles(urls)
+                case .failure(let error):
+                    model.alertMessage = error.localizedDescription
+                }
             }
+            .ignoresSafeArea()
         }
         .sheet(
             isPresented: Binding(
@@ -315,23 +321,59 @@ struct EditorView: View {
             model.reloadProjects()
             model.handlePendingSharedItemsOnActivation()
             isSharedInboxBannerDismissed = false
+            handlePendingQuickAction()
         }
         .onOpenURL { url in
-            if url.scheme == "hanclip" {
-                model.handlePendingSharedItemsOnActivation()
-                isSharedInboxBannerDismissed = false
+            guard url.scheme == "hanclip" else { return }
+
+            model.handlePendingSharedItemsOnActivation()
+            isSharedInboxBannerDismissed = false
+
+            if let action = HanClipQuickAction(url: url) {
+                handleQuickAction(action)
+            } else {
+                _ = quickActionRouter.handle(url)
             }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.handlePendingSharedItemsOnActivation()
                 isSharedInboxBannerDismissed = false
+                handlePendingQuickAction()
             }
+        }
+        .onChange(of: quickActionRouter.pendingAction) { _, action in
+            guard let action else { return }
+            handleQuickAction(action)
+            quickActionRouter.clear(action)
         }
         .onChange(of: model.pendingSharedItemCount) { _, count in
             if count > 0 {
                 isSharedInboxBannerDismissed = false
             }
+        }
+    }
+
+    private func handlePendingQuickAction() {
+        guard let action = quickActionRouter.pendingAction else { return }
+
+        handleQuickAction(action)
+        quickActionRouter.clear(action)
+    }
+
+    private func handleQuickAction(_ action: HanClipQuickAction) {
+        showResetConfirmation = false
+        showThemeSelection = false
+        selectedClipID = nil
+        isSharedInboxBannerDismissed = true
+
+        switch action {
+        case .photo:
+            model.openPicker()
+        case .calendar:
+            model.openCalendarPicker()
+        case .files:
+            model.openFilePicker()
         }
     }
 
@@ -593,7 +635,7 @@ struct EditorView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
 
-            VStack(spacing: 0) {
+            VStack(spacing: -2) {
                 ForEach(HanClipThemeMode.allCases, id: \.rawValue) { mode in
                     Button {
                         selectTheme(mode)
@@ -866,7 +908,7 @@ struct EditorView: View {
                             time: .shortened
                         ))
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.black.opacity(0.6))
+                        .foregroundStyle(HanClipTheme.text.opacity(0.6))
                         .lineLimit(1)
                         .offset(y: 2)
 
@@ -1049,31 +1091,18 @@ struct EditorView: View {
             Section {
                 ForEach($model.clips) { $clip in
                     ClipRow(
-                        position: (
-                            model.clips.firstIndex {
-                                $0.id == clip.id
-                            } ?? 0
-                        ) + 1,
+                        position: clipPosition(for: clip.id),
                         clip: $clip,
                         defaultDuration: model.defaultDuration,
                         onSelect: {
                             selectedClipID = clip.id
                         }
-                        )
+                    )
                         .listRowBackground(
                             HanClipTheme.secondary.opacity(0.06)
                         )
                         .listRowInsets(
-                            EdgeInsets(
-                                top: model.clips.first?.id == clip.id
-                                    ? 18
-                                    : 5,
-                                leading: 4,
-                                bottom: model.clips.last?.id == clip.id
-                                    ? 18
-                                    : 5,
-                                trailing: 16
-                            )
+                            clipRowInsets(for: clip.id)
                         )
                         .opacity(
                             draggedClipID == clip.id ? 0.62 : 1
@@ -1131,6 +1160,19 @@ struct EditorView: View {
         .contentMargins(.top, 0, for: .scrollContent)
         .background(Color.clear)
         .environment(\.defaultMinListRowHeight, 0)
+    }
+
+    private func clipPosition(for id: UUID) -> Int {
+        (model.clips.firstIndex { $0.id == id } ?? 0) + 1
+    }
+
+    private func clipRowInsets(for id: UUID) -> EdgeInsets {
+        EdgeInsets(
+            top: model.clips.first?.id == id ? 18 : 5,
+            leading: 4,
+            bottom: model.clips.last?.id == id ? 18 : 5,
+            trailing: 16
+        )
     }
 
     private var clipModeHeader: some View {
@@ -1666,7 +1708,7 @@ struct EditorView: View {
         GeometryReader { proxy in
             HStack(spacing: 4) {
                 Button {
-                    model.outputAspectRatio = nil
+                    model.selectOutputAspectRatio(nil)
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
@@ -1700,7 +1742,7 @@ struct EditorView: View {
 
                 ForEach(OutputAspectRatio.allCases) { ratio in
                     Button {
-                        model.outputAspectRatio = ratio
+                        model.selectOutputAspectRatio(ratio)
                     } label: {
                         AspectRatioIcon(
                             ratio: ratio,
@@ -1719,9 +1761,15 @@ struct EditorView: View {
                 }
             }
             .contentShape(Rectangle())
-            .simultaneousGesture(
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 4)
                     .onChanged { value in
+                        selectAspectRatio(
+                            at: value.location.x,
+                            totalWidth: proxy.size.width
+                        )
+                    }
+                    .onEnded { value in
                         selectAspectRatio(
                             at: value.location.x,
                             totalWidth: proxy.size.width
@@ -1751,9 +1799,9 @@ struct EditorView: View {
         )
 
         if selectedIndex == 0 {
-            model.outputAspectRatio = nil
+            model.selectOutputAspectRatio(nil)
         } else {
-            model.outputAspectRatio = ratios[selectedIndex - 1]
+            model.selectOutputAspectRatio(ratios[selectedIndex - 1])
         }
     }
 
@@ -2006,6 +2054,57 @@ struct EditorView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmm"
         return formatter.string(from: Date())
+    }
+}
+
+private extension View {
+    func calendarActionButtonStyle() -> some View {
+        modifier(CalendarActionButtonStyle())
+    }
+}
+
+private struct ThumbnailScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct CalendarThumbnailItem {
+    let thumbnail: UIImage
+    let mediaKind: ClipMediaKind
+}
+
+private struct CalendarActionButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(width: 86, height: 38)
+            .background {
+                if #available(iOS 26.0, *) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.12))
+                        .glassEffect(
+                            .regular
+                                .tint(Color.white.opacity(0.18))
+                                .interactive(),
+                            in: Capsule()
+                        )
+                        .overlay {
+                            Capsule()
+                                .stroke(Color.white.opacity(0.48), lineWidth: 1)
+                        }
+                } else {
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(Color.white.opacity(0.48), lineWidth: 1)
+                        }
+                }
+            }
+            .contentShape(Capsule())
     }
 }
 
@@ -2742,26 +2841,42 @@ private struct PersistentVideoProgressBar: View {
 
 private struct CalendarMediaPickerView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var visibleMonth: Date
     @State private var mediaDates: Set<Date> = []
     @State private var mediaCountsByDate: [Date: Int] = [:]
+    @State private var holidayDates: Set<Date> = []
+    @State private var holidayNamesByDate: [Date: String] = [:]
     @State private var loadedMediaMonth: Date?
+    @State private var loadedHolidayYear: Int?
     @State private var selectedDates: Set<Date> = []
     @State private var isLoadingMonth = false
     @State private var monthLoadProgress = 0.0
     @State private var showMonthYearPicker = false
     @State private var draftYear: Int
     @State private var draftMonth: Int
-    @State private var selectedThumbnails: [UIImage] = []
+    @State private var selectedThumbnails: [CalendarThumbnailItem] = []
+    @State private var previewedThumbnailItem: CalendarThumbnailItem?
     @State private var thumbnailLoadTask: Task<Void, Never>?
+    @State private var thumbnailColumnCount = 6
+    @State private var thumbnailMagnificationCheckpoint: CGFloat = 1
+    @State private var thumbnailScrollOffset: CGFloat = 0
+    @State private var areThumbnailScrollButtonsVisible = false
+    @State private var thumbnailScrollButtonsHideTask: Task<Void, Never>?
 
     let onConfirm: (Set<Date>) -> Void
 
     private let calendar = Calendar.current
+    private let calendarBaseRowHeight: CGFloat = 46
+    private let compactCalendarRowHeight: CGFloat = 32.2
     private let columns = Array(
         repeating: GridItem(.flexible(), spacing: 0),
         count: 7
     )
+    private let thumbnailColumnSteps = [8, 6, 4, 2, 1]
+    private let thumbnailTopID = "calendarThumbnailTop"
+    private let thumbnailBottomID = "calendarThumbnailBottom"
+    private let thumbnailScrollCoordinateSpace = "calendarThumbnailScroll"
     private let weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
 
     init(
@@ -2790,15 +2905,128 @@ private struct CalendarMediaPickerView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                monthControls
+                calendarActionBar
 
-                HStack(spacing: 0) {
-                    ForEach(weekdays, id: \.self) { weekday in
-                        Text(weekday)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(weekdayColor(weekday))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 30)
+                monthControls
+                    .padding(.top, 14)
+
+                calendarTable
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+
+                selectionSummary
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
+            .interactiveDismissDisabled(true)
+            .task(id: visibleMonth) {
+                await loadHolidayDates()
+                await loadMediaDates()
+            }
+            .onChange(of: selectedDates) { _, _ in
+                reloadSelectedThumbnails()
+            }
+            .onDisappear {
+                thumbnailLoadTask?.cancel()
+                thumbnailScrollButtonsHideTask?.cancel()
+            }
+            .sheet(isPresented: $showMonthYearPicker) {
+                monthYearPicker
+                    .presentationDetents([.height(320)])
+            }
+            .overlay {
+                thumbnailPreviewOverlay
+            }
+            }
+    }
+
+    private var thumbnailPreviewOverlay: some View {
+        GeometryReader { geometry in
+            if let previewedThumbnailItem {
+                let previewWidth = geometry.size.width * 0.7
+                let iconBaseWidth = max(
+                    geometry.size.width - 28 - 4 * CGFloat(6 - 1),
+                    0
+                ) / 6
+                let iconSize = iconBaseWidth / 3
+
+                Image(uiImage: previewedThumbnailItem.thumbnail)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(8)
+                    .frame(width: previewWidth, height: previewWidth)
+                    .background(HanClipTheme.secondary.opacity(0.82))
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.white.opacity(0.38), lineWidth: 1)
+                    }
+                    .overlay(alignment: .top) {
+                        calendarThumbnailMediaIcon(
+                            for: previewedThumbnailItem.mediaKind,
+                            size: iconSize,
+                            opacity: thumbnailMediaIconOpacity(
+                                for: thumbnailColumnCount
+                            )
+                        )
+                        .padding(.top, 14)
+                    }
+                    .shadow(color: .black.opacity(0.32), radius: 18, y: 8)
+                    .position(
+                        x: geometry.size.width / 2,
+                        y: geometry.size.height / 2
+                    )
+                    .transition(.scale(scale: 0.96).combined(with: .opacity))
+            }
+        }
+        .allowsHitTesting(false)
+        .animation(.snappy(duration: 0.16), value: previewedThumbnailItem != nil)
+    }
+
+    private var calendarTable: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(weekdays, id: \.self) { weekday in
+                    Text(weekday)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background {
+                            Rectangle()
+                                .fill(weekdayColor(weekday))
+                        }
+                        .overlay {
+                            Rectangle()
+                                .stroke(
+                                    Color.gray.opacity(0.10),
+                                    lineWidth: 1
+                                )
+                        }
+                }
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.18))
+                    .frame(height: 2)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.18))
+                    .frame(height: 2)
+            }
+
+            LazyVGrid(columns: columns, spacing: 0) {
+                ForEach(Array(monthCells.enumerated()), id: \.offset) {
+                    _,
+                    date in
+                    if let date {
+                        dayButton(for: date)
+                    } else {
+                        Color.clear
+                            .frame(height: calendarRowHeight)
                             .overlay {
                                 Rectangle()
                                     .stroke(
@@ -2808,82 +3036,13 @@ private struct CalendarMediaPickerView: View {
                             }
                     }
                 }
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.18))
-                        .frame(height: 2)
-                }
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.18))
-                        .frame(height: 2)
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-
-                LazyVGrid(columns: columns, spacing: 0) {
-                    ForEach(Array(monthCells.enumerated()), id: \.offset) {
-                        _,
-                        date in
-                        if let date {
-                            dayButton(for: date)
-                        } else {
-                            Color.clear
-                                .frame(height: 46)
-                                .overlay {
-                                    Rectangle()
-                                        .stroke(
-                                            Color.gray.opacity(0.10),
-                                            lineWidth: 1
-                                        )
-                                }
-                        }
-                    }
-                }
-                .frame(height: 46 * 5)
-                .padding(.horizontal, 14)
-
-                selectionSummary
             }
-            .padding(.top, 16)
-            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
-            .interactiveDismissDisabled(true)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("확인") {
-                        onConfirm(selectedDates)
-                    }
-                    .disabled(selectedDates.isEmpty)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Button("ToDay") {
-                        moveToToday()
-                    }
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.primary)
-                }
-            }
-            .task(id: visibleMonth) {
-                await loadMediaDates()
-            }
-            .onChange(of: selectedDates) { _, _ in
-                reloadSelectedThumbnails()
-            }
-            .onDisappear {
-                thumbnailLoadTask?.cancel()
-            }
-            .sheet(isPresented: $showMonthYearPicker) {
-                monthYearPicker
-                    .presentationDetents([.height(320)])
-            }
+            .frame(height: calendarGridHeight, alignment: .top)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.gray.opacity(0.14), lineWidth: 1)
         }
     }
 
@@ -2893,9 +3052,14 @@ private struct CalendarMediaPickerView: View {
                 moveMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .frame(width: 36, height: 36)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(monthArrowIconColor)
+                    .shadow(color: monthArrowIconShadowColor, radius: 1.5)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .background(monthArrowBackground)
+            .clipShape(Circle())
             .accessibilityLabel("이전 달")
 
             Spacer()
@@ -2941,13 +3105,103 @@ private struct CalendarMediaPickerView: View {
                 moveMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .frame(width: 36, height: 36)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(monthArrowIconColor)
+                    .shadow(color: monthArrowIconShadowColor, radius: 1.5)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .background(monthArrowBackground)
+            .clipShape(Circle())
             .accessibilityLabel("다음 달")
         }
         .foregroundStyle(HanClipTheme.secondary)
         .padding(.horizontal, 14)
+    }
+
+    private var monthArrowIconColor: Color {
+        colorScheme == .dark ? .white : HanClipTheme.secondary
+    }
+
+    private var monthArrowIconShadowColor: Color {
+        colorScheme == .dark ? .clear : .white.opacity(0.75)
+    }
+
+    @ViewBuilder
+    private var monthArrowBackground: some View {
+        if #available(iOS 26.0, *) {
+            Circle()
+                .fill(Color.white.opacity(0.12))
+                .glassEffect(
+                    .regular
+                        .tint(Color.white.opacity(0.18))
+                        .interactive(),
+                    in: Circle()
+                )
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.45), lineWidth: 1)
+                }
+        } else {
+            Circle()
+                .fill(Color.white.opacity(0.18))
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.45), lineWidth: 1)
+                }
+        }
+    }
+
+    private var calendarActionBar: some View {
+        HStack(spacing: 10) {
+            Button("취소") {
+                dismiss()
+            }
+            .foregroundStyle(HanClipTheme.text.opacity(0.72))
+            .calendarActionButtonStyle()
+
+            Spacer()
+
+            Text("오늘")
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    LongPressGesture(minimumDuration: 0.55)
+                        .onEnded { _ in
+                            clearSelectedCalendarMedia()
+                        }
+                )
+                .gesture(
+                    TapGesture(count: 2)
+                        .exclusively(before: TapGesture())
+                        .onEnded { result in
+                            switch result {
+                            case .first:
+                                handleTodayDoubleTap()
+                            case .second:
+                                moveToToday()
+                            }
+                        }
+                )
+            .foregroundStyle(HanClipTheme.primary)
+            .calendarActionButtonStyle()
+
+            Spacer()
+
+            Button("확인") {
+                onConfirm(selectedDates)
+            }
+            .foregroundStyle(
+                selectedDates.isEmpty
+                    ? HanClipTheme.text.opacity(0.35)
+                    : HanClipTheme.secondary
+            )
+            .disabled(selectedDates.isEmpty)
+            .calendarActionButtonStyle()
+        }
+        .font(.system(size: 16, weight: .semibold))
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
     }
 
     private var monthYearPicker: some View {
@@ -2989,43 +3243,56 @@ private struct CalendarMediaPickerView: View {
     private var selectionSummary: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-            Text("선택된 미디어 \(selectedMediaCount)개")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(
-                    selectedDates.isEmpty
-                        ? HanClipTheme.text.opacity(0.55)
-                        : HanClipTheme.secondary
-                )
-                .monospacedDigit()
+                Text("날짜 \(selectedDates.count)일, 미디어 \(selectedMediaCount)개")
+                    .font(.system(size: 15, weight: .semibold))
+                    .monospacedDigit()
 
                 Spacer()
 
-            Button {
-                withAnimation(.snappy) {
-                    selectedDates.removeAll()
-                    selectedThumbnails.removeAll()
-                }
-            } label: {
-                Text("리셋")
+                Text("지우기")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        selectedDates.isEmpty
-                            ? HanClipTheme.text.opacity(0.35)
-                            : HanClipTheme.secondary
-                    )
-                    .frame(width: 92, height: 34)
-                    .background(
-                        HanClipTheme.secondary.opacity(
-                            selectedDates.isEmpty ? 0.06 : 0.12
-                        ),
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
             }
-            .buttonStyle(.plain)
-            .disabled(selectedDates.isEmpty)
-            }
+            .foregroundStyle(
+                selectedDates.isEmpty
+                    ? HanClipTheme.text.opacity(0.45)
+                    : HanClipTheme.secondary
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .padding(.horizontal, 16)
+            .background(selectionSummaryButtonBackground)
+            .shadow(
+                color: HanClipTheme.secondary.opacity(
+                    selectedDates.isEmpty ? 0.03 : 0.16
+                ),
+                radius: 9,
+                x: 0,
+                y: 4
+            )
+            .contentShape(Capsule())
+            .highPriorityGesture(
+                LongPressGesture(minimumDuration: 0.55)
+                    .onEnded { _ in
+                        clearSelectedCalendarMedia()
+                    }
+            )
+            .gesture(
+                TapGesture(count: 2)
+                    .exclusively(before: TapGesture())
+                    .onEnded { result in
+                        switch result {
+                        case .first:
+                            handleTodayDoubleTap()
+                        case .second:
+                            withAnimation(.snappy) {
+                                clearSelectedCalendarMedia()
+                            }
+                        }
+                    }
+            )
+            .accessibilityHint("선택한 날짜와 미리보기를 모두 지웁니다.")
             .padding(.horizontal, 18)
-            .padding(.top, 20)
+            .padding(.top, 14)
             .padding(.bottom, 20)
 
             selectedThumbnailGrid
@@ -3034,36 +3301,333 @@ private struct CalendarMediaPickerView: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
+    @ViewBuilder
+    private var selectionSummaryButtonBackground: some View {
+        if #available(iOS 26.0, *) {
+            Capsule()
+                .fill(Color.white.opacity(0.10))
+                .glassEffect(
+                    .regular
+                        .tint(HanClipTheme.secondary.opacity(0.12))
+                        .interactive(),
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            HanClipTheme.secondary.opacity(0.18),
+                            lineWidth: 1
+                        )
+                }
+        } else {
+            Capsule()
+                .fill(Color.white.opacity(0.16))
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            HanClipTheme.secondary.opacity(0.18),
+                            lineWidth: 1
+                        )
+                }
+        }
+    }
+
+    private func clearSelectedCalendarMedia() {
+        selectedDates.removeAll()
+        selectedThumbnails.removeAll()
+    }
+
     private var selectedThumbnailGrid: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 50), spacing: 4)],
-                spacing: 4
-            ) {
-                ForEach(Array(selectedThumbnails.enumerated()), id: \.offset) {
-                    _,
-                    thumbnail in
-                    Image(uiImage: thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 50, height: 50)
-                        .clipped()
+        GeometryReader { geometry in
+            let spacing: CGFloat = 4
+            let horizontalPadding: CGFloat = 14
+            let cornerRadius: CGFloat = 16
+            let fadeHeight: CGFloat = 50
+            let bottomThumbnailPadding = fadeHeight + spacing
+            let availableWidth = max(
+                geometry.size.width - (horizontalPadding * 2),
+                0
+            )
+            let fadeStart = max(
+                (geometry.size.height - fadeHeight)
+                / max(geometry.size.height, 1),
+                0
+            )
+            let fadeMiddle = min(fadeStart + (1 - fadeStart) * 0.58, 1)
+            let itemSize = (
+                availableWidth
+                - spacing * CGFloat(thumbnailColumnCount - 1)
+            ) / CGFloat(thumbnailColumnCount)
+            let sixColumnThumbnailSize = (
+                availableWidth
+                - spacing * CGFloat(6 - 1)
+            ) / CGFloat(6)
+            let mediaIconSize = sixColumnThumbnailSize / 3
+            let mediaIconOpacity = thumbnailMediaIconOpacity(
+                for: thumbnailColumnCount
+            )
+            let rowCount = Int(
+                ceil(
+                    Double(selectedThumbnails.count)
+                    / Double(max(thumbnailColumnCount, 1))
+                )
+            )
+            let contentHeight =
+                CGFloat(rowCount) * itemSize
+                + CGFloat(max(rowCount - 1, 0)) * spacing
+                + bottomThumbnailPadding
+            let canScroll = contentHeight > geometry.size.height + 1
+            let scrollButtonOpacity =
+                canScroll && areThumbnailScrollButtonsVisible ? 1.0 : 0.0
+            let thumbnailColumns = Array(
+                repeating: GridItem(.fixed(itemSize), spacing: spacing),
+                count: thumbnailColumnCount
+            )
+
+            ScrollViewReader { proxy in
+                ZStack {
+                    ScrollView {
+                        Color.clear
+                            .frame(height: 0)
+                            .id(thumbnailTopID)
+                            .background {
+                                GeometryReader { proxy in
+                                    Color.clear.preference(
+                                        key: ThumbnailScrollOffsetPreferenceKey.self,
+                                        value: proxy.frame(
+                                            in: .named(thumbnailScrollCoordinateSpace)
+                                        ).minY
+                                    )
+                                }
+                            }
+
+                        LazyVGrid(columns: thumbnailColumns, spacing: spacing) {
+                            ForEach(
+                                Array(selectedThumbnails.enumerated()),
+                                id: \.offset
+                            ) { _, item in
+                                Image(uiImage: item.thumbnail)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: itemSize, height: itemSize)
+                                    .clipped()
+                                    .overlay(alignment: .bottomLeading) {
+                                        calendarThumbnailMediaIcon(
+                                            for: item.mediaKind,
+                                            size: mediaIconSize,
+                                            opacity: mediaIconOpacity
+                                        )
+                                        .padding(sixColumnThumbnailSize * 0.06)
+                                    }
+                                    .onLongPressGesture(
+                                        minimumDuration: 0.22,
+                                        maximumDistance: 14,
+                                        pressing: { isPressing in
+                                            if !isPressing {
+                                                previewedThumbnailItem = nil
+                                            }
+                                        }
+                                    ) {
+                                        previewedThumbnailItem = item
+                                    }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.horizontal, horizontalPadding)
+                        .padding(.top, 8)
+                        .padding(.bottom, bottomThumbnailPadding)
+
+                        Color.clear
+                            .frame(height: 0)
+                            .id(thumbnailBottomID)
+                    }
+                    .coordinateSpace(name: thumbnailScrollCoordinateSpace)
+                    .scrollIndicators(.hidden)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in
+                                showThumbnailScrollButtons(canScroll: canScroll)
+                            }
+                            .onEnded { _ in
+                                scheduleThumbnailScrollButtonsHide()
+                            }
+                    )
+                    .onPreferenceChange(ThumbnailScrollOffsetPreferenceKey.self) {
+                        handleThumbnailScrollOffsetChange($0, canScroll: canScroll)
+                    }
+
+                    if canScroll {
+                        thumbnailScrollButton(systemImage: "chevron.down") {
+                            withAnimation(.snappy) {
+                                proxy.scrollTo(thumbnailBottomID, anchor: .bottom)
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 0)
+                        .opacity(scrollButtonOpacity)
+                        .allowsHitTesting(areThumbnailScrollButtonsVisible)
+                        .animation(
+                            .easeInOut(duration: 1.0),
+                            value: areThumbnailScrollButtonsVisible
+                        )
+
+                        thumbnailScrollButton(systemImage: "chevron.up") {
+                            withAnimation(.snappy) {
+                                proxy.scrollTo(thumbnailTopID, anchor: .top)
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 52)
+                        .opacity(scrollButtonOpacity)
+                        .allowsHitTesting(areThumbnailScrollButtonsVisible)
+                        .animation(
+                            .easeInOut(duration: 1.0),
+                            value: areThumbnailScrollButtonsVisible
+                        )
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 14)
+            .background(
+                Color.black.opacity(0.035),
+                in: RoundedRectangle(
+                    cornerRadius: cornerRadius,
+                    style: .continuous
+                )
+            )
+            .mask {
+                RoundedRectangle(
+                    cornerRadius: cornerRadius,
+                    style: .continuous
+                )
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0),
+                            .init(color: .black, location: fadeStart),
+                            .init(color: .black.opacity(0.82), location: fadeMiddle),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            }
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        updateThumbnailColumns(for: value)
+                    }
+                    .onEnded { _ in
+                        thumbnailMagnificationCheckpoint = 1
+                    }
+            )
         }
-        .scrollIndicators(.hidden)
         .frame(maxHeight: selectedThumbnails.isEmpty ? 0 : .infinity)
-        .padding(.bottom, selectedThumbnails.isEmpty ? 0 : 20)
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+
+    private func thumbnailScrollButton(
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 36, weight: .bold))
+                .foregroundStyle(HanClipTheme.secondary)
+                .shadow(
+                    color: HanClipTheme.secondary.opacity(0.70),
+                    radius: 3,
+                    x: 0,
+                    y: 1.5
+                )
+                .frame(width: 92, height: 68)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func calendarThumbnailMediaIcon(
+        for mediaKind: ClipMediaKind,
+        size: CGFloat,
+        opacity: Double
+    ) -> some View {
+        Group {
+            switch mediaKind {
+            case .video:
+                FilmCameraIcon()
+                    .frame(width: size, height: size * 17 / 21)
+            case .livePhoto:
+                Image(systemName: "livephoto")
+                    .font(.system(size: size, weight: .semibold))
+            case .photo:
+                Image(systemName: "photo.fill")
+                    .font(.system(size: size * 0.82, weight: .semibold))
+            }
+        }
+        .foregroundStyle(HanClipTheme.secondary.opacity(opacity))
+        .shadow(
+            color: Color.black.opacity(0.70),
+            radius: 3,
+            x: 0,
+            y: 1.5
+        )
+    }
+
+    private func thumbnailMediaIconOpacity(for columnCount: Int) -> Double {
+        let clampedColumnCount = min(max(columnCount, 1), 8)
+        return 1.0 - (Double(clampedColumnCount - 1) / 7.0 * 0.5)
+    }
+
+    private func showThumbnailScrollButtons(canScroll: Bool) {
+        guard canScroll else {
+            thumbnailScrollButtonsHideTask?.cancel()
+            areThumbnailScrollButtonsVisible = false
+            return
+        }
+
+        areThumbnailScrollButtonsVisible = true
+        thumbnailScrollButtonsHideTask?.cancel()
+    }
+
+    private func scheduleThumbnailScrollButtonsHide() {
+        thumbnailScrollButtonsHideTask?.cancel()
+        thumbnailScrollButtonsHideTask = Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run {
+                areThumbnailScrollButtonsVisible = false
+            }
+        }
+    }
+
+    private func handleThumbnailScrollOffsetChange(
+        _ offset: CGFloat,
+        canScroll: Bool
+    ) {
+        let didScroll = abs(offset - thumbnailScrollOffset) > 0.5
+        thumbnailScrollOffset = offset
+
+        guard canScroll else {
+            showThumbnailScrollButtons(canScroll: false)
+            return
+        }
+
+        guard didScroll else { return }
+
+        showThumbnailScrollButtons(canScroll: true)
+        scheduleThumbnailScrollButtonsHide()
     }
 
     private func dayButton(for date: Date) -> some View {
         let normalizedDate = calendar.startOfDay(for: date)
         let isSelected = selectedDates.contains(normalizedDate)
         let hasMedia = (mediaCountsByDate[normalizedDate] ?? 0) > 0
+        let holidayName = holidayName(for: normalizedDate)
 
         return Button {
+            guard hasMedia else { return }
+
             withAnimation(.snappy) {
                 if isSelected {
                     selectedDates.remove(normalizedDate)
@@ -3072,18 +3636,22 @@ private struct CalendarMediaPickerView: View {
                 }
             }
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 0) {
                 Text("\(calendar.component(.day, from: date))")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: hasMedia ? .semibold : .regular))
                     .monospacedDigit()
+                    .foregroundStyle(dateTextColor(for: date))
 
-                Circle()
-                    .fill(hasMedia ? dotColor(isSelected) : Color.clear)
-                    .frame(width: 4, height: 4)
+                if let holidayName {
+                    Text(String(holidayName.prefix(5)))
+                        .font(.system(size: 8, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .foregroundStyle(restDayColor)
+                }
             }
-            .foregroundStyle(dateTextColor(for: date))
             .frame(maxWidth: .infinity)
-            .frame(height: 46)
+            .frame(height: calendarRowHeight)
             .background {
                 if isSelected {
                     Rectangle()
@@ -3121,15 +3689,38 @@ private struct CalendarMediaPickerView: View {
                 to: firstDay
             )
         }
-        let fixedCellCount = 35
+        let fixedCellCount = neededCalendarRowCount * 7
         let cells = Array(repeating: nil, count: leadingEmptyCount) + dates
-        if cells.count >= fixedCellCount {
-            return Array(cells.prefix(fixedCellCount))
-        }
         return cells + Array(
             repeating: nil,
             count: fixedCellCount - cells.count
         )
+    }
+
+    private var neededCalendarRowCount: Int {
+        guard let range = calendar.range(of: .day, in: .month, for: visibleMonth),
+              let firstDay = calendar.date(
+                from: calendar.dateComponents(
+                    [.year, .month],
+                    from: visibleMonth
+                )
+              )
+        else { return 5 }
+
+        let leadingEmptyCount =
+            calendar.component(.weekday, from: firstDay) - 1
+        let rawRowCount = Int(
+            ceil(Double(leadingEmptyCount + range.count) / 7.0)
+        )
+        return min(max(rawRowCount, 4), 6)
+    }
+
+    private var calendarRowHeight: CGFloat {
+        calendarGridHeight / CGFloat(neededCalendarRowCount)
+    }
+
+    private var calendarGridHeight: CGFloat {
+        calendarBaseRowHeight * 4
     }
 
     private var yearRange: ClosedRange<Int> {
@@ -3150,16 +3741,12 @@ private struct CalendarMediaPickerView: View {
         }
     }
 
-    private func dotColor(_ isSelected: Bool) -> Color {
-        isSelected ? HanClipTheme.secondary : HanClipTheme.primary
-    }
-
     private func dateTextColor(for date: Date) -> Color {
+        if isSunday(date) || isKoreanHoliday(date) {
+            return restDayColor
+        }
         if calendar.isDateInToday(date) {
             return HanClipTheme.primary
-        }
-        if isRestDay(date) {
-            return .red
         }
         if isSaturday(date) {
             return saturdayColor
@@ -3169,7 +3756,7 @@ private struct CalendarMediaPickerView: View {
 
     private func weekdayColor(_ weekday: String) -> Color {
         if weekday == "SUN" {
-            return .red
+            return restDayColor
         }
         if weekday == "SAT" {
             return saturdayColor
@@ -3177,13 +3764,24 @@ private struct CalendarMediaPickerView: View {
         return HanClipTheme.text.opacity(0.55)
     }
 
-    private var saturdayColor: Color {
-        Color(red: 0.02, green: 0.16, blue: 0.42).opacity(0.80)
+    private var restDayColor: Color {
+        HanClipTheme.rosyBrownPrimary
     }
 
-    private func isRestDay(_ date: Date) -> Bool {
-        let weekday = calendar.component(.weekday, from: date)
-        return weekday == 1
+    private var saturdayColor: Color {
+        HanClipTheme.lightSecondary
+    }
+
+    private func isSunday(_ date: Date) -> Bool {
+        calendar.component(.weekday, from: date) == 1
+    }
+
+    private func isKoreanHoliday(_ date: Date) -> Bool {
+        holidayDates.contains(calendar.startOfDay(for: date))
+    }
+
+    private func holidayName(for date: Date) -> String? {
+        holidayNamesByDate[calendar.startOfDay(for: date)]
     }
 
     private func isSaturday(_ date: Date) -> Bool {
@@ -3204,6 +3802,91 @@ private struct CalendarMediaPickerView: View {
             from: calendar.dateComponents([.year, .month], from: Date())
         ) ?? Date()
         visibleMonth = todayMonth
+    }
+
+    private func handleTodayDoubleTap() {
+        if selectedDates.isEmpty {
+            selectClosestMediaDateFromYesterday()
+        } else {
+            selectPreviousDay()
+        }
+    }
+
+    private func selectClosestMediaDateFromYesterday() {
+        let yesterday = calendar.date(
+            byAdding: .day,
+            value: -1,
+            to: calendar.startOfDay(for: Date())
+        ) ?? Date()
+
+        Task {
+            let closestDate = await Task.detached {
+                PhotoLibraryService.closestMediaDate(
+                    to: yesterday,
+                    calendar: Calendar.current
+                )
+            }.value
+            guard let date = closestDate else { return }
+
+            await MainActor.run {
+                selectDateAndShowMonth(date)
+            }
+        }
+    }
+
+    private func selectPreviousDay() {
+        let earliestSelectedDate = selectedDates.min()
+        let baseDate = earliestSelectedDate ?? calendar.startOfDay(for: Date())
+        Task {
+            let previousDate = await Task.detached {
+                PhotoLibraryService.previousMediaDate(
+                    before: baseDate,
+                    calendar: Calendar.current
+                )
+            }.value
+            guard let date = previousDate else { return }
+
+            await MainActor.run {
+                selectDateAndShowMonth(date)
+            }
+        }
+    }
+
+    private func selectDateAndShowMonth(_ date: Date) {
+        let normalizedDate = calendar.startOfDay(for: date)
+        if mediaDates.contains(normalizedDate) == false,
+           mediaCountsByDate[normalizedDate] == nil,
+           calendar.isDate(normalizedDate, equalTo: visibleMonth, toGranularity: .month) {
+            return
+        }
+
+        withAnimation(.snappy) {
+            selectedDates.insert(normalizedDate)
+            visibleMonth = calendar.date(
+                from: calendar.dateComponents([.year, .month], from: date)
+            ) ?? visibleMonth
+        }
+    }
+
+    private func updateThumbnailColumns(for magnification: CGFloat) {
+        guard let currentIndex = thumbnailColumnSteps.firstIndex(
+            of: thumbnailColumnCount
+        ) else { return }
+
+        let relativeMagnification =
+            magnification / thumbnailMagnificationCheckpoint
+
+        if relativeMagnification > 1.35 {
+            thumbnailColumnCount = thumbnailColumnSteps[
+                min(currentIndex + 1, thumbnailColumnSteps.count - 1)
+            ]
+            thumbnailMagnificationCheckpoint = magnification
+        } else if relativeMagnification < 0.65 {
+            thumbnailColumnCount = thumbnailColumnSteps[
+                max(currentIndex - 1, 0)
+            ]
+            thumbnailMagnificationCheckpoint = magnification
+        }
     }
 
     private func applyDraftMonth() {
@@ -3230,21 +3913,56 @@ private struct CalendarMediaPickerView: View {
                 )
             }.value
 
-            var thumbnails: [UIImage] = []
+            var thumbnails: [CalendarThumbnailItem] = []
             for asset in assets {
                 guard !Task.isCancelled,
                       let thumbnail = try? await PhotoLibraryService
                         .thumbnail(
                             for: asset,
-                            size: CGSize(width: 100, height: 100)
+                            size: CGSize(width: 240, height: 240)
                         )
                 else { continue }
-                thumbnails.append(thumbnail)
+                thumbnails.append(
+                    CalendarThumbnailItem(
+                        thumbnail: thumbnail,
+                        mediaKind: calendarThumbnailMediaKind(for: asset)
+                    )
+                )
             }
 
             guard !Task.isCancelled else { return }
             selectedThumbnails = thumbnails
         }
+    }
+
+    private func calendarThumbnailMediaKind(for asset: PHAsset) -> ClipMediaKind {
+        if asset.mediaType == .video {
+            return .video
+        }
+        if asset.mediaSubtypes.contains(.photoLive) {
+            return .livePhoto
+        }
+        return .photo
+    }
+
+    @MainActor
+    private func loadHolidayDates() async {
+        let year = calendar.component(.year, from: visibleMonth)
+        guard loadedHolidayYear != year else { return }
+
+        loadedHolidayYear = year
+        holidayNamesByDate = KoreanHolidayService.cachedHolidayNames(
+            for: year,
+            calendar: calendar
+        )
+        holidayDates = Set(holidayNamesByDate.keys)
+
+        let refreshedNames = await KoreanHolidayService.refreshedHolidayNames(
+            for: year,
+            calendar: calendar
+        )
+        holidayNamesByDate = refreshedNames
+        holidayDates = Set(refreshedNames.keys)
     }
 
     @MainActor

@@ -10,6 +10,7 @@ enum AudioAnalysisService {
     static func analyze(url: URL, bucketCount: Int = 96) async throws
         -> AudioAnalysisResult {
         try await Task.detached(priority: .userInitiated) {
+            let bucketCount = max(1, bucketCount)
             let asset = AVURLAsset(url: url)
             let duration = try await asset.load(.duration).seconds
             guard duration.isFinite, duration > 0,
