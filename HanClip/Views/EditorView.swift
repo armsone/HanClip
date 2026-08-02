@@ -1,4 +1,5 @@
 import AVKit
+import CoreText
 import Photos
 import SwiftUI
 import UIKit
@@ -9,16 +10,57 @@ struct EditorView: View {
     @State private var isReordering = false
     @State private var showResetConfirmation = false
     @State private var showThemeSelection = false
+    @State private var showImportantInfo = false
+    @State private var showTextOverlaySettings = false
     @State private var themeNotice: String?
     @State private var importSelectionNotice: String?
     @State private var selectedClipID: UUID?
     @State private var shouldAutoplaySelectedClip = false
+    @State private var isAutoAdvancingPreview = false
+    @State private var isLoopingPreviewAutoAdvance = false
     @State private var draggedClipID: UUID?
     @State private var isDeleteDropTargeted = false
     @State private var isSharedInboxBannerDismissed = false
     @State private var bulkLivePhotoMode = LivePhotoMode.motion
     @AppStorage("hanClipThemeMode") private var themeModeRaw =
         HanClipThemeMode.automatic.rawValue
+    @AppStorage(WatermarkSettings.logoEnabledStorageKey)
+    private var logoWatermarkEnabled = WatermarkSettings.defaultIsEnabled
+    @AppStorage(WatermarkSettings.enabledStorageKey)
+    private var watermarkEnabled = WatermarkSettings.defaultTextIsEnabled
+    @AppStorage(WatermarkSettings.textStorageKey)
+    private var watermarkText = WatermarkSettings.defaultText
+    @AppStorage(WatermarkSettings.addressStorageKey)
+    private var watermarkAddress = WatermarkSettings.defaultAddress
+    @AppStorage(WatermarkSettings.platformStorageKey)
+    private var watermarkPlatformRaw =
+        WatermarkSettings.defaultPlatform.rawValue
+    @AppStorage(WatermarkSettings.positionStorageKey)
+    private var watermarkPositionRaw =
+        WatermarkSettings.defaultPosition.rawValue
+    @AppStorage(WatermarkSettings.copyrightPositionStorageKey)
+    private var copyrightPositionRaw =
+        WatermarkSettings.defaultCopyrightPosition.rawValue
+    @AppStorage(WatermarkSettings.fontNameStorageKey)
+    private var watermarkFontName = WatermarkSettings.defaultFontName
+    @AppStorage(WatermarkSettings.fontSizeStorageKey)
+    private var watermarkFontSizeRaw =
+        WatermarkSettings.defaultFontSize.rawValue
+    @AppStorage(WatermarkSettings.textColorStorageKey)
+    private var watermarkTextColorHex =
+        WatermarkSettings.defaultTextColor
+    @AppStorage(WatermarkSettings.copyrightTextColorStorageKey)
+    private var copyrightTextColorHex =
+        WatermarkSettings.defaultCopyrightTextColor
+    @AppStorage(WatermarkSettings.shadowEnabledStorageKey)
+    private var watermarkShadowEnabled =
+        WatermarkSettings.defaultShadowEnabled
+    @AppStorage(WatermarkSettings.shadowColorStorageKey)
+    private var watermarkShadowColorHex =
+        WatermarkSettings.defaultShadowColor
+    @AppStorage(WatermarkSettings.copyrightShadowColorStorageKey)
+    private var copyrightShadowColorHex =
+        WatermarkSettings.defaultCopyrightShadowColor
     @EnvironmentObject private var quickActionRouter:
         HanClipQuickActionRouter
     @Environment(\.scenePhase) private var scenePhase
@@ -97,6 +139,8 @@ struct EditorView: View {
             .safeAreaInset(edge: .bottom) {
                 if !model.clips.isEmpty {
                     makeButton
+                } else if !model.isProjectOpen {
+                    importantInfoButton
                 }
             }
             .blur(
@@ -245,7 +289,11 @@ struct EditorView: View {
         .sheet(
             isPresented: Binding(
                 get: { selectedClipID != nil },
-                set: { if !$0 { selectedClipID = nil } }
+                set: {
+                    if !$0 {
+                        closeClipPreview()
+                    }
+                }
             )
         ) {
             if let id = selectedClipID,
@@ -265,6 +313,8 @@ struct EditorView: View {
                     onAutoplayConsumed: {
                         shouldAutoplaySelectedClip = false
                     },
+                    autoAdvanceEnabled: $isAutoAdvancingPreview,
+                    autoAdvanceLoops: $isLoopingPreviewAutoAdvance,
                     canGoPrevious: index > model.renderableClips.startIndex,
                     canGoNext: index < model.renderableClips.index(
                         before: model.renderableClips.endIndex
@@ -286,11 +336,17 @@ struct EditorView: View {
                             model.renderableClips.index(after: index)
                         ].id
                     },
+                    onFirst: {
+                        guard let firstClip = model.renderableClips.first
+                        else { return }
+                        shouldAutoplaySelectedClip = true
+                        selectedClipID = firstClip.id
+                    },
                     onDelete: {
                         deleteClipFromEditor(id: id)
                     },
                     onPreview: {
-                        selectedClipID = nil
+                        closeClipPreview()
                         Task { @MainActor in
                             try? await Task.sleep(
                                 for: .milliseconds(300)
@@ -315,6 +371,30 @@ struct EditorView: View {
                     onSaveToFiles: model.saveToFilesFromPreview
                 )
             }
+        }
+        .fullScreenCover(isPresented: $showImportantInfo) {
+            ImportantInfoSheet(
+                copyrightEnabled: $logoWatermarkEnabled,
+                platformRaw: $watermarkPlatformRaw,
+                address: $watermarkAddress,
+                positionRaw: $copyrightPositionRaw,
+                textColorHex: $copyrightTextColorHex,
+                shadowColorHex: $copyrightShadowColorHex
+            )
+        }
+        .fullScreenCover(isPresented: $showTextOverlaySettings) {
+            TextOverlaySettingsSheet(
+                textEnabled: textOverlayBinding(\.isEnabled),
+                text: textOverlayBinding(\.text),
+                position: textOverlayBinding(\.position),
+                fontName: textOverlayBinding(\.fontName),
+                textColorHex: textOverlayBinding(\.textColorHex),
+                shadowEnabled: textOverlayBinding(\.shadowEnabled),
+                shadowColorHex: textOverlayBinding(\.shadowColorHex),
+                lineSpacing: textOverlayBinding(\.lineSpacing),
+                lineSpacingScale: textOverlayBinding(\.lineSpacingScale),
+                fontSize: textOverlayBinding(\.fontSize)
+            )
         }
         .fileExporter(
             isPresented: $model.showFileExporter,
@@ -387,7 +467,7 @@ struct EditorView: View {
     private func handleQuickAction(_ action: HanClipQuickAction) {
         showResetConfirmation = false
         showThemeSelection = false
-        selectedClipID = nil
+        closeClipPreview()
         isSharedInboxBannerDismissed = true
 
         switch action {
@@ -398,6 +478,13 @@ struct EditorView: View {
         case .files:
             model.openFilePicker()
         }
+    }
+
+    private func closeClipPreview() {
+        selectedClipID = nil
+        shouldAutoplaySelectedClip = false
+        isAutoAdvancingPreview = false
+        isLoopingPreviewAutoAdvance = false
     }
 
     private var sharedInboxBanner: some View {
@@ -530,6 +617,14 @@ struct EditorView: View {
                 }
             } label: {
                 Label("파일", systemImage: "folder")
+            }
+
+            Button {
+                selectMediaImportSource("텍스트") {
+                    showTextOverlaySettings = true
+                }
+            } label: {
+                Label("텍스트", systemImage: "textformat")
             }
         } label: {
             label()
@@ -932,6 +1027,47 @@ struct EditorView: View {
         }
     }
 
+    private var importantInfoButton: some View {
+        Button {
+            showImportantInfo = true
+        } label: {
+            Text("i")
+                .font(.system(size: 18, weight: .bold, design: .serif))
+                .foregroundStyle(HanClipTheme.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            if #available(iOS 26.0, *) {
+                Circle()
+                    .fill(Color.white.opacity(0.14))
+                    .glassEffect(
+                        .regular
+                            .tint(HanClipTheme.secondary.opacity(0.16))
+                            .interactive(),
+                        in: Circle()
+                    )
+            } else {
+                Circle()
+                    .fill(Color.white.opacity(0.24))
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+        }
+        .overlay {
+            Circle()
+                .stroke(Color.white.opacity(0.62), lineWidth: 1)
+        }
+        .shadow(
+            color: HanClipTheme.secondary.opacity(0.18),
+            radius: 10,
+            y: 4
+        )
+        .padding(.bottom, 8)
+        .accessibilityLabel("카피라이터")
+        .accessibilityHint("중요 정보 창을 엽니다.")
+    }
+
     private var savedProjectList: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -1110,7 +1246,7 @@ struct EditorView: View {
         let editableClips = model.renderableClips
         guard let index = editableClips.firstIndex(where: { $0.id == id })
         else {
-            selectedClipID = nil
+            closeClipPreview()
             return
         }
 
@@ -1125,7 +1261,11 @@ struct EditorView: View {
         }
 
         withAnimation(.snappy) {
-            selectedClipID = nextClipID
+            if let nextClipID {
+                selectedClipID = nextClipID
+            } else {
+                closeClipPreview()
+            }
             model.removeClip(id: id)
         }
     }
@@ -1197,6 +1337,27 @@ struct EditorView: View {
                             trailing: 0
                         )
                     )
+
+                if model.textOverlaySettings.shouldRenderText {
+                    TextOverlaySummaryRow(
+                        settings: model.textOverlaySettings,
+                        onSelect: {
+                            showTextOverlaySettings = true
+                        }
+                    )
+                    .listRowBackground(
+                        HanClipTheme.secondary.opacity(0.10)
+                    )
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: 5,
+                            leading: 4,
+                            bottom: model.clips.isEmpty ? 18 : 5,
+                            trailing: 16
+                        )
+                    )
+                }
 
                 ForEach($model.clips) { $clip in
                     ClipRow(
@@ -1356,11 +1517,27 @@ struct EditorView: View {
                 ? 0
                 : model.clips.first?.id == id ? 18 : 5,
             leading: 4,
-            bottom: isVideoSegmentChild || isFollowedByVideoSegmentChild
-                ? 0
-                : model.clips.last?.id == id ? 18 : 5,
+            bottom: clipRowBottomInset(
+                id: id,
+                isVideoSegmentChild: isVideoSegmentChild,
+                isFollowedByVideoSegmentChild: isFollowedByVideoSegmentChild
+            ),
             trailing: 16
         )
+    }
+
+    private func clipRowBottomInset(
+        id: UUID,
+        isVideoSegmentChild: Bool,
+        isFollowedByVideoSegmentChild: Bool
+    ) -> CGFloat {
+        if isVideoSegmentChild {
+            return isFollowedByVideoSegmentChild ? 0 : 5
+        }
+        if isFollowedByVideoSegmentChild {
+            return 0
+        }
+        return model.clips.last?.id == id ? 18 : 5
     }
 
     private var clipModeHeader: some View {
@@ -2243,11 +2420,1441 @@ struct EditorView: View {
         formatter.dateFormat = "yyyyMMdd-HHmm"
         return formatter.string(from: Date())
     }
+
+    private func textOverlayBinding<Value>(
+        _ keyPath: WritableKeyPath<WatermarkSettings, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { model.textOverlaySettings[keyPath: keyPath] },
+            set: { newValue in
+                var settings = model.textOverlaySettings
+                settings[keyPath: keyPath] = newValue
+                model.textOverlaySettings = settings
+            }
+        )
+    }
 }
 
 private extension View {
     func calendarActionButtonStyle() -> some View {
         modifier(CalendarActionButtonStyle())
+    }
+
+    func dismissKeyboardOnDrag() -> some View {
+        simultaneousGesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { _ in
+                    UIApplication.shared.dismissKeyboard()
+                }
+        )
+    }
+}
+
+private extension UIApplication {
+    func dismissKeyboard() {
+        sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+}
+
+private extension Color {
+    init?(hexString: String) {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") {
+            hex.removeFirst()
+        }
+        guard hex.count == 6,
+              let value = Int(hex, radix: 16)
+        else { return nil }
+
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
+
+    var hexString: String? {
+        let color = UIColor(self)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        else { return nil }
+
+        return String(
+            format: "#%02X%02X%02X",
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded())
+        )
+    }
+}
+
+private struct ImportantInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var copyrightEnabled: Bool
+    @Binding var platformRaw: String
+    @Binding var address: String
+    @Binding var positionRaw: String
+    @Binding var textColorHex: String
+    @Binding var shadowColorHex: String
+
+    private let items: [(title: String, body: String)] = [
+        ("제작자", "송기원, 한병기"),
+        ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 입력과 중요 정보를 보여주는 창입니다."),
+        ("첫 화면", "앱 실행 후 NEW PROJECT와 저장된 프로젝트 목록이 보이는 홈 화면입니다."),
+        ("프로젝트 새로 만들기 영역", "첫 화면 상단의 사진 및 영상 선택 카드입니다. 새 프로젝트를 시작하기 위해 미디어를 고르는 영역입니다."),
+        ("프로젝트 리스트", "첫 화면에 저장된 프로젝트들이 표시되는 영역입니다."),
+        ("프로젝트 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다."),
+        ("프로젝트 에디트", "프로젝트 화면의 로고 아래, 기본 재생시간 설정 위쪽에 들어간 PROJECT EDIT 텍스트입니다."),
+        ("클립 리스트", "선택한 Photo, Live, Clip이 순서대로 표시되는 목록입니다. 썸네일, 시간, 아이콘, 세그먼트 컨트롤, +/- 버튼이 있는 영역입니다."),
+        ("순서변경 상태", "썸네일을 한 줄에 여러 개 표시하고 드래그해서 클립 순서를 변경하는 상태입니다."),
+        ("에디터 영역 / 에디터 모드", "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다."),
+        ("미리보기", "에디터 안에서는 개별 클립을 확인하는 재생 영역이고, 만들기 완료 후에는 제작된 전체 영상을 재생하고 확인하는 화면입니다."),
+        ("만들기", "전체 클립을 하나의 영상으로 생성하는 액션과 버튼입니다."),
+        ("영상 생성 진행창", "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다."),
+        ("저장하기 창", "미리보기에서 사진 앱 또는 파일 앱 저장 방식을 선택하는 창입니다."),
+        ("테마 선택창", "로고를 길게 눌렀을 때 5개 테마를 선택하는 창입니다."),
+        ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
+        ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다."),
+        ("카피라이터 입력", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 SNS/기타 표시를 결과 영상에 합성할지 결정합니다."),
+        ("세그먼트 컨트롤", "포토 / Live, 단일 / 다중처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다."),
+        ("단일 / 다중", "영상 클립을 하나의 구간으로 쓸지, 사운드 피크 기준으로 여러 자영상으로 나눌지 정하는 영상 세그먼트 모드입니다."),
+        ("모영상", "다중 세그먼트를 만들 때 원본 역할로 남는 부모 영상입니다."),
+        ("자영상", "모영상에서 사운드 피크 기준으로 만들어진 하위 영상 클립입니다."),
+        ("웨이브 / 웨이브 인디케이터", "영상/Live Photo 에디터에서 소리 파형을 보여주는 영역입니다."),
+        ("선택바", "웨이브 인디케이터의 좌우 끝에 있는 드래그 바입니다."),
+        ("자동 진행", "에디터 영역 왼쪽 상단 카운트 영역을 눌러 켜는 기능입니다."),
+        ("무한 루프", "자동 진행 버튼을 롱터치해서 켜는 기능입니다."),
+        ("달력 썸네일 버튼", "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다."),
+        ("텍스트 넣기", "프로젝트 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
+        ("외부 호출 주소", "hanclip://photo\nhanclip://calendar\nhanclip://files\nhanclip://open"),
+        ("내장 서체 저작권", "HanClip에는 Pretendard, Kakao Big Sans, Nanum Gothic, Noto Sans KR 서체가 포함되어 있습니다. 각 서체는 SIL Open Font License 1.1에 따라 제공되며, 서체 파일 자체를 단독으로 판매할 수 없고 저작권 및 라이선스 고지를 유지해야 합니다. 라이선스 전문은 앱 번들에 포함된 각 OFL/라이선스 텍스트 파일을 따릅니다.")
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    infoHeader
+                    copyrightSettings
+
+                    ForEach(items, id: \.title) { item in
+                        infoRow(title: item.title, body: item.body)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnDrag()
+            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
+            .navigationTitle("중요 정보")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        resetCopyrightSettings()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.primary)
+                    .accessibilityLabel("카피라이터 초기화")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("확인") {
+                        dismiss()
+                    }
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
+                }
+            }
+        }
+        .onAppear {
+            loadAddress(for: selectedPlatform)
+        }
+    }
+
+    private var selectedPlatform: WatermarkPlatform {
+        WatermarkPlatform(rawValue: platformRaw) ?? .hanclip
+    }
+
+    private var selectedPosition: WatermarkPosition {
+        WatermarkPosition(rawValue: positionRaw)
+            ?? WatermarkSettings.defaultCopyrightPosition
+    }
+
+    private var showsAddressInput: Bool {
+        copyrightEnabled && selectedPlatform != .hanclip
+    }
+
+    private var copyrightSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("카피라이터 입력")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 8),
+                    count: 3
+                ),
+                spacing: 8
+            ) {
+                ForEach(WatermarkPlatform.allCases) { platform in
+                    copyrightPlatformButton(platform)
+                }
+            }
+
+            if showsAddressInput {
+                TextEditor(text: addressBinding(for: selectedPlatform))
+                    .font(.system(size: 14, weight: .medium))
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 74)
+                    .scrollContentBackground(.hidden)
+                    .background(
+                        Color.white.opacity(0.42),
+                        in: RoundedRectangle(
+                            cornerRadius: 12,
+                            style: .continuous
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 12,
+                            style: .continuous
+                        )
+                        .stroke(
+                            HanClipTheme.secondary.opacity(0.22),
+                            lineWidth: 1
+                        )
+                    }
+            }
+
+            copyrightPositionSettings
+
+            ColorPicker(
+                "글자색",
+                selection: Binding(
+                    get: {
+                        Color(hexString: textColorHex)
+                            ?? HanClipTheme.primary
+                    },
+                    set: {
+                        textColorHex = $0.hexString
+                            ?? WatermarkSettings.defaultCopyrightTextColor
+                    }
+                ),
+                supportsOpacity: false
+            )
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            ColorPicker(
+                "그림자색",
+                selection: Binding(
+                    get: {
+                        Color(hexString: shadowColorHex)
+                            ?? HanClipTheme.secondary
+                    },
+                    set: {
+                        shadowColorHex = $0.hexString
+                            ?? WatermarkSettings.defaultCopyrightShadowColor
+                    }
+                ),
+                supportsOpacity: false
+            )
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(HanClipTheme.text.opacity(0.72))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            HanClipTheme.primary.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HanClipTheme.primary.opacity(0.20), lineWidth: 1)
+        }
+    }
+
+    private var copyrightPositionSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("위치")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 8),
+                    count: 3
+                ),
+                spacing: 8
+            ) {
+                ForEach(WatermarkPosition.allCases) { position in
+                    copyrightPositionButton(position)
+                }
+            }
+            .padding(10)
+            .background(
+                HanClipTheme.secondary.opacity(0.14),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+        }
+    }
+
+    private func copyrightPlatformButton(
+        _ platform: WatermarkPlatform
+    ) -> some View {
+        let isSelected = copyrightEnabled && selectedPlatform == platform
+
+        return Button {
+            selectCopyrightPlatform(platform)
+        } label: {
+            VStack(spacing: 4) {
+                CopyrightPlatformLogo(platform: platform)
+                    .frame(width: 30, height: 30)
+                Text(platform.title)
+                    .font(.system(size: 10, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .background(
+                isSelected
+                    ? HanClipTheme.primary
+                    : HanClipTheme.secondary.opacity(0.14),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(platform.title)
+    }
+
+    private func copyrightPositionButton(
+        _ position: WatermarkPosition
+    ) -> some View {
+        let isSelected = selectedPosition == position
+
+        return Button {
+            positionRaw = position.rawValue
+        } label: {
+            ZStack {
+                Circle()
+                    .stroke(
+                        isSelected
+                            ? HanClipTheme.primary
+                            : HanClipTheme.secondary.opacity(0.52),
+                        lineWidth: 2
+                    )
+                    .frame(width: 16, height: 16)
+
+                if isSelected {
+                    Circle()
+                        .fill(HanClipTheme.primary)
+                        .frame(width: 8, height: 8)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .background(
+                isSelected
+                    ? HanClipTheme.secondary.opacity(0.14)
+                    : Color.white.opacity(0.28),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(position.title)
+    }
+
+    private func selectCopyrightPlatform(_ platform: WatermarkPlatform) {
+        if platform == .hanclip,
+           copyrightEnabled,
+           selectedPlatform == .hanclip {
+            copyrightEnabled = false
+            return
+        }
+
+        platformRaw = platform.rawValue
+        copyrightEnabled = true
+        loadAddress(for: platform)
+    }
+
+    private func loadAddress(for platform: WatermarkPlatform) {
+        address = UserDefaults.standard.string(
+            forKey: WatermarkSettings.addressStorageKey(for: platform)
+        ) ?? ""
+    }
+
+    private func addressBinding(
+        for platform: WatermarkPlatform
+    ) -> Binding<String> {
+        Binding(
+            get: { address },
+            set: { newValue in
+                address = newValue
+                UserDefaults.standard.set(
+                    newValue,
+                    forKey: WatermarkSettings.addressStorageKey(for: platform)
+                )
+            }
+        )
+    }
+
+    private func resetCopyrightSettings() {
+        copyrightEnabled = true
+        platformRaw = WatermarkPlatform.hanclip.rawValue
+        positionRaw = WatermarkSettings.defaultCopyrightPosition.rawValue
+        textColorHex = WatermarkSettings.defaultCopyrightTextColor
+        shadowColorHex = WatermarkSettings.defaultCopyrightShadowColor
+        loadAddress(for: .hanclip)
+    }
+
+    private var infoHeader: some View {
+        HStack(spacing: 10) {
+            Image("LogoMarkV2")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("HanClip")
+                    .font(.system(size: 22, weight: .semibold))
+                Text("화면 이름과 기능 정리")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.62))
+            }
+            .textSelection(.enabled)
+        }
+        .foregroundStyle(HanClipTheme.primary)
+        .padding(.bottom, 8)
+    }
+
+    private func infoRow(title: String, body: String) -> some View {
+        InfoRow(title: title, detail: body)
+    }
+}
+
+private struct TextOverlaySettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var showInstalledFontPicker = false
+    @State private var showFontFilePicker = false
+    @State private var fontImportNotice: String?
+    @State private var textInputBackgroundHex =
+        TextOverlaySettingsSheet.randomTextInputBackgroundHex()
+    @Binding var textEnabled: Bool
+    @Binding var text: String
+    @Binding var position: WatermarkPosition
+    @Binding var fontName: String
+    @Binding var textColorHex: String
+    @Binding var shadowEnabled: Bool
+    @Binding var shadowColorHex: String
+    @Binding var lineSpacing: WatermarkLineSpacing
+    @Binding var lineSpacingScale: Double
+    @Binding var fontSize: WatermarkFontSize
+
+    private let defaultFontChoices: [(title: String, fontName: String)] = [
+        ("시스템", WatermarkSettings.defaultFontName),
+        ("나눔고딕", "NanumGothic"),
+        ("카카오", "KakaoBigSans-Regular")
+    ]
+
+    private var allAvailableFonts: [String] {
+        let uiKitFonts = UIFont.familyNames
+            .flatMap { UIFont.fontNames(forFamilyName: $0) }
+        let coreTextFonts =
+            CTFontManagerCopyAvailablePostScriptNames() as? [String] ?? []
+
+        return Array(Set(uiKitFonts + coreTextFonts + bundledFonts + myFonts))
+            .filter { UIFont(name: $0, size: 14) != nil }
+            .sorted {
+                displayFontName($0).localizedStandardCompare(
+                    displayFontName($1)
+                ) == .orderedAscending
+            }
+    }
+
+    private var bundledFonts: [String] {
+        FontImportStore.bundledFontNames.sorted {
+            displayFontName($0).localizedStandardCompare(
+                displayFontName($1)
+            ) == .orderedAscending
+        }
+    }
+
+    private var myFonts: [String] {
+        FontImportStore.userFontNames.sorted {
+            displayFontName($0).localizedStandardCompare(
+                displayFontName($1)
+            ) == .orderedAscending
+        }
+    }
+
+    private var otherFonts: [String] {
+        let excludedFonts = Set(bundledFonts + myFonts)
+        return allAvailableFonts.filter { !excludedFonts.contains($0) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    WatermarkModeSegmentedControl(isEnabled: $textEnabled)
+
+                    if textEnabled {
+                        textInput
+                        styleSettings
+                        positionSettings
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnDrag()
+            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
+            .navigationTitle("텍스트 넣기")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        resetSettings()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.primary)
+                    .accessibilityLabel("초기화")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("확인") {
+                        dismiss()
+                    }
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
+                }
+            }
+        }
+        .sheet(isPresented: $showInstalledFontPicker) {
+            InstalledFontPicker(fontName: $fontName)
+        }
+        .sheet(isPresented: $showFontFilePicker) {
+            FilePicker(
+                allowedContentTypes: fontContentTypes,
+                allowsMultipleSelection: true
+            ) { result in
+                handleFontFilePicker(result)
+            }
+        }
+        .onAppear {
+            refreshTextInputBackground()
+        }
+        .onChange(of: textColorHex) { _, _ in
+            refreshTextInputBackground()
+        }
+        .onChange(of: shadowColorHex) { _, _ in
+            refreshTextInputBackground()
+        }
+    }
+
+    private var textInput: some View {
+        TextEditor(text: $text)
+            .font(textEditorFont(size: textEditorBaseSize))
+            .foregroundStyle(
+                Color(hexString: textColorHex) ?? HanClipTheme.primary
+            )
+            .lineSpacing(textEditorLineSpacing(size: textEditorBaseSize))
+            .multilineTextAlignment(textEditorAlignment)
+            .autocorrectionDisabled()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(minHeight: 104)
+            .scrollContentBackground(.hidden)
+            .background(
+                (Color(hexString: textInputBackgroundHex) ?? .white)
+                    .opacity(0.34),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(HanClipTheme.secondary.opacity(0.22), lineWidth: 1)
+            }
+    }
+
+    private var styleSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("서체")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+                HStack(spacing: 8) {
+                    ForEach(defaultFontChoices, id: \.fontName) { choice in
+                        defaultFontButton(
+                            title: choice.title,
+                            choiceFontName: choice.fontName
+                        )
+                    }
+                }
+
+                Menu {
+                    Button {
+                        showFontFilePicker = true
+                    } label: {
+                        Label("서체 파일 가져오기", systemImage: "square.and.arrow.down")
+                    }
+
+                    Divider()
+
+                    if !myFonts.isEmpty {
+                        Section("나의 서체") {
+                            ForEach(myFonts, id: \.self) { font in
+                                fontMenuButton(font)
+                            }
+                        }
+
+                        Divider()
+                    }
+
+                    Button {
+                        showInstalledFontPicker = true
+                    } label: {
+                        Label("아이폰 서체", systemImage: "textformat")
+                    }
+
+                    Divider()
+
+                    Section("기타 서체") {
+                        ForEach(otherFonts, id: \.self) { font in
+                            fontMenuButton(font)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(
+                            fontName.isEmpty
+                                ? "서체 더 선택"
+                                : displayFontName(fontName)
+                        )
+                            .font(selectedFontPreview(size: 12))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            if let fontImportNotice {
+                Text(fontImportNotice)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.62))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Picker("서체크기", selection: $fontSize) {
+                ForEach(WatermarkFontSize.allCases) { size in
+                    Text(size.title).tag(size)
+                }
+            }
+            .pickerStyle(.segmented)
+            .font(.system(size: 14, weight: .bold))
+
+            ColorPicker(
+                "글자색",
+                selection: Binding(
+                    get: { Color(hexString: textColorHex) ?? .white },
+                    set: {
+                        textColorHex = $0.hexString
+                            ?? WatermarkSettings.defaultTextColor
+                    }
+                ),
+                supportsOpacity: false
+            )
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            Toggle("그림자", isOn: $shadowEnabled)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+                .tint(HanClipTheme.primary)
+
+            if shadowEnabled {
+                ColorPicker(
+                    "그림자색",
+                    selection: Binding(
+                        get: { Color(hexString: shadowColorHex) ?? .black },
+                        set: {
+                            shadowColorHex = $0.hexString
+                                ?? WatermarkSettings.defaultShadowColor
+                        }
+                    ),
+                    supportsOpacity: false
+                )
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("줄간격")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+                HStack(spacing: 0) {
+                    ForEach(WatermarkLineSpacing.displayOrder) { spacing in
+                        lineSpacingButton(spacing)
+                    }
+                }
+                .padding(3)
+                .background(
+                    HanClipTheme.secondary.opacity(0.14),
+                    in: Capsule()
+                )
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(
+            HanClipTheme.secondary.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+    }
+
+    private func fontMenuButton(_ font: String) -> some View {
+        Button {
+            fontName = font
+        } label: {
+            Text(displayFontName(font))
+                .font(.custom(font, size: 14))
+        }
+    }
+
+    private func defaultFontButton(
+        title: String,
+        choiceFontName: String
+    ) -> some View {
+        let isSelected = fontName == choiceFontName
+
+        return Button {
+            fontName = choiceFontName
+        } label: {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .stroke(
+                            isSelected
+                                ? HanClipTheme.primary
+                                : HanClipTheme.secondary.opacity(0.52),
+                            lineWidth: 2
+                        )
+                        .frame(width: 16, height: 16)
+
+                    if isSelected {
+                        Circle()
+                            .fill(HanClipTheme.primary)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+
+                Text(title)
+                    .font(defaultFontPreview(choiceFontName, size: 12))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(
+                isSelected ? HanClipTheme.primary : HanClipTheme.secondary
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .background(
+                isSelected
+                    ? HanClipTheme.secondary.opacity(0.14)
+                    : Color.white.opacity(0.28),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private func lineSpacingButton(
+        _ spacing: WatermarkLineSpacing
+    ) -> some View {
+        let isSelected = lineSpacing == spacing
+
+        return Button {
+            updateLineSpacing(spacing)
+        } label: {
+            Text(spacing.title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 32)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(HanClipTheme.primary)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(spacing.title)
+    }
+
+    private func updateLineSpacing(_ spacing: WatermarkLineSpacing) {
+        lineSpacing = spacing
+
+        switch spacing {
+        case .normal:
+            lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
+        case .tight:
+            lineSpacingScale = WatermarkSettings.normalizedLineSpacingScale(
+                lineSpacingScale - WatermarkLineSpacing.step
+            )
+        case .wide:
+            lineSpacingScale = WatermarkSettings.normalizedLineSpacingScale(
+                lineSpacingScale + WatermarkLineSpacing.step
+            )
+        }
+    }
+
+    private var positionSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("위치")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 8),
+                    count: 3
+                ),
+                spacing: 8
+            ) {
+                ForEach(WatermarkPosition.allCases) { position in
+                    positionButton(position)
+                }
+            }
+            .padding(10)
+            .background(
+                HanClipTheme.secondary.opacity(0.14),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+        }
+    }
+
+    private func positionButton(_ position: WatermarkPosition) -> some View {
+        let isSelected = self.position == position
+
+        return Button {
+            self.position = position
+        } label: {
+            ZStack {
+                Circle()
+                    .stroke(
+                        isSelected
+                            ? HanClipTheme.primary
+                            : HanClipTheme.secondary.opacity(0.52),
+                        lineWidth: 2
+                    )
+                    .frame(width: 16, height: 16)
+
+                if isSelected {
+                    Circle()
+                        .fill(HanClipTheme.primary)
+                        .frame(width: 8, height: 8)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .background(
+                isSelected
+                    ? HanClipTheme.secondary.opacity(0.14)
+                    : Color.white.opacity(0.28),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(position.title)
+    }
+
+    private func displayFontName(_ fontName: String) -> String {
+        guard let font = UIFont(name: fontName, size: 14) else {
+            return fontName
+        }
+
+        let familyName = font.familyName
+        let displayName = font.fontDescriptor
+            .object(forKey: .visibleName) as? String
+        let localizedName = CTFontCopyLocalizedName(
+            CTFontCreateWithName(fontName as CFString, 14, nil),
+            kCTFontFullNameKey,
+            nil
+        ) as String?
+
+        return [
+            localizedName,
+            displayName,
+            familyName,
+            fontName
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? fontName
+    }
+
+    private func selectedFontPreview(size: CGFloat) -> Font {
+        fontName.isEmpty
+            ? .system(size: size, weight: .semibold)
+            : .custom(fontName, size: size)
+    }
+
+    private func defaultFontPreview(
+        _ choiceFontName: String,
+        size: CGFloat
+    ) -> Font {
+        choiceFontName.isEmpty
+            ? .system(size: size, weight: .bold)
+            : .custom(choiceFontName, size: size)
+    }
+
+    private func textEditorFont(size: CGFloat) -> Font {
+        fontName.isEmpty
+            ? .system(size: size, weight: .medium)
+            : .custom(fontName, size: size)
+    }
+
+    private var textEditorAlignment: TextAlignment {
+        switch position {
+        case .topLeading, .middleLeading, .bottomLeading:
+            return .leading
+        case .topCenter, .center, .bottomCenter:
+            return .center
+        case .topTrailing, .middleTrailing, .bottomTrailing:
+            return .trailing
+        }
+    }
+
+    private var textEditorBaseSize: CGFloat {
+        14 * CGFloat(fontSize.multiplier)
+    }
+
+    private func textEditorLineSpacing(size: CGFloat) -> CGFloat {
+        size * CGFloat(lineSpacingScale - WatermarkLineSpacing.defaultMultiplier)
+    }
+
+    private func refreshTextInputBackground() {
+        textInputBackgroundHex = Self.randomTextInputBackgroundHex(
+            excluding: [textColorHex, shadowColorHex]
+        )
+    }
+
+    private static func randomTextInputBackgroundHex(
+        excluding excludedHexes: [String] = []
+    ) -> String {
+        let palette = [
+            "#F6E8EA",
+            "#E7F0FF",
+            "#EAF7EA",
+            "#FFF2D8",
+            "#EFE8FF",
+            "#E8F7F4",
+            "#F2F0E8",
+            "#F7EAF2"
+        ]
+        let excluded = Set(excludedHexes.map(normalizedHex))
+        let choices = palette.filter {
+            !excluded.contains(normalizedHex($0))
+        }
+
+        return choices.randomElement() ?? "#F2F0E8"
+    }
+
+    private static func normalizedHex(_ hex: String) -> String {
+        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        return trimmed.hasPrefix("#")
+            ? trimmed.uppercased()
+            : "#\(trimmed.uppercased())"
+    }
+
+    private var fontContentTypes: [UTType] {
+        [
+            UTType(filenameExtension: "ttf"),
+            UTType(filenameExtension: "otf"),
+            UTType(filenameExtension: "ttc")
+        ]
+        .compactMap { $0 }
+    }
+
+    private func handleFontFilePicker(
+        _ result: Result<[URL], Error>
+    ) {
+        do {
+            let urls = try result.get()
+            guard !urls.isEmpty else { return }
+            let importedNames = try FontImportStore.importFonts(from: urls)
+            guard let firstFont = importedNames.first else {
+                fontImportNotice = "가져올 수 있는 서체 파일이 없습니다."
+                return
+            }
+
+            fontName = firstFont
+            fontImportNotice = "\(importedNames.count)개 서체를 가져왔습니다."
+        } catch {
+            fontImportNotice = "서체를 가져올 수 없습니다."
+        }
+    }
+
+    private func resetSettings() {
+        let defaults = WatermarkSettings.projectDefault()
+        textEnabled = defaults.isEnabled
+        text = defaults.text
+        position = defaults.position
+        fontName = defaults.fontName
+        textColorHex = defaults.textColorHex
+        shadowEnabled = defaults.shadowEnabled
+        shadowColorHex = defaults.shadowColorHex
+        lineSpacing = defaults.lineSpacing
+        lineSpacingScale = defaults.lineSpacingScale
+        fontSize = defaults.fontSize
+        refreshTextInputBackground()
+    }
+}
+
+private struct InstalledFontPicker: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var fontName: String
+
+    func makeUIViewController(
+        context: Context
+    ) -> UIFontPickerViewController {
+        let configuration = UIFontPickerViewController.Configuration()
+        configuration.includeFaces = true
+
+        let picker = UIFontPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIFontPickerViewController,
+        context: Context
+    ) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UIFontPickerViewControllerDelegate {
+        private var parent: InstalledFontPicker
+
+        init(parent: InstalledFontPicker) {
+            self.parent = parent
+        }
+
+        func fontPickerViewControllerDidPickFont(
+            _ viewController: UIFontPickerViewController
+        ) {
+            guard let descriptor = viewController.selectedFontDescriptor
+            else {
+                parent.dismiss()
+                return
+            }
+
+            parent.fontName =
+                descriptor.fontAttributes[.name] as? String
+                ?? UIFont(descriptor: descriptor, size: 14).fontName
+            parent.dismiss()
+        }
+
+        func fontPickerViewControllerDidCancel(
+            _ viewController: UIFontPickerViewController
+        ) {
+            parent.dismiss()
+        }
+    }
+}
+
+private struct InfoRow: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+                .textSelection(.enabled)
+
+            Text(detail)
+                .font(.system(size: 14))
+                .foregroundStyle(HanClipTheme.text.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            HanClipTheme.secondary.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HanClipTheme.secondary.opacity(0.16), lineWidth: 1)
+        }
+    }
+}
+
+private struct TextOverlaySummaryRow: View {
+    let settings: WatermarkSettings
+    let onSelect: () -> Void
+
+    private var fontText: String {
+        settings.fontName.isEmpty
+            ? "시스템"
+            : displayFontName(settings.fontName)
+    }
+
+    private var shadowText: String {
+        settings.shadowEnabled ? "사용" : "안함"
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 4) {
+                Text("T")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(HanClipTheme.primary)
+                    .frame(width: 18, height: 62, alignment: .center)
+
+                HStack(spacing: 14) {
+                    TextOverlayPositionThumbnail(position: settings.position)
+                        .frame(width: 62, height: 62)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 8) {
+                            summaryLabel("서체", value: nil)
+                            colorSwatch(settings.textColorHex)
+                            Text(fontText)
+                                .font(summaryFontPreview(size: 12))
+                                .foregroundStyle(HanClipTheme.text.opacity(0.68))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+
+                        HStack(spacing: 8) {
+                            summaryLabel("그림자", value: shadowText)
+                            if settings.shadowEnabled {
+                                colorSwatch(settings.shadowColorHex)
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            summaryLabel("크기", value: settings.fontSize.title)
+                            summaryLabel("줄간격", value: settings.lineSpacing.title)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(minHeight: 62)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("텍스트")
+        .accessibilityHint("텍스트 넣기 편집 화면을 엽니다.")
+    }
+
+    private func summaryLabel(_ title: String, value: String?) -> some View {
+        HStack(spacing: 4) {
+            Text("\(title) :")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            if let value {
+                Text(value)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.68))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+    }
+
+    private func colorSwatch(_ hex: String) -> some View {
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(Color(hexString: hex) ?? HanClipTheme.text)
+            .frame(width: 22, height: 14)
+            .overlay {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(HanClipTheme.text.opacity(0.18), lineWidth: 1)
+            }
+    }
+
+    private func displayFontName(_ fontName: String) -> String {
+        guard let font = UIFont(name: fontName, size: 14) else {
+            return fontName
+        }
+
+        let displayName = font.fontDescriptor
+            .object(forKey: .visibleName) as? String
+        let localizedName = CTFontCopyLocalizedName(
+            CTFontCreateWithName(fontName as CFString, 14, nil),
+            kCTFontFullNameKey,
+            nil
+        ) as String?
+
+        return [
+            localizedName,
+            displayName,
+            font.familyName,
+            fontName
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? fontName
+    }
+
+    private func summaryFontPreview(size: CGFloat) -> Font {
+        settings.fontName.isEmpty
+            ? .system(size: size, weight: .medium)
+            : .custom(settings.fontName, size: size)
+    }
+}
+
+private struct TextOverlayPositionThumbnail: View {
+    let position: WatermarkPosition
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let inset: CGFloat = 9
+            let dotSize: CGFloat = 9
+            let point = dotPoint(in: size, inset: inset)
+
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(HanClipTheme.secondary.opacity(0.16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(HanClipTheme.secondary, lineWidth: 2)
+                    }
+
+                Circle()
+                    .fill(HanClipTheme.primary)
+                    .frame(width: dotSize, height: dotSize)
+                    .position(point)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    private func dotPoint(in size: CGSize, inset: CGFloat) -> CGPoint {
+        let leading = inset
+        let centerX = size.width / 2
+        let trailing = size.width - inset
+        let top = inset
+        let centerY = size.height / 2
+        let bottom = size.height - inset
+
+        switch position {
+        case .topLeading:
+            return CGPoint(x: leading, y: top)
+        case .topCenter:
+            return CGPoint(x: centerX, y: top)
+        case .topTrailing:
+            return CGPoint(x: trailing, y: top)
+        case .middleLeading:
+            return CGPoint(x: leading, y: centerY)
+        case .center:
+            return CGPoint(x: centerX, y: centerY)
+        case .middleTrailing:
+            return CGPoint(x: trailing, y: centerY)
+        case .bottomLeading:
+            return CGPoint(x: leading, y: bottom)
+        case .bottomCenter:
+            return CGPoint(x: centerX, y: bottom)
+        case .bottomTrailing:
+            return CGPoint(x: trailing, y: bottom)
+        }
+    }
+}
+
+private struct WatermarkModeSegmentedControl: View {
+    @Binding var isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            segment(title: "사용", value: true)
+            segment(title: "안함", value: false)
+        }
+        .padding(3)
+        .background(
+            HanClipTheme.secondary.opacity(0.14),
+            in: Capsule()
+        )
+        .contentShape(Capsule())
+        .onTapGesture {
+            withAnimation(.snappy) {
+                isEnabled.toggle()
+            }
+        }
+    }
+
+    private func segment(title: String, value: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(isEnabled == value ? .white : HanClipTheme.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 32)
+            .background {
+                if isEnabled == value {
+                    Capsule()
+                        .fill(HanClipTheme.primary)
+                }
+            }
+    }
+}
+
+private struct WatermarkPlatformSegmentedControl: View {
+    @Binding var selection: WatermarkPlatform
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(WatermarkPlatform.allCases) { platform in
+                Button {
+                    withAnimation(.snappy) {
+                        selection = platform
+                    }
+                } label: {
+                    ZStack {
+                        WatermarkPlatformLogo(platform: platform)
+                            .frame(
+                                width: platform == .hanclip ? 54 : 26,
+                                height: 26
+                            )
+                    }
+                    .foregroundStyle(
+                        selection == platform
+                            ? .white
+                            : HanClipTheme.secondary
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(
+                        selection == platform
+                            ? HanClipTheme.primary
+                            : HanClipTheme.secondary.opacity(0.14),
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(platform.title)
+            }
+        }
+    }
+}
+
+private struct WatermarkPlatformLogo: View {
+    let platform: WatermarkPlatform
+
+    var body: some View {
+        ZStack {
+            switch platform {
+            case .hanclip:
+                HStack(spacing: 3) {
+                    Image("LogoMarkV2")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                    Text("HanClip")
+                        .font(.system(size: 11, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            case .instagram:
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(lineWidth: 2)
+                Circle()
+                    .stroke(lineWidth: 2)
+                    .frame(width: 8, height: 8)
+                Circle()
+                    .fill()
+                    .frame(width: 3, height: 3)
+                    .offset(x: 5, y: -5)
+            case .facebook:
+                Text("f")
+                    .font(.system(size: 20, weight: .heavy))
+                    .offset(y: 1)
+            case .youtube:
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(lineWidth: 2)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .offset(x: 1)
+            case .blog:
+                Text("B")
+                    .font(.system(size: 16, weight: .heavy))
+                    .padding(3)
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 5,
+                            style: .continuous
+                        )
+                        .stroke(lineWidth: 2)
+                    }
+            case .other:
+                Text("기타")
+                    .font(.system(size: 9, weight: .heavy))
+                    .padding(4)
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 5,
+                            style: .continuous
+                        )
+                        .stroke(lineWidth: 2)
+                    }
+            }
+        }
+    }
+}
+
+private struct CopyrightPlatformLogo: View {
+    let platform: WatermarkPlatform
+
+    var body: some View {
+        Group {
+            if platform == .hanclip {
+                Image("LogoMarkV2")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+            } else {
+                WatermarkPlatformLogo(platform: platform)
+            }
+        }
     }
 }
 
@@ -2476,6 +4083,7 @@ private struct ProjectMemoField: View {
         .onDisappear {
             saveIfNeeded()
         }
+        .dismissKeyboardOnDrag()
         .accessibilityLabel("프로젝트 메모")
         .id(projectID)
     }
@@ -2706,7 +4314,7 @@ private struct VideoPreviewView: View {
         }
         .blur(radius: showSaveOptions ? 2 : 0)
         .animation(
-            .easeInOut(duration: 0.20),
+            .easeInOut(duration: 0.10),
             value: showSaveOptions
         )
         .overlay {
@@ -2723,6 +4331,7 @@ private struct VideoPreviewView: View {
             player.play()
         }
         .onDisappear {
+            hideSaveOptionsImmediately()
             player.pause()
         }
         .sheet(
@@ -2745,7 +4354,7 @@ private struct VideoPreviewView: View {
                     .font(.system(size: 18, weight: .semibold))
 
                 Button {
-                    showSaveOptions = false
+                    hideSaveOptionsImmediately()
                     onSaveToPhotos(albumName)
                 } label: {
                     Label(
@@ -2784,7 +4393,7 @@ private struct VideoPreviewView: View {
                 .padding(.bottom, 20)
 
                 Button {
-                    showSaveOptions = false
+                    hideSaveOptionsImmediately()
                     onSaveToFiles()
                 } label: {
                     Label(
@@ -2822,6 +4431,7 @@ private struct VideoPreviewView: View {
             }
             .padding(.horizontal, 24)
         }
+        .dismissKeyboardOnDrag()
     }
 
     private func togglePreviewPlayback() {
@@ -2836,6 +4446,14 @@ private struct VideoPreviewView: View {
             player.seek(to: .zero)
         }
         player.play()
+    }
+
+    private func hideSaveOptionsImmediately() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            showSaveOptions = false
+        }
     }
 }
 
@@ -2913,19 +4531,38 @@ private struct PersistentVideoProgressBar: View {
     @State private var isScrubbing = false
     @State private var isPlaying = false
     @State private var reachedEnd = false
+    @State private var isLooping = false
+    @State private var loopIconRotation = 0.0
+    @State private var didTriggerLongPress = false
     @State private var timeObserver: Any?
     @State private var endObserver: NSObjectProtocol?
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: togglePlayback) {
+            Button {
+                if didTriggerLongPress {
+                    didTriggerLongPress = false
+                } else if isLooping {
+                    toggleLooping()
+                } else {
+                    togglePlayback()
+                }
+            } label: {
                 Image(systemName: playbackButtonImage)
                     .font(.system(size: 16, weight: .bold))
+                    .rotationEffect(.degrees(loopIconRotation))
                     .foregroundStyle(HanClipTheme.primary)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45)
+                    .onEnded { _ in
+                        didTriggerLongPress = true
+                        toggleLooping()
+                    }
+            )
             .accessibilityLabel(playbackButtonLabel)
 
             Text(formattedTime(currentSeconds))
@@ -2954,6 +4591,9 @@ private struct PersistentVideoProgressBar: View {
         .background(HanClipTheme.secondary.opacity(0.02))
         .onAppear(perform: startObserving)
         .onDisappear(perform: stopObserving)
+        .onChange(of: isLooping) { _, newValue in
+            updateLoopIconAnimation(newValue)
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -2962,6 +4602,9 @@ private struct PersistentVideoProgressBar: View {
     }
 
     private var playbackButtonImage: String {
+        if isLooping {
+            return "arrow.triangle.2.circlepath"
+        }
         if reachedEnd {
             return "arrow.counterclockwise"
         }
@@ -2969,6 +4612,9 @@ private struct PersistentVideoProgressBar: View {
     }
 
     private var playbackButtonLabel: String {
+        if isLooping {
+            return "무한 루프 재생"
+        }
         if reachedEnd {
             return "처음부터 다시 재생"
         }
@@ -2992,6 +4638,36 @@ private struct PersistentVideoProgressBar: View {
         } else {
             player.play()
             isPlaying = true
+        }
+    }
+
+    private func toggleLooping() {
+        isLooping.toggle()
+        reachedEnd = false
+        if isLooping {
+            if durationSeconds > 0,
+               currentSeconds >= durationSeconds - 0.05 {
+                currentSeconds = 0
+                player.seek(to: .zero)
+            }
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    private func updateLoopIconAnimation(_ looping: Bool) {
+        if looping {
+            loopIconRotation = 0
+            withAnimation(
+                .linear(duration: 1.0)
+                    .repeatForever(autoreverses: false)
+            ) {
+                loopIconRotation = 360
+            }
+        } else {
+            withAnimation(.linear(duration: 0.12)) {
+                loopIconRotation = 0
+            }
         }
     }
 
@@ -3032,8 +4708,12 @@ private struct PersistentVideoProgressBar: View {
             isPlaying = player.timeControlStatus == .playing
             if durationSeconds > 0,
                currentSeconds >= durationSeconds - 0.05 {
-                reachedEnd = true
-                isPlaying = false
+                if isLooping {
+                    reachedEnd = false
+                } else {
+                    reachedEnd = true
+                    isPlaying = false
+                }
             } else if currentSeconds < durationSeconds - 0.05 {
                 reachedEnd = false
             }
@@ -3044,9 +4724,17 @@ private struct PersistentVideoProgressBar: View {
             object: player.currentItem,
             queue: .main
         ) { _ in
-            currentSeconds = durationSeconds
-            reachedEnd = true
-            isPlaying = false
+            if isLooping {
+                currentSeconds = 0
+                reachedEnd = false
+                player.seek(to: .zero)
+                player.play()
+                isPlaying = true
+            } else {
+                currentSeconds = durationSeconds
+                reachedEnd = true
+                isPlaying = false
+            }
         }
     }
 
@@ -3059,6 +4747,8 @@ private struct PersistentVideoProgressBar: View {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
         }
+        isLooping = false
+        loopIconRotation = 0
     }
 
     private func formattedTime(_ seconds: Double) -> String {

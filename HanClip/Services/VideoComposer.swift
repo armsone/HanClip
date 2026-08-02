@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreImage
 import OSLog
 import Photos
 import UIKit
@@ -13,6 +14,7 @@ final class VideoComposer {
     func compose(
         items: [ClipItem],
         renderSize requestedRenderSize: CGSize,
+        watermarkSettings: WatermarkSettings = .stored(),
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         guard !items.isEmpty else {
@@ -70,34 +72,52 @@ final class VideoComposer {
                 withMediaType: .audio
             ).first
             let sourceDuration = try await asset.load(.duration)
+            let sourceSeconds = max(0, sourceDuration.seconds)
+            guard sourceSeconds.isFinite, sourceSeconds > 0 else {
+                throw MediaError.exportFailed(
+                    "\(itemIndex + 1)번째 클립의 원본 길이를 읽을 수 없습니다."
+                )
+            }
             var requestedDuration = CMTime(
-                seconds: max(0.5, item.duration),
+                seconds: min(sourceSeconds, max(0.5, item.duration)),
                 preferredTimescale: 600
             )
 
             if item.mediaKind == .video
                 || (item.isLivePhoto && item.livePhotoMode == .motion) {
+                let requestedSeconds = min(
+                    sourceSeconds,
+                    max(0.5, item.duration)
+                )
+                let sourceStartSeconds = min(
+                    max(0, item.trimStart),
+                    max(0, sourceSeconds - requestedSeconds)
+                )
                 let sourceStart = CMTime(
-                    seconds: max(0, item.trimStart),
+                    seconds: sourceStartSeconds,
                     preferredTimescale: 600
                 )
-                let available = CMTimeMaximum(
-                    .zero,
-                    CMTimeSubtract(sourceDuration, sourceStart)
-                )
-                requestedDuration = CMTimeMinimum(
-                    requestedDuration,
-                    available
+                requestedDuration = CMTime(
+                    seconds: requestedSeconds,
+                    preferredTimescale: 600
                 )
                 let sourceRange = CMTimeRange(
                     start: sourceStart,
                     duration: requestedDuration
                 )
-                try compositionVideoTrack.insertTimeRange(
-                    sourceRange,
-                    of: sourceVideoTrack,
-                    at: cursor
-                )
+                do {
+                    try compositionVideoTrack.insertTimeRange(
+                        sourceRange,
+                        of: sourceVideoTrack,
+                        at: cursor
+                    )
+                } catch {
+                    throw MediaError.exportFailed(
+                        "\(itemIndex + 1)번째 영상 구간을 붙일 수 없습니다. "
+                            + "시작 \(Self.timeText(sourceStartSeconds)), "
+                            + "길이 \(Self.timeText(requestedSeconds))"
+                    )
+                }
                 if let sourceAudioTrack {
                     if compositionAudioTrack == nil {
                         compositionAudioTrack = composition.addMutableTrack(
@@ -122,11 +142,17 @@ final class VideoComposer {
                     )
                     let insertionTime = CMTimeAdd(cursor, inserted)
 
-                    try compositionVideoTrack.insertTimeRange(
-                        sourceRange,
-                        of: sourceVideoTrack,
-                        at: insertionTime
-                    )
+                    do {
+                        try compositionVideoTrack.insertTimeRange(
+                            sourceRange,
+                            of: sourceVideoTrack,
+                            at: insertionTime
+                        )
+                    } catch {
+                        throw MediaError.exportFailed(
+                            "\(itemIndex + 1)번째 사진 구간을 붙일 수 없습니다."
+                        )
+                    }
 
                     if let sourceAudioTrack {
                         if compositionAudioTrack == nil {
@@ -205,7 +231,7 @@ final class VideoComposer {
             exporter,
             cancellationSession: ExportSessionReference(exporter)
         ) { exportProgress in
-            await progressHandler(0.86 + exportProgress * 0.14)
+            await progressHandler(0.86 + exportProgress * 0.10)
         }
 
         try Task.checkCancellation()
@@ -218,9 +244,23 @@ final class VideoComposer {
                 error?.localizedDescription ?? "알 수 없는 오류"
             )
         }
+        await progressHandler(0.96)
+        guard watermarkSettings.shouldRender else {
+            await progressHandler(1)
+            logger.info("영상 생성 완료")
+            return outputURL
+        }
+        let watermarkedOutput = try await addTextWatermark(
+            to: outputURL,
+            renderSize: renderSize,
+            settings: watermarkSettings
+        ) { watermarkProgress in
+            await progressHandler(0.96 + watermarkProgress * 0.04)
+        }
+        try? FileManager.default.removeItem(at: outputURL)
         await progressHandler(1)
         logger.info("영상 생성 완료")
-        return outputURL
+        return watermarkedOutput
     }
 
     private func export(
@@ -251,6 +291,157 @@ final class VideoComposer {
         } onCancel: {
             cancellationSession.value.cancelExport()
         }
+    }
+
+    private func addTextWatermark(
+        to sourceURL: URL,
+        renderSize: CGSize,
+        settings: WatermarkSettings,
+        progressHandler: @escaping @Sendable (Double) async -> Void
+    ) async throws -> URL {
+        let asset = AVURLAsset(url: sourceURL)
+        let scale = max(1, min(renderSize.width, renderSize.height) / 390)
+        var overlayImages: [CIImage] = []
+        let copyrightPosition = settings.copyrightPosition
+        let inset = 20 * scale
+        let stackedWatermarks =
+            settings.logoEnabled
+            && settings.shouldRenderText
+            && settings.position == copyrightPosition
+
+        let copyrightWatermark = settings.logoEnabled
+            ? CIImage(
+                image: Self.copyrightWatermarkImage(
+                    settings: settings,
+                    renderSize: renderSize
+                )
+            )
+            : nil
+
+        let textWatermark = settings.shouldRenderText
+            ? CIImage(
+            image: Self.textWatermarkImage(
+                text: settings.displayText,
+                fontName: settings.fontName,
+                textColor: UIColor(hexString: settings.textColorHex) ?? .white,
+                shadowEnabled: settings.shadowEnabled,
+                shadowColor: UIColor(hexString: settings.shadowColorHex)
+                    ?? .black,
+                position: settings.position,
+                lineSpacingScale: settings.lineSpacingScale,
+                fontSize: settings.fontSize,
+                renderSize: renderSize
+            )
+           )
+            : nil
+
+        if stackedWatermarks,
+           let textWatermark,
+           let copyrightWatermark {
+            let gap = 4 * scale
+            overlayImages.append(
+                textWatermark.transformed(
+                    by: Self.watermarkTransform(
+                        watermarkSize: textWatermark.extent.size,
+                        renderSize: renderSize,
+                        position: settings.position,
+                        inset: inset,
+                        yOffset: (copyrightWatermark.extent.height + gap) / 2
+                    )
+                )
+            )
+            overlayImages.append(
+                copyrightWatermark.transformed(
+                    by: Self.watermarkTransform(
+                        watermarkSize: copyrightWatermark.extent.size,
+                        renderSize: renderSize,
+                        position: copyrightPosition,
+                        inset: inset,
+                        yOffset: -(textWatermark.extent.height + gap) / 2
+                    )
+                )
+            )
+        } else {
+            if let copyrightWatermark {
+                overlayImages.append(
+                    copyrightWatermark.transformed(
+                        by: Self.watermarkTransform(
+                            watermarkSize: copyrightWatermark.extent.size,
+                            renderSize: renderSize,
+                            position: copyrightPosition,
+                            inset: inset
+                        )
+                    )
+                )
+            }
+
+            if let textWatermark {
+                overlayImages.append(
+                    textWatermark.transformed(
+                        by: Self.watermarkTransform(
+                            watermarkSize: textWatermark.extent.size,
+                            renderSize: renderSize,
+                            position: settings.position,
+                            inset: inset
+                        )
+                    )
+                )
+            }
+        }
+
+        guard !overlayImages.isEmpty else {
+            throw MediaError.exportFailed("합성할 표시를 만들 수 없습니다.")
+        }
+
+        let videoComposition = AVMutableVideoComposition(
+            asset: asset
+        ) { request in
+            let source = request.sourceImage
+            let output = overlayImages.reduce(source) { image, overlay in
+                overlay.composited(over: image)
+            }
+            .cropped(to: source.extent)
+            request.finish(with: output, context: nil)
+        }
+        videoComposition.renderSize = renderSize
+        videoComposition.frameDuration = CMTime(
+            value: 1,
+            timescale: frameRate
+        )
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HanClip-Watermarked-\(UUID().uuidString)")
+            .appendingPathExtension("mp4")
+
+        guard let exporter = AVAssetExportSession(
+            asset: asset,
+            presetName: AVAssetExportPresetHighestQuality
+        ) else {
+            throw MediaError.exportFailed("워터마크 내보내기 세션을 만들 수 없습니다.")
+        }
+        exporter.outputURL = outputURL
+        exporter.outputFileType = .mp4
+        exporter.shouldOptimizeForNetworkUse = true
+        exporter.videoComposition = videoComposition
+
+        try await export(
+            exporter,
+            cancellationSession: ExportSessionReference(exporter)
+        ) { exportProgress in
+            await progressHandler(exportProgress)
+        }
+
+        guard exporter.status == .completed else {
+            let error = exporter.error as NSError?
+            logger.error(
+                "워터마크 내보내기 실패: 상태 \(exporter.status.rawValue), 도메인 \(error?.domain ?? "없음", privacy: .public), 코드 \(error?.code ?? 0), 내용 \(error?.localizedDescription ?? "알 수 없는 오류", privacy: .public)"
+            )
+            throw MediaError.exportFailed(
+                error?.localizedDescription ?? "워터마크를 합성할 수 없습니다."
+            )
+        }
+
+        return outputURL
     }
 
     private func resolveSource(
@@ -574,6 +765,434 @@ final class VideoComposer {
             height: aligned(size.height)
         )
     }
+
+    private static func timeText(_ seconds: Double) -> String {
+        String(format: "%.3f초", seconds)
+    }
+
+    private static func watermarkTransform(
+        watermarkSize: CGSize,
+        renderSize: CGSize,
+        position: WatermarkPosition,
+        inset: CGFloat,
+        yOffset: CGFloat = 0
+    ) -> CGAffineTransform {
+        let leadingX = inset
+        let centerX = (renderSize.width - watermarkSize.width) / 2
+        let trailingX = renderSize.width - watermarkSize.width - inset
+        let topY = renderSize.height - watermarkSize.height - inset
+        let middleY = (renderSize.height - watermarkSize.height) / 2
+        let bottomY = inset
+
+        let x: CGFloat
+        let y: CGFloat
+
+        switch position {
+        case .topLeading:
+            x = leadingX
+            y = topY
+        case .topCenter:
+            x = centerX
+            y = topY
+        case .topTrailing:
+            x = trailingX
+            y = topY
+        case .middleLeading:
+            x = leadingX
+            y = middleY
+        case .center:
+            x = centerX
+            y = middleY
+        case .middleTrailing:
+            x = trailingX
+            y = middleY
+        case .bottomLeading:
+            x = leadingX
+            y = bottomY
+        case .bottomCenter:
+            x = centerX
+            y = bottomY
+        case .bottomTrailing:
+            x = trailingX
+            y = bottomY
+        }
+
+        return CGAffineTransform(translationX: x, y: y + yOffset)
+    }
+
+    private static func textWatermarkImage(
+        text watermarkText: String,
+        fontName: String,
+        textColor: UIColor,
+        shadowEnabled: Bool,
+        shadowColor: UIColor,
+        position: WatermarkPosition,
+        lineSpacingScale: Double,
+        fontSize: WatermarkFontSize,
+        renderSize: CGSize
+    ) -> UIImage {
+        let scale = max(1, min(renderSize.width, renderSize.height) / 390)
+        let fontPointSize = 14 * scale * CGFloat(fontSize.multiplier)
+        let text = watermarkText as NSString
+        _ = FontImportStore.importedFontNames
+        let font = UIFont(name: fontName, size: fontPointSize)
+            ?? UIFont.systemFont(ofSize: fontPointSize, weight: .semibold)
+        let textShadow = Self.watermarkShadow(
+            enabled: shadowEnabled,
+            color: shadowColor,
+            scale: scale
+        )
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = Self.textAlignment(for: position)
+        paragraphStyle.lineHeightMultiple = CGFloat(lineSpacingScale)
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .shadow: textShadow as Any,
+            .paragraphStyle: paragraphStyle
+        ]
+        let maxTextWidth = renderSize.width * 0.70
+        let textRectSize = text.boundingRect(
+            with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: textAttributes,
+            context: nil
+        ).integral.size
+        let padding = 3 * scale
+        let imageSize = CGSize(
+            width: ceil(padding * 2 + textRectSize.width),
+            height: ceil(padding * 2 + textRectSize.height)
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+
+        return UIGraphicsImageRenderer(
+            size: imageSize,
+            format: format
+        ).image { _ in
+            let textRect = CGRect(
+                x: padding,
+                y: padding,
+                width: textRectSize.width,
+                height: textRectSize.height
+            )
+            text.draw(
+                in: textRect,
+                withAttributes: textAttributes
+            )
+        }
+    }
+
+    private static func textAlignment(
+        for position: WatermarkPosition
+    ) -> NSTextAlignment {
+        switch position {
+        case .topLeading, .middleLeading, .bottomLeading:
+            return .left
+        case .topCenter, .center, .bottomCenter:
+            return .center
+        case .topTrailing, .middleTrailing, .bottomTrailing:
+            return .right
+        }
+    }
+
+    private static func copyrightWatermarkImage(
+        settings: WatermarkSettings,
+        renderSize: CGSize
+    ) -> UIImage {
+        guard settings.platform != .hanclip else {
+            return Self.logoWatermarkImage(renderSize: renderSize)
+        }
+
+        let scale = max(1, min(renderSize.width, renderSize.height) / 390)
+        let iconSize = 26 * scale
+        let fontSize = 14 * scale
+        let gap = 5 * scale
+        let padding = 3 * scale
+        let textValue = settings.displayAddress.isEmpty
+            ? settings.platform.title
+            : settings.displayAddress
+        let text = textValue as NSString
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let shadow = Self.watermarkShadow(
+            enabled: true,
+            color: UIColor(hexString: settings.copyrightShadowColorHex)
+                ?? HanClipTheme.secondaryUIColor,
+            scale: scale
+        )
+        let textSize = text.size(
+            withAttributes: [
+                .font: font,
+                .shadow: shadow as Any
+            ]
+        )
+        let imageSize = CGSize(
+            width: ceil(padding * 2 + iconSize + gap + textSize.width),
+            height: ceil(padding * 2 + max(iconSize, textSize.height))
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+
+        return UIGraphicsImageRenderer(
+            size: imageSize,
+            format: format
+        ).image { _ in
+            let iconRect = CGRect(
+                x: padding,
+                y: padding + (imageSize.height - padding * 2 - iconSize) / 2,
+                width: iconSize,
+                height: iconSize
+            )
+            let textRect = CGRect(
+                x: iconRect.maxX + gap,
+                y: padding
+                    + (imageSize.height - padding * 2 - textSize.height) / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+
+            Self.drawWatermarkPlatformLogo(
+                settings.platform,
+                in: iconRect,
+                scale: scale
+            )
+            text.draw(
+                in: textRect,
+                withAttributes: [
+                    .font: font,
+                    .foregroundColor:
+                        UIColor(hexString: settings.copyrightTextColorHex)
+                        ?? HanClipTheme.primaryUIColor,
+                    .shadow: shadow as Any
+                ]
+            )
+        }
+    }
+
+    private static func logoWatermarkImage(renderSize: CGSize) -> UIImage {
+        let scale = max(1, min(renderSize.width, renderSize.height) / 390)
+        let iconSize = 24 * scale
+        let fontSize = 14 * scale
+        let gap = 4 * scale
+        let padding = 3 * scale
+        let text = "HanClip" as NSString
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let textSize = text.size(withAttributes: [.font: font])
+        let imageSize = CGSize(
+            width: ceil(padding * 2 + iconSize + gap + textSize.width),
+            height: ceil(padding * 2 + max(iconSize, textSize.height))
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+
+        return UIGraphicsImageRenderer(
+            size: imageSize,
+            format: format
+        ).image { _ in
+            let iconRect = CGRect(
+                x: padding,
+                y: padding + (imageSize.height - padding * 2 - iconSize) / 2,
+                width: iconSize,
+                height: iconSize
+            )
+            let textRect = CGRect(
+                x: iconRect.maxX + gap,
+                y: padding
+                    + (imageSize.height - padding * 2 - textSize.height) / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+
+            if let logo = UIImage(named: "LogoMarkV2") {
+                HanClipTheme.primaryUIColor.setFill()
+                logo.withRenderingMode(.alwaysTemplate).draw(in: iconRect)
+            }
+
+            text.draw(
+                in: textRect,
+                withAttributes: [
+                    .font: font,
+                    .foregroundColor: UIColor.white,
+                    .shadow: Self.watermarkShadow(
+                        enabled: true,
+                        color: HanClipTheme.primaryUIColor,
+                        scale: scale
+                    ) as Any
+                ]
+            )
+        }
+    }
+
+    private static func watermarkShadow(
+        enabled: Bool,
+        color: UIColor,
+        scale: CGFloat
+    ) -> NSShadow? {
+        guard enabled else { return nil }
+
+        let shadow = NSShadow()
+        shadow.shadowColor = color
+        shadow.shadowBlurRadius = 6 * scale
+        shadow.shadowOffset = CGSize(width: 2 * scale, height: 2 * scale)
+        return shadow
+    }
+
+    private static func drawWatermarkPlatformLogo(
+        _ platform: WatermarkPlatform,
+        in rect: CGRect,
+        scale: CGFloat
+    ) {
+        UIColor.white.setStroke()
+        UIColor.white.setFill()
+
+        switch platform {
+        case .hanclip:
+            if let logo = UIImage(named: "LogoMarkV2") {
+                HanClipTheme.primaryUIColor.setFill()
+                let markRect = rect.insetBy(dx: 1 * scale, dy: 1 * scale)
+                logo.withRenderingMode(.alwaysTemplate).draw(in: markRect)
+            } else {
+                HanClipTheme.primaryUIColor.setFill()
+                UIBezierPath(
+                    roundedRect: rect.insetBy(dx: 2 * scale, dy: 2 * scale),
+                    cornerRadius: 5 * scale
+                ).fill()
+            }
+        case .instagram:
+            let path = UIBezierPath(
+                roundedRect: rect.insetBy(dx: 1 * scale, dy: 1 * scale),
+                cornerRadius: 7 * scale
+            )
+            if let context = UIGraphicsGetCurrentContext() {
+                context.saveGState()
+                path.addClip()
+                let colors = [
+                    UIColor(red: 0.96, green: 0.77, blue: 0.19, alpha: 1).cgColor,
+                    UIColor(red: 0.91, green: 0.20, blue: 0.47, alpha: 1).cgColor,
+                    UIColor(red: 0.48, green: 0.20, blue: 0.80, alpha: 1).cgColor
+                ] as CFArray
+                let gradient = CGGradient(
+                    colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                    colors: colors,
+                    locations: [0, 0.52, 1]
+                )
+                if let gradient {
+                    context.drawLinearGradient(
+                        gradient,
+                        start: CGPoint(x: rect.minX, y: rect.minY),
+                        end: CGPoint(x: rect.maxX, y: rect.maxY),
+                        options: []
+                    )
+                }
+                context.restoreGState()
+            }
+            UIColor.white.setStroke()
+            UIColor.white.setFill()
+            let lineWidth = max(1, 2 * scale)
+            let body = UIBezierPath(
+                roundedRect: rect.insetBy(dx: 6 * scale, dy: 6 * scale),
+                cornerRadius: 5 * scale
+            )
+            body.lineWidth = lineWidth
+            body.stroke()
+
+            let lens = UIBezierPath(
+                ovalIn: CGRect(
+                    x: rect.midX - 4 * scale,
+                    y: rect.midY - 4 * scale,
+                    width: 8 * scale,
+                    height: 8 * scale
+                )
+            )
+            lens.lineWidth = lineWidth
+            lens.stroke()
+
+            UIBezierPath(
+                ovalIn: CGRect(
+                    x: rect.maxX - 10 * scale,
+                    y: rect.minY + 8 * scale,
+                    width: 3 * scale,
+                    height: 3 * scale
+                )
+            ).fill()
+        case .facebook:
+            UIColor(red: 0.09, green: 0.37, blue: 0.86, alpha: 1).setFill()
+            UIBezierPath(ovalIn: rect.insetBy(dx: 1 * scale, dy: 1 * scale))
+                .fill()
+            UIColor.white.setFill()
+            let logo = "f" as NSString
+            logo.draw(
+                in: rect.offsetBy(dx: 5 * scale, dy: -4 * scale),
+                withAttributes: [
+                    .font: UIFont.systemFont(
+                        ofSize: 32 * scale,
+                        weight: .heavy
+                    ),
+                    .foregroundColor: UIColor.white
+                ]
+            )
+        case .youtube:
+            UIColor(red: 1, green: 0, blue: 0, alpha: 1).setFill()
+            let body = UIBezierPath(
+                roundedRect: rect.insetBy(dx: 1 * scale, dy: 5 * scale),
+                cornerRadius: 6 * scale
+            )
+            body.fill()
+            UIColor.white.setFill()
+
+            let play = UIBezierPath()
+            play.move(
+                to: CGPoint(x: rect.midX - 4 * scale, y: rect.midY - 7 * scale)
+            )
+            play.addLine(
+                to: CGPoint(x: rect.midX - 4 * scale, y: rect.midY + 7 * scale)
+            )
+            play.addLine(to: CGPoint(x: rect.midX + 8 * scale, y: rect.midY))
+            play.close()
+            play.fill()
+        case .blog:
+            UIColor(red: 0.98, green: 0.45, blue: 0.05, alpha: 1).setFill()
+            let body = UIBezierPath(
+                roundedRect: rect.insetBy(dx: 1 * scale, dy: 1 * scale),
+                cornerRadius: 6 * scale
+            )
+            body.fill()
+
+            let logo = "B" as NSString
+            logo.draw(
+                in: rect.insetBy(dx: 6 * scale, dy: 2 * scale),
+                withAttributes: [
+                    .font: UIFont.systemFont(
+                        ofSize: 22 * scale,
+                        weight: .heavy
+                    ),
+                    .foregroundColor: UIColor.white
+                ]
+            )
+        case .other:
+            HanClipTheme.secondaryUIColor.setFill()
+            let body = UIBezierPath(
+                roundedRect: rect.insetBy(dx: 1 * scale, dy: 1 * scale),
+                cornerRadius: 6 * scale
+            )
+            body.fill()
+
+            let logo = "기타" as NSString
+            logo.draw(
+                in: rect.insetBy(dx: 4 * scale, dy: 7 * scale),
+                withAttributes: [
+                    .font: UIFont.systemFont(
+                        ofSize: 9 * scale,
+                        weight: .heavy
+                    ),
+                    .foregroundColor: UIColor.white
+                ]
+            )
+        }
+    }
 }
 
 private final class ExportSessionReference: @unchecked Sendable {
@@ -581,5 +1200,24 @@ private final class ExportSessionReference: @unchecked Sendable {
 
     init(_ value: AVAssetExportSession) {
         self.value = value
+    }
+}
+
+private extension UIColor {
+    convenience init?(hexString: String) {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") {
+            hex.removeFirst()
+        }
+        guard hex.count == 6,
+              let value = Int(hex, radix: 16)
+        else { return nil }
+
+        self.init(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }

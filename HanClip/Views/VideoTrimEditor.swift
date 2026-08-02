@@ -11,10 +11,13 @@ struct VideoTrimEditor: View {
     let totalDurationText: String
     let autoplayOnLoad: Bool
     let onAutoplayConsumed: () -> Void
+    @Binding var autoAdvanceEnabled: Bool
+    @Binding var autoAdvanceLoops: Bool
     let canGoPrevious: Bool
     let canGoNext: Bool
     let onPrevious: () -> Void
     let onNext: () -> Void
+    let onFirst: () -> Void
     let onDelete: () -> Void
     let onPreview: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -36,6 +39,11 @@ struct VideoTrimEditor: View {
     @State private var shouldAutoplayAfterNavigation = false
     @State private var selectionCenterMarkerTime: Double?
     @State private var showDeleteConfirmation = false
+    @State private var stillAutoAdvanceTask: Task<Void, Never>?
+    @State private var didAutoAdvanceCurrentClip = false
+    @State private var loopIconRotation = 0.0
+    @State private var shouldIgnoreNextAutoAdvanceTap = false
+    @State private var shouldIgnoreNextPlaybackTap = false
 
     private var sourceURL: URL? {
         switch clip.source {
@@ -88,12 +96,28 @@ struct VideoTrimEditor: View {
         .padding(.bottom, 16)
         .presentationDetents([.height(710)])
         .presentationDragIndicator(.visible)
-        .onAppear(perform: preparePlayer)
+        .onAppear {
+            preparePlayer()
+            updateLoopIconAnimation(autoAdvanceLoops)
+        }
         .onChange(of: clip.id) { _, _ in
             releasePlayer()
             playbackProgress = 0
             restartPlaybackAtSelectionStart = true
+            didAutoAdvanceCurrentClip = false
             preparePlayer()
+        }
+        .onChange(of: autoAdvanceEnabled) { _, isEnabled in
+            if isEnabled {
+                startAutoAdvanceForCurrentClip()
+            } else {
+                autoAdvanceLoops = false
+                stillAutoAdvanceTask?.cancel()
+                stillAutoAdvanceTask = nil
+            }
+        }
+        .onChange(of: autoAdvanceLoops) { _, isLooping in
+            updateLoopIconAnimation(isLooping)
         }
         .onDisappear(perform: releasePlayer)
         .onReceive(
@@ -269,8 +293,45 @@ struct VideoTrimEditor: View {
     private var header: some View {
         ZStack {
             HStack(spacing: 10) {
-                Text("\(currentPosition) / \(totalClipCount)")
-                    .font(.system(size: 18, weight: .semibold))
+                Button(action: toggleAutoAdvance) {
+                    HStack(spacing: 6) {
+                        if autoAdvanceEnabled {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 14, weight: .semibold))
+                                .rotationEffect(.degrees(loopIconRotation))
+                        }
+
+                        Text("\(currentPosition) / \(totalClipCount)")
+                            .font(.system(size: 18, weight: .semibold))
+                    }
+                    .foregroundStyle(
+                        autoAdvanceEnabled ? .white : HanClipTheme.text
+                    )
+                    .padding(.horizontal, autoAdvanceEnabled ? 10 : 0)
+                    .frame(height: 30)
+                    .background {
+                        if autoAdvanceEnabled {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(HanClipTheme.primary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.45)
+                        .onEnded { _ in
+                            shouldIgnoreNextAutoAdvanceTap = true
+                            toggleAutoAdvanceLoop()
+                        }
+                )
+                .accessibilityLabel(
+                    autoAdvanceLoops
+                        ? "무한 자동 넘김 끄기"
+                        : autoAdvanceEnabled
+                            ? "자동 넘김 끄기"
+                            : "자동 넘김 켜기"
+                )
 
                 Spacer()
 
@@ -303,8 +364,29 @@ struct VideoTrimEditor: View {
                 .accessibilityLabel("Live Photo 사용 방식")
                 .accessibilityValue(clip.livePhotoMode.rawValue)
                 .accessibilityHint("포토와 라이브 모드를 전환합니다.")
+            } else {
+                currentMediaIcon
             }
         }
+    }
+
+    private var currentMediaIcon: some View {
+        Group {
+            if clip.isVideoSegmentChild {
+                Image(systemName: "movieclapper")
+                    .font(.system(size: 18, weight: .semibold))
+            } else if clip.isVideoClip {
+                FilmCameraIcon()
+                    .frame(width: 22, height: 18)
+            } else {
+                Image(systemName: "photo.fill")
+                    .font(.system(size: 18, weight: .semibold))
+            }
+        }
+        .foregroundStyle(HanClipTheme.primary)
+        .opacity(0.74)
+        .frame(width: 124, height: 28)
+        .accessibilityHidden(true)
     }
 
     private var nonVideoDurationText: String {
@@ -718,27 +800,23 @@ struct VideoTrimEditor: View {
 
     private var playbackControls: some View {
         HStack(spacing: 8) {
-            Button(action: togglePlayback) {
-                Image(
-                    systemName: isPlaying
-                        ? "pause.fill"
-                        : playbackProgress >= 0.999
-                            ? "arrow.counterclockwise"
-                            : "play.fill"
-                )
+            Button(action: handlePlaybackButtonTap) {
+                Image(systemName: playbackButtonSystemImage)
                 .font(.system(size: 16, weight: .bold))
+                .rotationEffect(.degrees(autoAdvanceLoops ? loopIconRotation : 0))
                 .foregroundStyle(.white)
                 .frame(width: 40, height: 40)
                 .background(HanClipTheme.primary, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(
-                isPlaying
-                    ? "일시 정지"
-                    : playbackProgress >= 0.999
-                        ? "다시 재생"
-                        : "재생"
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45)
+                    .onEnded { _ in
+                        shouldIgnoreNextPlaybackTap = true
+                        toggleAutoAdvanceLoop()
+                    }
             )
+            .accessibilityLabel(playbackButtonAccessibilityLabel)
 
             Text(
                 playbackTimeText(
@@ -777,6 +855,32 @@ struct VideoTrimEditor: View {
         .frame(height: 44)
     }
 
+    private var playbackButtonSystemImage: String {
+        if autoAdvanceLoops {
+            return "arrow.triangle.2.circlepath"
+        }
+
+        if isPlaying {
+            return "pause.fill"
+        }
+
+        return playbackProgress >= 0.999
+            ? "arrow.counterclockwise"
+            : "play.fill"
+    }
+
+    private var playbackButtonAccessibilityLabel: String {
+        if autoAdvanceLoops {
+            return "무한 루프 끄기"
+        }
+
+        if isPlaying {
+            return "일시 정지"
+        }
+
+        return playbackProgress >= 0.999 ? "다시 재생" : "재생"
+    }
+
     private func playbackTimeText(_ seconds: Double) -> String {
         let tenths = max(Int((seconds * 10).rounded()), 0)
         let minutes = tenths / 600
@@ -810,7 +914,10 @@ struct VideoTrimEditor: View {
         initialTrimStart = clip.trimStart
         initialDuration = clip.duration
         selectionCenterMarkerTime = clip.audioPeakTime
-        guard hasPlayableMedia else { return }
+        guard hasPlayableMedia else {
+            startAutoAdvanceForCurrentClip()
+            return
+        }
         if let sourceURL {
             configurePlayer(with: sourceURL)
             return
@@ -828,6 +935,7 @@ struct VideoTrimEditor: View {
             onAutoplayConsumed()
             playFromSelectionStart()
         }
+        startAutoAdvanceForCurrentClip()
     }
 
     private func playFromSelectionStart() {
@@ -853,6 +961,8 @@ struct VideoTrimEditor: View {
         mediaLoadTask = nil
         audioAnalysisTask?.cancel()
         audioAnalysisTask = nil
+        stillAutoAdvanceTask?.cancel()
+        stillAutoAdvanceTask = nil
         pausePlayback()
         player.replaceCurrentItem(with: nil)
         if let temporaryLivePhotoURL {
@@ -919,6 +1029,8 @@ struct VideoTrimEditor: View {
             clip.photoDuration = defaultDuration
             clip.duration = defaultDuration
             releasePlayer()
+            didAutoAdvanceCurrentClip = false
+            startAutoAdvanceForCurrentClip()
             return
         }
 
@@ -926,6 +1038,7 @@ struct VideoTrimEditor: View {
         applyLivePhotoPlaybackWindow()
         playbackProgress = 0
         releasePlayer()
+        didAutoAdvanceCurrentClip = false
 
         if let sourceURL {
             configurePlayer(with: sourceURL)
@@ -954,6 +1067,20 @@ struct VideoTrimEditor: View {
         updatePlaybackBoundary()
         player.play()
         isPlaying = true
+    }
+
+    private func handlePlaybackButtonTap() {
+        if shouldIgnoreNextPlaybackTap {
+            shouldIgnoreNextPlaybackTap = false
+            return
+        }
+
+        if autoAdvanceLoops {
+            toggleAutoAdvanceLoop()
+            return
+        }
+
+        togglePlayback()
     }
 
     private func applyLivePhotoPlaybackWindow() {
@@ -990,6 +1117,8 @@ struct VideoTrimEditor: View {
         guard canGoPrevious else { return }
         shouldAutoplayAfterNavigation = true
         pausePlayback()
+        stillAutoAdvanceTask?.cancel()
+        stillAutoAdvanceTask = nil
         onPrevious()
     }
 
@@ -997,6 +1126,8 @@ struct VideoTrimEditor: View {
         guard canGoNext else { return }
         shouldAutoplayAfterNavigation = true
         pausePlayback()
+        stillAutoAdvanceTask?.cancel()
+        stillAutoAdvanceTask = nil
         onNext()
     }
 
@@ -1016,6 +1147,7 @@ struct VideoTrimEditor: View {
             }
             playbackProgress = 1
             restartPlaybackAtSelectionStart = true
+            advanceAfterCurrentClipIfNeeded()
             return
         }
 
@@ -1077,6 +1209,97 @@ struct VideoTrimEditor: View {
                 1,
                 max(0, (seconds - clip.trimStart) / clip.duration)
             )
+        }
+    }
+
+    private func toggleAutoAdvance() {
+        if shouldIgnoreNextAutoAdvanceTap {
+            shouldIgnoreNextAutoAdvanceTap = false
+            return
+        }
+        autoAdvanceEnabled.toggle()
+        didAutoAdvanceCurrentClip = false
+        if autoAdvanceEnabled {
+            startAutoAdvanceForCurrentClip()
+        } else {
+            stillAutoAdvanceTask?.cancel()
+            stillAutoAdvanceTask = nil
+            pausePlayback()
+        }
+    }
+
+    private func toggleAutoAdvanceLoop() {
+        autoAdvanceLoops.toggle()
+        autoAdvanceEnabled = autoAdvanceLoops || autoAdvanceEnabled
+        didAutoAdvanceCurrentClip = false
+        if autoAdvanceEnabled {
+            startAutoAdvanceForCurrentClip()
+        }
+    }
+
+    private func updateLoopIconAnimation(_ isLooping: Bool) {
+        if isLooping {
+            loopIconRotation = 0
+            withAnimation(
+                .linear(duration: 1.0)
+                    .repeatForever(autoreverses: false)
+            ) {
+                loopIconRotation = 360
+            }
+        } else {
+            withAnimation(.linear(duration: 0.12)) {
+                loopIconRotation = 0
+            }
+        }
+    }
+
+    private func startAutoAdvanceForCurrentClip() {
+        stillAutoAdvanceTask?.cancel()
+        stillAutoAdvanceTask = nil
+        guard autoAdvanceEnabled else { return }
+
+        if hasPlayableMedia {
+            playFromSelectionStart()
+            return
+        }
+
+        stillAutoAdvanceTask = Task {
+            let waitTime = max(0.5, clip.duration)
+            try? await Task.sleep(
+                for: .milliseconds(Int((waitTime * 1000).rounded()))
+            )
+            await MainActor.run {
+                guard autoAdvanceEnabled, !hasPlayableMedia else { return }
+                advanceAfterCurrentClipIfNeeded()
+            }
+        }
+    }
+
+    private func advanceAfterCurrentClipIfNeeded() {
+        guard autoAdvanceEnabled, !didAutoAdvanceCurrentClip else { return }
+        didAutoAdvanceCurrentClip = true
+
+        if canGoNext {
+            navigateToNext()
+        } else if autoAdvanceLoops {
+            guard totalClipCount > 1 else {
+                didAutoAdvanceCurrentClip = false
+                shouldAutoplayAfterNavigation = false
+                if hasPlayableMedia {
+                    playFromSelectionStart()
+                } else {
+                    startAutoAdvanceForCurrentClip()
+                }
+                return
+            }
+
+            shouldAutoplayAfterNavigation = true
+            pausePlayback()
+            stillAutoAdvanceTask?.cancel()
+            stillAutoAdvanceTask = nil
+            onFirst()
+        } else {
+            autoAdvanceEnabled = false
         }
     }
 

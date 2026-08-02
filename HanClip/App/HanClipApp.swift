@@ -395,6 +395,7 @@ struct HanClipApp: App {
                 .foregroundStyle(HanClipTheme.text)
                 .background(HanClipTheme.backgroundGradient)
                 .onAppear {
+                    _ = FontImportStore.importedFontNames
                     UIApplication.shared.isIdleTimerDisabled = true
                 }
                 .onChange(of: scenePhase) { _, phase in

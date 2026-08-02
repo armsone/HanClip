@@ -22,6 +22,7 @@ final class EditorViewModel: ObservableObject {
     }
     @Published var outputAspectRatio: OutputAspectRatio? =
         EditorViewModel.storedDefaultAspectRatio()
+    @Published var textOverlaySettings = WatermarkSettings.projectDefault()
     @Published private(set) var automaticSourceSize = CGSize(
         width: 1,
         height: 1
@@ -406,6 +407,7 @@ final class EditorViewModel: ObservableObject {
                 defaultDuration: defaultDuration,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
                 activeProjectID: activeProjectID
             )
             reset()
@@ -432,6 +434,7 @@ final class EditorViewModel: ObservableObject {
                     defaultDuration: defaultDuration,
                     outputAspectRatio: outputAspectRatio,
                     automaticSourceSize: automaticSourceSize,
+                    textOverlaySettings: textOverlaySettings,
                     activeProjectID: activeProjectID
                 )
                 try Task.checkCancellation()
@@ -444,7 +447,9 @@ final class EditorViewModel: ObservableObject {
                 progressMessage = "미리보기 영상을 만드는 중…"
                 let output = try await VideoComposer().compose(
                     items: compositionItems,
-                    renderSize: outputRenderSize
+                    renderSize: outputRenderSize,
+                    watermarkSettings: textOverlaySettings
+                        .withCopyrightSettings(WatermarkSettings.stored())
                 ) { [self] progress in
                     await updatePreviewProgress(progress)
                 }
@@ -510,6 +515,7 @@ final class EditorViewModel: ObservableObject {
         clips = []
         defaultDuration = Self.storedDefaultDuration()
         outputAspectRatio = Self.storedDefaultAspectRatio()
+        textOverlaySettings = WatermarkSettings.projectDefault()
         automaticSourceSize = CGSize(width: 1, height: 1)
         isPickerPresented = false
         isFileImporterPresented = false
@@ -526,6 +532,7 @@ final class EditorViewModel: ObservableObject {
             defaultDuration = project.defaultDuration
             outputAspectRatio = project.outputAspectRatio
             automaticSourceSize = project.automaticSourceSize
+            textOverlaySettings = project.textOverlaySettings
             exportedURL = nil
             showPreview = false
             activeProjectID = project.id
@@ -618,6 +625,7 @@ final class EditorViewModel: ObservableObject {
                 defaultDuration: defaultDuration,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
                 activeProjectID: activeProjectID
             )
             reset()
@@ -869,6 +877,7 @@ final class EditorViewModel: ObservableObject {
                 defaultDuration: defaultDuration,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
                 activeProjectID: activeProjectID
             )
         }

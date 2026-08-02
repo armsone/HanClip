@@ -21,6 +21,7 @@ struct LoadedProject {
     let defaultDuration: Double
     let outputAspectRatio: OutputAspectRatio?
     let automaticSourceSize: CGSize
+    let textOverlaySettings: WatermarkSettings
 }
 
 enum ProjectStore {
@@ -58,6 +59,7 @@ enum ProjectStore {
         defaultDuration: Double,
         outputAspectRatio: OutputAspectRatio?,
         automaticSourceSize: CGSize,
+        textOverlaySettings: WatermarkSettings,
         activeProjectID: UUID?
     ) throws -> UUID {
         let root = try projectsRoot()
@@ -148,6 +150,7 @@ enum ProjectStore {
                 outputAspectRatio: outputAspectRatio?.rawValue,
                 automaticSourceWidth: automaticSourceSize.width,
                 automaticSourceHeight: automaticSourceSize.height,
+                textOverlaySettings: textOverlaySettings.withLogoEnabled(false),
                 clips: storedClips,
                 renderedVideoFilename: renderedVideoFilename,
                 renderedVideoByteCount: renderedVideoByteCount
@@ -279,7 +282,9 @@ enum ProjectStore {
             automaticSourceSize: CGSize(
                 width: stored.automaticSourceWidth,
                 height: stored.automaticSourceHeight
-            )
+            ),
+            textOverlaySettings: stored.textOverlaySettings
+                ?? WatermarkSettings.projectDefault()
         )
     }
 
@@ -584,6 +589,7 @@ private struct StoredProject: Codable {
     let outputAspectRatio: String?
     let automaticSourceWidth: Double
     let automaticSourceHeight: Double
+    let textOverlaySettings: WatermarkSettings?
     let clips: [StoredClip]
     var renderedVideoFilename: String?
     var renderedVideoByteCount: Int64?

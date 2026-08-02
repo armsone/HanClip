@@ -98,19 +98,7 @@ struct ClipRow: View {
                             if clip.isVideoClip {
                                 HStack(spacing: 7) {
                                     Button(action: onSelect) {
-                                        FilmCameraIcon()
-                                            .frame(width: 21, height: 17)
-                                            .opacity(0.60)
-                                            .foregroundStyle(
-                                                HanClipTheme.defaultTextBlack
-                                            )
-                                            .frame(
-                                                width: 28,
-                                                height: 24,
-                                                alignment: .leading
-                                            )
-                                            .offset(x: 10)
-                                            .contentShape(Rectangle())
+                                        videoMediaIcon
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityLabel("영상 클립 에디터 열기")
@@ -223,9 +211,10 @@ struct ClipRow: View {
     private var primaryTimeText: String {
         if clip.isVideoSegmentParent {
             return String(
-                format: "%@ / 전체 %@",
+                format: "%@ / 전체 %@ / %d개",
                 durationText(childSegmentDuration),
-                totalSourceDurationText
+                totalSourceDurationText,
+                childSegmentCount
             )
         }
         if clip.isLivePhoto, clip.livePhotoMode == .motion {
@@ -296,6 +285,27 @@ struct ClipRow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+    }
+
+    private var videoMediaIcon: some View {
+        Group {
+            if clip.isVideoSegmentChild {
+                Image(systemName: "movieclapper")
+                    .font(.system(size: 18, weight: .semibold))
+            } else {
+                FilmCameraIcon()
+                    .frame(width: 21, height: 17)
+            }
+        }
+        .opacity(0.60)
+        .foregroundStyle(HanClipTheme.defaultTextBlack)
+        .frame(
+            width: 28,
+            height: 24,
+            alignment: .leading
+        )
+        .offset(x: 10)
+        .contentShape(Rectangle())
     }
 }
 
@@ -461,30 +471,37 @@ struct LivePhotoModeSegmentedControl: View {
 
     var body: some View {
         GeometryReader { proxy in
-            HStack(spacing: 0) {
-                segment(
-                    mode: .still,
-                    title: "포토",
-                    systemImage: "photo"
-                )
+            ZStack {
+                HStack(spacing: 0) {
+                    segment(
+                        mode: .still,
+                        title: "포토",
+                        systemImage: "photo"
+                    )
 
-                segment(
-                    mode: .motion,
-                    title: "Live",
-                    systemImage: "livephoto"
-                )
+                    segment(
+                        mode: .motion,
+                        title: "Live",
+                        systemImage: "livephoto"
+                    )
+                }
+                .padding(2)
             }
-            .contentShape(Rectangle())
-            .gesture(
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .contentShape(RoundedRectangle(cornerRadius: height / 2))
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
                     .onEnded { value in
+                        if abs(value.translation.width) < 1 {
+                            mode = mode == .still ? .motion : .still
+                            return
+                        }
                         mode = value.location.x < proxy.size.width / 2
                             ? .still
                             : .motion
                     }
             )
         }
-        .padding(2)
         .frame(width: width, height: height)
         .background(
             tint.opacity(0.12),
@@ -512,7 +529,7 @@ struct LivePhotoModeSegmentedControl: View {
             Text(title)
                 .font(
                     .system(
-                        size: height <= 24 ? 10 : 11,
+                        size: height <= 24 ? 10 : 12,
                         weight: .semibold
                     )
                 )
@@ -541,30 +558,37 @@ struct VideoSegmentModeSegmentedControl: View {
 
     var body: some View {
         GeometryReader { proxy in
-            HStack(spacing: 0) {
-                segment(
-                    mode: .single,
-                    title: VideoSegmentMode.single.rawValue,
-                    systemImage: "film"
-                )
+            ZStack {
+                HStack(spacing: 0) {
+                    segment(
+                        mode: .single,
+                        title: VideoSegmentMode.single.rawValue,
+                        systemImage: "film"
+                    )
 
-                segment(
-                    mode: .multiple,
-                    title: VideoSegmentMode.multiple.rawValue,
-                    systemImage: "film.stack"
-                )
+                    segment(
+                        mode: .multiple,
+                        title: VideoSegmentMode.multiple.rawValue,
+                        systemImage: "film.stack"
+                    )
+                }
+                .padding(2)
             }
-            .contentShape(Rectangle())
-            .gesture(
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .contentShape(RoundedRectangle(cornerRadius: height / 2))
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
                     .onEnded { value in
+                        if abs(value.translation.width) < 1 {
+                            mode = mode == .single ? .multiple : .single
+                            return
+                        }
                         mode = value.location.x < proxy.size.width / 2
                             ? .single
                             : .multiple
                     }
             )
         }
-        .padding(2)
         .frame(width: width, height: height)
         .background(
             tint.opacity(0.12),
