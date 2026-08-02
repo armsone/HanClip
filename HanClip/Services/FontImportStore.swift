@@ -1,12 +1,18 @@
 import CoreText
 import Foundation
+import UIKit
 
 enum FontImportStore {
     private static let folderName = "ImportedFonts"
     private static let supportedExtensions = Set(["ttf", "otf", "ttc"])
+    private static let allowedBundledFontFilenames = Set([
+        "NanumGothic-Regular.ttf",
+        "KakaoBigSans-Regular.ttf"
+    ])
+    private static var registeredFontPaths = Set<String>()
 
     static var importedFontNames: [String] {
-        Array(Set(bundledFontNames + userFontNames)).sorted()
+        bundledFontNames
     }
 
     static var bundledFontNames: [String] {
@@ -20,15 +26,14 @@ enum FontImportStore {
     @discardableResult
     static func registerBundledFonts() -> [String] {
         bundledFontFileURLs().flatMap { url in
-            registerFont(at: url)
-            return fontNames(in: url)
+            fontNames(in: url)
         }
     }
 
     @discardableResult
     static func registerPersistedFonts() -> [String] {
         fontFileURLs().flatMap { url in
-            registerFont(at: url)
+            registerFontIfNeeded(at: url)
             return fontNames(in: url)
         }
     }
@@ -59,20 +64,31 @@ enum FontImportStore {
                 at: sourceURL,
                 to: destination
             )
-            registerFont(at: destination)
+            registerFontIfNeeded(at: destination)
             importedNames.append(contentsOf: fontNames(in: destination))
         }
 
         return Array(Set(importedNames)).sorted()
     }
 
-    private static func registerFont(at url: URL) {
+    private static func registerFontIfNeeded(at url: URL) {
+        let path = url.standardizedFileURL.path
+        guard !registeredFontPaths.contains(path) else { return }
+
+        let names = fontNames(in: url)
+        if !names.isEmpty,
+           names.allSatisfy({ UIFont(name: $0, size: 1) != nil }) {
+            registeredFontPaths.insert(path)
+            return
+        }
+
         var error: Unmanaged<CFError>?
         CTFontManagerRegisterFontsForURL(
             url as CFURL,
             .process,
             &error
         )
+        registeredFontPaths.insert(path)
     }
 
     private static func fontNames(in url: URL) -> [String] {
@@ -112,6 +128,9 @@ enum FontImportStore {
                 forResourcesWithExtension: ext,
                 subdirectory: nil
             ) ?? []
+        }
+        .filter {
+            allowedBundledFontFilenames.contains($0.lastPathComponent)
         }
     }
 

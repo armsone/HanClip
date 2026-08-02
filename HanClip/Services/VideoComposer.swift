@@ -777,45 +777,18 @@ final class VideoComposer {
         inset: CGFloat,
         yOffset: CGFloat = 0
     ) -> CGAffineTransform {
-        let leadingX = inset
-        let centerX = (renderSize.width - watermarkSize.width) / 2
-        let trailingX = renderSize.width - watermarkSize.width - inset
-        let topY = renderSize.height - watermarkSize.height - inset
-        let middleY = (renderSize.height - watermarkSize.height) / 2
-        let bottomY = inset
-
-        let x: CGFloat
-        let y: CGFloat
-
-        switch position {
-        case .topLeading:
-            x = leadingX
-            y = topY
-        case .topCenter:
-            x = centerX
-            y = topY
-        case .topTrailing:
-            x = trailingX
-            y = topY
-        case .middleLeading:
-            x = leadingX
-            y = middleY
-        case .center:
-            x = centerX
-            y = middleY
-        case .middleTrailing:
-            x = trailingX
-            y = middleY
-        case .bottomLeading:
-            x = leadingX
-            y = bottomY
-        case .bottomCenter:
-            x = centerX
-            y = bottomY
-        case .bottomTrailing:
-            x = trailingX
-            y = bottomY
-        }
+        let availableWidth = max(
+            0,
+            renderSize.width - watermarkSize.width - inset * 2
+        )
+        let availableHeight = max(
+            0,
+            renderSize.height - watermarkSize.height - inset * 2
+        )
+        let x = inset + availableWidth
+            * CGFloat(position.horizontalFraction)
+        let y = inset + availableHeight
+            * CGFloat(1 - position.verticalFractionFromTop)
 
         return CGAffineTransform(translationX: x, y: y + yOffset)
     }
@@ -887,12 +860,12 @@ final class VideoComposer {
     private static func textAlignment(
         for position: WatermarkPosition
     ) -> NSTextAlignment {
-        switch position {
-        case .topLeading, .middleLeading, .bottomLeading:
+        switch position.gridColumn {
+        case 0, 1:
             return .left
-        case .topCenter, .center, .bottomCenter:
+        case 2:
             return .center
-        case .topTrailing, .middleTrailing, .bottomTrailing:
+        default:
             return .right
         }
     }
@@ -902,7 +875,10 @@ final class VideoComposer {
         renderSize: CGSize
     ) -> UIImage {
         guard settings.platform != .hanclip else {
-            return Self.logoWatermarkImage(renderSize: renderSize)
+            return Self.logoWatermarkImage(
+                settings: settings,
+                renderSize: renderSize
+            )
         }
 
         let scale = max(1, min(renderSize.width, renderSize.height) / 390)
@@ -910,8 +886,9 @@ final class VideoComposer {
         let fontSize = 14 * scale
         let gap = 5 * scale
         let padding = 3 * scale
+        let defaultText = settings.platform.title
         let textValue = settings.displayAddress.isEmpty
-            ? settings.platform.title
+            ? defaultText
             : settings.displayAddress
         let text = textValue as NSString
         let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
@@ -956,7 +933,8 @@ final class VideoComposer {
             Self.drawWatermarkPlatformLogo(
                 settings.platform,
                 in: iconRect,
-                scale: scale
+                scale: scale,
+                settings: settings
             )
             text.draw(
                 in: textRect,
@@ -971,7 +949,10 @@ final class VideoComposer {
         }
     }
 
-    private static func logoWatermarkImage(renderSize: CGSize) -> UIImage {
+    private static func logoWatermarkImage(
+        settings: WatermarkSettings,
+        renderSize: CGSize
+    ) -> UIImage {
         let scale = max(1, min(renderSize.width, renderSize.height) / 390)
         let iconSize = 24 * scale
         let fontSize = 14 * scale
@@ -1007,18 +988,29 @@ final class VideoComposer {
             )
 
             if let logo = UIImage(named: "LogoMarkV2") {
-                HanClipTheme.primaryUIColor.setFill()
-                logo.withRenderingMode(.alwaysTemplate).draw(in: iconRect)
+                if let tintColor = Self.copyrightIconTintColor(for: settings) {
+                    Self.drawImageAspectFit(
+                        logo,
+                        in: iconRect,
+                        tintColor: tintColor
+                    )
+                } else {
+                    Self.drawImageAspectFit(logo, in: iconRect)
+                }
             }
 
             text.draw(
                 in: textRect,
                 withAttributes: [
                     .font: font,
-                    .foregroundColor: UIColor.white,
+                    .foregroundColor:
+                        UIColor(hexString: settings.copyrightTextColorHex)
+                        ?? HanClipTheme.primaryUIColor,
                     .shadow: Self.watermarkShadow(
                         enabled: true,
-                        color: HanClipTheme.primaryUIColor,
+                        color: UIColor(
+                            hexString: settings.copyrightShadowColorHex
+                        ) ?? HanClipTheme.secondaryUIColor,
                         scale: scale
                     ) as Any
                 ]
@@ -1043,17 +1035,53 @@ final class VideoComposer {
     private static func drawWatermarkPlatformLogo(
         _ platform: WatermarkPlatform,
         in rect: CGRect,
-        scale: CGFloat
+        scale: CGFloat,
+        settings: WatermarkSettings
     ) {
-        UIColor.white.setStroke()
-        UIColor.white.setFill()
+        if platform == .custom,
+           !settings.customCopyrightIconPath.isEmpty,
+           let image = UIImage(contentsOfFile: settings.customCopyrightIconPath) {
+            let drawRect = rect.insetBy(dx: 1 * scale, dy: 1 * scale)
+            if let tintColor = Self.copyrightIconTintColor(for: settings) {
+                Self.drawImageAspectFit(
+                    image,
+                    in: drawRect,
+                    tintColor: tintColor
+                )
+            } else {
+                Self.drawImageAspectFit(image, in: drawRect)
+            }
+            return
+        }
+
+        if let imageName = copyrightPlatformImageName(for: platform),
+           let image = UIImage(named: imageName) {
+            let drawRect = rect.insetBy(dx: 1 * scale, dy: 1 * scale)
+            if let tintColor = Self.copyrightIconTintColor(for: settings) {
+                Self.drawImageAspectFit(
+                    image,
+                    in: drawRect,
+                    tintColor: tintColor
+                )
+            } else {
+                Self.drawImageAspectFit(image, in: drawRect)
+            }
+            return
+        }
 
         switch platform {
         case .hanclip:
             if let logo = UIImage(named: "LogoMarkV2") {
-                HanClipTheme.primaryUIColor.setFill()
                 let markRect = rect.insetBy(dx: 1 * scale, dy: 1 * scale)
-                logo.withRenderingMode(.alwaysTemplate).draw(in: markRect)
+                if let tintColor = Self.copyrightIconTintColor(for: settings) {
+                    Self.drawImageAspectFit(
+                        logo,
+                        in: markRect,
+                        tintColor: tintColor
+                    )
+                } else {
+                    Self.drawImageAspectFit(logo, in: markRect)
+                }
             } else {
                 HanClipTheme.primaryUIColor.setFill()
                 UIBezierPath(
@@ -1172,25 +1200,63 @@ final class VideoComposer {
                     .foregroundColor: UIColor.white
                 ]
             )
-        case .other:
-            HanClipTheme.secondaryUIColor.setFill()
-            let body = UIBezierPath(
-                roundedRect: rect.insetBy(dx: 1 * scale, dy: 1 * scale),
-                cornerRadius: 6 * scale
-            )
-            body.fill()
+        case .kakaoTalk, .x, .phone, .homepage, .custom:
+            break
+        }
+    }
 
-            let logo = "기타" as NSString
-            logo.draw(
-                in: rect.insetBy(dx: 4 * scale, dy: 7 * scale),
-                withAttributes: [
-                    .font: UIFont.systemFont(
-                        ofSize: 9 * scale,
-                        weight: .heavy
-                    ),
-                    .foregroundColor: UIColor.white
-                ]
-            )
+    private static func copyrightIconTintColor(
+        for settings: WatermarkSettings
+    ) -> UIColor? {
+        nil
+    }
+
+    private static func copyrightPlatformImageName(
+        for platform: WatermarkPlatform
+    ) -> String? {
+        switch platform {
+        case .instagram:
+            return "CopyrightInstagram"
+        case .facebook:
+            return "CopyrightFacebook"
+        case .youtube:
+            return "CopyrightYouTube"
+        case .blog:
+            return "CopyrightBlog"
+        case .kakaoTalk:
+            return "CopyrightKakaoTalk"
+        case .x:
+            return "CopyrightX"
+        case .phone:
+            return "CopyrightTelephone"
+        case .homepage:
+            return "CopyrightHomepage"
+        case .custom:
+            return "CopyrightCustom"
+        case .hanclip:
+            return nil
+        }
+    }
+
+    private static func drawImageAspectFit(
+        _ image: UIImage,
+        in rect: CGRect,
+        tintColor: UIColor? = nil
+    ) {
+        let fitRect = AVMakeRect(aspectRatio: image.size, insideRect: rect)
+        if let tintColor {
+            guard let context = UIGraphicsGetCurrentContext() else {
+                image.draw(in: fitRect)
+                return
+            }
+            context.saveGState()
+            image.draw(in: fitRect)
+            context.setBlendMode(.sourceIn)
+            tintColor.setFill()
+            context.fill(fitRect)
+            context.restoreGState()
+        } else {
+            image.draw(in: fitRect)
         }
     }
 }

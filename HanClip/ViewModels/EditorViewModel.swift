@@ -130,7 +130,15 @@ final class EditorViewModel: ObservableObject {
     }
 
     var renderableClips: [ClipItem] {
-        clips.filter(\.isRenderableClip)
+        clips.filter { clip in
+            guard clip.isRenderableClip else { return false }
+            guard clip.isVideoSegmentChild else { return true }
+            return isActiveVideoSegmentChild(clip)
+        }
+    }
+
+    func shouldDisplayClip(_ clip: ClipItem) -> Bool {
+        !clip.isVideoSegmentChild || isActiveVideoSegmentChild(clip)
     }
 
     func childSegmentCount(for parentID: UUID) -> Int {
@@ -152,7 +160,8 @@ final class EditorViewModel: ObservableObject {
         let sourceDuration = clip.sourceDuration ?? clip.duration
         return normalizedPeakTimes(
             for: clip,
-            sourceDuration: sourceDuration
+            sourceDuration: sourceDuration,
+            selectedDuration: min(defaultDuration, sourceDuration)
         ).count > 1
     }
 
@@ -251,8 +260,18 @@ final class EditorViewModel: ObservableObject {
             automaticSourceSize = first.sourcePixelSize
             outputAspectRatio = Self.storedDefaultAspectRatio()
         }
-        clips.append(contentsOf: newItems.map { item in
-            var adjusted = item
+        clips.append(contentsOf: newItems.compactMap { item in
+            let stableItem: ClipItem
+            do {
+                stableItem = try item.replacingSource(
+                    WorkingClipSourceStore.persist(item.source)
+                )
+            } catch {
+                alertMessage = "가져온 원본 파일을 보관할 수 없습니다."
+                return nil
+            }
+
+            var adjusted = stableItem
             if item.mediaKind == .photo
                 || (item.isLivePhoto && item.livePhotoMode == .still) {
                 adjusted.duration = defaultDuration
@@ -290,6 +309,29 @@ final class EditorViewModel: ObservableObject {
 
     func applyDefaultDurationToAll() {
         for index in clips.indices {
+            if clips[index].isLivePhoto {
+                if clips[index].livePhotoMode == .still {
+                    clips[index].photoDuration = defaultDuration
+                    clips[index].duration = defaultDuration
+                    clips[index].trimStart = 0
+                    continue
+                }
+
+                let sourceDuration = clips[index].sourceDuration
+                    ?? clips[index].livePhotoDuration
+                    ?? clips[index].duration
+                let selectedDuration = min(defaultDuration, sourceDuration)
+                clips[index].sourceDuration = sourceDuration
+                clips[index].livePhotoDuration = sourceDuration
+                clips[index].duration = selectedDuration
+                clips[index].photoDuration = selectedDuration
+                clips[index].trimStart = max(
+                    0,
+                    (sourceDuration - selectedDuration) / 2
+                )
+                continue
+            }
+
             if clips[index].mediaKind == .video {
                 let sourceDuration = clips[index].sourceDuration
                     ?? clips[index].duration
@@ -330,13 +372,31 @@ final class EditorViewModel: ObservableObject {
     }
 
     func selectFullRangeForAllVideoClips() {
-        for index in clips.indices
-        where clips[index].mediaKind == .video {
-            let sourceDuration = clips[index].sourceDuration
-                ?? clips[index].duration
-            clips[index].trimStart = 0
-            clips[index].duration = sourceDuration
-            clips[index].photoDuration = sourceDuration
+        for index in clips.indices where
+            !clips[index].isVideoSegmentChild {
+            if clips[index].mediaKind == .video {
+                let sourceDuration = clips[index].sourceDuration
+                    ?? clips[index].duration
+                clips[index].videoSegmentMode = .single
+                clips[index].isVideoSegmentParent = false
+                clips[index].trimStart = 0
+                clips[index].duration = sourceDuration
+                clips[index].photoDuration = sourceDuration
+            } else if clips[index].isLivePhoto {
+                let sourceDuration = clips[index].sourceDuration
+                    ?? clips[index].livePhotoDuration
+                    ?? clips[index].duration
+                clips[index].livePhotoMode = .motion
+                clips[index].sourceDuration = sourceDuration
+                clips[index].livePhotoDuration = sourceDuration
+                clips[index].trimStart = 0
+                clips[index].duration = sourceDuration
+                clips[index].photoDuration = sourceDuration
+            } else {
+                clips[index].trimStart = 0
+                clips[index].duration = defaultDuration
+                clips[index].photoDuration = defaultDuration
+            }
         }
     }
 
@@ -353,8 +413,26 @@ final class EditorViewModel: ObservableObject {
         ids.forEach(removeClip)
     }
 
-    func moveClips(from offsets: IndexSet, to destination: Int) {
-        clips.move(fromOffsets: offsets, toOffset: destination)
+    func moveVideoSegmentChild(draggedID: UUID, targetID: UUID) {
+        guard draggedID != targetID,
+              let sourceIndex = clips.firstIndex(where: {
+                  $0.id == draggedID
+              }),
+              let targetIndex = clips.firstIndex(where: {
+                  $0.id == targetID
+              }),
+              clips[sourceIndex].isVideoSegmentChild,
+              clips[targetIndex].isVideoSegmentChild,
+              clips[sourceIndex].videoSegmentParentID
+                  == clips[targetIndex].videoSegmentParentID
+        else { return }
+
+        clips.move(
+            fromOffsets: IndexSet(integer: sourceIndex),
+            toOffset: targetIndex > sourceIndex
+                ? targetIndex + 1
+                : targetIndex
+        )
     }
 
     func reset() {
@@ -419,12 +497,11 @@ final class EditorViewModel: ObservableObject {
     }
 
     func saveProjectAndOpenPreview() {
-        let compositionItems = renderableClips
-        guard !compositionItems.isEmpty, !isExporting else { return }
+        guard !renderableClips.isEmpty, !isExporting else { return }
         isExporting = true
         isPreviewRendering = true
         previewProgress = 0
-        previewThumbnail = compositionItems.first?.thumbnail
+        previewThumbnail = renderableClips.first?.thumbnail
         progressMessage = "프로젝트를 저장하는 중…"
 
         previewTask = Task {
@@ -438,11 +515,20 @@ final class EditorViewModel: ObservableObject {
                     activeProjectID: activeProjectID
                 )
                 try Task.checkCancellation()
+                let savedProject = try ProjectStore.load(id: savedID)
+                clips = savedProject.clips
+                defaultDuration = savedProject.defaultDuration
+                outputAspectRatio = savedProject.outputAspectRatio
+                automaticSourceSize = savedProject.automaticSourceSize
+                textOverlaySettings = savedProject.textOverlaySettings
                 reloadProjects()
                 activeProjectID = savedProjects.contains {
                     $0.id == savedID
                 } ? savedID : nil
 
+                let compositionItems = savedProject.clips.filter(
+                    \.isRenderableClip
+                )
                 previewProgress = 0.10
                 progressMessage = "미리보기 영상을 만드는 중…"
                 let output = try await VideoComposer().compose(
@@ -513,6 +599,7 @@ final class EditorViewModel: ObservableObject {
 
     private func releaseEditingMemory() {
         clips = []
+        WorkingClipSourceStore.clear()
         defaultDuration = Self.storedDefaultDuration()
         outputAspectRatio = Self.storedDefaultAspectRatio()
         textOverlaySettings = WatermarkSettings.projectDefault()
@@ -1020,14 +1107,17 @@ final class EditorViewModel: ObservableObject {
         guard mode == .single || canUseMultipleVideoSegments(for: id) else {
             clips[index].videoSegmentMode = .single
             clips[index].isVideoSegmentParent = false
-            clips.removeAll { $0.videoSegmentParentID == id }
             return
         }
 
         clips[index].videoSegmentMode = mode
         guard mode == .multiple else {
             clips[index].isVideoSegmentParent = false
-            clips.removeAll { $0.videoSegmentParentID == id }
+            return
+        }
+
+        if clips.contains(where: { $0.videoSegmentParentID == id }) {
+            clips[index].isVideoSegmentParent = true
             return
         }
 
@@ -1036,7 +1126,11 @@ final class EditorViewModel: ObservableObject {
             ?? sourceClip.duration
         let peaks = normalizedPeakTimes(
             for: sourceClip,
-            sourceDuration: sourceDuration
+            sourceDuration: sourceDuration,
+            selectedDuration: segmentSelectionDuration(
+                for: sourceClip,
+                sourceDuration: sourceDuration
+            )
         )
         guard peaks.count > 1 else {
             reanalyzeAndSplitVideoClip(sourceClip)
@@ -1084,9 +1178,42 @@ final class EditorViewModel: ObservableObject {
         if let index = clips.firstIndex(where: { $0.id == id }) {
             clips[index].videoSegmentMode = .single
             clips[index].isVideoSegmentParent = false
-            clips.removeAll { $0.videoSegmentParentID == id }
         }
         alertMessage = "이 영상에서 나눌 수 있는 추가 사운드 피크를 찾지 못했습니다."
+    }
+
+    func resetVideoSegments(id: UUID) {
+        guard let index = clips.firstIndex(where: { $0.id == id }),
+              clips[index].mediaKind == .video,
+              !clips[index].isVideoSegmentChild
+        else { return }
+
+        let sourceClip = clips[index]
+        let sourceDuration = sourceClip.sourceDuration
+            ?? sourceClip.duration
+        let peaks = normalizedPeakTimes(
+            for: sourceClip,
+            sourceDuration: sourceDuration,
+            selectedDuration: segmentSelectionDuration(
+                for: sourceClip,
+                sourceDuration: sourceDuration
+            )
+        )
+        guard peaks.count > 1 else {
+            resetVideoSegmentModeAfterMissingPeaks(id: id)
+            return
+        }
+
+        splitVideoClip(at: index, sourceClip: sourceClip, peaks: peaks)
+    }
+
+    private func isActiveVideoSegmentChild(_ clip: ClipItem) -> Bool {
+        guard let parentID = clip.videoSegmentParentID,
+              let parent = clips.first(where: { $0.id == parentID })
+        else { return false }
+
+        return parent.isVideoSegmentParent
+            && parent.videoSegmentMode == .multiple
     }
 
     private func splitVideoClip(
@@ -1102,9 +1229,13 @@ final class EditorViewModel: ObservableObject {
 
         clips[parentIndex].videoSegmentMode = .multiple
         clips[parentIndex].isVideoSegmentParent = true
+        let segmentDuration = segmentSelectionDuration(
+            for: sourceClip,
+            sourceDuration: sourceDuration
+        )
 
         let childClips = peaks.map { peak in
-            let duration = min(sourceClip.duration, sourceDuration)
+            let duration = min(segmentDuration, sourceDuration)
             let start = max(
                 0,
                 min(sourceDuration - duration, peak - duration / 2)
@@ -1162,7 +1293,8 @@ final class EditorViewModel: ObservableObject {
 
     private func normalizedPeakTimes(
         for clip: ClipItem,
-        sourceDuration: Double
+        sourceDuration: Double,
+        selectedDuration: Double? = nil
     ) -> [Double] {
         let fallbackPeak = clip.audioPeakTime
             ?? (clip.trimStart + clip.duration / 2)
@@ -1180,9 +1312,22 @@ final class EditorViewModel: ObservableObject {
         return VideoClipSegmenter.nonOverlappingPeaks(
             rankedPeaks: deduplicatedPeaks,
             sourceDuration: sourceDuration,
-            selectedDuration: min(clip.duration, sourceDuration),
+            selectedDuration: min(
+                selectedDuration ?? clip.duration,
+                sourceDuration
+            ),
             limit: VideoClipSegmenter.allowedSegmentCounts.upperBound
         )
+    }
+
+    private func segmentSelectionDuration(
+        for clip: ClipItem,
+        sourceDuration: Double
+    ) -> Double {
+        if clip.duration >= sourceDuration - 0.000_1 {
+            return min(defaultDuration, sourceDuration)
+        }
+        return min(clip.duration, sourceDuration)
     }
 
     private func refreshLivePhotoDurations() {
@@ -1351,4 +1496,67 @@ final class EditorViewModel: ObservableObject {
         }.value
     }
 
+}
+
+private enum WorkingClipSourceStore {
+    static func persist(_ source: ClipSource) throws -> ClipSource {
+        switch source {
+        case .photoAsset:
+            return source
+        case .imageFile(let url):
+            return .imageFile(try copy(url, fallbackExtension: "jpg"))
+        case .videoFile(let url):
+            return .videoFile(try copy(url, fallbackExtension: "mov"))
+        case .livePhotoFiles(let imageURL, let videoURL):
+            return .livePhotoFiles(
+                imageURL: try copy(imageURL, fallbackExtension: "jpg"),
+                videoURL: try copy(videoURL, fallbackExtension: "mov")
+            )
+        }
+    }
+
+    static func clear() {
+        guard let directory = try? directory(createIfNeeded: false),
+              FileManager.default.fileExists(atPath: directory.path)
+        else { return }
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private static func copy(
+        _ source: URL,
+        fallbackExtension: String
+    ) throws -> URL {
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        let ext = source.pathExtension.isEmpty
+            ? fallbackExtension
+            : source.pathExtension
+        let destination = try directory(createIfNeeded: true)
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(ext)
+        try FileManager.default.copyItem(at: source, to: destination)
+        return destination
+    }
+
+    private static func directory(createIfNeeded: Bool) throws -> URL {
+        guard let support = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let directory = support.appendingPathComponent(
+            "HanClipWorkingSources",
+            isDirectory: true
+        )
+        if createIfNeeded {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+        }
+        return directory
+    }
 }

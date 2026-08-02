@@ -191,6 +191,29 @@ struct ClipItem: Identifiable {
     var isRenderableClip: Bool {
         !isVideoSegmentParent
     }
+
+    func replacingSource(_ source: ClipSource) -> ClipItem {
+        ClipItem(
+            id: id,
+            source: source,
+            thumbnail: thumbnail,
+            duration: duration,
+            photoDuration: photoDuration,
+            livePhotoDuration: livePhotoDuration,
+            isLivePhoto: isLivePhoto,
+            livePhotoMode: livePhotoMode,
+            mediaKind: mediaKind,
+            sourceDuration: sourceDuration,
+            trimStart: trimStart,
+            audioWaveform: audioWaveform,
+            audioPeakTime: audioPeakTime,
+            audioPeakTimes: audioPeakTimes,
+            videoSegmentMode: videoSegmentMode,
+            isVideoSegmentParent: isVideoSegmentParent,
+            videoSegmentParentID: videoSegmentParentID,
+            sourcePixelSize: sourcePixelSize
+        )
+    }
 }
 
 enum VideoClipSegmenter {

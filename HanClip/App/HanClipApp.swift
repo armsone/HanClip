@@ -74,7 +74,7 @@ enum HanClipTheme {
         case .electricCobalt:
             return (
                 Color(uiColor: electricCobalt),
-                Color(uiColor: gray50)
+                Color(uiColor: electricCobaltSecondary)
             )
         }
     }
@@ -103,7 +103,7 @@ enum HanClipTheme {
         case .rosyBrown:
             return dimGray
         case .electricCobalt:
-            return gray50
+            return electricCobaltSecondary
         case .light:
             return golfSecondary
         case .dark:
@@ -146,15 +146,15 @@ enum HanClipTheme {
         alpha: 1
     )
     private static let rosyBrown = UIColor(
-        red: 201.0 / 255.0,
-        green: 132.0 / 255.0,
-        blue: 122.0 / 255.0,
+        red: 169.0 / 255.0,
+        green: 111.0 / 255.0,
+        blue: 103.0 / 255.0,
         alpha: 1
     )
     private static let dimGray = UIColor(
-        red: 74.0 / 255.0,
-        green: 85.0 / 255.0,
-        blue: 104.0 / 255.0,
+        red: 92.0 / 255.0,
+        green: 86.0 / 255.0,
+        blue: 80.0 / 255.0,
         alpha: 1
     )
     private static let electricCobalt = UIColor(
@@ -163,18 +163,42 @@ enum HanClipTheme {
         blue: 255.0 / 255.0,
         alpha: 1
     )
-    private static let gray50 = UIColor(
-        red: 128.0 / 255.0,
-        green: 128.0 / 255.0,
-        blue: 128.0 / 255.0,
+    private static let electricCobaltSecondary = UIColor(
+        red: 0.0 / 255.0,
+        green: 153.0 / 255.0,
+        blue: 255.0 / 255.0,
+        alpha: 1
+    )
+    private static let electricCobaltBackground = UIColor(
+        red: 240.0 / 255.0,
+        green: 248.0 / 255.0,
+        blue: 255.0 / 255.0,
+        alpha: 1
+    )
+    private static let electricCobaltBackgroundWithBlack = UIColor(
+        red: 222.0 / 255.0,
+        green: 239.0 / 255.0,
+        blue: 255.0 / 255.0,
+        alpha: 1
+    )
+    private static let electricCobaltText = UIColor(
+        red: 10.0 / 255.0,
+        green: 22.0 / 255.0,
+        blue: 62.0 / 255.0,
         alpha: 1
     )
     static var background: Color {
-        themedColor(light: .white, dark: darkBackground)
+        if selectedMode == .electricCobalt {
+            return Color(uiColor: electricCobaltBackground)
+        }
+        return themedColor(light: .white, dark: darkBackground)
     }
 
     static var backgroundWithBlack: Color {
-        themedColor(light: lightBackgroundWithBlack, dark: darkBackgroundWithBlack)
+        if selectedMode == .electricCobalt {
+            return Color(uiColor: electricCobaltBackgroundWithBlack)
+        }
+        return themedColor(light: lightBackgroundWithBlack, dark: darkBackgroundWithBlack)
     }
 
     static var backgroundGradient: LinearGradient {
@@ -186,11 +210,61 @@ enum HanClipTheme {
     }
 
     static var text: Color {
-        themedColor(light: black90, dark: .white)
+        if selectedMode == .electricCobalt {
+            return Color(uiColor: electricCobaltText)
+        }
+        return themedColor(light: black90, dark: .white)
     }
 
     static var defaultTextBlack: Color {
         Color(uiColor: black90)
+    }
+
+    static var primaryText: Color {
+        text.opacity(selectedMode == .dark ? 0.92 : 0.88)
+    }
+
+    static var secondaryText: Color {
+        text.opacity(selectedMode == .dark ? 0.66 : 0.58)
+    }
+
+    static var mutedIcon: Color {
+        text.opacity(selectedMode == .dark ? 0.52 : 0.46)
+    }
+
+    static var panelFill: Color {
+        if selectedMode == .electricCobalt {
+            return secondary.opacity(0.105)
+        }
+        return secondary.opacity(selectedMode == .dark ? 0.14 : 0.08)
+    }
+
+    static var panelStroke: Color {
+        if selectedMode == .electricCobalt {
+            return primary.opacity(0.22)
+        }
+        return primary.opacity(selectedMode == .dark ? 0.26 : 0.18)
+    }
+
+    static var groupFill: Color {
+        if selectedMode == .electricCobalt {
+            return secondary.opacity(0.18)
+        }
+        return secondary.opacity(selectedMode == .dark ? 0.24 : 0.16)
+    }
+
+    static var childFill: Color {
+        if selectedMode == .electricCobalt {
+            return secondary.opacity(0.075)
+        }
+        return secondary.opacity(selectedMode == .dark ? 0.11 : 0.045)
+    }
+
+    static var separator: Color {
+        if selectedMode == .electricCobalt {
+            return secondary.opacity(0.24)
+        }
+        return secondary.opacity(selectedMode == .dark ? 0.22 : 0.14)
     }
 
     private static let darkBackground = UIColor(
@@ -242,6 +316,7 @@ enum HanClipTheme {
 }
 
 enum HanClipQuickAction: Equatable {
+    case open
     case photo
     case calendar
     case files
@@ -251,6 +326,8 @@ enum HanClipQuickAction: Equatable {
 
         let actionName = url.host ?? url.pathComponents.dropFirst().first
         switch actionName {
+        case "open":
+            self = .open
         case "photo":
             self = .photo
         case "calendar":
@@ -273,6 +350,68 @@ enum HanClipQuickAction: Equatable {
         default:
             return nil
         }
+    }
+}
+
+struct HanClipGlassPanelModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    var fillOpacity: Double = 0.035
+    var strokeOpacity: Double = 0.22
+    var shadowOpacity: Double = 0.08
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(fillOpacity),
+                        HanClipTheme.secondary.opacity(fillOpacity)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: cornerRadius,
+                    style: .continuous
+                )
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.48),
+                            HanClipTheme.primary.opacity(strokeOpacity)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+            }
+            .shadow(
+                color: HanClipTheme.secondary.opacity(shadowOpacity),
+                radius: 12,
+                y: 6
+            )
+    }
+}
+
+extension View {
+    func hanClipGlassPanel(
+        cornerRadius: CGFloat,
+        fillOpacity: Double = 0.035,
+        strokeOpacity: Double = 0.22,
+        shadowOpacity: Double = 0.08
+    ) -> some View {
+        modifier(
+            HanClipGlassPanelModifier(
+                cornerRadius: cornerRadius,
+                fillOpacity: fillOpacity,
+                strokeOpacity: strokeOpacity,
+                shadowOpacity: shadowOpacity
+            )
+        )
     }
 }
 

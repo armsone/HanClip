@@ -2,38 +2,85 @@ import Foundation
 
 enum WatermarkPosition: String, CaseIterable, Codable, Identifiable {
     case topLeading
+    case topQuarterLeading
     case topCenter
+    case topQuarterTrailing
     case topTrailing
+    case upperLeading
+    case upperQuarterLeading
+    case upperCenter
+    case upperQuarterTrailing
+    case upperTrailing
     case middleLeading
+    case middleQuarterLeading
     case center
+    case middleQuarterTrailing
     case middleTrailing
+    case lowerLeading
+    case lowerQuarterLeading
+    case lowerCenter
+    case lowerQuarterTrailing
+    case lowerTrailing
     case bottomLeading
+    case bottomQuarterLeading
     case bottomCenter
+    case bottomQuarterTrailing
     case bottomTrailing
 
     var id: String { rawValue }
 
-    var title: String {
+    var gridColumn: Int {
         switch self {
-        case .topLeading:
-            return "왼쪽 위"
-        case .topCenter:
-            return "중앙 위"
-        case .topTrailing:
-            return "오른쪽 위"
-        case .middleLeading:
-            return "왼쪽 중앙"
-        case .center:
-            return "정중앙"
-        case .middleTrailing:
-            return "오른쪽 중앙"
-        case .bottomLeading:
-            return "왼쪽 아래"
-        case .bottomCenter:
-            return "중앙 아래"
-        case .bottomTrailing:
-            return "오른쪽 아래"
+        case .topLeading, .upperLeading, .middleLeading,
+             .lowerLeading, .bottomLeading:
+            return 0
+        case .topQuarterLeading, .upperQuarterLeading,
+             .middleQuarterLeading, .lowerQuarterLeading,
+             .bottomQuarterLeading:
+            return 1
+        case .topCenter, .upperCenter, .center,
+             .lowerCenter, .bottomCenter:
+            return 2
+        case .topQuarterTrailing, .upperQuarterTrailing,
+             .middleQuarterTrailing, .lowerQuarterTrailing,
+             .bottomQuarterTrailing:
+            return 3
+        case .topTrailing, .upperTrailing, .middleTrailing,
+             .lowerTrailing, .bottomTrailing:
+            return 4
         }
+    }
+
+    var gridRow: Int {
+        switch self {
+        case .topLeading, .topQuarterLeading, .topCenter,
+             .topQuarterTrailing, .topTrailing:
+            return 0
+        case .upperLeading, .upperQuarterLeading, .upperCenter,
+             .upperQuarterTrailing, .upperTrailing:
+            return 1
+        case .middleLeading, .middleQuarterLeading, .center,
+             .middleQuarterTrailing, .middleTrailing:
+            return 2
+        case .lowerLeading, .lowerQuarterLeading, .lowerCenter,
+             .lowerQuarterTrailing, .lowerTrailing:
+            return 3
+        case .bottomLeading, .bottomQuarterLeading, .bottomCenter,
+             .bottomQuarterTrailing, .bottomTrailing:
+            return 4
+        }
+    }
+
+    var horizontalFraction: Double {
+        Double(gridColumn) / 4.0
+    }
+
+    var verticalFractionFromTop: Double {
+        Double(gridRow) / 4.0
+    }
+
+    var title: String {
+        "가로 \(gridColumn + 1), 세로 \(gridRow + 1)"
     }
 }
 
@@ -101,6 +148,42 @@ enum WatermarkFontSize: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum CopyrightIconColorMode: String, CaseIterable, Codable, Identifiable {
+    case original
+    case gray
+    case tint
+
+    static var allCases: [CopyrightIconColorMode] {
+        [.original]
+    }
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "original":
+            self = .original
+        case "gray":
+            self = .gray
+        case "tint", "overlay":
+            self = .tint
+        default:
+            return nil
+        }
+    }
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .original:
+            return "원색"
+        case .gray:
+            return "회색"
+        case .tint:
+            return "틴트"
+        }
+    }
+}
+
 struct WatermarkSettings: Codable {
     static let logoEnabledStorageKey = "hanClipLogoWatermarkEnabled"
     static let enabledStorageKey = "hanClipWatermarkEnabled"
@@ -122,12 +205,18 @@ struct WatermarkSettings: Codable {
         "hanClipCopyrightWatermarkTextColor"
     static let copyrightShadowColorStorageKey =
         "hanClipCopyrightWatermarkShadowColor"
+    static let copyrightIconColorModeStorageKey =
+        "hanClipCopyrightIconColorMode"
+    static let copyrightIconColorStorageKey =
+        "hanClipCopyrightIconColor"
+    static let customCopyrightIconPathStorageKey =
+        "hanClipCustomCopyrightIconPath"
     static let defaultIsEnabled = true
-    static let defaultTextIsEnabled = false
-    static let defaultText = "HanClip"
+    static let defaultTextIsEnabled = true
+    static let defaultText = "여기에 글을 넣으세요."
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip
-    static let defaultPosition = WatermarkPosition.middleTrailing
+    static let defaultPosition = WatermarkPosition.center
     static let defaultFontName = ""
     static let defaultTextColor = "#007644"
     static let defaultShadowEnabled = true
@@ -136,9 +225,12 @@ struct WatermarkSettings: Codable {
     static let defaultLineSpacingScale =
         WatermarkLineSpacing.defaultMultiplier
     static let defaultFontSize = WatermarkFontSize.normal
-    static let defaultCopyrightPosition = WatermarkPosition.middleTrailing
+    static let defaultCopyrightPosition = WatermarkPosition.bottomTrailing
     static let defaultCopyrightTextColor = "#007644"
     static let defaultCopyrightShadowColor = "#29AB87"
+    static let defaultCopyrightIconColorMode = CopyrightIconColorMode.original
+    static let defaultCopyrightIconColor = "#007644"
+    static let defaultCustomCopyrightIconPath = ""
 
     var isEnabled: Bool
     var logoEnabled: Bool
@@ -156,6 +248,9 @@ struct WatermarkSettings: Codable {
     var copyrightPosition: WatermarkPosition
     var copyrightTextColorHex: String
     var copyrightShadowColorHex: String
+    var copyrightIconColorMode: CopyrightIconColorMode
+    var copyrightIconColorHex: String
+    var customCopyrightIconPath: String
 
     enum CodingKeys: String, CodingKey {
         case isEnabled
@@ -174,6 +269,9 @@ struct WatermarkSettings: Codable {
         case copyrightPosition
         case copyrightTextColorHex
         case copyrightShadowColorHex
+        case copyrightIconColorMode
+        case copyrightIconColorHex
+        case customCopyrightIconPath
     }
 
     init(
@@ -192,7 +290,10 @@ struct WatermarkSettings: Codable {
         fontSize: WatermarkFontSize,
         copyrightPosition: WatermarkPosition,
         copyrightTextColorHex: String,
-        copyrightShadowColorHex: String
+        copyrightShadowColorHex: String,
+        copyrightIconColorMode: CopyrightIconColorMode,
+        copyrightIconColorHex: String,
+        customCopyrightIconPath: String = Self.defaultCustomCopyrightIconPath
     ) {
         self.isEnabled = isEnabled
         self.logoEnabled = logoEnabled
@@ -212,6 +313,9 @@ struct WatermarkSettings: Codable {
         self.copyrightPosition = copyrightPosition
         self.copyrightTextColorHex = copyrightTextColorHex
         self.copyrightShadowColorHex = copyrightShadowColorHex
+        self.copyrightIconColorMode = copyrightIconColorMode
+        self.copyrightIconColorHex = copyrightIconColorHex
+        self.customCopyrightIconPath = customCopyrightIconPath
     }
 
     init(from decoder: Decoder) throws {
@@ -228,10 +332,12 @@ struct WatermarkSettings: Codable {
             ?? Self.defaultText
         address = try container.decodeIfPresent(String.self, forKey: .address)
             ?? Self.defaultAddress
-        platform = try container.decodeIfPresent(
-            WatermarkPlatform.self,
+        let rawPlatform = try container.decodeIfPresent(
+            String.self,
             forKey: .platform
-        ) ?? Self.defaultPlatform
+        )
+        platform = rawPlatform.flatMap(WatermarkPlatform.init(rawValue:))
+            ?? Self.defaultPlatform
         position = try container.decodeIfPresent(
             WatermarkPosition.self,
             forKey: .position
@@ -276,6 +382,18 @@ struct WatermarkSettings: Codable {
             String.self,
             forKey: .copyrightShadowColorHex
         ) ?? Self.defaultCopyrightShadowColor
+        copyrightIconColorMode = try container.decodeIfPresent(
+            CopyrightIconColorMode.self,
+            forKey: .copyrightIconColorMode
+        ) ?? Self.defaultCopyrightIconColorMode
+        copyrightIconColorHex = try container.decodeIfPresent(
+            String.self,
+            forKey: .copyrightIconColorHex
+        ) ?? Self.defaultCopyrightIconColor
+        customCopyrightIconPath = try container.decodeIfPresent(
+            String.self,
+            forKey: .customCopyrightIconPath
+        ) ?? Self.defaultCustomCopyrightIconPath
     }
 
     var displayText: String {
@@ -364,7 +482,18 @@ struct WatermarkSettings: Codable {
             copyrightShadowColorHex: defaults.string(
                 forKey: copyrightShadowColorStorageKey
             ) ?? defaults.string(forKey: shadowColorStorageKey)
-                ?? defaultCopyrightShadowColor
+                ?? defaultCopyrightShadowColor,
+            copyrightIconColorMode: defaults.string(
+                forKey: copyrightIconColorModeStorageKey
+            ).flatMap(CopyrightIconColorMode.init(rawValue:))
+                ?? defaultCopyrightIconColorMode,
+            copyrightIconColorHex: defaults.string(
+                forKey: copyrightIconColorStorageKey
+            ) ?? defaults.string(forKey: copyrightTextColorStorageKey)
+                ?? defaultCopyrightIconColor,
+            customCopyrightIconPath: defaults.string(
+                forKey: customCopyrightIconPathStorageKey
+            ) ?? defaultCustomCopyrightIconPath
         )
     }
 
@@ -385,7 +514,10 @@ struct WatermarkSettings: Codable {
             fontSize: defaultFontSize,
             copyrightPosition: defaultCopyrightPosition,
             copyrightTextColorHex: defaultCopyrightTextColor,
-            copyrightShadowColorHex: defaultCopyrightShadowColor
+            copyrightShadowColorHex: defaultCopyrightShadowColor,
+            copyrightIconColorMode: defaultCopyrightIconColorMode,
+            copyrightIconColorHex: defaultCopyrightIconColor,
+            customCopyrightIconPath: defaultCustomCopyrightIconPath
         )
     }
 
@@ -406,7 +538,10 @@ struct WatermarkSettings: Codable {
             fontSize: fontSize,
             copyrightPosition: copyrightPosition,
             copyrightTextColorHex: copyrightTextColorHex,
-            copyrightShadowColorHex: copyrightShadowColorHex
+            copyrightShadowColorHex: copyrightShadowColorHex,
+            copyrightIconColorMode: copyrightIconColorMode,
+            copyrightIconColorHex: copyrightIconColorHex,
+            customCopyrightIconPath: customCopyrightIconPath
         )
     }
 
@@ -427,7 +562,10 @@ struct WatermarkSettings: Codable {
             fontSize: fontSize,
             copyrightPosition: copyright.copyrightPosition,
             copyrightTextColorHex: copyright.copyrightTextColorHex,
-            copyrightShadowColorHex: copyright.copyrightShadowColorHex
+            copyrightShadowColorHex: copyright.copyrightShadowColorHex,
+            copyrightIconColorMode: copyright.copyrightIconColorMode,
+            copyrightIconColorHex: copyright.copyrightIconColorHex,
+            customCopyrightIconPath: copyright.customCopyrightIconPath
         )
     }
 
@@ -449,9 +587,42 @@ enum WatermarkPlatform: String, CaseIterable, Codable, Identifiable {
     case facebook
     case youtube
     case blog
-    case other
+    case kakaoTalk
+    case x
+    case phone
+    case homepage
+    case custom
 
     var id: String { rawValue }
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "other":
+            self = .custom
+        case "hanclip":
+            self = .hanclip
+        case "instagram":
+            self = .instagram
+        case "facebook":
+            self = .facebook
+        case "youtube":
+            self = .youtube
+        case "blog":
+            self = .blog
+        case "kakaoTalk":
+            self = .kakaoTalk
+        case "x":
+            self = .x
+        case "phone":
+            self = .phone
+        case "homepage":
+            self = .homepage
+        case "custom":
+            self = .custom
+        default:
+            return nil
+        }
+    }
 
     var title: String {
         switch self {
@@ -465,8 +636,16 @@ enum WatermarkPlatform: String, CaseIterable, Codable, Identifiable {
             return "유튜브"
         case .blog:
             return "블로그"
-        case .other:
-            return "기타"
+        case .kakaoTalk:
+            return "카카오톡"
+        case .x:
+            return "엑스"
+        case .phone:
+            return "전화번호"
+        case .homepage:
+            return "홈페이지"
+        case .custom:
+            return "직접입력"
         }
     }
 }

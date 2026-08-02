@@ -1,0 +1,524 @@
+import Foundation
+
+enum WatermarkPosition: String, CaseIterable, Codable, Identifiable {
+    case topLeading
+    case topCenter
+    case topTrailing
+    case middleLeading
+    case center
+    case middleTrailing
+    case bottomLeading
+    case bottomCenter
+    case bottomTrailing
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .topLeading:
+            return "왼쪽 위"
+        case .topCenter:
+            return "중앙 위"
+        case .topTrailing:
+            return "오른쪽 위"
+        case .middleLeading:
+            return "왼쪽 중앙"
+        case .center:
+            return "정중앙"
+        case .middleTrailing:
+            return "오른쪽 중앙"
+        case .bottomLeading:
+            return "왼쪽 아래"
+        case .bottomCenter:
+            return "중앙 아래"
+        case .bottomTrailing:
+            return "오른쪽 아래"
+        }
+    }
+}
+
+enum WatermarkLineSpacing: String, CaseIterable, Codable, Identifiable {
+    case wide
+    case normal
+    case tight
+
+    static let displayOrder: [WatermarkLineSpacing] = [
+        .tight,
+        .normal,
+        .wide
+    ]
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .wide:
+            return "넓게"
+        case .normal:
+            return "보통"
+        case .tight:
+            return "좁게"
+        }
+    }
+
+    var multiplier: Double {
+        Self.defaultMultiplier
+    }
+
+    static let defaultMultiplier = 1.0
+    static let step = 0.20
+    static let minimumMultiplier = 0.5
+    static let maximumMultiplier = 2.0
+}
+
+enum WatermarkFontSize: String, CaseIterable, Codable, Identifiable {
+    case small
+    case normal
+    case large
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .small:
+            return "작게"
+        case .normal:
+            return "기본"
+        case .large:
+            return "크게"
+        }
+    }
+
+    var multiplier: Double {
+        switch self {
+        case .small:
+            return 0.8
+        case .normal:
+            return 1.0
+        case .large:
+            return 1.5
+        }
+    }
+}
+
+enum CopyrightIconColorMode: String, CaseIterable, Codable, Identifiable {
+    case original
+    case overlay
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .original:
+            return "원색"
+        case .overlay:
+            return "오버레이"
+        }
+    }
+}
+
+struct WatermarkSettings: Codable {
+    static let logoEnabledStorageKey = "hanClipLogoWatermarkEnabled"
+    static let enabledStorageKey = "hanClipWatermarkEnabled"
+    static let textStorageKey = "hanClipWatermarkText"
+    static let addressStorageKey = "hanClipWatermarkAddress"
+    static let platformStorageKey = "hanClipWatermarkPlatform"
+    static let positionStorageKey = "hanClipWatermarkPosition"
+    static let fontNameStorageKey = "hanClipWatermarkFontName"
+    static let textColorStorageKey = "hanClipWatermarkTextColor"
+    static let shadowEnabledStorageKey = "hanClipWatermarkShadowEnabled"
+    static let shadowColorStorageKey = "hanClipWatermarkShadowColor"
+    static let lineSpacingStorageKey = "hanClipWatermarkLineSpacing"
+    static let lineSpacingScaleStorageKey =
+        "hanClipWatermarkLineSpacingScale"
+    static let fontSizeStorageKey = "hanClipWatermarkFontSize"
+    static let copyrightPositionStorageKey =
+        "hanClipCopyrightWatermarkPosition"
+    static let copyrightTextColorStorageKey =
+        "hanClipCopyrightWatermarkTextColor"
+    static let copyrightShadowColorStorageKey =
+        "hanClipCopyrightWatermarkShadowColor"
+    static let copyrightIconColorModeStorageKey =
+        "hanClipCopyrightIconColorMode"
+    static let copyrightIconColorStorageKey =
+        "hanClipCopyrightIconColor"
+    static let defaultIsEnabled = true
+    static let defaultTextIsEnabled = false
+    static let defaultText = "HanClip"
+    static let defaultAddress = ""
+    static let defaultPlatform = WatermarkPlatform.hanclip
+    static let defaultPosition = WatermarkPosition.middleTrailing
+    static let defaultFontName = ""
+    static let defaultTextColor = "#007644"
+    static let defaultShadowEnabled = true
+    static let defaultShadowColor = "#29AB87"
+    static let defaultLineSpacing = WatermarkLineSpacing.normal
+    static let defaultLineSpacingScale =
+        WatermarkLineSpacing.defaultMultiplier
+    static let defaultFontSize = WatermarkFontSize.normal
+    static let defaultCopyrightPosition = WatermarkPosition.middleTrailing
+    static let defaultCopyrightTextColor = "#007644"
+    static let defaultCopyrightShadowColor = "#29AB87"
+    static let defaultCopyrightIconColorMode = CopyrightIconColorMode.original
+    static let defaultCopyrightIconColor = "#007644"
+
+    var isEnabled: Bool
+    var logoEnabled: Bool
+    var text: String
+    var address: String
+    var platform: WatermarkPlatform
+    var position: WatermarkPosition
+    var fontName: String
+    var textColorHex: String
+    var shadowEnabled: Bool
+    var shadowColorHex: String
+    var lineSpacing: WatermarkLineSpacing
+    var lineSpacingScale: Double
+    var fontSize: WatermarkFontSize
+    var copyrightPosition: WatermarkPosition
+    var copyrightTextColorHex: String
+    var copyrightShadowColorHex: String
+    var copyrightIconColorMode: CopyrightIconColorMode
+    var copyrightIconColorHex: String
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case logoEnabled
+        case text
+        case address
+        case platform
+        case position
+        case fontName
+        case textColorHex
+        case shadowEnabled
+        case shadowColorHex
+        case lineSpacing
+        case lineSpacingScale
+        case fontSize
+        case copyrightPosition
+        case copyrightTextColorHex
+        case copyrightShadowColorHex
+        case copyrightIconColorMode
+        case copyrightIconColorHex
+    }
+
+    init(
+        isEnabled: Bool,
+        logoEnabled: Bool,
+        text: String,
+        address: String,
+        platform: WatermarkPlatform,
+        position: WatermarkPosition,
+        fontName: String,
+        textColorHex: String,
+        shadowEnabled: Bool,
+        shadowColorHex: String,
+        lineSpacing: WatermarkLineSpacing,
+        lineSpacingScale: Double,
+        fontSize: WatermarkFontSize,
+        copyrightPosition: WatermarkPosition,
+        copyrightTextColorHex: String,
+        copyrightShadowColorHex: String,
+        copyrightIconColorMode: CopyrightIconColorMode,
+        copyrightIconColorHex: String
+    ) {
+        self.isEnabled = isEnabled
+        self.logoEnabled = logoEnabled
+        self.text = text
+        self.address = address
+        self.platform = platform
+        self.position = position
+        self.fontName = fontName
+        self.textColorHex = textColorHex
+        self.shadowEnabled = shadowEnabled
+        self.shadowColorHex = shadowColorHex
+        self.lineSpacing = lineSpacing
+        self.lineSpacingScale = Self.normalizedLineSpacingScale(
+            lineSpacingScale
+        )
+        self.fontSize = fontSize
+        self.copyrightPosition = copyrightPosition
+        self.copyrightTextColorHex = copyrightTextColorHex
+        self.copyrightShadowColorHex = copyrightShadowColorHex
+        self.copyrightIconColorMode = copyrightIconColorMode
+        self.copyrightIconColorHex = copyrightIconColorHex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .isEnabled
+        ) ?? Self.defaultTextIsEnabled
+        logoEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .logoEnabled
+        ) ?? false
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+            ?? Self.defaultText
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+            ?? Self.defaultAddress
+        platform = try container.decodeIfPresent(
+            WatermarkPlatform.self,
+            forKey: .platform
+        ) ?? Self.defaultPlatform
+        position = try container.decodeIfPresent(
+            WatermarkPosition.self,
+            forKey: .position
+        ) ?? Self.defaultPosition
+        fontName = try container.decodeIfPresent(String.self, forKey: .fontName)
+            ?? Self.defaultFontName
+        textColorHex = try container.decodeIfPresent(
+            String.self,
+            forKey: .textColorHex
+        ) ?? Self.defaultTextColor
+        shadowEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .shadowEnabled
+        ) ?? Self.defaultShadowEnabled
+        shadowColorHex = try container.decodeIfPresent(
+            String.self,
+            forKey: .shadowColorHex
+        ) ?? Self.defaultShadowColor
+        lineSpacing = try container.decodeIfPresent(
+            WatermarkLineSpacing.self,
+            forKey: .lineSpacing
+        ) ?? Self.defaultLineSpacing
+        lineSpacingScale = Self.normalizedLineSpacingScale(
+            try container.decodeIfPresent(
+                Double.self,
+                forKey: .lineSpacingScale
+            ) ?? lineSpacing.multiplier
+        )
+        fontSize = try container.decodeIfPresent(
+            WatermarkFontSize.self,
+            forKey: .fontSize
+        ) ?? Self.defaultFontSize
+        copyrightPosition = try container.decodeIfPresent(
+            WatermarkPosition.self,
+            forKey: .copyrightPosition
+        ) ?? Self.defaultCopyrightPosition
+        copyrightTextColorHex = try container.decodeIfPresent(
+            String.self,
+            forKey: .copyrightTextColorHex
+        ) ?? Self.defaultCopyrightTextColor
+        copyrightShadowColorHex = try container.decodeIfPresent(
+            String.self,
+            forKey: .copyrightShadowColorHex
+        ) ?? Self.defaultCopyrightShadowColor
+        copyrightIconColorMode = try container.decodeIfPresent(
+            CopyrightIconColorMode.self,
+            forKey: .copyrightIconColorMode
+        ) ?? Self.defaultCopyrightIconColorMode
+        copyrightIconColorHex = try container.decodeIfPresent(
+            String.self,
+            forKey: .copyrightIconColorHex
+        ) ?? Self.defaultCopyrightIconColor
+    }
+
+    var displayText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var displayAddress: String {
+        address.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var shouldRender: Bool {
+        logoEnabled || (isEnabled && !displayText.isEmpty)
+    }
+
+    var shouldRenderText: Bool {
+        isEnabled && !displayText.isEmpty
+    }
+
+    static func stored() -> WatermarkSettings {
+        let defaults = UserDefaults.standard
+        let rawPosition = defaults.string(forKey: positionStorageKey)
+            ?? defaultPosition.rawValue
+        let position = WatermarkPosition(rawValue: rawPosition)
+            ?? defaultPosition
+        let rawCopyrightPosition = defaults.string(
+            forKey: copyrightPositionStorageKey
+        ) ?? rawPosition
+        let copyrightPosition = WatermarkPosition(rawValue: rawCopyrightPosition)
+            ?? defaultCopyrightPosition
+        let rawPlatform = defaults.string(forKey: platformStorageKey)
+            ?? defaultPlatform.rawValue
+        let platform = WatermarkPlatform(rawValue: rawPlatform)
+            ?? defaultPlatform
+        let address = defaults.string(
+            forKey: addressStorageKey(for: platform)
+        ) ?? defaults.string(forKey: addressStorageKey) ?? defaultAddress
+        let isEnabled: Bool
+        if defaults.object(forKey: enabledStorageKey) == nil {
+            isEnabled = defaultTextIsEnabled
+        } else {
+            isEnabled = defaults.bool(forKey: enabledStorageKey)
+        }
+        let logoEnabled: Bool
+        if defaults.object(forKey: logoEnabledStorageKey) == nil {
+            logoEnabled = defaultIsEnabled
+        } else {
+            logoEnabled = defaults.bool(forKey: logoEnabledStorageKey)
+        }
+        let shadowEnabled: Bool
+        if defaults.object(forKey: shadowEnabledStorageKey) == nil {
+            shadowEnabled = defaultShadowEnabled
+        } else {
+            shadowEnabled = defaults.bool(forKey: shadowEnabledStorageKey)
+        }
+
+        return WatermarkSettings(
+            isEnabled: isEnabled,
+            logoEnabled: logoEnabled,
+            text: defaults.string(forKey: textStorageKey) ?? defaultText,
+            address: address,
+            platform: platform,
+            position: position,
+            fontName: defaults.string(forKey: fontNameStorageKey)
+                ?? defaultFontName,
+            textColorHex: defaults.string(forKey: textColorStorageKey)
+                ?? defaultTextColor,
+            shadowEnabled: shadowEnabled,
+            shadowColorHex: defaults.string(forKey: shadowColorStorageKey)
+                ?? defaultShadowColor,
+            lineSpacing: defaults.string(forKey: lineSpacingStorageKey)
+                .flatMap(WatermarkLineSpacing.init(rawValue:))
+                ?? defaultLineSpacing,
+            lineSpacingScale: defaults.object(
+                forKey: lineSpacingScaleStorageKey
+            ) == nil
+                ? defaultLineSpacingScale
+                : defaults.double(forKey: lineSpacingScaleStorageKey),
+            fontSize: defaults.string(forKey: fontSizeStorageKey)
+                .flatMap(WatermarkFontSize.init(rawValue:))
+                ?? defaultFontSize,
+            copyrightPosition: copyrightPosition,
+            copyrightTextColorHex: defaults.string(
+                forKey: copyrightTextColorStorageKey
+            ) ?? defaults.string(forKey: textColorStorageKey)
+                ?? defaultCopyrightTextColor,
+            copyrightShadowColorHex: defaults.string(
+                forKey: copyrightShadowColorStorageKey
+            ) ?? defaults.string(forKey: shadowColorStorageKey)
+                ?? defaultCopyrightShadowColor,
+            copyrightIconColorMode: defaults.string(
+                forKey: copyrightIconColorModeStorageKey
+            ).flatMap(CopyrightIconColorMode.init(rawValue:))
+                ?? defaultCopyrightIconColorMode,
+            copyrightIconColorHex: defaults.string(
+                forKey: copyrightIconColorStorageKey
+            ) ?? defaults.string(forKey: copyrightTextColorStorageKey)
+                ?? defaultCopyrightIconColor
+        )
+    }
+
+    static func projectDefault() -> WatermarkSettings {
+        WatermarkSettings(
+            isEnabled: defaultTextIsEnabled,
+            logoEnabled: false,
+            text: defaultText,
+            address: defaultAddress,
+            platform: defaultPlatform,
+            position: defaultPosition,
+            fontName: defaultFontName,
+            textColorHex: defaultTextColor,
+            shadowEnabled: defaultShadowEnabled,
+            shadowColorHex: defaultShadowColor,
+            lineSpacing: defaultLineSpacing,
+            lineSpacingScale: defaultLineSpacingScale,
+            fontSize: defaultFontSize,
+            copyrightPosition: defaultCopyrightPosition,
+            copyrightTextColorHex: defaultCopyrightTextColor,
+            copyrightShadowColorHex: defaultCopyrightShadowColor,
+            copyrightIconColorMode: defaultCopyrightIconColorMode,
+            copyrightIconColorHex: defaultCopyrightIconColor
+        )
+    }
+
+    func withLogoEnabled(_ logoEnabled: Bool) -> WatermarkSettings {
+        WatermarkSettings(
+            isEnabled: isEnabled,
+            logoEnabled: logoEnabled,
+            text: text,
+            address: address,
+            platform: platform,
+            position: position,
+            fontName: fontName,
+            textColorHex: textColorHex,
+            shadowEnabled: shadowEnabled,
+            shadowColorHex: shadowColorHex,
+            lineSpacing: lineSpacing,
+            lineSpacingScale: lineSpacingScale,
+            fontSize: fontSize,
+            copyrightPosition: copyrightPosition,
+            copyrightTextColorHex: copyrightTextColorHex,
+            copyrightShadowColorHex: copyrightShadowColorHex,
+            copyrightIconColorMode: copyrightIconColorMode,
+            copyrightIconColorHex: copyrightIconColorHex
+        )
+    }
+
+    func withCopyrightSettings(_ copyright: WatermarkSettings) -> WatermarkSettings {
+        WatermarkSettings(
+            isEnabled: isEnabled,
+            logoEnabled: copyright.logoEnabled,
+            text: text,
+            address: copyright.address,
+            platform: copyright.platform,
+            position: position,
+            fontName: fontName,
+            textColorHex: textColorHex,
+            shadowEnabled: shadowEnabled,
+            shadowColorHex: shadowColorHex,
+            lineSpacing: lineSpacing,
+            lineSpacingScale: lineSpacingScale,
+            fontSize: fontSize,
+            copyrightPosition: copyright.copyrightPosition,
+            copyrightTextColorHex: copyright.copyrightTextColorHex,
+            copyrightShadowColorHex: copyright.copyrightShadowColorHex,
+            copyrightIconColorMode: copyright.copyrightIconColorMode,
+            copyrightIconColorHex: copyright.copyrightIconColorHex
+        )
+    }
+
+    static func addressStorageKey(for platform: WatermarkPlatform) -> String {
+        "\(addressStorageKey).\(platform.rawValue)"
+    }
+
+    static func normalizedLineSpacingScale(_ value: Double) -> Double {
+        min(
+            max(value, WatermarkLineSpacing.minimumMultiplier),
+            WatermarkLineSpacing.maximumMultiplier
+        )
+    }
+}
+
+enum WatermarkPlatform: String, CaseIterable, Codable, Identifiable {
+    case hanclip
+    case instagram
+    case facebook
+    case youtube
+    case blog
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .hanclip:
+            return "한클립"
+        case .instagram:
+            return "인스타그램"
+        case .facebook:
+            return "페이스북"
+        case .youtube:
+            return "유튜브"
+        case .blog:
+            return "블로그"
+        case .other:
+            return "기타"
+        }
+    }
+}

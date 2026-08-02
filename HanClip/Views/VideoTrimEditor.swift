@@ -41,9 +41,10 @@ struct VideoTrimEditor: View {
     @State private var showDeleteConfirmation = false
     @State private var stillAutoAdvanceTask: Task<Void, Never>?
     @State private var didAutoAdvanceCurrentClip = false
-    @State private var loopIconRotation = 0.0
-    @State private var shouldIgnoreNextAutoAdvanceTap = false
-    @State private var shouldIgnoreNextPlaybackTap = false
+    @State private var isPlaybackLooping = false
+    @State private var stillPlaybackStartDate: Date?
+    @State private var stillPlaybackStartProgress = 0.0
+    @GestureState private var dismissDragOffset: CGFloat = 0
 
     private var sourceURL: URL? {
         switch clip.source {
@@ -67,38 +68,127 @@ struct VideoTrimEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             header
                 .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.panelFill,
+                            HanClipTheme.secondary.opacity(0.045),
+                            Color.white.opacity(0.12)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(
+                        cornerRadius: 22,
+                        style: .continuous
+                    )
+                )
+                .padding(.horizontal, 12)
+                .hanClipGlassPanel(cornerRadius: 22, shadowOpacity: 0.04)
 
             previewWithNavigation
 
             if hasPlayableMedia {
                 waveform
                     .frame(maxWidth: .infinity)
-                    .frame(height: 60)
+                    .frame(height: 58)
                     .padding(.horizontal, 20)
 
                 playbackControls
                     .padding(.horizontal, 20)
             } else {
-                nonVideoInformation
+                waveform
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
                     .padding(.horizontal, 20)
+                    .allowsHitTesting(false)
 
-                Color.clear
-                    .frame(height: 44)
+                playbackControls
+                    .padding(.horizontal, 20)
             }
 
             footerActions
                 .padding(.horizontal, 20)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.panelFill.opacity(0.94),
+                            HanClipTheme.secondary.opacity(0.055),
+                            Color.white.opacity(0.10)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(
+                        cornerRadius: 24,
+                        style: .continuous
+                    )
+                )
+                .padding(.horizontal, 12)
+                .hanClipGlassPanel(cornerRadius: 24, shadowOpacity: 0.05)
         }
-        .padding(.top, 20)
-        .padding(.bottom, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background {
+            ZStack {
+                HanClipTheme.backgroundGradient
+                    .ignoresSafeArea()
+
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.10),
+                        HanClipTheme.secondary.opacity(0.11),
+                        HanClipTheme.background.opacity(0.0),
+                        HanClipTheme.primary.opacity(0.07),
+                        Color.white.opacity(0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.secondary.opacity(0.16),
+                            HanClipTheme.background.opacity(0.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 150)
+
+                    Spacer()
+
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.background.opacity(0.0),
+                            HanClipTheme.primary.opacity(0.12)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 170)
+                }
+                .ignoresSafeArea()
+            }
+        }
+        .offset(y: dismissDragOffset)
+        .opacity(dismissDragOffset > 0 ? max(0.86, 1 - dismissDragOffset / 900) : 1)
+        .simultaneousGesture(confirmOnDownwardDrag)
         .presentationDetents([.height(710)])
         .presentationDragIndicator(.visible)
         .onAppear {
             preparePlayer()
-            updateLoopIconAnimation(autoAdvanceLoops)
+            updateLoopIconAnimation(autoAdvanceLoops && autoAdvanceEnabled)
         }
         .onChange(of: clip.id) { _, _ in
             releasePlayer()
@@ -106,18 +196,23 @@ struct VideoTrimEditor: View {
             restartPlaybackAtSelectionStart = true
             didAutoAdvanceCurrentClip = false
             preparePlayer()
+            updateLoopIconAnimation(autoAdvanceLoops && autoAdvanceEnabled)
         }
         .onChange(of: autoAdvanceEnabled) { _, isEnabled in
             if isEnabled {
                 startAutoAdvanceForCurrentClip()
             } else {
                 autoAdvanceLoops = false
+                updateLoopIconAnimation(false)
                 stillAutoAdvanceTask?.cancel()
                 stillAutoAdvanceTask = nil
             }
         }
         .onChange(of: autoAdvanceLoops) { _, isLooping in
-            updateLoopIconAnimation(isLooping)
+            updateLoopIconAnimation(isLooping || isPlaybackLooping)
+        }
+        .onChange(of: isPlaybackLooping) { _, isLooping in
+            updateLoopIconAnimation(autoAdvanceLoops || isLooping)
         }
         .onDisappear(perform: releasePlayer)
         .onReceive(
@@ -152,7 +247,17 @@ struct VideoTrimEditor: View {
                     width: previewSize.width,
                     height: previewSize.height
                 )
-                .background(HanClipTheme.secondary.opacity(0.30))
+                .background(HanClipTheme.secondary.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.42), lineWidth: 1)
+                }
+                .shadow(
+                    color: HanClipTheme.primary.opacity(0.11),
+                    radius: 14,
+                    y: 7
+                )
                 .clipped()
                 .overlay {
                     GeometryReader { proxy in
@@ -170,7 +275,6 @@ struct VideoTrimEditor: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .disabled(!hasPlayableMedia)
                             .frame(width: proxy.size.width * 0.60)
                             .accessibilityLabel(
                                 isPlaying
@@ -196,6 +300,33 @@ struct VideoTrimEditor: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+    }
+
+    private func previewCornerButton(
+        systemImage: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+                .frame(width: 38, height: 38)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.48), lineWidth: 1)
+                }
+                .shadow(
+                    color: Color.black.opacity(0.14),
+                    radius: 8,
+                    y: 4
+                )
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .accessibilityLabel(label)
     }
 
     private func fittedPreviewSize(in availableSize: CGSize) -> CGSize {
@@ -222,11 +353,11 @@ struct VideoTrimEditor: View {
     private var previewSurface: some View {
         if hasPlayableMedia {
             ZStack {
-                PlayerSurface(
-                    player: player,
-                    backgroundColor: HanClipTheme.secondaryUIColor
-                        .withAlphaComponent(0.30)
-                )
+                        PlayerSurface(
+                            player: player,
+                            backgroundColor: HanClipTheme.secondaryUIColor
+                        .withAlphaComponent(0.24)
+                        )
 
                 if isLoadingPlayableMedia {
                     ProgressView()
@@ -235,12 +366,12 @@ struct VideoTrimEditor: View {
                         .background(.black.opacity(0.44), in: Circle())
                 }
             }
-            .background(HanClipTheme.secondary.opacity(0.30))
+            .background(HanClipTheme.secondary.opacity(0.24))
         } else {
             Image(uiImage: clip.thumbnail)
                 .resizable()
                 .scaledToFill()
-                .background(HanClipTheme.secondary.opacity(0.30))
+                .background(HanClipTheme.secondary.opacity(0.24))
         }
     }
 
@@ -280,76 +411,28 @@ struct VideoTrimEditor: View {
 
             Text(nonVideoDurationText)
                 .font(.system(size: 14).monospacedDigit())
-                .foregroundStyle(HanClipTheme.text.opacity(0.66))
+                .foregroundStyle(HanClipTheme.secondaryText)
         }
         .frame(height: 60)
         .padding(.horizontal, 16)
         .background(
-            HanClipTheme.secondary.opacity(0.10),
+            LinearGradient(
+                colors: [
+                    HanClipTheme.panelFill,
+                    HanClipTheme.secondary.opacity(0.035)
+                ],
+                startPoint: .topTrailing,
+                endPoint: .bottomLeading
+            ),
             in: RoundedRectangle(cornerRadius: 12)
         )
     }
 
     private var header: some View {
-        ZStack {
-            HStack(spacing: 10) {
-                Button(action: toggleAutoAdvance) {
-                    HStack(spacing: 6) {
-                        if autoAdvanceEnabled {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 14, weight: .semibold))
-                                .rotationEffect(.degrees(loopIconRotation))
-                        }
-
-                        Text("\(currentPosition) / \(totalClipCount)")
-                            .font(.system(size: 18, weight: .semibold))
-                    }
-                    .foregroundStyle(
-                        autoAdvanceEnabled ? .white : HanClipTheme.text
-                    )
-                    .padding(.horizontal, autoAdvanceEnabled ? 10 : 0)
-                    .frame(height: 30)
-                    .background {
-                        if autoAdvanceEnabled {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(HanClipTheme.primary)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.45)
-                        .onEnded { _ in
-                            shouldIgnoreNextAutoAdvanceTap = true
-                            toggleAutoAdvanceLoop()
-                        }
-                )
-                .accessibilityLabel(
-                    autoAdvanceLoops
-                        ? "무한 자동 넘김 끄기"
-                        : autoAdvanceEnabled
-                            ? "자동 넘김 끄기"
-                            : "자동 넘김 켜기"
-                )
-
-                Spacer()
-
-                Button(action: deleteCurrentMedia) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 28)
-                        .background(
-                            HanClipTheme.primary,
-                            in: RoundedRectangle(cornerRadius: 8)
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("현재 미디어 삭제")
-            }
-
+        HStack(alignment: .center, spacing: 10) {
             if clip.isLivePhoto {
+                previewPositionText
+
                 LivePhotoModeSegmentedControl(
                     mode: Binding(
                         get: { clip.livePhotoMode },
@@ -364,10 +447,40 @@ struct VideoTrimEditor: View {
                 .accessibilityLabel("Live Photo 사용 방식")
                 .accessibilityValue(clip.livePhotoMode.rawValue)
                 .accessibilityHint("포토와 라이브 모드를 전환합니다.")
+                .frame(maxWidth: .infinity, alignment: .center)
+
+                deletePreviewButton
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             } else {
+                previewPositionText
+
                 currentMediaIcon
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                deletePreviewButton
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
+        .frame(height: 34)
+        .padding(.top, 2)
+    }
+
+    private var previewPositionText: some View {
+        Text("\(currentPosition) / \(totalClipCount)")
+            .font(
+                .system(
+                    size: 15,
+                    weight: .semibold,
+                    design: .rounded
+                )
+            )
+            .monospacedDigit()
+            .foregroundStyle(HanClipTheme.primaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 28)
+            .accessibilityLabel(
+                "\(currentPosition) / \(totalClipCount)번째 미리보기"
+            )
     }
 
     private var currentMediaIcon: some View {
@@ -385,8 +498,28 @@ struct VideoTrimEditor: View {
         }
         .foregroundStyle(HanClipTheme.primary)
         .opacity(0.74)
-        .frame(width: 124, height: 28)
+        .frame(height: 28)
         .accessibilityHidden(true)
+    }
+
+    private var deletePreviewButton: some View {
+        Button {
+            pausePlayback()
+            showDeleteConfirmation = true
+        } label: {
+            Image(systemName: "trash")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.red.opacity(0.78))
+                .frame(width: 30, height: 30)
+                .background(.ultraThinMaterial, in: Circle())
+                .background(Color.red.opacity(0.07), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.red.opacity(0.18), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("미디어 삭제")
     }
 
     private var nonVideoDurationText: String {
@@ -415,13 +548,17 @@ struct VideoTrimEditor: View {
             Button(action: resetSelection) {
                 Label("리셋", systemImage: "arrow.counterclockwise")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(HanClipTheme.primary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .frame(height: 42)
                     .background(
-                        HanClipTheme.primary,
+                        HanClipTheme.secondary.opacity(0.13),
                         in: RoundedRectangle(cornerRadius: 12)
                     )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(HanClipTheme.primary.opacity(0.24), lineWidth: 1)
+                    }
             }
             .buttonStyle(.plain)
             .frame(width: 84)
@@ -434,9 +571,16 @@ struct VideoTrimEditor: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                    .frame(height: 42)
                     .background(
-                        HanClipTheme.primary,
+                        LinearGradient(
+                            colors: [
+                                HanClipTheme.primary.opacity(0.96),
+                                HanClipTheme.secondary.opacity(0.82)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
                         in: RoundedRectangle(cornerRadius: 12)
                     )
             }
@@ -461,10 +605,23 @@ struct VideoTrimEditor: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(height: 42)
                 .background(
-                    HanClipTheme.primary,
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.primary,
+                            HanClipTheme.primary.opacity(0.88),
+                            HanClipTheme.secondary.opacity(0.74)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
                     in: RoundedRectangle(cornerRadius: 12)
+                )
+                .shadow(
+                    color: HanClipTheme.primary.opacity(0.15),
+                    radius: 8,
+                    y: 4
                 )
             }
             .buttonStyle(.plain)
@@ -478,22 +635,14 @@ struct VideoTrimEditor: View {
             let endX = width * clip.trimEnd / sourceDuration
 
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(HanClipTheme.secondary.opacity(0.10))
+                movableSelection(
+                    startX: startX,
+                    endX: endX,
+                    height: proxy.size.height,
+                    waveformWidth: width
+                )
 
-                waveformBars
-
-                if let markerTime =
-                    selectionCenterMarkerTime ?? clip.audioPeakTime {
-                    Rectangle()
-                        .fill(HanClipTheme.primary)
-                        .frame(width: 2)
-                        .position(
-                            x: width * markerTime / sourceDuration,
-                            y: proxy.size.height / 2
-                        )
-                        .allowsHitTesting(false)
-                }
+                waveformBars(waveformWidth: width)
 
                 unselectedArea(
                     width: startX,
@@ -508,12 +657,18 @@ struct VideoTrimEditor: View {
                     waveformWidth: width
                 )
 
-                movableSelection(
-                    startX: startX,
-                    endX: endX,
-                    height: proxy.size.height,
-                    waveformWidth: width
-                )
+                if let markerTime =
+                    selectionCenterMarkerTime ?? clip.audioPeakTime {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.88))
+                        .frame(width: 1.25, height: proxy.size.height - 12)
+                        .position(
+                            x: width * markerTime / sourceDuration,
+                            y: proxy.size.height / 2
+                        )
+                        .allowsHitTesting(false)
+                        .zIndex(7)
+                }
 
                 if isPlaying {
                     playbackPositionBar(
@@ -543,7 +698,17 @@ struct VideoTrimEditor: View {
                 .zIndex(11)
             }
             .coordinateSpace(name: "waveform")
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.vertical, 4)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(
+                HanClipTheme.secondary.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(HanClipTheme.primary.opacity(0.18), lineWidth: 1)
+            }
+            .shadow(color: Color.black.opacity(0.08), radius: 8, y: 3)
         }
         .accessibilityLabel("사운드 인디케이터와 영상 선택 구간")
     }
@@ -553,33 +718,37 @@ struct VideoTrimEditor: View {
         height: CGFloat
     ) -> some View {
         Capsule()
-            .fill(HanClipTheme.primary)
-            .frame(width: 4, height: height - 8)
-            .overlay {
-                Capsule()
-                    .stroke(Color.black.opacity(0.22), lineWidth: 1)
-            }
-            .shadow(color: Color.black.opacity(0.24), radius: 2)
+            .fill(Color.white)
+            .frame(width: 1.5, height: height - 12)
             .position(x: x, y: height / 2)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
 
-    private var waveformBars: some View {
-        HStack(alignment: .center, spacing: 1) {
+    private func waveformBars(waveformWidth: CGFloat) -> some View {
+        let values = waveformValues
+        let spacing: CGFloat = 1.5
+        let availableWidth = max(1, waveformWidth)
+        let totalSpacing = spacing * CGFloat(max(0, values.count - 1))
+        let barWidth = max(
+            1.2,
+            (availableWidth - totalSpacing) / CGFloat(max(1, values.count))
+        )
+
+        return HStack(alignment: .center, spacing: spacing) {
             ForEach(
-                Array(waveformValues.enumerated()),
+                Array(values.enumerated()),
                 id: \.offset
             ) { _, value in
                 Capsule()
-                    .fill(HanClipTheme.secondary.opacity(0.68))
+                    .fill(HanClipTheme.primary.opacity(0.62))
                     .frame(
-                        maxWidth: .infinity,
-                        maxHeight: max(4, 52 * value)
+                        width: barWidth,
+                        height: max(1.4, 42 * pow(value, 1.35))
                     )
             }
         }
-        .padding(.horizontal, 8)
+        .frame(width: availableWidth)
         .allowsHitTesting(false)
     }
 
@@ -590,7 +759,7 @@ struct VideoTrimEditor: View {
         edge: TrimEdge,
         waveformWidth: CGFloat
     ) -> some View {
-        let interactiveArea = Color.black.opacity(0.42)
+        let interactiveArea = HanClipTheme.background.opacity(0.42)
             .frame(width: max(0, width))
             .contentShape(Rectangle())
             .highPriorityGesture(
@@ -624,19 +793,22 @@ struct VideoTrimEditor: View {
     ) -> some View {
         let selectionWidth = max(1, endX - startX)
         let moveTouchWidth = max(1, selectionWidth - 44)
+        let selectionHeight = max(1, height - 8)
 
         return Color.clear
             .frame(width: moveTouchWidth, height: height)
             .contentShape(Rectangle())
             .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(HanClipTheme.primary, lineWidth: 3)
-                    .frame(width: selectionWidth)
-                    .allowsHitTesting(false)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(HanClipTheme.secondary.opacity(0.13))
+                }
+                .frame(width: selectionWidth, height: selectionHeight)
+                .allowsHitTesting(false)
             }
             .position(
                 x: (startX + endX) / 2,
-                y: height / 2
+                y: height / 2 - 4
             )
             .gesture(moveSelectionGesture(width: waveformWidth))
             .zIndex(2)
@@ -648,27 +820,35 @@ struct VideoTrimEditor: View {
         geometry: GeometryProxy
     ) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(HanClipTheme.primary)
-                .frame(width: 8, height: geometry.size.height)
-                .offset(x: edge == .leading ? 4 : -4)
+            Capsule()
+                .fill(HanClipTheme.primary.opacity(0.88))
+                .frame(width: 14, height: geometry.size.height - 10)
+                .overlay {
+                    Capsule()
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                }
+                .shadow(
+                    color: HanClipTheme.primary.opacity(0.22),
+                    radius: 4,
+                    y: 1
+                )
 
             Image(
                 systemName: edge == .leading
                     ? "chevron.right"
                     : "chevron.left"
             )
-            .font(.system(size: 12, weight: .bold))
+            .font(.system(size: 10, weight: .bold))
             .foregroundStyle(.white)
         }
         .frame(width: 44, height: geometry.size.height)
         .contentShape(Rectangle())
-        .position(
-            x: min(
-                max(22, x),
-                max(22, geometry.size.width - 22)
+            .position(
+                x: min(
+                    max(26, x),
+                    max(26, geometry.size.width - 26)
             ),
-            y: geometry.size.height / 2
+            y: geometry.size.height / 2 - 4
         )
         .highPriorityGesture(
             moveSelectionGesture(width: geometry.size.width),
@@ -801,21 +981,27 @@ struct VideoTrimEditor: View {
     private var playbackControls: some View {
         HStack(spacing: 8) {
             Button(action: handlePlaybackButtonTap) {
-                Image(systemName: playbackButtonSystemImage)
-                .font(.system(size: 16, weight: .bold))
-                .rotationEffect(.degrees(autoAdvanceLoops ? loopIconRotation : 0))
+                playbackButtonIcon
                 .foregroundStyle(.white)
                 .frame(width: 40, height: 40)
-                .background(HanClipTheme.primary, in: Circle())
+                .background(
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.primary,
+                            HanClipTheme.secondary.opacity(0.82)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Circle()
+                )
+                .shadow(
+                    color: HanClipTheme.primary.opacity(0.16),
+                    radius: 8,
+                    y: 4
+                )
             }
             .buttonStyle(.plain)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.45)
-                    .onEnded { _ in
-                        shouldIgnoreNextPlaybackTap = true
-                        toggleAutoAdvanceLoop()
-                    }
-            )
             .accessibilityLabel(playbackButtonAccessibilityLabel)
 
             Text(
@@ -830,10 +1016,17 @@ struct VideoTrimEditor: View {
                     get: { playbackProgress },
                     set: { newValue in
                         playbackProgress = newValue
-                        seek(
-                            to: clip.trimStart
-                                + newValue * clip.duration
-                        )
+                        if hasPlayableMedia {
+                            seek(
+                                to: clip.trimStart
+                                    + newValue * clip.duration
+                            )
+                        } else if isPlaying {
+                            startStillPreviewPlayback(
+                                from: newValue,
+                                shouldRestartTimer: true
+                            )
+                        }
                     }
                 ),
                 in: 0...1,
@@ -844,6 +1037,8 @@ struct VideoTrimEditor: View {
 
             Text(playbackTimeText(clip.duration))
                 .frame(width: 46, alignment: .leading)
+
+            loopPlaybackButton
         }
         .font(
             .system(
@@ -853,13 +1048,28 @@ struct VideoTrimEditor: View {
             )
         )
         .frame(height: 44)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .background(
+            HanClipTheme.secondary.opacity(0.07),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(0.30), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.06), radius: 8, y: 3)
+    }
+
+    @ViewBuilder
+    private var playbackButtonIcon: some View {
+        Image(systemName: playbackButtonSystemImage)
+            .font(.system(size: 16, weight: .bold))
+            .id(playbackButtonSystemImage)
     }
 
     private var playbackButtonSystemImage: String {
-        if autoAdvanceLoops {
-            return "arrow.triangle.2.circlepath"
-        }
-
         if isPlaying {
             return "pause.fill"
         }
@@ -870,15 +1080,49 @@ struct VideoTrimEditor: View {
     }
 
     private var playbackButtonAccessibilityLabel: String {
-        if autoAdvanceLoops {
-            return "무한 루프 끄기"
-        }
-
         if isPlaying {
             return "일시 정지"
         }
 
         return playbackProgress >= 0.999 ? "다시 재생" : "재생"
+    }
+
+    private var loopPlaybackButton: some View {
+        Button(action: togglePlaybackLoop) {
+            ZStack {
+                Circle()
+                    .fill(
+                        autoAdvanceLoops
+                            ? HanClipTheme.primary.opacity(0.92)
+                            : HanClipTheme.secondary.opacity(0.11)
+                    )
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                autoAdvanceLoops
+                                    ? Color.white.opacity(0.30)
+                                    : HanClipTheme.primary.opacity(0.18),
+                                lineWidth: 1
+                            )
+                    }
+
+                if autoAdvanceLoops {
+                    RotatingLoopIcon(size: 15)
+                        .foregroundStyle(.white)
+                        .id("loop-on")
+                } else {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.primary.opacity(0.72))
+                        .id("loop-off")
+                }
+            }
+            .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            autoAdvanceLoops ? "무한 루프 끄기" : "무한 루프 켜기"
+        )
     }
 
     private func playbackTimeText(_ seconds: Double) -> String {
@@ -897,9 +1141,12 @@ struct VideoTrimEditor: View {
         let source = clip.audioWaveform.isEmpty
             ? Array(repeating: 0.08, count: displaySampleCount)
             : clip.audioWaveform
-        guard source.count > displaySampleCount else { return source }
+        let sampledValues: [Double]
 
-        return (0..<displaySampleCount).map { index in
+        if source.count <= displaySampleCount {
+            sampledValues = source
+        } else {
+            sampledValues = (0..<displaySampleCount).map { index in
             let lower = index * source.count / displaySampleCount
             let upper = max(
                 lower + 1,
@@ -907,6 +1154,20 @@ struct VideoTrimEditor: View {
             )
             let values = source[lower..<min(source.count, upper)]
             return values.reduce(0, +) / Double(values.count)
+            }
+        }
+
+        let rawMaximum = sampledValues.max() ?? 0
+        guard rawMaximum > 0.12 else {
+            return sampledValues.map { value in
+                min(0.16, max(0.02, value))
+            }
+        }
+
+        let maximum = max(rawMaximum, 0.001)
+        return sampledValues.map { value in
+            let normalized = min(1, max(0, value / maximum))
+            return pow(normalized, 0.72)
         }
     }
 
@@ -1048,7 +1309,19 @@ struct VideoTrimEditor: View {
     }
 
     private func togglePlayback() {
-        guard hasPlayableMedia, player.currentItem != nil else { return }
+        if !hasPlayableMedia {
+            if isPlaying {
+                pausePlayback()
+            } else {
+                startStillPreviewPlayback(
+                    from: playbackProgress >= 0.999 ? 0 : playbackProgress,
+                    shouldRestartTimer: true
+                )
+            }
+            return
+        }
+
+        guard player.currentItem != nil else { return }
         if isPlaying {
             pausePlayback()
             return
@@ -1070,16 +1343,6 @@ struct VideoTrimEditor: View {
     }
 
     private func handlePlaybackButtonTap() {
-        if shouldIgnoreNextPlaybackTap {
-            shouldIgnoreNextPlaybackTap = false
-            return
-        }
-
-        if autoAdvanceLoops {
-            toggleAutoAdvanceLoop()
-            return
-        }
-
         togglePlayback()
     }
 
@@ -1096,6 +1359,30 @@ struct VideoTrimEditor: View {
 
     private func togglePlaybackFromPreview() {
         togglePlayback()
+    }
+
+    private var confirmOnDownwardDrag: some Gesture {
+        DragGesture(minimumDistance: 28)
+            .updating($dismissDragOffset) { value, state, _ in
+                guard isConfirmDrag(value) else { return }
+                state = min(value.translation.height * 0.45, 80)
+            }
+            .onEnded { value in
+                guard isConfirmDrag(value),
+                      value.predictedEndTranslation.height > 120
+                else { return }
+                confirmAndDismiss()
+            }
+    }
+
+    private func isConfirmDrag(_ value: DragGesture.Value) -> Bool {
+        value.translation.height > 0
+            && abs(value.translation.height) > abs(value.translation.width) * 1.45
+    }
+
+    private func confirmAndDismiss() {
+        pausePlayback()
+        dismiss()
     }
 
     private func openFullPreview() {
@@ -1134,9 +1421,17 @@ struct VideoTrimEditor: View {
     private func pausePlayback() {
         player.pause()
         isPlaying = false
+        stillPlaybackStartDate = nil
+        stillAutoAdvanceTask?.cancel()
+        stillAutoAdvanceTask = nil
     }
 
     private func synchronizePlaybackProgress() {
+        if !hasPlayableMedia {
+            synchronizeStillPreviewProgress()
+            return
+        }
+
         let seconds = player.currentTime().seconds
         guard seconds.isFinite, clip.duration > 0 else { return }
 
@@ -1161,6 +1456,20 @@ struct VideoTrimEditor: View {
     }
 
     private func handleScrubbing(_ isEditing: Bool) {
+        if !hasPlayableMedia {
+            if isEditing {
+                wasPlayingBeforeScrub = isPlaying
+                pausePlayback()
+            } else if wasPlayingBeforeScrub, playbackProgress < 0.999 {
+                startStillPreviewPlayback(
+                    from: playbackProgress,
+                    shouldRestartTimer: true
+                )
+                wasPlayingBeforeScrub = false
+            }
+            return
+        }
+
         if isEditing {
             wasPlayingBeforeScrub = isPlaying
             pausePlayback()
@@ -1212,45 +1521,45 @@ struct VideoTrimEditor: View {
         }
     }
 
-    private func toggleAutoAdvance() {
-        if shouldIgnoreNextAutoAdvanceTap {
-            shouldIgnoreNextAutoAdvanceTap = false
-            return
-        }
-        autoAdvanceEnabled.toggle()
+    private func toggleAutoAdvanceLoop() {
+        autoAdvanceLoops.toggle()
         didAutoAdvanceCurrentClip = false
-        if autoAdvanceEnabled {
+
+        if autoAdvanceLoops {
+            autoAdvanceEnabled = true
+            updateLoopIconAnimation(true)
             startAutoAdvanceForCurrentClip()
         } else {
+            autoAdvanceEnabled = false
+            updateLoopIconAnimation(false)
             stillAutoAdvanceTask?.cancel()
             stillAutoAdvanceTask = nil
-            pausePlayback()
         }
     }
 
-    private func toggleAutoAdvanceLoop() {
+    private var shouldAnimateLoopIcon: Bool {
+        autoAdvanceLoops || isPlaybackLooping
+    }
+
+    private func togglePlaybackLoop() {
         autoAdvanceLoops.toggle()
-        autoAdvanceEnabled = autoAdvanceLoops || autoAdvanceEnabled
+        isPlaybackLooping = false
         didAutoAdvanceCurrentClip = false
-        if autoAdvanceEnabled {
+
+        if autoAdvanceLoops {
+            autoAdvanceEnabled = true
+            updateLoopIconAnimation(true)
             startAutoAdvanceForCurrentClip()
+        } else {
+            autoAdvanceEnabled = false
+            updateLoopIconAnimation(false)
+            stillAutoAdvanceTask?.cancel()
+            stillAutoAdvanceTask = nil
         }
     }
 
     private func updateLoopIconAnimation(_ isLooping: Bool) {
-        if isLooping {
-            loopIconRotation = 0
-            withAnimation(
-                .linear(duration: 1.0)
-                    .repeatForever(autoreverses: false)
-            ) {
-                loopIconRotation = 360
-            }
-        } else {
-            withAnimation(.linear(duration: 0.12)) {
-                loopIconRotation = 0
-            }
-        }
+        _ = isLooping
     }
 
     private func startAutoAdvanceForCurrentClip() {
@@ -1263,8 +1572,33 @@ struct VideoTrimEditor: View {
             return
         }
 
+        startStillPreviewPlayback(
+            from: playbackProgress >= 0.999 ? 0 : playbackProgress,
+            shouldRestartTimer: false
+        )
+    }
+
+    private func startStillPreviewPlayback(
+        from progress: Double,
+        shouldRestartTimer: Bool
+    ) {
+        if shouldRestartTimer {
+            stillAutoAdvanceTask?.cancel()
+            stillAutoAdvanceTask = nil
+        }
+
+        autoAdvanceEnabled = true
+        didAutoAdvanceCurrentClip = false
+        playbackProgress = min(1, max(0, progress))
+        stillPlaybackStartProgress = playbackProgress
+        stillPlaybackStartDate = Date()
+        isPlaying = true
+
         stillAutoAdvanceTask = Task {
-            let waitTime = max(0.5, clip.duration)
+            let waitTime = max(
+                0.1,
+                clip.duration * (1 - playbackProgress)
+            )
             try? await Task.sleep(
                 for: .milliseconds(Int((waitTime * 1000).rounded()))
             )
@@ -1272,6 +1606,24 @@ struct VideoTrimEditor: View {
                 guard autoAdvanceEnabled, !hasPlayableMedia else { return }
                 advanceAfterCurrentClipIfNeeded()
             }
+        }
+    }
+
+    private func synchronizeStillPreviewProgress() {
+        guard isPlaying,
+              let playbackStartDate = stillPlaybackStartDate,
+              clip.duration > 0
+        else { return }
+
+        let elapsed = Date().timeIntervalSince(playbackStartDate)
+        playbackProgress = min(
+            1,
+            stillPlaybackStartProgress + elapsed / clip.duration
+        )
+
+        if playbackProgress >= 0.999 {
+            isPlaying = false
+            stillPlaybackStartDate = nil
         }
     }
 
@@ -1320,6 +1672,21 @@ struct VideoTrimEditor: View {
 private enum TrimEdge {
     case leading
     case trailing
+}
+
+private struct RotatingLoopIcon: View {
+    let size: CGFloat
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let seconds = timeline.date.timeIntervalSinceReferenceDate
+            let angle = seconds.truncatingRemainder(dividingBy: 1.0) * 360
+
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: size, weight: .bold))
+                .rotationEffect(.degrees(angle))
+        }
+    }
 }
 
 private struct PlayerSurface: UIViewRepresentable {

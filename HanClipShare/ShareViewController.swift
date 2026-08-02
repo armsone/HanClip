@@ -68,15 +68,14 @@ final class ShareViewController: UIViewController {
             for: .horizontal
         )
 
-        statusLabel.text = "공유 파일을 준비하는 중입니다."
-        statusLabel.font = .preferredFont(forTextStyle: .headline)
+        statusLabel.text = "공유 파일을 HanClip으로 옮기는 중입니다."
+        statusLabel.font = .systemFont(ofSize: 24, weight: .black)
         statusLabel.textAlignment = .center
         statusLabel.numberOfLines = 0
 
         descriptionLabel.text =
-            "복사가 끝난 뒤 항목을 선택하면 공유 파일을 새 프로젝트나 "
-            + "기존 프로젝트에 추가할 수 있습니다."
-        descriptionLabel.font = .preferredFont(forTextStyle: .footnote)
+            "복사가 끝나면 HanClip에서 바로 새 프로젝트나 기존 프로젝트에 추가할 수 있습니다."
+        descriptionLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         descriptionLabel.textAlignment = .center
         descriptionLabel.textColor = .secondaryLabel
         descriptionLabel.numberOfLines = 0
@@ -115,14 +114,14 @@ final class ShareViewController: UIViewController {
         ])
 
         progressView.progress = 0
-        progressView.transform = CGAffineTransform(scaleX: 1, y: 2)
+        progressView.transform = CGAffineTransform(scaleX: 1, y: 1.6)
         progressView.progressTintColor = secondaryColor
         progressView.trackTintColor = secondaryColor.withAlphaComponent(0.18)
 
         progressLabel.text = "0%"
         progressLabel.font = .monospacedDigitSystemFont(
-            ofSize: 13,
-            weight: .semibold
+            ofSize: 14,
+            weight: .bold
         )
         progressLabel.textColor = secondaryColor
         progressLabel.textAlignment = .right
@@ -149,7 +148,7 @@ final class ShareViewController: UIViewController {
 
         stack.axis = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
         [
             logoStack,
@@ -165,7 +164,7 @@ final class ShareViewController: UIViewController {
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: 10
+                constant: 18
             ),
             stack.bottomAnchor.constraint(
                 lessThanOrEqualTo: cancelButton.topAnchor,
@@ -183,7 +182,7 @@ final class ShareViewController: UIViewController {
                 equalTo: stack.widthAnchor
             ),
             progressStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            progressLabel.widthAnchor.constraint(equalToConstant: 44),
+            progressLabel.widthAnchor.constraint(equalToConstant: 54),
             statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             actionButtonsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             descriptionLabel.widthAnchor.constraint(
@@ -206,34 +205,19 @@ final class ShareViewController: UIViewController {
     }
 
     private func configureActionButtons() {
-        actionButtonsStack.axis = .horizontal
+        actionButtonsStack.axis = .vertical
         actionButtonsStack.alignment = .fill
-        actionButtonsStack.distribution = .fillEqually
-        actionButtonsStack.spacing = 8
+        actionButtonsStack.distribution = .fill
+        actionButtonsStack.spacing = 10
         actionButtonsStack.isHidden = true
 
-        [
+        actionButtonsStack.addArrangedSubview(
             makeActionButton(
-                title: "사진",
-                image: UIImage(systemName: "photo.on.rectangle"),
-                action: #selector(openPhoto)
-            ),
-            makeActionButton(
-                title: "달력",
-                image: UIImage(systemName: "calendar"),
-                action: #selector(openCalendar)
-            ),
-            makeActionButton(
-                title: "파일",
-                image: UIImage(systemName: "folder"),
-                action: #selector(openFiles)
-            ),
-            makeActionButton(
-                title: "실행",
-                image: UIImage(named: "LogoMarkV2"),
+                title: "HanClip에서 열기",
+                image: UIImage(systemName: "arrow.up.forward.app.fill"),
                 action: #selector(openApp)
             )
-        ].forEach(actionButtonsStack.addArrangedSubview)
+        )
     }
 
     private func makeActionButton(
@@ -244,28 +228,37 @@ final class ShareViewController: UIViewController {
         var configuration = UIButton.Configuration.filled()
         configuration.title = title
         configuration.image = image
-        configuration.imagePlacement = .top
-        configuration.imagePadding = 6
+        configuration.imagePlacement = .leading
+        configuration.imagePadding = 10
+        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: 19,
+            weight: .bold
+        )
         configuration.baseForegroundColor = .white
         configuration.baseBackgroundColor = secondaryColor
-            .withAlphaComponent(0.88)
-        configuration.cornerStyle = .medium
+            .withAlphaComponent(0.92)
+        configuration.cornerStyle = .capsule
         configuration.contentInsets = NSDirectionalEdgeInsets(
-            top: 10,
-            leading: 6,
-            bottom: 10,
-            trailing: 6
+            top: 0,
+            leading: 20,
+            bottom: 0,
+            trailing: 20
         )
 
         let button = UIButton(configuration: configuration)
-        button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        button.titleLabel?.font = .systemFont(ofSize: 17, weight: .bold)
+        button.heightAnchor.constraint(equalToConstant: 58).isActive = true
+        button.layer.shadowColor = secondaryColor.withAlphaComponent(0.28).cgColor
+        button.layer.shadowOpacity = 1
+        button.layer.shadowRadius = 14
+        button.layer.shadowOffset = CGSize(width: 0, height: 7)
         button.addTarget(self, action: action, for: .touchUpInside)
         return button
     }
 
     private func configureCancelButton() {
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.setTitle("취소", for: .normal)
+        cancelButton.setTitle("닫기", for: .normal)
         cancelButton.titleLabel?.font = .systemFont(
             ofSize: 18,
             weight: .semibold
@@ -622,11 +615,13 @@ final class ShareViewController: UIViewController {
             progressView.progress = 1
             progressLabel.text = "100%"
             statusLabel.text =
-                "\(count)개 파일 복사가 완료되었습니다. 열 항목을 선택해 주세요."
+                "\(count)개 파일을 준비했습니다"
+            descriptionLabel.text =
+                "HanClip을 열면 공유 파일을 새 프로젝트나 기존 프로젝트에 추가할 수 있습니다."
             actionButtonsStack.isHidden = false
         } else {
             isImportComplete = false
-            statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다."
+            statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다"
             progressView.isHidden = true
             progressLabel.isHidden = true
             actionButtonsStack.isHidden = true
@@ -696,7 +691,7 @@ final class ShareViewController: UIViewController {
         isOpeningHostApp = true
         setActionButtonsEnabled(false)
         cancelButton.isEnabled = false
-        statusLabel.text = "HanClip을 여는 중입니다."
+        statusLabel.text = "HanClip을 여는 중입니다"
         extensionContext?.open(url) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
