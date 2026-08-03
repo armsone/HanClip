@@ -224,7 +224,7 @@ struct VideoTrimEditor: View {
             }
             Button("취소", role: .cancel) {}
         } message: {
-            Text("삭제한 미디어는 현재 프로젝트의 클립 목록에서 제거됩니다.")
+            Text("삭제한 미디어는 현재 영화의 클립 목록에서 제거됩니다.")
         }
     }
 
@@ -268,8 +268,8 @@ struct VideoTrimEditor: View {
                             .frame(width: proxy.size.width * 0.60)
                             .accessibilityLabel(
                                 isPlaying
-                                    ? "미리보기 일시 정지"
-                                    : "미리보기 재생"
+                                    ? "시사회 일시 정지"
+                                    : "시사회 재생"
                             )
 
                             previewNavigationButton(
@@ -469,7 +469,7 @@ struct VideoTrimEditor: View {
             .padding(.leading, 2)
             .frame(height: 28)
             .accessibilityLabel(
-                "\(currentPosition) / \(totalClipCount)번째 미리보기"
+                "\(currentPosition) / \(totalClipCount)번째 시사회"
             )
     }
 

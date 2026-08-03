@@ -481,7 +481,7 @@ final class EditorViewModel: ObservableObject {
         }
 
         isExporting = true
-        progressMessage = "프로젝트를 저장하는 중…"
+        progressMessage = "영화를 저장하는 중…"
 
         do {
             _ = try ProjectStore.save(
@@ -504,7 +504,7 @@ final class EditorViewModel: ObservableObject {
         guard !clips.isEmpty, !isExporting else { return }
 
         isExporting = true
-        progressMessage = "프로젝트를 저장하는 중…"
+        progressMessage = "영화를 저장하는 중…"
 
         do {
             let savedID = try ProjectStore.save(
@@ -532,7 +532,7 @@ final class EditorViewModel: ObservableObject {
         isPreviewRendering = true
         previewProgress = 0
         previewThumbnail = renderableClips.first?.thumbnail
-        progressMessage = "프로젝트를 저장하는 중…"
+        progressMessage = "영화를 저장하는 중…"
 
         previewTask = Task {
             do {
@@ -560,7 +560,7 @@ final class EditorViewModel: ObservableObject {
                     \.isRenderableClip
                 )
                 previewProgress = 0.10
-                progressMessage = "미리보기 영상을 만드는 중…"
+                progressMessage = "시사회 영화를 준비하는 중…"
                 let output = try await VideoComposer().compose(
                     items: compositionItems,
                     renderSize: outputRenderSize,
@@ -571,7 +571,7 @@ final class EditorViewModel: ObservableObject {
                 }
                 try Task.checkCancellation()
                 previewProgress = 0.96
-                progressMessage = "영상 파일을 저장하는 중…"
+                progressMessage = "개봉 파일을 준비하는 중…"
                 let storedOutput = try ProjectStore.saveRenderedVideo(
                     output,
                     toProject: savedID
@@ -617,7 +617,7 @@ final class EditorViewModel: ObservableObject {
 
     func cancelPreviewGeneration() {
         guard isPreviewRendering else { return }
-        progressMessage = "미리보기 생성을 취소하는 중…"
+        progressMessage = "시사회 준비를 취소하는 중…"
         previewTask?.cancel()
     }
 
@@ -715,7 +715,7 @@ final class EditorViewModel: ObservableObject {
 
     func refreshPendingSharedItems() {
         let records = SharedInbox.pendingRecords()
-        let thumbnailRecords = Array(records.prefix(5))
+        let thumbnailRecords = Array(records.prefix(9))
         pendingSharedItemCount = records.count
         pendingSharedThumbnails = []
         pendingThumbnailTask?.cancel()
@@ -758,7 +758,7 @@ final class EditorViewModel: ObservableObject {
             refreshPendingSharedItems()
         } catch {
             alertMessage =
-                "현재 프로젝트를 저장하지 못해 공유 파일 대기 화면으로 "
+                "현재 영화를 저장하지 못해 공유 파일 대기 화면으로 "
                 + "이동하지 못했습니다. \(error.localizedDescription)"
         }
     }
@@ -775,7 +775,7 @@ final class EditorViewModel: ObservableObject {
         importSharedItems(destination: .existingProject)
     }
 
-    private func importPendingItemsIntoNewProject() {
+    func importPendingItemsIntoNewProject() {
         refreshPendingSharedItems()
         guard pendingSharedItemCount > 0 else { return }
         importSharedItems(destination: .newProject)
@@ -817,7 +817,7 @@ final class EditorViewModel: ObservableObject {
         guard let exportedURL else { return }
         let albumName = pendingPhotoAlbumName
         isExporting = true
-        progressMessage = "사진 앱에 저장하는 중…"
+        progressMessage = "사진 앱으로 개봉하는 중…"
 
         Task {
             do {
@@ -829,8 +829,8 @@ final class EditorViewModel: ObservableObject {
                 progressMessage = ""
                 pendingPhotoAlbumName = ""
                 alertMessage = albumName.isEmpty
-                    ? "사진 앱에 저장했습니다."
-                    : "\(albumName) 앨범에 저장했습니다."
+                    ? "사진 앱에 개봉했습니다."
+                    : "\(albumName) 앨범에 개봉했습니다."
             } catch {
                 isExporting = false
                 progressMessage = ""
@@ -1028,7 +1028,7 @@ final class EditorViewModel: ObservableObject {
         } else {
             beginNewProject()
             alertMessage =
-                "기존 프로젝트가 없어 새 프로젝트에 추가했습니다."
+                "기존 영화가 없어 새 영화에 추가했습니다."
         }
     }
 

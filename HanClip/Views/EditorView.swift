@@ -288,12 +288,27 @@ struct EditorView: View {
             }
             .overlay(alignment: .top) {
                 if isSharedInboxBannerVisible {
-                    sharedInboxBanner
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
-                        .transition(
-                            .move(edge: .top).combined(with: .opacity)
-                        )
+                    GeometryReader { proxy in
+                        sharedInboxBanner
+                            .frame(maxWidth: .infinity)
+                            .frame(
+                                height: min(
+                                    max(proxy.size.height * 0.50, 360),
+                                    455
+                                ),
+                                alignment: .top
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.top, 10)
+                            .frame(
+                                maxWidth: .infinity,
+                                maxHeight: .infinity,
+                                alignment: .top
+                            )
+                    }
+                    .transition(
+                        .move(edge: .top).combined(with: .opacity)
+                    )
                 }
             }
         }
@@ -525,7 +540,7 @@ struct EditorView: View {
         ) { result in
             switch result {
             case .success:
-                model.alertMessage = "선택한 위치에 저장했습니다."
+                model.alertMessage = "선택한 위치에 개봉했습니다."
             case .failure(let error):
                 model.alertMessage = error.localizedDescription
             }
@@ -834,7 +849,7 @@ struct EditorView: View {
 
     private var previewHeaderIdentity: some View {
         HanClipTopHeader(
-            logoAccessibilityLabel: "미리보기 닫기",
+            logoAccessibilityLabel: "시사회 닫기",
             logoAction: {
                 closeClipPreview()
             }
@@ -878,7 +893,7 @@ struct EditorView: View {
                                     lineWidth: 1
                                 )
                         }
-                        .accessibilityLabel("모영상 미리보기")
+                    .accessibilityLabel("모영상 시사회")
                 }
 
                 HanClipHeaderActionCluster {
@@ -894,7 +909,7 @@ struct EditorView: View {
                     } label: {
                         Image(systemName: "arrow.counterclockwise")
                     }
-                    .accessibilityLabel("미리보기 초기화")
+                    .accessibilityLabel("시사회 초기화")
                 }
 
             }
@@ -986,22 +1001,85 @@ struct EditorView: View {
     }
 
     private var sharedInboxBanner: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .center, spacing: 14) {
                 Image(systemName: "tray.and.arrow.down.fill")
-                    .font(.system(size: 36, weight: .semibold))
+                    .font(.system(size: 31, weight: .black))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                HanClipTheme.primary,
+                                HanClipTheme.secondary.opacity(0.92)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 60, height: 60)
+                    .background(
+                        Color.white.opacity(0.95),
+                        in: RoundedRectangle(
+                            cornerRadius: 18,
+                            style: .continuous
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.42), lineWidth: 1)
+                    }
+                    .shadow(
+                        color: Color.black.opacity(0.16),
+                        radius: 14,
+                        y: 7
+                    )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("공유 파일 \(model.pendingSharedItemCount)개")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("사진 및 영상 선택 또는 프로젝트를 열면 추가됩니다.")
-                        .font(.system(size: 12))
-                        .opacity(0.82)
-                    sharedInboxThumbnailStrip
-                        .padding(.top, 3)
+                    Text("공유파일 \(model.pendingSharedItemCount)개 발견")
+                        .font(.system(size: 25, weight: .black))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 0)
+            }
+
+            sharedInboxThumbnailStrip
+
+            Spacer(minLength: 0)
+
+            HStack(alignment: .top, spacing: 10) {
+                Button {
+                    withAnimation(.snappy) {
+                        isSharedInboxBannerDismissed = true
+                    }
+                    model.importPendingItemsIntoNewProject()
+                } label: {
+                    sharedInboxActionButton(
+                        title: "새 영화 제작",
+                        systemImage: "film.fill",
+                        isPrimary: true,
+                        accent: Color.white
+                    )
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .accessibilityHint("공유 파일로 새 영화를 만듭니다.")
+
+                Button {
+                    dismissSharedInboxBanner()
+                } label: {
+                    sharedInboxActionButton(
+                        title: "영화에 추가",
+                        systemImage: "folder.badge.plus",
+                        isPrimary: false,
+                        accent: Color.white.opacity(0.88)
+                    )
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .accessibilityHint(
+                    "알림을 닫고 영화 목록에서 공유 파일을 추가할 영화를 선택합니다."
+                )
 
                 Button {
                     withAnimation(.snappy) {
@@ -1009,75 +1087,262 @@ struct EditorView: View {
                         isSharedInboxBannerDismissed = true
                     }
                 } label: {
-                    Text("지우기")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(HanClipTheme.primary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 34)
-                        .background(.white, in: Capsule())
+                    sharedInboxActionButton(
+                        title: "비우기",
+                        systemImage: "trash.fill",
+                        isPrimary: false,
+                        accent: Color.white.opacity(0.82)
+                    )
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
                 .accessibilityHint("공유 공간의 대기 파일을 삭제합니다.")
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .background(
-                HanClipTheme.primary,
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                dismissSharedInboxBanner()
-            }
-
-            Button {
-                dismissSharedInboxBanner()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(HanClipTheme.secondary)
-                    .frame(width: 38, height: 38)
-                    .background(.white, in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                HanClipTheme.secondary.opacity(0.24),
-                                lineWidth: 1
-                            )
-                    }
-                    .shadow(
-                        color: Color.black.opacity(0.14),
-                        radius: 6,
-                        y: 3
-                    )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("알림 닫기")
-            .accessibilityHint("공유 파일은 보관하고 알림만 닫습니다.")
         }
+        .foregroundStyle(.white)
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [
+                    HanClipTheme.primary.opacity(0.96),
+                    HanClipTheme.secondary.opacity(0.78),
+                    HanClipTheme.primary.opacity(0.72)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(HanClipTheme.panelStroke.opacity(0.72), lineWidth: 1)
+        }
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "play.rectangle.fill")
+                .font(.system(size: 128, weight: .black))
+                .foregroundStyle(Color.white.opacity(0.032))
+                .padding(.top, 20)
+                .padding(.trailing, 18)
+                .allowsHitTesting(false)
+        }
+        .shadow(
+            color: HanClipTheme.primary.opacity(0.20),
+            radius: 24,
+            y: 12
+        )
+        .contentShape(Rectangle())
+    }
+
+    private func sharedInboxActionButton(
+        title: String,
+        systemImage: String,
+        isPrimary: Bool,
+        accent: Color
+    ) -> some View {
+        VStack(spacing: 9) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                HanClipTheme.primary.opacity(
+                                    isPrimary ? 0.42 : 0.26
+                                ),
+                                HanClipTheme.secondary.opacity(
+                                    isPrimary ? 0.30 : 0.18
+                                )
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: systemImage)
+                    .font(.system(size: isPrimary ? 24 : 25, weight: .black))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(accent)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isPrimary {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(HanClipTheme.primary, .white)
+                        .offset(x: 4, y: 4)
+                }
+            }
+            .frame(height: 46)
+
+            Text(title)
+                .font(.system(size: 12, weight: .black))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .frame(height: 96)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(isPrimary ? 0.30 : 0.18),
+                    HanClipTheme.primary.opacity(isPrimary ? 0.18 : 0.10),
+                    Color.white.opacity(isPrimary ? 0.12 : 0.07)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(isPrimary ? 0.72 : 0.52)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(
+                    Color.white.opacity(isPrimary ? 0.64 : 0.38),
+                    lineWidth: 1
+                )
+        }
+        .overlay(alignment: .topLeading) {
+            if isPrimary {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.22),
+                                Color.white.opacity(0.02)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(Color.white.opacity(isPrimary ? 0.18 : 0.10))
+                .frame(width: 34, height: 3)
+                .padding(.bottom, 9)
+                .allowsHitTesting(false)
+        }
+        .shadow(
+            color: Color.black.opacity(isPrimary ? 0.18 : 0.11),
+            radius: isPrimary ? 16 : 10,
+            y: isPrimary ? 8 : 5
+        )
     }
 
     private var sharedInboxThumbnailStrip: some View {
-        HStack(spacing: 3) {
-            ForEach(
-                Array(model.pendingSharedThumbnails.enumerated()),
-                id: \.offset
-            ) { _, thumbnail in
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 35, height: 35)
-                    .clipped()
-            }
+        let thumbnails = Array(model.pendingSharedThumbnails.prefix(9))
+        let extraCount = max(model.pendingSharedItemCount - thumbnails.count, 0)
+        let columns = Array(
+            repeating: GridItem(.flexible(), spacing: 8),
+            count: 5
+        )
 
-            if model.pendingSharedItemCount > 5 {
-                Text("....")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.82))
+        return GeometryReader { proxy in
+            let cellSize = max((proxy.size.width - 32) / 5, 1)
+            let visibleCount = thumbnails.count + (extraCount > 0 ? 1 : 0)
+            let rowCount = visibleCount > 5 ? 2 : 1
+            let gridHeight = CGFloat(rowCount) * cellSize
+                + CGFloat(max(rowCount - 1, 0)) * 8
+
+            VStack(spacing: 7) {
+                sharedInboxFilmPerforationRow
+
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(
+                        Array(thumbnails.enumerated()),
+                        id: \.offset
+                    ) { _, thumbnail in
+                        Image(uiImage: thumbnail)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: cellSize, height: cellSize)
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: 10,
+                                    style: .continuous
+                                )
+                            )
+                            .overlay {
+                                RoundedRectangle(
+                                    cornerRadius: 10,
+                                    style: .continuous
+                                )
+                                .stroke(Color.white.opacity(0.38), lineWidth: 1)
+                            }
+                            .shadow(
+                                color: Color.black.opacity(0.14),
+                                radius: 4,
+                                y: 2
+                            )
+                    }
+
+                    if extraCount > 0 {
+                        Text("+\(extraCount)")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(.white.opacity(0.94))
+                            .frame(width: cellSize, height: cellSize)
+                            .background(
+                                Color.white.opacity(0.18),
+                                in: RoundedRectangle(
+                                    cornerRadius: 10,
+                                    style: .continuous
+                                )
+                            )
+                            .overlay {
+                                RoundedRectangle(
+                                    cornerRadius: 10,
+                                    style: .continuous
+                                )
+                                .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                            }
+                    }
+                }
+                .frame(height: gridHeight, alignment: .top)
+
+                sharedInboxFilmPerforationRow
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.22),
+                        HanClipTheme.primary.opacity(0.16)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
             }
         }
+        .frame(height: model.pendingSharedItemCount > 5 ? 166 : 106)
+    }
+
+    private var sharedInboxFilmPerforationRow: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<16, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(Color.white.opacity(0.22))
+                    .frame(width: 10, height: 3)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func dismissSharedInboxBanner() {
@@ -1952,7 +2217,7 @@ struct EditorView: View {
                         model.openPicker()
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
-                            HanClipTitleLine("프로젝트 생성")
+                            HanClipTitleLine("영화 만들기")
 
                             ZStack {
                                 LinearGradient(
@@ -1995,7 +2260,7 @@ struct EditorView: View {
                                         )
 
                                     Label(
-                                        "새 클립 만들기",
+                                        "영화 제작",
                                         systemImage: "plus.circle.fill"
                                     )
                                     .font(.system(size: 17, weight: .bold))
@@ -2115,7 +2380,7 @@ struct EditorView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(HanClipTheme.secondaryText)
                 Spacer()
-                Text("프로젝트 목록")
+                Text("영화 목록")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(HanClipTheme.secondaryText.opacity(0.72))
             }
@@ -2209,7 +2474,7 @@ struct EditorView: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityHint(
-                    "한 번 누르면 프로젝트를 열고, 길게 누르면 상단 고정을 전환합니다."
+                    "한 번 누르면 영화를 열고, 길게 누르면 상단 고정을 전환합니다."
                 )
 
                 if project.isPinned {
@@ -2226,7 +2491,7 @@ struct EditorView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("핀 해제")
                     .accessibilityHint(
-                        "이 프로젝트의 상단 고정을 해제합니다."
+                        "이 영화의 상단 고정을 해제합니다."
                     )
                 }
             }
@@ -2508,7 +2773,7 @@ struct EditorView: View {
                                         : HanClipTheme.panelFill
                             )
                             .accessibilityHint(
-                                "눌러서 에디터를 열고, 순서 변경 버튼에서 위치를 바꿉니다."
+                                "눌러서 편집을 열고, 순서 변경 버튼에서 위치를 바꿉니다."
                             )
                         }
                     }
@@ -2535,7 +2800,7 @@ struct EditorView: View {
             HStack {
                 Spacer()
 
-                Text("프로젝트 편집")
+                Text("영화 편집")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(HanClipTheme.secondaryText.opacity(0.72))
             }
@@ -2557,7 +2822,7 @@ struct EditorView: View {
             }
             .accessibilityLabel("미디어 추가")
             .accessibilityHint(
-                "현재 프로젝트의 마지막에 사진이나 영상을 추가합니다."
+                "현재 영화의 마지막에 사진이나 영상을 추가합니다."
             )
 
             if model.clips.isEmpty {
@@ -2574,7 +2839,7 @@ struct EditorView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("첫 화면으로 이동")
-                .accessibilityHint("현재 빈 프로젝트를 닫고 첫 화면으로 돌아갑니다.")
+                .accessibilityHint("현재 빈 영화를 닫고 첫 화면으로 돌아갑니다.")
             }
         }
         .frame(maxWidth: .infinity)
@@ -3081,7 +3346,7 @@ struct EditorView: View {
                         "\(index + 1)번째 \(reorderMediaTitle(for: clip))"
                     )
                     .accessibilityHint(
-                        "한 번 누르면 에디터를 열고, 누른 뒤 끌면 순서를 변경합니다."
+                        "한 번 누르면 편집을 열고, 누른 뒤 끌면 순서를 변경합니다."
                     )
             }
 
@@ -3090,7 +3355,7 @@ struct EditorView: View {
             }
             .accessibilityLabel("미디어 추가")
             .accessibilityHint(
-                "현재 프로젝트의 마지막에 사진이나 영상을 추가합니다."
+                "현재 영화의 마지막에 사진이나 영상을 추가합니다."
             )
 
             reorderMediaDeleteTile
@@ -3633,7 +3898,7 @@ struct EditorView: View {
                     }
 
                     VStack(spacing: 6) {
-                        Text(model.isPreviewRendering ? "영상을 만들고 있습니다" : "준비하고 있습니다")
+                        Text(model.isPreviewRendering ? "개봉 준비 중" : "준비하고 있습니다")
                             .font(.system(size: 24, weight: .black))
                             .foregroundStyle(HanClipTheme.primaryText)
 
@@ -4154,18 +4419,18 @@ private struct ImportantInfoSheet: View {
     private let items: [(title: String, body: String)] = [
         (SpecialThanksInfo.title, SpecialThanksInfo.body),
         ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 설정과 설정 정보를 보여주는 창입니다."),
-        ("첫 화면", "앱 실행 후 프로젝트 생성과 저장된 프로젝트 목록이 보이는 홈 화면입니다."),
-        ("프로젝트 생성 영역", "첫 화면 상단의 새 클립 만들기 카드입니다. 프로젝트를 시작하기 위해 미디어를 고르는 영역입니다."),
-        ("프로젝트 리스트", "첫 화면에 저장된 프로젝트들이 표시되는 영역입니다."),
-        ("프로젝트 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다."),
-        ("프로젝트 편집", "프로젝트 화면의 로고 아래, 기본 시간 설정 위쪽에 들어간 프로젝트 편집 텍스트입니다."),
+        ("첫 화면", "앱 실행 후 영화 만들기와 저장된 영화 목록이 보이는 홈 화면입니다."),
+        ("영화 만들기 영역", "첫 화면 상단의 영화 제작 카드입니다. 영화를 시작하기 위해 미디어를 고르는 영역입니다."),
+        ("영화 목록", "첫 화면에 저장된 영화들이 표시되는 영역입니다."),
+        ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다."),
+        ("영화 편집", "영화 화면의 로고 아래, 기본 시간 설정 위쪽에 들어간 영화 편집 텍스트입니다."),
         ("클립 리스트", "선택한 Photo, Live, Clip이 순서대로 표시되는 목록입니다. 썸네일, 시간, 아이콘, 세그먼트 컨트롤, +/- 버튼이 있는 영역입니다."),
         ("순서변경 상태", "썸네일을 한 줄에 여러 개 표시하고 드래그해서 클립 순서를 변경하는 상태입니다."),
-        ("에디터 영역 / 에디터 모드", "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다."),
-        ("미리보기", "에디터 안에서는 개별 클립을 확인하는 재생 영역이고, 만들기 완료 후에는 제작된 전체 영상을 재생하고 확인하는 화면입니다."),
+        ("편집 영역 / 편집 모드", "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다."),
+        ("시사회", "편집 안에서는 개별 클립을 확인하는 재생 영역이고, 만들기 완료 후에는 제작된 전체 영화를 재생하고 확인하는 화면입니다."),
         ("만들기", "전체 클립을 하나의 영상으로 생성하는 액션과 버튼입니다."),
         ("영상 생성 진행창", "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다."),
-        ("저장하기 창", "미리보기에서 사진 앱 또는 파일 앱 저장 방식을 선택하는 창입니다."),
+        ("개봉하기 창", "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 6개 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다."),
@@ -4174,12 +4439,12 @@ private struct ImportantInfoSheet: View {
         ("단일 / 다중", "영상 클립을 하나의 구간으로 쓸지, 사운드 피크 기준으로 여러 자영상으로 나눌지 정하는 영상 세그먼트 모드입니다."),
         ("모영상", "다중 세그먼트를 만들 때 원본 역할로 남는 부모 영상입니다."),
         ("자영상", "모영상에서 사운드 피크 기준으로 만들어진 하위 영상 클립입니다."),
-        ("웨이브 / 웨이브 인디케이터", "영상/Live Photo 에디터에서 소리 파형을 보여주는 영역입니다."),
+        ("웨이브 / 웨이브 인디케이터", "영상/Live Photo 편집에서 소리 파형을 보여주는 영역입니다."),
         ("선택바", "웨이브 인디케이터의 좌우 끝에 있는 드래그 바입니다."),
-        ("자동 진행", "에디터에서 클립 재생이 끝나면 다음 클립으로 이어지는 기능입니다."),
-        ("무한 루프", "미리보기 상태바의 루프 버튼으로 전체 클립을 반복 재생하는 기능입니다."),
+        ("자동 진행", "편집에서 클립 재생이 끝나면 다음 클립으로 이어지는 기능입니다."),
+        ("무한 루프", "시사회 상태바의 루프 버튼으로 전체 클립을 반복 재생하는 기능입니다."),
         ("달력 썸네일 버튼", "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다."),
-        ("텍스트 넣기", "프로젝트 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
+        ("텍스트 넣기", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
         ("외부 호출 주소", "hanclip://photo\nhanclip://calendar\nhanclip://files\nhanclip://open"),
         ("내장 서체 저작권", """
         HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Dovemayo 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 텍스트 넣기와 영상 렌더링 과정에서만 선택적으로 사용됩니다.
@@ -6721,7 +6986,7 @@ private struct ProjectMemoField: View {
             saveIfNeeded()
         }
         .dismissKeyboardOnDrag()
-        .accessibilityLabel("프로젝트 메모")
+        .accessibilityLabel("영화 메모")
         .id(projectID)
     }
 
@@ -6748,7 +7013,7 @@ private struct SwipeToDeleteRow<Content: View>: View {
     private let deleteThreshold: CGFloat = 82
 
     init(
-        accessibilityLabel: String = "프로젝트 삭제",
+        accessibilityLabel: String = "영화 삭제",
         cornerRadius: CGFloat = 16,
         onDelete: @escaping () -> Void,
         @ViewBuilder content: () -> Content
@@ -6879,7 +7144,7 @@ private struct VideoPreviewView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("미리보기 재생 또는 일시정지")
+                    .accessibilityLabel("시사회 재생 또는 일시정지")
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .frame(maxWidth: .infinity)
@@ -6940,7 +7205,7 @@ private struct VideoPreviewView: View {
                                 showSaveOptions = true
                             }
                         } label: {
-                            Label("저장하기", systemImage: "square.and.arrow.down")
+                            Label("개봉하기", systemImage: "square.and.arrow.down")
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
@@ -7016,7 +7281,7 @@ private struct VideoPreviewView: View {
 
             VStack(spacing: 0) {
                 HanClipTopHeader(
-                    logoAccessibilityLabel: "저장위치 설정 취소",
+                    logoAccessibilityLabel: "개봉 위치 설정 취소",
                     logoAction: {
                         returnToPreviewFromSaveOptions()
                     }
@@ -7059,7 +7324,7 @@ private struct VideoPreviewView: View {
                     }
 
                     VStack(spacing: 6) {
-                        Text("완성되었습니다")
+                        Text("개봉하겠습니까?")
                             .font(.system(size: 28, weight: .black))
                             .foregroundStyle(HanClipTheme.primaryText)
                     }
@@ -7072,7 +7337,7 @@ private struct VideoPreviewView: View {
                         Image(systemName: "square.and.arrow.down")
                             .font(.system(size: 15, weight: .bold))
 
-                        Text("저장 위치 선택")
+                        Text("개봉 위치 선택")
                             .font(.system(size: 15, weight: .bold))
                     }
                     .foregroundStyle(HanClipTheme.secondaryText)
@@ -7084,7 +7349,7 @@ private struct VideoPreviewView: View {
                             onSaveToPhotos(albumName)
                         } label: {
                             Label(
-                                "사진 앱에 저장",
+                                "사진 앱으로 개봉",
                                 systemImage: "photo.on.rectangle"
                             )
                             .font(.system(size: 17, weight: .bold))
@@ -7167,7 +7432,7 @@ private struct VideoPreviewView: View {
                             onSaveToFiles()
                         } label: {
                             Label(
-                                "파일 앱에 저장",
+                                "파일 앱으로 개봉",
                                 systemImage: "folder"
                             )
                             .font(.system(size: 16, weight: .bold))
@@ -7195,7 +7460,7 @@ private struct VideoPreviewView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Text("원하는 위치를 직접 선택해 저장합니다.")
+                        Text("원하는 위치를 직접 선택해 개봉합니다.")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(HanClipTheme.secondaryText.opacity(0.62))
                             .lineLimit(1)

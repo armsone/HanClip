@@ -30,6 +30,7 @@ final class ShareViewController: UIViewController {
     private var importTask: Task<Void, Never>?
     private var isImportComplete = false
     private var isOpeningHostApp = false
+    private var didAttemptAutomaticOpen = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -74,7 +75,7 @@ final class ShareViewController: UIViewController {
         statusLabel.numberOfLines = 0
 
         descriptionLabel.text =
-            "복사가 끝나면 HanClip에서 바로 새 프로젝트나 기존 프로젝트에 추가할 수 있습니다."
+            "복사가 끝나면 HanClip에서 바로 새 영화나 기존 영화에 추가할 수 있습니다."
         descriptionLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         descriptionLabel.textAlignment = .center
         descriptionLabel.textColor = .secondaryLabel
@@ -148,7 +149,7 @@ final class ShareViewController: UIViewController {
 
         stack.axis = .vertical
         stack.alignment = .leading
-        stack.spacing = 14
+        stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
         [
             logoStack,
@@ -164,7 +165,7 @@ final class ShareViewController: UIViewController {
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: 18
+                constant: 22
             ),
             stack.bottomAnchor.constraint(
                 lessThanOrEqualTo: cancelButton.topAnchor,
@@ -200,7 +201,7 @@ final class ShareViewController: UIViewController {
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
                 constant: -12
             ),
-            cancelButton.heightAnchor.constraint(equalToConstant: 48)
+            cancelButton.heightAnchor.constraint(equalToConstant: 54)
         ])
     }
 
@@ -260,14 +261,15 @@ final class ShareViewController: UIViewController {
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.setTitle("닫기", for: .normal)
         cancelButton.titleLabel?.font = .systemFont(
-            ofSize: 18,
-            weight: .semibold
+            ofSize: 17,
+            weight: .bold
         )
-        cancelButton.setTitleColor(.white, for: .normal)
-        cancelButton.backgroundColor = .white.withAlphaComponent(0.18)
-        cancelButton.layer.cornerRadius = 12
-        cancelButton.layer.borderColor = UIColor.white
-            .withAlphaComponent(0.55)
+        cancelButton.setTitleColor(pointColor, for: .normal)
+        cancelButton.setTitleColor(pointColor.withAlphaComponent(0.45), for: .disabled)
+        cancelButton.backgroundColor = secondaryColor.withAlphaComponent(0.12)
+        cancelButton.layer.cornerRadius = 16
+        cancelButton.layer.borderColor = secondaryColor
+            .withAlphaComponent(0.32)
             .cgColor
         cancelButton.layer.borderWidth = 1
         cancelButton.addTarget(
@@ -276,24 +278,10 @@ final class ShareViewController: UIViewController {
             for: .touchUpInside
         )
 
-        let blurView = UIVisualEffectView(
-            effect: UIBlurEffect(style: .systemUltraThinMaterialLight)
-        )
-        blurView.isUserInteractionEnabled = false
-        blurView.layer.cornerRadius = 12
-        blurView.clipsToBounds = true
-        blurView.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.insertSubview(blurView, at: 0)
-        NSLayoutConstraint.activate([
-            blurView.leadingAnchor.constraint(
-                equalTo: cancelButton.leadingAnchor
-            ),
-            blurView.trailingAnchor.constraint(
-                equalTo: cancelButton.trailingAnchor
-            ),
-            blurView.topAnchor.constraint(equalTo: cancelButton.topAnchor),
-            blurView.bottomAnchor.constraint(equalTo: cancelButton.bottomAnchor)
-        ])
+        cancelButton.layer.shadowColor = secondaryColor.withAlphaComponent(0.16).cgColor
+        cancelButton.layer.shadowOpacity = 1
+        cancelButton.layer.shadowRadius = 10
+        cancelButton.layer.shadowOffset = CGSize(width: 0, height: 4)
     }
 
     private func importSharedAttachments() {
@@ -348,15 +336,21 @@ final class ShareViewController: UIViewController {
     private func importProvider(
         _ provider: NSItemProvider
     ) async throws -> SharedImportRecord {
+        if let fileURLRecord = try? await importFileURL(provider) {
+            return fileURLRecord
+        }
+
         if supportsLivePhoto(provider),
            let liveRecord = try? await importLivePhoto(provider) {
             return liveRecord
         }
 
-        if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+        if let movieTypeIdentifier = provider.typeIdentifier(
+            conformingTo: .movie
+        ) {
             let filename = try await copyRepresentation(
                 from: provider,
-                type: .movie,
+                typeIdentifier: movieTypeIdentifier,
                 fallbackExtension: "mov"
             )
             return SharedImportRecord(
@@ -365,10 +359,12 @@ final class ShareViewController: UIViewController {
             )
         }
 
-        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+        if let imageTypeIdentifier = provider.typeIdentifier(
+            conformingTo: .image
+        ) {
             let importedFile = try await copyRepresentationDetails(
                 from: provider,
-                type: .image,
+                typeIdentifier: imageTypeIdentifier,
                 fallbackExtension: "jpg"
             )
             if supportsLivePhoto(provider) {
@@ -389,6 +385,41 @@ final class ShareViewController: UIViewController {
         throw MediaShareError.unsupportedItem
     }
 
+    private func importFileURL(
+        _ provider: NSItemProvider
+    ) async throws -> SharedImportRecord {
+        let typeIdentifier = provider.typeIdentifier(conformingTo: .fileURL)
+            ?? provider.typeIdentifier(conformingTo: .url)
+            ?? "public.file-url"
+        guard provider.hasItemConformingToTypeIdentifier(typeIdentifier) else {
+            throw MediaShareError.unsupportedItem
+        }
+
+        return try await copyURLItemToInbox(
+            from: provider,
+            typeIdentifier: typeIdentifier
+        )
+    }
+
+    private static func mediaKind(for url: URL) -> SharedImportRecord.Kind {
+        if let contentType = try? url.resourceValues(
+            forKeys: [.contentTypeKey]
+        ).contentType {
+            if contentType.conforms(to: .movie) {
+                return .video
+            }
+            if contentType.conforms(to: .image) {
+                return .image
+            }
+        }
+
+        let ext = url.pathExtension.lowercased()
+        if ["mov", "mp4", "m4v"].contains(ext) {
+            return .video
+        }
+        return .image
+    }
+
     private func importLivePhoto(
         _ provider: NSItemProvider
     ) async throws -> SharedImportRecord {
@@ -407,14 +438,20 @@ final class ShareViewController: UIViewController {
         ), provider.hasItemConformingToTypeIdentifier(
             UTType.movie.identifier
         ) {
+            let imageTypeIdentifier = provider.typeIdentifier(
+                conformingTo: .image
+            ) ?? UTType.image.identifier
+            let movieTypeIdentifier = provider.typeIdentifier(
+                conformingTo: .movie
+            ) ?? UTType.movie.identifier
             let imageName = try await copyRepresentation(
                 from: provider,
-                type: .image,
+                typeIdentifier: imageTypeIdentifier,
                 fallbackExtension: "jpg"
             )
             let videoName = try await copyRepresentation(
                 from: provider,
-                type: .movie,
+                typeIdentifier: movieTypeIdentifier,
                 fallbackExtension: "mov"
             )
             return SharedImportRecord(
@@ -476,7 +513,7 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func recursiveContents(of sourceURL: URL) -> [URL] {
+    nonisolated private func recursiveContents(of sourceURL: URL) -> [URL] {
         let isDirectory = (
             try? sourceURL.resourceValues(
                 forKeys: [.isDirectoryKey]
@@ -502,19 +539,47 @@ final class ShareViewController: UIViewController {
 
     private func copyRepresentation(
         from provider: NSItemProvider,
-        type: UTType,
+        typeIdentifier: String,
         fallbackExtension: String
     ) async throws -> String {
         try await copyRepresentationDetails(
             from: provider,
-            type: type,
+            typeIdentifier: typeIdentifier,
             fallbackExtension: fallbackExtension
         ).filename
     }
 
     private func copyRepresentationDetails(
         from provider: NSItemProvider,
-        type: UTType,
+        typeIdentifier: String,
+        fallbackExtension: String
+    ) async throws -> (
+        filename: String,
+        originalFilename: String?
+    ) {
+        let suggestedName = provider.suggestedName
+        let resolvedFallbackExtension = UTType(typeIdentifier)?
+            .preferredFilenameExtension
+            ?? fallbackExtension
+        if let importedFile = try? await copyFileRepresentationToInbox(
+            from: provider,
+            typeIdentifier: typeIdentifier,
+            fallbackExtension: resolvedFallbackExtension
+        ) {
+            return importedFile
+        }
+
+        let filename = try await copyLoadedItemToInbox(
+            from: provider,
+            typeIdentifier: typeIdentifier,
+            fallbackExtension: resolvedFallbackExtension
+        )
+        return (filename, suggestedName)
+    }
+
+    private func copyFileRepresentationToInbox(
+        from provider: NSItemProvider,
+        typeIdentifier: String,
         fallbackExtension: String
     ) async throws -> (
         filename: String,
@@ -532,8 +597,131 @@ final class ShareViewController: UIViewController {
                 >
             ) in
             provider.loadFileRepresentation(
-                forTypeIdentifier: type.identifier
+                forTypeIdentifier: typeIdentifier
             ) { url, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let url else {
+                    continuation.resume(
+                        throwing: MediaShareError.missingFile
+                    )
+                    return
+                }
+
+                do {
+                    let filename = try self.copyFileToInbox(
+                        url,
+                        fallbackExtension: fallbackExtension
+                    )
+                    continuation.resume(
+                        returning: (
+                            filename,
+                            url.lastPathComponent.isEmpty
+                                ? suggestedName
+                                : url.lastPathComponent
+                        )
+                    )
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func copyURLItemToInbox(
+        from provider: NSItemProvider,
+        typeIdentifier: String
+    ) async throws -> SharedImportRecord {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadItem(
+                forTypeIdentifier: typeIdentifier,
+                options: nil
+            ) { item, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                let sourceURL: URL?
+                switch item {
+                case let url as URL:
+                    sourceURL = url
+                case let nsURL as NSURL:
+                    sourceURL = nsURL as URL
+                case let string as String:
+                    sourceURL = URL(string: string)
+                default:
+                    sourceURL = nil
+                }
+
+                guard let sourceURL else {
+                    continuation.resume(
+                        throwing: MediaShareError.missingFile
+                    )
+                    return
+                }
+
+                do {
+                    let mediaKind = Self.mediaKind(for: sourceURL)
+                    let fallbackExtension =
+                        mediaKind == .video ? "mov" : "jpg"
+                    let filename = try self.copyFileToInbox(
+                        sourceURL,
+                        fallbackExtension: fallbackExtension
+                    )
+                    continuation.resume(
+                        returning: SharedImportRecord(
+                            kind: mediaKind,
+                            primaryFilename: filename,
+                            originalFilename: sourceURL.lastPathComponent
+                        )
+                    )
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func copyLoadedItemToInbox(
+        from provider: NSItemProvider,
+        typeIdentifier: String,
+        fallbackExtension: String
+    ) async throws -> String {
+        if let filename = try? await copyInPlaceRepresentation(
+            from: provider,
+            typeIdentifier: typeIdentifier,
+            fallbackExtension: fallbackExtension
+        ) {
+            return filename
+        }
+
+        if let filename = try? await copyDataRepresentation(
+            from: provider,
+            typeIdentifier: typeIdentifier,
+            fallbackExtension: fallbackExtension
+        ) {
+            return filename
+        }
+
+        return try await copyItemRepresentation(
+            from: provider,
+            typeIdentifier: typeIdentifier,
+            fallbackExtension: fallbackExtension
+        )
+    }
+
+    private func copyInPlaceRepresentation(
+        from provider: NSItemProvider,
+        typeIdentifier: String,
+        fallbackExtension: String
+    ) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadInPlaceFileRepresentation(
+                forTypeIdentifier: typeIdentifier
+            ) { url, _, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
@@ -549,14 +737,90 @@ final class ShareViewController: UIViewController {
                         url,
                         fallbackExtension: fallbackExtension
                     )
+                    continuation.resume(returning: filename)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func copyDataRepresentation(
+        from provider: NSItemProvider,
+        typeIdentifier: String,
+        fallbackExtension: String
+    ) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadDataRepresentation(
+                forTypeIdentifier: typeIdentifier
+            ) { data, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let data else {
                     continuation.resume(
-                        returning: (
-                            filename,
-                            url.lastPathComponent.isEmpty
-                                ? suggestedName
-                                : url.lastPathComponent
-                        )
+                        throwing: MediaShareError.missingFile
                     )
+                    return
+                }
+                do {
+                    let filename = try self.writeDataToInbox(
+                        data,
+                        fallbackExtension: fallbackExtension
+                    )
+                    continuation.resume(returning: filename)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func copyItemRepresentation(
+        from provider: NSItemProvider,
+        typeIdentifier: String,
+        fallbackExtension: String
+    ) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.loadItem(
+                forTypeIdentifier: typeIdentifier,
+                options: nil
+            ) { item, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                do {
+                    switch item {
+                    case let url as URL:
+                        let filename = try self.copyFileToInbox(
+                            url,
+                            fallbackExtension: fallbackExtension
+                        )
+                        continuation.resume(returning: filename)
+                    case let data as Data:
+                        let filename = try self.writeDataToInbox(
+                            data,
+                            fallbackExtension: fallbackExtension
+                        )
+                        continuation.resume(returning: filename)
+                    case let image as UIImage:
+                        guard let data = image.jpegData(
+                            compressionQuality: 0.96
+                        ) else {
+                            throw MediaShareError.missingFile
+                        }
+                        let filename = try self.writeDataToInbox(
+                            data,
+                            fallbackExtension: "jpg"
+                        )
+                        continuation.resume(returning: filename)
+                    default:
+                        continuation.resume(
+                            throwing: MediaShareError.missingFile
+                        )
+                    }
                 } catch {
                     continuation.resume(throwing: error)
                 }
@@ -596,7 +860,7 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func copyFileToInbox(
+    nonisolated private func copyFileToInbox(
         _ source: URL,
         fallbackExtension: String
     ) throws -> String {
@@ -609,6 +873,16 @@ final class ShareViewController: UIViewController {
         return filename
     }
 
+    nonisolated private func writeDataToInbox(
+        _ data: Data,
+        fallbackExtension: String
+    ) throws -> String {
+        let filename = "\(UUID().uuidString).\(fallbackExtension)"
+        let destination = try SharedInbox.fileURL(named: filename)
+        try data.write(to: destination, options: .atomic)
+        return filename
+    }
+
     private func showResult(count: Int) {
         if count > 0 {
             isImportComplete = true
@@ -617,8 +891,9 @@ final class ShareViewController: UIViewController {
             statusLabel.text =
                 "\(count)개 파일을 준비했습니다"
             descriptionLabel.text =
-                "HanClip을 열면 공유 파일을 새 프로젝트나 기존 프로젝트에 추가할 수 있습니다."
-            actionButtonsStack.isHidden = false
+                "잠시 후 HanClip으로 이동합니다. 이동하지 않으면 아래 버튼을 눌러 주세요."
+            actionButtonsStack.isHidden = true
+            openHostAppAutomaticallyIfNeeded()
         } else {
             isImportComplete = false
             statusLabel.text = "가져올 수 있는 사진이나 영상이 없습니다"
@@ -681,7 +956,20 @@ final class ShareViewController: UIViewController {
         openHostApp(path: "open")
     }
 
-    private func openHostApp(path: String) {
+    private func openHostAppAutomaticallyIfNeeded() {
+        guard !didAttemptAutomaticOpen else { return }
+        didAttemptAutomaticOpen = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self,
+                  self.isImportComplete,
+                  !self.isOpeningHostApp
+            else { return }
+            self.openHostApp(path: "open", isAutomatic: true)
+        }
+    }
+
+    private func openHostApp(path: String, isAutomatic: Bool = false) {
         guard !isOpeningHostApp else { return }
         guard let url = URL(string: "hanclip://\(path)") else {
             completeExtension()
@@ -690,23 +978,47 @@ final class ShareViewController: UIViewController {
 
         isOpeningHostApp = true
         setActionButtonsEnabled(false)
-        cancelButton.isEnabled = false
-        statusLabel.text = "HanClip을 여는 중입니다"
+        cancelButton.isEnabled = true
+        statusLabel.text = isAutomatic
+            ? "HanClip으로 이동합니다"
+            : "HanClip을 여는 중입니다"
         extensionContext?.open(url) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.isOpeningHostApp = false
-                self.setActionButtonsEnabled(true)
-                self.cancelButton.isEnabled = true
 
-                if success || self.openHostAppFromResponderChain(url) {
-                    self.completeExtension()
+                if success {
+                    self.finishOpeningHostApp(success: true)
                     return
                 }
 
-                self.statusLabel.text =
-                    "앱 실행에 실패했습니다. 아이콘을 다시 눌러 주세요."
+                self.openHostAppFromResponderChain(url) { [weak self] success in
+                    self?.finishOpeningHostApp(
+                        success: success,
+                        wasAutomatic: isAutomatic
+                    )
+                }
             }
+        }
+    }
+
+    private func finishOpeningHostApp(
+        success: Bool,
+        wasAutomatic: Bool = false
+    ) {
+        isOpeningHostApp = false
+        setActionButtonsEnabled(true)
+        cancelButton.isEnabled = true
+
+        if success {
+            completeExtension()
+        } else {
+            actionButtonsStack.isHidden = false
+            statusLabel.text =
+                wasAutomatic
+                    ? "자동으로 열리지 않았습니다"
+                    : "앱 실행에 실패했습니다. 아이콘을 다시 눌러 주세요."
+            descriptionLabel.text =
+                "아래 버튼으로 HanClip을 열어 공유 파일을 새 영화나 기존 영화에 추가할 수 있습니다."
         }
     }
 
@@ -718,18 +1030,43 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func openHostAppFromResponderChain(_ url: URL) -> Bool {
-        let selector = NSSelectorFromString("openURL:")
+    private func openHostAppFromResponderChain(
+        _ url: URL,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let selector = NSSelectorFromString(
+            "openURL:options:completionHandler:"
+        )
         var responder: UIResponder? = self
 
         while let currentResponder = responder {
-            if currentResponder.responds(to: selector) {
-                currentResponder.perform(selector, with: url)
-                return true
+            if let application = currentResponder as? UIApplication,
+               currentResponder.responds(to: selector) {
+                application.open(
+                    url,
+                    options: [:]
+                ) { success in
+                    DispatchQueue.main.async {
+                        completion(success)
+                    }
+                }
+                return
             }
+
+            if let scene = currentResponder as? UIScene,
+               currentResponder.responds(to: selector) {
+                scene.open(url, options: nil) { success in
+                    DispatchQueue.main.async {
+                        completion(success)
+                    }
+                }
+                return
+            }
+
             responder = currentResponder.next
         }
-        return false
+
+        completion(false)
     }
 
     private func completeExtension() {
@@ -756,6 +1093,14 @@ private enum MediaShareError: LocalizedError {
             "Live Photo 구성 파일을 읽을 수 없습니다."
         case .cancelled:
             "가져오기를 취소했습니다."
+        }
+    }
+}
+
+private extension NSItemProvider {
+    func typeIdentifier(conformingTo type: UTType) -> String? {
+        registeredTypeIdentifiers.first { identifier in
+            UTType(identifier)?.conforms(to: type) == true
         }
     }
 }

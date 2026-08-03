@@ -664,13 +664,13 @@ private enum ProjectStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .storageUnavailable:
-            return "프로젝트 저장 공간을 열 수 없습니다."
+            return "영화 저장 공간을 열 수 없습니다."
         case .thumbnailEncodingFailed:
-            return "프로젝트 대표 이미지를 저장할 수 없습니다."
+            return "영화 대표 이미지를 저장할 수 없습니다."
         case .missingProjectFile:
-            return "프로젝트의 원본 파일을 찾을 수 없습니다."
+            return "영화의 원본 파일을 찾을 수 없습니다."
         case .pinLimitReached:
-            return "프로젝트는 최대 5개까지 상단에 고정할 수 있습니다."
+            return "영화는 최대 5개까지 상단에 고정할 수 있습니다."
         }
     }
 }

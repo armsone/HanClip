@@ -84,7 +84,7 @@ struct ClipRow: View {
                 }
                 .offset(x: clip.isVideoSegmentChild ? 4 : 0)
                 .buttonStyle(.plain)
-                .accessibilityLabel("에디터 열기")
+                .accessibilityLabel("편집 열기")
 
                 VStack(
                     alignment: .leading,
@@ -104,7 +104,7 @@ struct ClipRow: View {
                     }
                     .offset(x: clip.isVideoSegmentChild ? 8 : 0)
                     .buttonStyle(.plain)
-                    .accessibilityLabel("에디터 열기")
+                    .accessibilityLabel("편집 열기")
 
                     HStack(alignment: .center, spacing: 8) {
                         if clip.isLivePhoto {
@@ -125,7 +125,7 @@ struct ClipRow: View {
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Live Photo 에디터 열기")
+                                .accessibilityLabel("Live Photo 편집 열기")
 
                                 LivePhotoModeSegmentedControl(
                                     mode: $clip.livePhotoMode,
@@ -155,7 +155,7 @@ struct ClipRow: View {
                                         videoMediaIcon
                                     }
                                     .buttonStyle(.plain)
-                                    .accessibilityLabel("영상 클립 에디터 열기")
+                                    .accessibilityLabel("영상 클립 편집 열기")
 
                                     if canShowVideoSegmentSwitch {
                                         VideoSegmentModeSegmentedControl(
@@ -203,7 +203,7 @@ struct ClipRow: View {
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("사진 에디터 열기")
+                                .accessibilityLabel("사진 편집 열기")
                             }
 
                             if clip.isVideoSegmentParent {
@@ -274,7 +274,7 @@ struct ClipRow: View {
         .offset(y: -10)
         .contentShape(Circle())
         .onTapGesture(perform: onSelectParentClipPreview)
-        .accessibilityLabel("모영상 에디터 열기")
+        .accessibilityLabel("모영상 편집 열기")
     }
 
     private var parentSegmentResetButton: some View {
@@ -481,7 +481,7 @@ struct ClipRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("에디터 열기")
+        .accessibilityLabel("편집 열기")
     }
 
     private var rowFillSpacer: some View {
