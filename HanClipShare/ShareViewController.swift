@@ -692,21 +692,37 @@ final class ShareViewController: UIViewController {
         setActionButtonsEnabled(false)
         cancelButton.isEnabled = false
         statusLabel.text = "HanClip을 여는 중입니다"
+
+        // 공유 익스텐션에서는 extensionContext.open이 지원되지 않으므로
+        // 응답자 체인을 통해 UIApplication의 openURL:을 먼저 시도합니다.
+        if openHostAppFromResponderChain(url) {
+            completeExtensionAfterOpeningHostApp()
+            return
+        }
+
         extensionContext?.open(url) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.isOpeningHostApp = false
-                self.setActionButtonsEnabled(true)
-                self.cancelButton.isEnabled = true
 
-                if success || self.openHostAppFromResponderChain(url) {
-                    self.completeExtension()
+                if success {
+                    self.completeExtensionAfterOpeningHostApp()
                     return
                 }
 
+                self.isOpeningHostApp = false
+                self.setActionButtonsEnabled(true)
+                self.cancelButton.isEnabled = true
                 self.statusLabel.text =
                     "앱 실행에 실패했습니다. 아이콘을 다시 눌러 주세요."
             }
+        }
+    }
+
+    private func completeExtensionAfterOpeningHostApp() {
+        // openURL 요청이 시스템에 전달되기 전에 completeRequest로
+        // 익스텐션이 종료되면 앱이 열리지 않으므로 잠시 기다립니다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.completeExtension()
         }
     }
 
@@ -719,17 +735,40 @@ final class ShareViewController: UIViewController {
     }
 
     private func openHostAppFromResponderChain(_ url: URL) -> Bool {
-        let selector = NSSelectorFromString("openURL:")
         var responder: UIResponder? = self
 
         while let currentResponder = responder {
-            if currentResponder.responds(to: selector) {
-                currentResponder.perform(selector, with: url)
-                return true
+            if let application = currentResponder as? UIApplication {
+                return openURL(url, with: application)
             }
             responder = currentResponder.next
         }
         return false
+    }
+
+    private func openURL(
+        _ url: URL,
+        with application: UIApplication
+    ) -> Bool {
+        // iOS 18부터 deprecated된 openURL: 호출은 시스템이 강제로
+        // 실패시키므로 openURL:options:completionHandler:를 사용합니다.
+        // 익스텐션에서는 해당 API를 직접 호출할 수 없어(NS_EXTENSION_UNAVAILABLE)
+        // IMP를 통해 호출합니다.
+        let selector = NSSelectorFromString("openURL:options:completionHandler:")
+        guard application.responds(to: selector) else { return false }
+
+        typealias OpenURLFunction = @convention(c) (
+            UIApplication,
+            Selector,
+            NSURL,
+            NSDictionary,
+            (@convention(block) (Bool) -> Void)?
+        ) -> Void
+
+        let implementation = application.method(for: selector)
+        let open = unsafeBitCast(implementation, to: OpenURLFunction.self)
+        open(application, selector, url as NSURL, [:] as NSDictionary, nil)
+        return true
     }
 
     private func completeExtension() {
