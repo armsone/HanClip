@@ -236,16 +236,18 @@ struct EditorView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .overlay(alignment: .top) {
+            .overlay {
                 if let importSelectionNotice {
-                    Text(importSelectionNotice)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(HanClipTheme.secondary, in: Capsule())
-                        .padding(.top, themeNotice == nil ? 70 : 103)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    ZStack {
+                        Color.black
+                            .opacity(0.08)
+                            .ignoresSafeArea()
+                            .transition(.opacity)
+
+                        topActionNoticeBadge(importSelectionNotice)
+                            .padding(.horizontal, 32)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
             }
             .overlay {
@@ -1142,9 +1144,41 @@ struct EditorView: View {
         action()
     }
 
+    private func topActionNoticeBadge(_ notice: String) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+
+            Text(notice)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(HanClipTheme.primaryText)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 13)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThickMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    HanClipTheme.primary.opacity(0.18),
+                    lineWidth: 1
+                )
+        )
+        .shadow(
+            color: Color.black.opacity(0.14),
+            radius: 14,
+            y: 7
+        )
+    }
+
     private func showTopActionNotice(
         _ notice: String,
-        duration: Duration = .seconds(1.4)
+        duration: Duration = .seconds(1.8)
     ) {
         withAnimation(.snappy) {
             importSelectionNotice = notice
@@ -2665,7 +2699,7 @@ struct EditorView: View {
                         model.applyDefaultDurationToAll()
                         UIImpactFeedbackGenerator(style: .light)
                             .impactOccurred()
-                        showTopActionNotice("기본시간 전체 클립 적용")
+                        showTopActionNotice("전체 클립에 적용했습니다")
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.system(size: 15, weight: .heavy))
@@ -4913,12 +4947,12 @@ private struct TextOverlaySettingsSheet: View {
             .lineSpacing(textEditorLineSpacing(size: textEditorBaseSize))
             .multilineTextAlignment(textEditorAlignment)
             .autocorrectionDisabled()
-            .shadow(
-                color: shadowColor,
-                radius: shadowEnabled ? 4.5 : 0,
-                x: 0,
-                y: 0
-            )
+                .shadow(
+                    color: shadowColor,
+                    radius: shadowEnabled ? 9.0 : 0,
+                    x: 0,
+                    y: 0
+                )
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(minHeight: 104)
@@ -5354,7 +5388,7 @@ private struct TextOverlaySettingsSheet: View {
 
     private func resetSettings() {
         let defaults = WatermarkSettings.projectDefault()
-        textEnabled = true
+        textEnabled = defaults.isEnabled
         text = "여기에 글을 넣으세요."
         position = .center
         fontName = defaults.fontName
@@ -5845,7 +5879,7 @@ private struct CopyrightPlatformLogo: View {
         .shadow(
             color: (Color(hexString: shadowColorHex) ?? HanClipTheme.secondary)
                 .opacity(0.42),
-            radius: 5,
+            radius: 10,
             x: 0,
             y: 0
         )
@@ -7535,26 +7569,11 @@ private struct CalendarMediaPickerView: View {
 
             Spacer()
 
-            Text("오늘")
-                .contentShape(Rectangle())
-                .highPriorityGesture(
-                    LongPressGesture(minimumDuration: 0.55)
-                        .onEnded { _ in
-                            clearSelectedCalendarMedia()
-                        }
-                )
-                .gesture(
-                    TapGesture(count: 2)
-                        .exclusively(before: TapGesture())
-                        .onEnded { result in
-                            switch result {
-                            case .first:
-                                handleTodayDoubleTap()
-                            case .second:
-                                moveToToday()
-                            }
-                        }
-                )
+            Button("오늘") {
+                withAnimation(.snappy) {
+                    moveToToday()
+                }
+            }
             .foregroundStyle(HanClipTheme.primary)
             .calendarActionButtonStyle()
 
@@ -7614,15 +7633,41 @@ private struct CalendarMediaPickerView: View {
 
     private var selectionSummary: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("선택 \(selectedDates.count)일 · 미디어 \(selectedMediaCount)개")
-                    .font(.system(size: 16, weight: .semibold))
-                    .monospacedDigit()
+            GeometryReader { geometry in
+                let dividerWidth: CGFloat = 1
+                let spacing: CGFloat = 12
+                let usableWidth = max(0, geometry.size.width - spacing - dividerWidth)
+                let leftWidth = usableWidth * 2 / 3
+                let rightWidth = usableWidth - leftWidth
 
-                Spacer()
+                HStack(spacing: spacing) {
+                    Button {
+                        withAnimation(.snappy) {
+                            handleTodayDoubleTap()
+                        }
+                    } label: {
+                        Text("선택 \(selectedDates.count)일 · 미디어 \(selectedMediaCount)개")
+                            .font(.system(size: 16, weight: .semibold))
+                            .monospacedDigit()
+                            .frame(width: leftWidth, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
 
-                Label("지우기", systemImage: "trash")
-                    .font(.system(size: 13, weight: .semibold))
+                    Divider()
+                        .frame(width: dividerWidth)
+                        .overlay(HanClipTheme.secondary.opacity(0.22))
+                        .padding(.vertical, 10)
+
+                    Button {
+                        clearSelectedCalendarMedia()
+                    } label: {
+                        Label("지우기", systemImage: "trash")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: rightWidth, alignment: .center)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedDates.isEmpty)
+                }
             }
             .foregroundStyle(
                 selectedDates.isEmpty
@@ -7642,27 +7687,9 @@ private struct CalendarMediaPickerView: View {
                 y: 4
             )
             .contentShape(Capsule())
-            .highPriorityGesture(
-                LongPressGesture(minimumDuration: 0.55)
-                    .onEnded { _ in
-                        clearSelectedCalendarMedia()
-                    }
-            )
-            .gesture(
-                TapGesture(count: 2)
-                    .exclusively(before: TapGesture())
-                    .onEnded { result in
-                        switch result {
-                        case .first:
-                            handleTodayDoubleTap()
-                        case .second:
-                            withAnimation(.snappy) {
-                                clearSelectedCalendarMedia()
-                            }
-                        }
-                    }
-            )
-            .accessibilityHint("선택한 날짜와 미리보기를 모두 지웁니다.")
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("왼쪽은 사진 선택, 오른쪽은 지우기입니다.")
+            .accessibilityAddTraits(.isButton)
             .padding(.horizontal, 18)
             .padding(.top, 12)
             .padding(.bottom, 18)

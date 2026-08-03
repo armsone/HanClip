@@ -212,7 +212,7 @@ struct WatermarkSettings: Codable {
     static let customCopyrightIconPathStorageKey =
         "hanClipCustomCopyrightIconPath"
     static let defaultIsEnabled = true
-    static let defaultTextIsEnabled = true
+    static let defaultTextIsEnabled = false
     static let defaultText = "여기에 글을 넣으세요."
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip

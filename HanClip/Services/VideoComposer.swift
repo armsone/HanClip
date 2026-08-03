@@ -815,15 +815,17 @@ final class VideoComposer {
             color: shadowColor,
             scale: scale
         )
+        let textOutlineColor = shadowColor.withAlphaComponent(0.5)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = Self.textAlignment(for: position)
         paragraphStyle.lineHeightMultiple = CGFloat(lineSpacingScale)
-        let textAttributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor,
-            .shadow: textShadow as Any,
-            .paragraphStyle: paragraphStyle
-        ]
+        let textAttributes: [NSAttributedString.Key: Any] = Self.textWatermarkAttributes(
+            font: font,
+            foregroundColor: textColor,
+            shadow: textShadow,
+            outlineColor: textOutlineColor,
+            paragraphStyle: paragraphStyle
+        )
         let maxTextWidth = renderSize.width * 0.70
         let textRectSize = text.boundingRect(
             with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
@@ -900,11 +902,18 @@ final class VideoComposer {
         )
         let shadowColor = UIColor(hexString: settings.copyrightShadowColorHex)
             ?? HanClipTheme.secondaryUIColor
+        let textColor = UIColor(
+            hexString: settings.copyrightTextColorHex
+        ) ?? HanClipTheme.primaryUIColor
+        let textOutlineColor = shadowColor.withAlphaComponent(0.5)
+        let textAttributes: [NSAttributedString.Key: Any] = Self.textWatermarkAttributes(
+            font: font,
+            foregroundColor: textColor,
+            shadow: shadow,
+            outlineColor: textOutlineColor
+        )
         let textSize = text.size(
-            withAttributes: [
-                .font: font,
-                .shadow: shadow as Any
-            ]
+            withAttributes: textAttributes
         )
         let imageSize = CGSize(
             width: ceil(padding * 2 + iconSize + gap + textSize.width),
@@ -941,13 +950,7 @@ final class VideoComposer {
             )
             text.draw(
                 in: textRect,
-                withAttributes: [
-                    .font: font,
-                    .foregroundColor:
-                        UIColor(hexString: settings.copyrightTextColorHex)
-                        ?? HanClipTheme.primaryUIColor,
-                    .shadow: shadow as Any
-                ]
+                withAttributes: textAttributes
             )
         }
     }
@@ -973,7 +976,9 @@ final class VideoComposer {
         let textSize = text.size(
             withAttributes: [
                 .font: font,
-                .shadow: shadow as Any
+                .shadow: shadow as Any,
+                .strokeColor: shadowColor.withAlphaComponent(0.5),
+                .strokeWidth: -0.3
             ]
         )
         let imageSize = CGSize(
@@ -1029,7 +1034,9 @@ final class VideoComposer {
                     .foregroundColor:
                         UIColor(hexString: settings.copyrightTextColorHex)
                         ?? HanClipTheme.primaryUIColor,
-                    .shadow: shadow as Any
+                    .shadow: shadow as Any,
+                    .strokeColor: shadowColor.withAlphaComponent(0.5),
+                    .strokeWidth: -0.3
                 ]
             )
         }
@@ -1044,7 +1051,7 @@ final class VideoComposer {
 
         let shadow = NSShadow()
         shadow.shadowColor = color
-        shadow.shadowBlurRadius = 6 * scale
+        shadow.shadowBlurRadius = 12 * scale
         shadow.shadowOffset = .zero
         return shadow
     }
@@ -1062,11 +1069,33 @@ final class VideoComposer {
         context.saveGState()
         context.setShadow(
             offset: .zero,
-            blur: 6 * scale,
+            blur: 12 * scale,
             color: color.cgColor
         )
         draw()
         context.restoreGState()
+    }
+
+    private static func textWatermarkAttributes(
+        font: UIFont,
+        foregroundColor: UIColor,
+        shadow: NSShadow?,
+        outlineColor: UIColor,
+        paragraphStyle: NSParagraphStyle? = nil
+    ) -> [NSAttributedString.Key: Any] {
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: foregroundColor,
+            .strokeColor: outlineColor,
+            .strokeWidth: -0.3
+        ]
+        if let shadow {
+            attributes[.shadow] = shadow
+        }
+        if let paragraphStyle {
+            attributes[.paragraphStyle] = paragraphStyle
+        }
+        return attributes
     }
 
     private static func drawWatermarkPlatformLogo(
