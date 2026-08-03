@@ -8,10 +8,13 @@ enum HanClipThemeMode: String, CaseIterable {
     case rosyBrown
     case electricCobalt
     case blossomGlow
+    case readableComfort
+    case grayscalePlay
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .light, .rosyBrown, .electricCobalt, .blossomGlow:
+        case .light, .rosyBrown, .electricCobalt, .blossomGlow,
+             .readableComfort, .grayscalePlay:
             return .light
         case .dark:
             return .dark
@@ -34,6 +37,10 @@ enum HanClipThemeMode: String, CaseIterable {
             return "Electric Cobalt"
         case .blossomGlow:
             return "Blossom Glow"
+        case .readableComfort:
+            return "Readable Comfort"
+        case .grayscalePlay:
+            return "Grayscale Play"
         }
     }
 }
@@ -51,6 +58,8 @@ enum HanClipTheme {
         switch selectedMode {
         case .electricCobalt:
             return Color(uiColor: electricCobalt)
+        case .grayscalePlay:
+            return Color(uiColor: grayscaleBackground)
         default:
             return .white
         }
@@ -87,6 +96,16 @@ enum HanClipTheme {
                 Color(uiColor: blossomGlowPrimary),
                 Color(uiColor: blossomGlowSecondary)
             )
+        case .readableComfort:
+            return (
+                Color(uiColor: readableComfortPrimary),
+                Color(uiColor: readableComfortSecondary)
+            )
+        case .grayscalePlay:
+            return (
+                Color(uiColor: grayscalePrimary),
+                Color(uiColor: grayscaleSecondary)
+            )
         }
     }
 
@@ -98,6 +117,10 @@ enum HanClipTheme {
             return electricCobalt
         case .blossomGlow:
             return blossomGlowPrimary
+        case .readableComfort:
+            return readableComfortPrimary
+        case .grayscalePlay:
+            return grayscalePrimary
         case .light:
             return signalClearPrimary
         case .dark:
@@ -119,6 +142,10 @@ enum HanClipTheme {
             return electricCobaltSecondary
         case .blossomGlow:
             return blossomGlowSecondary
+        case .readableComfort:
+            return readableComfortSecondary
+        case .grayscalePlay:
+            return grayscaleSecondary
         case .light:
             return signalClearSecondary
         case .dark:
@@ -292,6 +319,66 @@ enum HanClipTheme {
         blue: 40.0 / 255.0,
         alpha: 1
     )
+    private static let readableComfortPrimary = UIColor(
+        red: 0.0 / 255.0,
+        green: 34.0 / 255.0,
+        blue: 40.0 / 255.0,
+        alpha: 1
+    )
+    private static let readableComfortSecondary = UIColor(
+        red: 0.0 / 255.0,
+        green: 92.0 / 255.0,
+        blue: 96.0 / 255.0,
+        alpha: 1
+    )
+    private static let readableComfortBackground = UIColor(
+        red: 250.0 / 255.0,
+        green: 254.0 / 255.0,
+        blue: 253.0 / 255.0,
+        alpha: 1
+    )
+    private static let readableComfortBackgroundWithBlack = UIColor(
+        red: 210.0 / 255.0,
+        green: 231.0 / 255.0,
+        blue: 229.0 / 255.0,
+        alpha: 1
+    )
+    private static let readableComfortText = UIColor(
+        red: 0.0 / 255.0,
+        green: 7.0 / 255.0,
+        blue: 12.0 / 255.0,
+        alpha: 1
+    )
+    private static let grayscalePrimary = UIColor(
+        red: 28.0 / 255.0,
+        green: 28.0 / 255.0,
+        blue: 30.0 / 255.0,
+        alpha: 1
+    )
+    private static let grayscaleSecondary = UIColor(
+        red: 120.0 / 255.0,
+        green: 120.0 / 255.0,
+        blue: 128.0 / 255.0,
+        alpha: 1
+    )
+    private static let grayscaleBackground = UIColor(
+        red: 247.0 / 255.0,
+        green: 247.0 / 255.0,
+        blue: 248.0 / 255.0,
+        alpha: 1
+    )
+    private static let grayscaleBackgroundWithBlack = UIColor(
+        red: 226.0 / 255.0,
+        green: 226.0 / 255.0,
+        blue: 229.0 / 255.0,
+        alpha: 1
+    )
+    private static let grayscaleText = UIColor(
+        red: 18.0 / 255.0,
+        green: 18.0 / 255.0,
+        blue: 20.0 / 255.0,
+        alpha: 1
+    )
     static var background: Color {
         if selectedMode == .electricCobalt {
             return Color(uiColor: electricCobaltBackground)
@@ -304,6 +391,12 @@ enum HanClipTheme {
         }
         if selectedMode == .blossomGlow {
             return Color(uiColor: blossomGlowBackground)
+        }
+        if selectedMode == .readableComfort {
+            return Color(uiColor: readableComfortBackground)
+        }
+        if selectedMode == .grayscalePlay {
+            return Color(uiColor: grayscaleBackground)
         }
         return themedColor(light: .white, dark: darkBackground)
     }
@@ -320,6 +413,12 @@ enum HanClipTheme {
         }
         if selectedMode == .blossomGlow {
             return Color(uiColor: blossomGlowBackgroundWithBlack)
+        }
+        if selectedMode == .readableComfort {
+            return Color(uiColor: readableComfortBackgroundWithBlack)
+        }
+        if selectedMode == .grayscalePlay {
+            return Color(uiColor: grayscaleBackgroundWithBlack)
         }
         return themedColor(light: lightBackgroundWithBlack, dark: darkBackgroundWithBlack)
     }
@@ -344,6 +443,12 @@ enum HanClipTheme {
         }
         if selectedMode == .blossomGlow {
             return Color(uiColor: blossomGlowText)
+        }
+        if selectedMode == .readableComfort {
+            return Color(uiColor: readableComfortText)
+        }
+        if selectedMode == .grayscalePlay {
+            return Color(uiColor: grayscaleText)
         }
         return themedColor(light: black90, dark: .white)
     }
@@ -389,6 +494,12 @@ enum HanClipTheme {
         if selectedMode == .blossomGlow {
             return secondary.opacity(0.10)
         }
+        if selectedMode == .readableComfort {
+            return secondary.opacity(0.18)
+        }
+        if selectedMode == .grayscalePlay {
+            return secondary.opacity(0.12)
+        }
         return secondary.opacity(selectedMode == .dark ? 0.14 : 0.08)
     }
 
@@ -405,6 +516,12 @@ enum HanClipTheme {
         if selectedMode == .blossomGlow {
             return primary.opacity(0.20)
         }
+        if selectedMode == .readableComfort {
+            return primary.opacity(0.36)
+        }
+        if selectedMode == .grayscalePlay {
+            return primary.opacity(0.24)
+        }
         return primary.opacity(selectedMode == .dark ? 0.26 : 0.18)
     }
 
@@ -419,6 +536,12 @@ enum HanClipTheme {
             return Color.white.opacity(0.08)
         }
         if selectedMode == .blossomGlow {
+            return secondary.opacity(0.18)
+        }
+        if selectedMode == .readableComfort {
+            return secondary.opacity(0.28)
+        }
+        if selectedMode == .grayscalePlay {
             return secondary.opacity(0.18)
         }
         return secondary.opacity(selectedMode == .dark ? 0.24 : 0.16)
@@ -437,6 +560,12 @@ enum HanClipTheme {
         if selectedMode == .blossomGlow {
             return secondary.opacity(0.065)
         }
+        if selectedMode == .readableComfort {
+            return secondary.opacity(0.12)
+        }
+        if selectedMode == .grayscalePlay {
+            return secondary.opacity(0.075)
+        }
         return secondary.opacity(selectedMode == .dark ? 0.11 : 0.045)
     }
 
@@ -452,6 +581,12 @@ enum HanClipTheme {
         }
         if selectedMode == .blossomGlow {
             return primary.opacity(0.16)
+        }
+        if selectedMode == .readableComfort {
+            return primary.opacity(0.34)
+        }
+        if selectedMode == .grayscalePlay {
+            return primary.opacity(0.20)
         }
         return secondary.opacity(selectedMode == .dark ? 0.22 : 0.14)
     }
@@ -483,7 +618,8 @@ enum HanClipTheme {
 
     private static func themedColor(light: UIColor, dark: UIColor) -> Color {
         switch selectedMode {
-        case .light, .rosyBrown, .electricCobalt, .blossomGlow:
+        case .light, .rosyBrown, .electricCobalt, .blossomGlow,
+             .readableComfort, .grayscalePlay:
             return Color(uiColor: light)
         case .dark:
             return Color(uiColor: dark)

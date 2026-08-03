@@ -1,14 +1,241 @@
 import CoreText
 import Foundation
+import SwiftUI
 import UIKit
+
+enum CaptionFontCategory: String, CaseIterable, Codable, Identifiable {
+    case basic = "기본"
+    case golf = "골프"
+    case title = "제목"
+    case vlog = "브이로그"
+    case emotional = "감성"
+    case handwriting = "손글씨"
+
+    var id: String { rawValue }
+}
+
+struct CaptionFontInfo: Identifiable, Equatable {
+    let id: String
+    let displayName: String
+    let familyName: String
+    let category: CaptionFontCategory
+    let assetPath: String?
+    let availableWeights: [UIFont.Weight]
+    let fallbackFont: String
+    let licenseFilePath: String?
+    let legacyStoredValues: [String]
+
+    var resourceFilename: String? {
+        assetPath.map { URL(fileURLWithPath: $0).lastPathComponent }
+    }
+
+    var isSystemFont: Bool {
+        id == FontRegistry.systemFontID
+    }
+}
+
+enum FontRegistry {
+    static let systemFontID = "system"
+    static let fallbackFontID = systemFontID
+
+    static let fonts: [CaptionFontInfo] = [
+        CaptionFontInfo(
+            id: systemFontID,
+            displayName: "시스템",
+            familyName: "",
+            category: .basic,
+            assetPath: nil,
+            availableWeights: [.regular, .semibold, .bold],
+            fallbackFont: systemFontID,
+            licenseFilePath: nil,
+            legacyStoredValues: ["", "System", ".SFUI-Regular"]
+        ),
+        CaptionFontInfo(
+            id: "nanum_gothic",
+            displayName: "나눔고딕",
+            familyName: "NanumGothic",
+            category: .basic,
+            assetPath: "Resources/Fonts/NanumGothic-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/NanumGothic-OFL.txt",
+            legacyStoredValues: ["NanumGothic", "NanumGothic-Regular"]
+        ),
+        CaptionFontInfo(
+            id: "kakao",
+            displayName: "카카오",
+            familyName: "KakaoBigSans-Regular",
+            category: .basic,
+            assetPath: "Resources/Fonts/KakaoBigSans-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/KakaoBigSans-OFL.txt",
+            legacyStoredValues: ["KakaoBigSans-Regular", "Kakao Big Sans"]
+        ),
+        CaptionFontInfo(
+            id: "pretendard",
+            displayName: "프리텐다드",
+            familyName: "Pretendard-Regular",
+            category: .basic,
+            assetPath: "Resources/Fonts/Pretendard-Regular.otf",
+            availableWeights: [.regular, .bold],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/Pretendard-LICENSE.txt",
+            legacyStoredValues: ["Pretendard", "Pretendard-Regular"]
+        ),
+        CaptionFontInfo(
+            id: "puradak_gentle",
+            displayName: "젠틀고딕",
+            familyName: "PuradakGentleGothicR",
+            category: .golf,
+            assetPath: "Resources/Fonts/PuradakGentleGothic.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/PuradakGentleGothic-LICENSE.txt",
+            legacyStoredValues: [
+                "PuradakGentleGothic",
+                "Puradak Gentle Gothic"
+            ]
+        ),
+        CaptionFontInfo(
+            id: "tenada",
+            displayName: "태나다",
+            familyName: "Tenada",
+            category: .title,
+            assetPath: "Resources/Fonts/Tenada.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/Tenada-LICENSE.txt",
+            legacyStoredValues: ["Tenada"]
+        ),
+        CaptionFontInfo(
+            id: "cafe24_ssurround",
+            displayName: "써라운드",
+            familyName: "Cafe24Ssurround",
+            category: .vlog,
+            assetPath: "Resources/Fonts/Cafe24Ssurround.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/Cafe24Ssurround-LICENSE.txt",
+            legacyStoredValues: ["Cafe24Ssurround", "Cafe24Surround"]
+        ),
+        CaptionFontInfo(
+            id: "maruburi",
+            displayName: "마루부리",
+            familyName: "MaruBuri-Regular",
+            category: .emotional,
+            assetPath: "Resources/Fonts/MaruBuri-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/MaruBuri-LICENSE.txt",
+            legacyStoredValues: ["MaruBuri-Regular", "MaruBuri"]
+        ),
+        CaptionFontInfo(
+            id: "ddulgi_mayo",
+            displayName: "둘기마요",
+            familyName: "Dovemayo-Medium",
+            category: .handwriting,
+            assetPath: "Resources/Fonts/DdulgiMayo.otf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/DdulgiMayo-LICENSE.txt",
+            legacyStoredValues: ["Dovemayo-Medium", "DulgiMayo", "DdulgiMayo"]
+        )
+    ]
+
+    static var availableFonts: [CaptionFontInfo] {
+        fonts.filter { $0.isSystemFont || bundledFontURL(for: $0) != nil }
+    }
+
+    static var bundledFontFilenames: Set<String> {
+        Set(fonts.compactMap(\.resourceFilename))
+    }
+
+    static func font(for id: String) -> CaptionFontInfo {
+        fonts.first { $0.id == normalizedID(forStoredValue: id) }
+            ?? fonts[0]
+    }
+
+    static func normalizedID(forStoredValue value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return systemFontID }
+        if fonts.contains(where: { $0.id == trimmed }) {
+            return trimmed
+        }
+        return fonts.first { font in
+            font.legacyStoredValues.contains(trimmed)
+        }?.id ?? systemFontID
+    }
+
+    static func resolvedUIFont(
+        for id: String,
+        size: CGFloat,
+        weight: UIFont.Weight = .semibold
+    ) -> UIFont {
+        let font = self.font(for: id)
+        guard !font.isSystemFont else {
+            return .systemFont(ofSize: size, weight: weight)
+        }
+        register(font)
+        return UIFont(name: font.familyName, size: size)
+            ?? UIFont.systemFont(ofSize: size, weight: weight)
+    }
+
+    static func resolvedSwiftUIFont(
+        for id: String,
+        size: CGFloat,
+        weight: Font.Weight = .semibold
+    ) -> Font {
+        let font = self.font(for: id)
+        guard !font.isSystemFont else {
+            return .system(size: size, weight: weight)
+        }
+        register(font)
+        guard UIFont(name: font.familyName, size: size) != nil else {
+            return .system(size: size, weight: weight)
+        }
+        return .custom(font.familyName, size: size)
+    }
+
+    @discardableResult
+    static func register(_ font: CaptionFontInfo) -> Bool {
+        guard !font.isSystemFont,
+              let url = bundledFontURL(for: font)
+        else { return font.isSystemFont }
+        return FontImportStore.registerFontIfNeeded(at: url)
+    }
+
+    @discardableResult
+    static func registerBundledCaptionFonts() -> [String] {
+        fonts
+            .filter { !$0.isSystemFont }
+            .compactMap { font in
+                register(font) ? font.familyName : nil
+            }
+    }
+
+    static func bundledFontURL(for font: CaptionFontInfo) -> URL? {
+        guard let filename = font.resourceFilename else { return nil }
+        let sourceURL = URL(fileURLWithPath: filename)
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let ext = sourceURL.pathExtension
+        return Bundle.main.url(forResource: baseName, withExtension: ext)
+            ?? Bundle.main.url(
+                forResource: baseName,
+                withExtension: ext,
+                subdirectory: "Resources/Fonts"
+            )
+    }
+}
 
 enum FontImportStore {
     private static let folderName = "ImportedFonts"
     private static let supportedExtensions = Set(["ttf", "otf", "ttc"])
     private static let allowedBundledFontFilenames = Set([
         "NanumGothic-Regular.ttf",
-        "KakaoBigSans-Regular.ttf"
-    ])
+        "KakaoBigSans-Regular.ttf",
+        "Pretendard-Bold.ttf"
+    ]).union(FontRegistry.bundledFontFilenames)
     private static var registeredFontPaths = Set<String>()
 
     static var importedFontNames: [String] {
@@ -71,24 +298,26 @@ enum FontImportStore {
         return Array(Set(importedNames)).sorted()
     }
 
-    private static func registerFontIfNeeded(at url: URL) {
+    @discardableResult
+    static func registerFontIfNeeded(at url: URL) -> Bool {
         let path = url.standardizedFileURL.path
-        guard !registeredFontPaths.contains(path) else { return }
+        guard !registeredFontPaths.contains(path) else { return true }
 
         let names = fontNames(in: url)
         if !names.isEmpty,
            names.allSatisfy({ UIFont(name: $0, size: 1) != nil }) {
             registeredFontPaths.insert(path)
-            return
+            return true
         }
 
         var error: Unmanaged<CFError>?
-        CTFontManagerRegisterFontsForURL(
+        let didRegister = CTFontManagerRegisterFontsForURL(
             url as CFURL,
             .process,
             &error
         )
         registeredFontPaths.insert(path)
+        return didRegister || error == nil
     }
 
     private static func fontNames(in url: URL) -> [String] {
@@ -123,13 +352,15 @@ enum FontImportStore {
     }
 
     private static func bundledFontFileURLs() -> [URL] {
-        supportedExtensions.flatMap { ext in
+        let registryURLs = FontRegistry.fonts.compactMap {
+            FontRegistry.bundledFontURL(for: $0)
+        }
+        return (supportedExtensions.flatMap { ext in
             Bundle.main.urls(
                 forResourcesWithExtension: ext,
                 subdirectory: nil
             ) ?? []
-        }
-        .filter {
+        } + registryURLs).filter {
             allowedBundledFontFilenames.contains($0.lastPathComponent)
         }
     }

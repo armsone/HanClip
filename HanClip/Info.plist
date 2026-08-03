@@ -27,6 +27,22 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>완성된 영상을 사진 앱에 저장하기 위해 접근이 필요합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>선택한 사진과 Live Photo를 영상으로 만들기 위해 사진 보관함 접근이 필요합니다.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>KakaoBigSans-Regular.ttf</string>
+		<string>NanumGothic-Regular.ttf</string>
+		<string>Pretendard-Regular.otf</string>
+		<string>MaruBuri-Regular.ttf</string>
+		<string>PuradakGentleGothic.ttf</string>
+		<string>Tenada.ttf</string>
+		<string>Cafe24Ssurround.ttf</string>
+		<string>DdulgiMayo.otf</string>
+		<string>Pretendard-Bold.ttf</string>
+	</array>
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>
@@ -54,15 +70,6 @@
 			<string>com.intosharp.hanclip.files</string>
 		</dict>
 	</array>
-	<key>UIAppFonts</key>
-	<array>
-		<string>KakaoBigSans-Regular.ttf</string>
-		<string>NanumGothic-Regular.ttf</string>
-	</array>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>완성된 영상을 사진 앱에 저장하기 위해 접근이 필요합니다.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>선택한 사진과 Live Photo를 영상으로 만들기 위해 사진 보관함 접근이 필요합니다.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
