@@ -213,9 +213,13 @@ struct ClipRow: View {
                             }
                         }
 
-                        HStack(spacing: 32) {
+                        HStack(spacing: clip.isVideoSegmentParent ? 0 : 32) {
                             if clip.isVideoSegmentParent {
-                                parentClipPreviewButton
+                                HStack(spacing: 8) {
+                                    parentClipPreviewButton
+                                    parentSegmentResetButton
+                                }
+                                .frame(width: 80, alignment: .trailing)
                             } else if clip.isVideoClip {
                                 VideoDurationStepper(clip: $clip)
                             } else {
@@ -238,54 +242,7 @@ struct ClipRow: View {
 
     private var parentClipPreviewButton: some View {
         ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .background(
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    HanClipTheme.background.opacity(0.82),
-                                    HanClipTheme.secondary.opacity(0.16)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-                .overlay {
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.48),
-                            Color.white.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .clipShape(Circle())
-                        .allowsHitTesting(false)
-                }
-                .overlay {
-                    Circle()
-                        .stroke(
-                            HanClipTheme.panelStroke,
-                            lineWidth: 1
-                        )
-                }
-                .overlay(alignment: .topLeading) {
-                    Circle()
-                        .fill(Color.white.opacity(0.62))
-                        .frame(width: 8, height: 8)
-                        .blur(radius: 1)
-                        .offset(x: 9, y: 8)
-                        .allowsHitTesting(false)
-                }
-                .shadow(
-                    color: HanClipTheme.primary.opacity(0.13),
-                    radius: 10,
-                    y: 5
-                )
-                .frame(width: 40, height: 40)
+            parentActionCircle
 
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: "rectangle.stack.fill")
@@ -313,25 +270,84 @@ struct ClipRow: View {
                     y: 1
                 )
         }
-        .frame(width: 80, height: 40, alignment: .center)
+        .frame(width: 36, height: 36, alignment: .center)
         .offset(y: -10)
-        .contentShape(Rectangle())
-        .gesture(
-            LongPressGesture(minimumDuration: 1)
-                .exclusively(before: TapGesture())
-                .onEnded { result in
-                    switch result {
-                    case .first(true):
-                        onResetVideoSegments()
-                    case .second:
-                        onSelectParentClipPreview()
-                    default:
-                        break
-                    }
-                }
-        )
+        .contentShape(Circle())
+        .onTapGesture(perform: onSelectParentClipPreview)
         .accessibilityLabel("모영상 에디터 열기")
-        .accessibilityHint("길게 누르면 자영상 편집 내역을 초기화합니다.")
+    }
+
+    private var parentSegmentResetButton: some View {
+        Button(action: onResetVideoSegments) {
+            ZStack {
+                parentActionCircle
+
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 19, weight: .bold))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(HanClipTheme.primary.opacity(0.90))
+                    .shadow(
+                        color: HanClipTheme.primary.opacity(0.16),
+                        radius: 2,
+                        y: 1
+                    )
+            }
+            .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.plain)
+        .offset(y: -10)
+        .accessibilityLabel("자영상 편집 초기화")
+    }
+
+    private var parentActionCircle: some View {
+        Circle()
+            .fill(.ultraThinMaterial)
+            .background(
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                HanClipTheme.background.opacity(0.82),
+                                HanClipTheme.secondary.opacity(0.16)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.48),
+                        Color.white.opacity(0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .clipShape(Circle())
+                .allowsHitTesting(false)
+            }
+            .overlay {
+                Circle()
+                    .stroke(
+                        HanClipTheme.panelStroke,
+                        lineWidth: 1
+                    )
+            }
+            .overlay(alignment: .topLeading) {
+                Circle()
+                    .fill(Color.white.opacity(0.62))
+                    .frame(width: 7, height: 7)
+                    .blur(radius: 1)
+                    .offset(x: 8, y: 7)
+                    .allowsHitTesting(false)
+            }
+            .shadow(
+                color: HanClipTheme.primary.opacity(0.13),
+                radius: 10,
+                y: 5
+            )
+            .frame(width: 36, height: 36)
     }
 
     private var positionText: String {

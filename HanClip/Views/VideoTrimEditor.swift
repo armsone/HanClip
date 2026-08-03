@@ -70,69 +70,57 @@ struct VideoTrimEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 5)
+                .background(
+                    .ultraThinMaterial,
+                    in: Capsule()
+                )
                 .background(
                     LinearGradient(
                         colors: [
-                            HanClipTheme.panelFill,
-                            HanClipTheme.secondary.opacity(0.045),
-                            Color.white.opacity(0.12)
+                            HanClipTheme.secondary.opacity(0.08),
+                            HanClipTheme.background.opacity(0.14)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    in: RoundedRectangle(
-                        cornerRadius: 22,
-                        style: .continuous
-                    )
+                    in: Capsule()
                 )
-                .padding(.horizontal, 12)
-                .hanClipGlassPanel(cornerRadius: 22, shadowOpacity: 0.04)
+                .overlay {
+                    Capsule()
+                        .stroke(Color.white.opacity(0.30), lineWidth: 1)
+                }
+                .shadow(
+                    color: Color.black.opacity(0.06),
+                    radius: 8,
+                    y: 3
+                )
+                .padding(.horizontal, 22)
 
             previewWithNavigation
 
             if hasPlayableMedia {
                 waveform
                     .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .padding(.horizontal, 20)
+                    .frame(height: 52)
+                    .padding(.horizontal, 22)
 
                 playbackControls
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 22)
             } else {
                 waveform
                     .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .padding(.horizontal, 20)
+                    .frame(height: 52)
+                    .padding(.horizontal, 22)
                     .allowsHitTesting(false)
 
                 playbackControls
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 22)
             }
 
             footerActions
-                .padding(.horizontal, 20)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            HanClipTheme.panelFill.opacity(0.94),
-                            HanClipTheme.secondary.opacity(0.055),
-                            Color.white.opacity(0.10)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    )
-                )
-                .padding(.horizontal, 12)
-                .hanClipGlassPanel(cornerRadius: 24, shadowOpacity: 0.05)
+                .padding(.horizontal, 22)
         }
         .padding(.top, 8)
         .padding(.bottom, 10)
@@ -144,11 +132,11 @@ struct VideoTrimEditor: View {
 
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.10),
-                        HanClipTheme.secondary.opacity(0.11),
+                        Color.white.opacity(0.08),
+                        HanClipTheme.secondary.opacity(0.09),
                         HanClipTheme.background.opacity(0.0),
-                        HanClipTheme.primary.opacity(0.07),
-                        Color.white.opacity(0.08)
+                        HanClipTheme.secondary.opacity(0.055),
+                        Color.white.opacity(0.06)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -171,7 +159,7 @@ struct VideoTrimEditor: View {
                     LinearGradient(
                         colors: [
                             HanClipTheme.background.opacity(0.0),
-                            HanClipTheme.primary.opacity(0.12)
+                            HanClipTheme.secondary.opacity(0.07)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -183,9 +171,11 @@ struct VideoTrimEditor: View {
         }
         .offset(y: dismissDragOffset)
         .opacity(dismissDragOffset > 0 ? max(0.86, 1 - dismissDragOffset / 900) : 1)
+        .background {
+            HanClipTheme.backgroundGradient
+                .ignoresSafeArea()
+        }
         .simultaneousGesture(confirmOnDownwardDrag)
-        .presentationDetents([.height(710)])
-        .presentationDragIndicator(.visible)
         .onAppear {
             preparePlayer()
             updateLoopIconAnimation(autoAdvanceLoops && autoAdvanceEnabled)
@@ -429,7 +419,7 @@ struct VideoTrimEditor: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 0) {
             if clip.isLivePhoto {
                 previewPositionText
 
@@ -461,8 +451,7 @@ struct VideoTrimEditor: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .frame(height: 34)
-        .padding(.top, 2)
+        .frame(height: 40)
     }
 
     private var previewPositionText: some View {
@@ -477,6 +466,7 @@ struct VideoTrimEditor: View {
             .monospacedDigit()
             .foregroundStyle(HanClipTheme.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 2)
             .frame(height: 28)
             .accessibilityLabel(
                 "\(currentPosition) / \(totalClipCount)번째 미리보기"
@@ -497,7 +487,7 @@ struct VideoTrimEditor: View {
             }
         }
         .foregroundStyle(HanClipTheme.primary)
-        .opacity(0.74)
+        .opacity(0.88)
         .frame(height: 28)
         .accessibilityHidden(true)
     }
@@ -508,14 +498,23 @@ struct VideoTrimEditor: View {
             showDeleteConfirmation = true
         } label: {
             Image(systemName: "trash")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.red.opacity(0.78))
-                .frame(width: 30, height: 30)
-                .background(.ultraThinMaterial, in: Circle())
-                .background(Color.red.opacity(0.07), in: Circle())
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color.red.opacity(0.76))
+                .frame(width: 32, height: 32)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color.red.opacity(0.10),
+                            HanClipTheme.background.opacity(0.22)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Circle()
+                )
                 .overlay {
                     Circle()
-                        .stroke(Color.red.opacity(0.18), lineWidth: 1)
+                        .stroke(Color.red.opacity(0.24), lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)
@@ -544,51 +543,49 @@ struct VideoTrimEditor: View {
     }
 
     private var footerActions: some View {
-        HStack(spacing: 12) {
-            Button(action: resetSelection) {
-                Label("리셋", systemImage: "arrow.counterclockwise")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
-                    .background(
-                        HanClipTheme.secondary.opacity(0.13),
-                        in: RoundedRectangle(cornerRadius: 12)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(HanClipTheme.primary.opacity(0.24), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .frame(width: 84)
-
+        HStack(spacing: 10) {
             Button {
                 pausePlayback()
                 dismiss()
             } label: {
-                Label("확인", systemImage: "checkmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                    .frame(height: 50)
                     .background(
-                        LinearGradient(
-                            colors: [
-                                HanClipTheme.primary.opacity(0.96),
-                                HanClipTheme.secondary.opacity(0.82)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 12)
+                        HanClipTheme.background.opacity(0.36),
+                        in: Capsule()
                     )
+                    .overlay {
+                        Capsule()
+                            .stroke(HanClipTheme.primary.opacity(0.28), lineWidth: 1)
+                    }
             }
             .buttonStyle(.plain)
-            .frame(width: 76)
+            .frame(width: 50)
+            .accessibilityLabel("닫기")
+
+            Button(action: resetSelection) {
+                Label("리셋", systemImage: "arrow.counterclockwise")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(
+                        HanClipTheme.background.opacity(0.36),
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule()
+                            .stroke(HanClipTheme.primary.opacity(0.28), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .frame(width: 88)
 
             Button(action: openFullPreview) {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: "wand.and.stars")
 
                     Text(totalDurationText)
@@ -602,26 +599,30 @@ struct VideoTrimEditor: View {
 
                     Text("만들기")
                 }
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(HanClipTheme.primaryText.opacity(0.82))
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
+                .frame(height: 50)
                 .background(
                     LinearGradient(
                         colors: [
-                            HanClipTheme.primary,
-                            HanClipTheme.primary.opacity(0.88),
-                            HanClipTheme.secondary.opacity(0.74)
+                            HanClipTheme.primary.opacity(0.10),
+                            HanClipTheme.secondary.opacity(0.065),
+                            HanClipTheme.background.opacity(0.24)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    in: RoundedRectangle(cornerRadius: 12)
+                    in: Capsule()
                 )
+                .overlay {
+                    Capsule()
+                        .stroke(HanClipTheme.primary.opacity(0.22), lineWidth: 2)
+                }
                 .shadow(
-                    color: HanClipTheme.primary.opacity(0.15),
-                    radius: 8,
-                    y: 4
+                    color: HanClipTheme.primary.opacity(0.035),
+                    radius: 4,
+                    y: 1
                 )
             }
             .buttonStyle(.plain)
@@ -1047,9 +1048,9 @@ struct VideoTrimEditor: View {
                 design: .monospaced
             )
         )
-        .frame(height: 44)
+        .frame(height: 40)
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .background(.ultraThinMaterial, in: Capsule())
         .background(
             HanClipTheme.secondary.opacity(0.07),

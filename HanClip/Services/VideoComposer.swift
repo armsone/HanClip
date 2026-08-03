@@ -898,6 +898,8 @@ final class VideoComposer {
                 ?? HanClipTheme.secondaryUIColor,
             scale: scale
         )
+        let shadowColor = UIColor(hexString: settings.copyrightShadowColorHex)
+            ?? HanClipTheme.secondaryUIColor
         let textSize = text.size(
             withAttributes: [
                 .font: font,
@@ -934,7 +936,8 @@ final class VideoComposer {
                 settings.platform,
                 in: iconRect,
                 scale: scale,
-                settings: settings
+                settings: settings,
+                shadowColor: shadowColor
             )
             text.draw(
                 in: textRect,
@@ -960,7 +963,19 @@ final class VideoComposer {
         let padding = 3 * scale
         let text = "HanClip" as NSString
         let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
-        let textSize = text.size(withAttributes: [.font: font])
+        let shadowColor = UIColor(hexString: settings.copyrightShadowColorHex)
+            ?? HanClipTheme.secondaryUIColor
+        let shadow = Self.watermarkShadow(
+            enabled: true,
+            color: shadowColor,
+            scale: scale
+        )
+        let textSize = text.size(
+            withAttributes: [
+                .font: font,
+                .shadow: shadow as Any
+            ]
+        )
         let imageSize = CGSize(
             width: ceil(padding * 2 + iconSize + gap + textSize.width),
             height: ceil(padding * 2 + max(iconSize, textSize.height))
@@ -988,15 +1003,23 @@ final class VideoComposer {
             )
 
             if let logo = UIImage(named: "LogoMarkV2") {
-                if let tintColor = Self.copyrightIconTintColor(for: settings) {
-                    Self.drawImageAspectFit(
-                        logo,
-                        in: iconRect,
-                        tintColor: tintColor
-                    )
-                } else {
-                    Self.drawImageAspectFit(logo, in: iconRect)
+                let drawLogo = {
+                    if let tintColor = Self.copyrightIconTintColor(for: settings) {
+                        Self.drawImageAspectFit(
+                            logo,
+                            in: iconRect,
+                            tintColor: tintColor
+                        )
+                    } else {
+                        Self.drawImageAspectFit(logo, in: iconRect)
+                    }
                 }
+
+                Self.drawWatermarkGlow(
+                    color: shadowColor,
+                    scale: scale,
+                    draw: drawLogo
+                )
             }
 
             text.draw(
@@ -1006,13 +1029,7 @@ final class VideoComposer {
                     .foregroundColor:
                         UIColor(hexString: settings.copyrightTextColorHex)
                         ?? HanClipTheme.primaryUIColor,
-                    .shadow: Self.watermarkShadow(
-                        enabled: true,
-                        color: UIColor(
-                            hexString: settings.copyrightShadowColorHex
-                        ) ?? HanClipTheme.secondaryUIColor,
-                        scale: scale
-                    ) as Any
+                    .shadow: shadow as Any
                 ]
             )
         }
@@ -1028,16 +1045,41 @@ final class VideoComposer {
         let shadow = NSShadow()
         shadow.shadowColor = color
         shadow.shadowBlurRadius = 6 * scale
-        shadow.shadowOffset = CGSize(width: 2 * scale, height: 2 * scale)
+        shadow.shadowOffset = .zero
         return shadow
+    }
+
+    private static func drawWatermarkGlow(
+        color: UIColor,
+        scale: CGFloat,
+        draw: () -> Void
+    ) {
+        guard let context = UIGraphicsGetCurrentContext() else {
+            draw()
+            return
+        }
+
+        context.saveGState()
+        context.setShadow(
+            offset: .zero,
+            blur: 6 * scale,
+            color: color.cgColor
+        )
+        draw()
+        context.restoreGState()
     }
 
     private static func drawWatermarkPlatformLogo(
         _ platform: WatermarkPlatform,
         in rect: CGRect,
         scale: CGFloat,
-        settings: WatermarkSettings
+        settings: WatermarkSettings,
+        shadowColor: UIColor
     ) {
+        Self.drawWatermarkGlow(
+            color: shadowColor,
+            scale: scale
+        ) {
         if platform == .custom,
            !settings.customCopyrightIconPath.isEmpty,
            let image = UIImage(contentsOfFile: settings.customCopyrightIconPath) {
@@ -1202,6 +1244,7 @@ final class VideoComposer {
             )
         case .kakaoTalk, .x, .phone, .homepage, .custom:
             break
+        }
         }
     }
 

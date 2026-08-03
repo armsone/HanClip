@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct PhotoPicker: UIViewControllerRepresentable {
     let onComplete: ([ClipItem]) -> Void
+    let onStart: () -> Void
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var configuration = PHPickerConfiguration(photoLibrary: .shared())
@@ -24,13 +25,21 @@ struct PhotoPicker: UIViewControllerRepresentable {
     ) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onComplete: onComplete)
+        Coordinator(
+            onStart: onStart,
+            onComplete: onComplete
+        )
     }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        private let onStart: () -> Void
         private let onComplete: ([ClipItem]) -> Void
 
-        init(onComplete: @escaping ([ClipItem]) -> Void) {
+        init(
+            onStart: @escaping () -> Void,
+            onComplete: @escaping ([ClipItem]) -> Void
+        ) {
+            self.onStart = onStart
             self.onComplete = onComplete
         }
 
@@ -39,6 +48,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             didFinishPicking results: [PHPickerResult]
         ) {
             picker.dismiss(animated: true)
+            onStart()
 
             Task { @MainActor in
                 var items: [ClipItem] = []

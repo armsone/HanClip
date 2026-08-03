@@ -7,10 +7,11 @@ enum HanClipThemeMode: String, CaseIterable {
     case dark
     case rosyBrown
     case electricCobalt
+    case blossomGlow
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .light, .rosyBrown, .electricCobalt:
+        case .light, .rosyBrown, .electricCobalt, .blossomGlow:
             return .light
         case .dark:
             return .dark
@@ -31,6 +32,8 @@ enum HanClipThemeMode: String, CaseIterable {
             return "Rosy Brown"
         case .electricCobalt:
             return "Electric Cobalt"
+        case .blossomGlow:
+            return "Blossom Glow"
         }
     }
 }
@@ -45,9 +48,12 @@ enum HanClipTheme {
     }
 
     static var onSecondary: Color {
-        selectedMode == .electricCobalt
-            ? Color(uiColor: electricCobalt)
-            : .white
+        switch selectedMode {
+        case .electricCobalt:
+            return Color(uiColor: electricCobalt)
+        default:
+            return .white
+        }
     }
 
     static func previewColors(
@@ -58,13 +64,13 @@ enum HanClipTheme {
             return nil
         case .light:
             return (
-                Color(uiColor: golfPrimary),
-                Color(uiColor: golfSecondary)
+                Color(uiColor: signalClearPrimary),
+                Color(uiColor: signalClearSecondary)
             )
         case .dark:
             return (
-                Color(uiColor: golfSecondary),
-                Color(uiColor: golfPrimary)
+                Color(uiColor: nightSlatePrimary),
+                Color(uiColor: nightSlateSecondary)
             )
         case .rosyBrown:
             return (
@@ -76,6 +82,11 @@ enum HanClipTheme {
                 Color(uiColor: electricCobalt),
                 Color(uiColor: electricCobaltSecondary)
             )
+        case .blossomGlow:
+            return (
+                Color(uiColor: blossomGlowPrimary),
+                Color(uiColor: blossomGlowSecondary)
+            )
         }
     }
 
@@ -85,15 +96,17 @@ enum HanClipTheme {
             return rosyBrown
         case .electricCobalt:
             return electricCobalt
+        case .blossomGlow:
+            return blossomGlowPrimary
         case .light:
-            return golfPrimary
+            return signalClearPrimary
         case .dark:
-            return golfSecondary
+            return nightSlatePrimary
         case .automatic:
             return UIColor { traits in
                 traits.userInterfaceStyle == .dark
-                    ? golfSecondary
-                    : golfPrimary
+                    ? nightSlatePrimary
+                    : signalClearPrimary
             }
         }
     }
@@ -104,15 +117,17 @@ enum HanClipTheme {
             return dimGray
         case .electricCobalt:
             return electricCobaltSecondary
+        case .blossomGlow:
+            return blossomGlowSecondary
         case .light:
-            return golfSecondary
+            return signalClearSecondary
         case .dark:
-            return golfPrimary
+            return nightSlateSecondary
         case .automatic:
             return UIColor { traits in
                 traits.userInterfaceStyle == .dark
-                    ? golfPrimary
-                    : golfSecondary
+                    ? nightSlateSecondary
+                    : signalClearSecondary
             }
         }
     }
@@ -122,7 +137,7 @@ enum HanClipTheme {
     }
 
     static var lightSecondary: Color {
-        Color(uiColor: golfSecondary)
+        Color(uiColor: signalClearSecondary)
     }
 
     private static var selectedMode: HanClipThemeMode {
@@ -187,9 +202,108 @@ enum HanClipTheme {
         blue: 62.0 / 255.0,
         alpha: 1
     )
+    private static let signalClearPrimary = UIColor(
+        red: 7.0 / 255.0,
+        green: 41.0 / 255.0,
+        blue: 49.0 / 255.0,
+        alpha: 1
+    )
+    private static let signalClearSecondary = UIColor(
+        red: 0.0 / 255.0,
+        green: 126.0 / 255.0,
+        blue: 129.0 / 255.0,
+        alpha: 1
+    )
+    private static let signalClearBackground = UIColor(
+        red: 248.0 / 255.0,
+        green: 251.0 / 255.0,
+        blue: 250.0 / 255.0,
+        alpha: 1
+    )
+    private static let signalClearBackgroundWithBlack = UIColor(
+        red: 231.0 / 255.0,
+        green: 240.0 / 255.0,
+        blue: 238.0 / 255.0,
+        alpha: 1
+    )
+    private static let signalClearText = UIColor(
+        red: 15.0 / 255.0,
+        green: 23.0 / 255.0,
+        blue: 42.0 / 255.0,
+        alpha: 1
+    )
+    private static let nightSlatePrimary = UIColor(
+        red: 103.0 / 255.0,
+        green: 232.0 / 255.0,
+        blue: 249.0 / 255.0,
+        alpha: 1
+    )
+    private static let nightSlateSecondary = UIColor(
+        red: 82.0 / 255.0,
+        green: 115.0 / 255.0,
+        blue: 135.0 / 255.0,
+        alpha: 1
+    )
+    private static let nightSlateBackground = UIColor(
+        red: 10.0 / 255.0,
+        green: 14.0 / 255.0,
+        blue: 18.0 / 255.0,
+        alpha: 1
+    )
+    private static let nightSlateBackgroundWithBlack = UIColor(
+        red: 17.0 / 255.0,
+        green: 24.0 / 255.0,
+        blue: 31.0 / 255.0,
+        alpha: 1
+    )
+    private static let nightSlateText = UIColor(
+        red: 232.0 / 255.0,
+        green: 238.0 / 255.0,
+        blue: 242.0 / 255.0,
+        alpha: 1
+    )
+    private static let blossomGlowPrimary = UIColor(
+        red: 214.0 / 255.0,
+        green: 94.0 / 255.0,
+        blue: 122.0 / 255.0,
+        alpha: 1
+    )
+    private static let blossomGlowSecondary = UIColor(
+        red: 139.0 / 255.0,
+        green: 104.0 / 255.0,
+        blue: 151.0 / 255.0,
+        alpha: 1
+    )
+    private static let blossomGlowBackground = UIColor(
+        red: 255.0 / 255.0,
+        green: 248.0 / 255.0,
+        blue: 250.0 / 255.0,
+        alpha: 1
+    )
+    private static let blossomGlowBackgroundWithBlack = UIColor(
+        red: 247.0 / 255.0,
+        green: 235.0 / 255.0,
+        blue: 241.0 / 255.0,
+        alpha: 1
+    )
+    private static let blossomGlowText = UIColor(
+        red: 45.0 / 255.0,
+        green: 31.0 / 255.0,
+        blue: 40.0 / 255.0,
+        alpha: 1
+    )
     static var background: Color {
         if selectedMode == .electricCobalt {
             return Color(uiColor: electricCobaltBackground)
+        }
+        if selectedMode == .light {
+            return Color(uiColor: signalClearBackground)
+        }
+        if selectedMode == .dark {
+            return Color(uiColor: nightSlateBackground)
+        }
+        if selectedMode == .blossomGlow {
+            return Color(uiColor: blossomGlowBackground)
         }
         return themedColor(light: .white, dark: darkBackground)
     }
@@ -197,6 +311,15 @@ enum HanClipTheme {
     static var backgroundWithBlack: Color {
         if selectedMode == .electricCobalt {
             return Color(uiColor: electricCobaltBackgroundWithBlack)
+        }
+        if selectedMode == .light {
+            return Color(uiColor: signalClearBackgroundWithBlack)
+        }
+        if selectedMode == .dark {
+            return Color(uiColor: nightSlateBackgroundWithBlack)
+        }
+        if selectedMode == .blossomGlow {
+            return Color(uiColor: blossomGlowBackgroundWithBlack)
         }
         return themedColor(light: lightBackgroundWithBlack, dark: darkBackgroundWithBlack)
     }
@@ -213,6 +336,15 @@ enum HanClipTheme {
         if selectedMode == .electricCobalt {
             return Color(uiColor: electricCobaltText)
         }
+        if selectedMode == .light {
+            return Color(uiColor: signalClearText)
+        }
+        if selectedMode == .dark {
+            return Color(uiColor: nightSlateText)
+        }
+        if selectedMode == .blossomGlow {
+            return Color(uiColor: blossomGlowText)
+        }
         return themedColor(light: black90, dark: .white)
     }
 
@@ -221,20 +353,41 @@ enum HanClipTheme {
     }
 
     static var primaryText: Color {
-        text.opacity(selectedMode == .dark ? 0.92 : 0.88)
+        text.opacity(
+            selectedMode == .dark
+                ? 0.92
+                : 0.88
+        )
     }
 
     static var secondaryText: Color {
-        text.opacity(selectedMode == .dark ? 0.66 : 0.58)
+        text.opacity(
+            selectedMode == .dark
+                ? 0.66
+                : 0.58
+        )
     }
 
     static var mutedIcon: Color {
-        text.opacity(selectedMode == .dark ? 0.52 : 0.46)
+        text.opacity(
+            selectedMode == .dark
+                ? 0.52
+                : 0.46
+        )
     }
 
     static var panelFill: Color {
         if selectedMode == .electricCobalt {
             return secondary.opacity(0.105)
+        }
+        if selectedMode == .light {
+            return secondary.opacity(0.085)
+        }
+        if selectedMode == .dark {
+            return Color.white.opacity(0.06)
+        }
+        if selectedMode == .blossomGlow {
+            return secondary.opacity(0.10)
         }
         return secondary.opacity(selectedMode == .dark ? 0.14 : 0.08)
     }
@@ -243,11 +396,29 @@ enum HanClipTheme {
         if selectedMode == .electricCobalt {
             return primary.opacity(0.22)
         }
+        if selectedMode == .light {
+            return primary.opacity(0.24)
+        }
+        if selectedMode == .dark {
+            return primary.opacity(0.30)
+        }
+        if selectedMode == .blossomGlow {
+            return primary.opacity(0.20)
+        }
         return primary.opacity(selectedMode == .dark ? 0.26 : 0.18)
     }
 
     static var groupFill: Color {
         if selectedMode == .electricCobalt {
+            return secondary.opacity(0.18)
+        }
+        if selectedMode == .light {
+            return secondary.opacity(0.16)
+        }
+        if selectedMode == .dark {
+            return Color.white.opacity(0.08)
+        }
+        if selectedMode == .blossomGlow {
             return secondary.opacity(0.18)
         }
         return secondary.opacity(selectedMode == .dark ? 0.24 : 0.16)
@@ -257,12 +428,30 @@ enum HanClipTheme {
         if selectedMode == .electricCobalt {
             return secondary.opacity(0.075)
         }
+        if selectedMode == .light {
+            return secondary.opacity(0.06)
+        }
+        if selectedMode == .dark {
+            return Color.white.opacity(0.045)
+        }
+        if selectedMode == .blossomGlow {
+            return secondary.opacity(0.065)
+        }
         return secondary.opacity(selectedMode == .dark ? 0.11 : 0.045)
     }
 
     static var separator: Color {
         if selectedMode == .electricCobalt {
             return secondary.opacity(0.24)
+        }
+        if selectedMode == .light {
+            return secondary.opacity(0.22)
+        }
+        if selectedMode == .dark {
+            return primary.opacity(0.22)
+        }
+        if selectedMode == .blossomGlow {
+            return primary.opacity(0.16)
         }
         return secondary.opacity(selectedMode == .dark ? 0.22 : 0.14)
     }
@@ -294,7 +483,7 @@ enum HanClipTheme {
 
     private static func themedColor(light: UIColor, dark: UIColor) -> Color {
         switch selectedMode {
-        case .light, .rosyBrown, .electricCobalt:
+        case .light, .rosyBrown, .electricCobalt, .blossomGlow:
             return Color(uiColor: light)
         case .dark:
             return Color(uiColor: dark)
@@ -361,7 +550,13 @@ struct HanClipGlassPanelModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(.ultraThinMaterial)
+            .background(
+                .ultraThinMaterial,
+                in: RoundedRectangle(
+                    cornerRadius: cornerRadius,
+                    style: .continuous
+                )
+            )
             .background(
                 LinearGradient(
                     colors: [
@@ -370,6 +565,10 @@ struct HanClipGlassPanelModifier: ViewModifier {
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(
+                    cornerRadius: cornerRadius,
+                    style: .continuous
                 )
             )
             .overlay {
@@ -524,7 +723,6 @@ final class HanClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
 struct HanClipApp: App {
     @UIApplicationDelegateAdaptor(HanClipAppDelegate.self)
     private var appDelegate
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -533,13 +731,6 @@ struct HanClipApp: App {
                 .tint(HanClipTheme.primary)
                 .foregroundStyle(HanClipTheme.text)
                 .background(HanClipTheme.backgroundGradient)
-                .onAppear {
-                    _ = FontImportStore.importedFontNames
-                    UIApplication.shared.isIdleTimerDisabled = true
-                }
-                .onChange(of: scenePhase) { _, phase in
-                    UIApplication.shared.isIdleTimerDisabled = phase == .active
-                }
         }
     }
 }

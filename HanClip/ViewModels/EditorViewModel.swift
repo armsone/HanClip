@@ -38,6 +38,8 @@ final class EditorViewModel: ObservableObject {
     @Published var progressMessage = ""
     @Published var previewProgress = 0.0
     @Published var isPreviewRendering = false
+    @Published var isImportingFiles = false
+    @Published var isImportingPhotoLibraryMedia = false
     @Published var isImportingSharedItems = false
     @Published var sharedImportProgress = 0.0
     @Published var previewThumbnail: UIImage?
@@ -450,6 +452,8 @@ final class EditorViewModel: ObservableObject {
         progressMessage = ""
         previewProgress = 0
         isPreviewRendering = false
+        isImportingFiles = false
+        isImportingPhotoLibraryMedia = false
         isImportingSharedItems = false
         sharedImportProgress = 0
         previewThumbnail = nil
@@ -489,6 +493,32 @@ final class EditorViewModel: ObservableObject {
                 activeProjectID: activeProjectID
             )
             reset()
+        } catch {
+            isExporting = false
+            progressMessage = ""
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func saveProjectOnly() {
+        guard !clips.isEmpty, !isExporting else { return }
+
+        isExporting = true
+        progressMessage = "프로젝트를 저장하는 중…"
+
+        do {
+            let savedID = try ProjectStore.save(
+                clips: clips,
+                defaultDuration: defaultDuration,
+                outputAspectRatio: outputAspectRatio,
+                automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
+                activeProjectID: activeProjectID
+            )
+            activeProjectID = savedID
+            isExporting = false
+            progressMessage = ""
+            reloadProjects()
         } catch {
             isExporting = false
             progressMessage = ""
@@ -575,6 +605,14 @@ final class EditorViewModel: ObservableObject {
                 alertMessage = error.localizedDescription
             }
         }
+    }
+
+    func startPhotoLibraryImport() {
+        isImportingPhotoLibraryMedia = true
+    }
+
+    func finishPhotoLibraryImport() {
+        isImportingPhotoLibraryMedia = false
     }
 
     func cancelPreviewGeneration() {
@@ -996,9 +1034,17 @@ final class EditorViewModel: ObservableObject {
 
     func importFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
+        isImportingFiles = true
+        progressMessage = "파일을 가져오는 중…"
+
         Task {
+            defer {
+                isImportingFiles = false
+                progressMessage = ""
+            }
+
             var imported: [ClipItem] = []
-            for source in urls {
+            for (index, source) in urls.enumerated() {
                 let hasAccess = source.startAccessingSecurityScopedResource()
                 defer {
                     if hasAccess {
@@ -1013,12 +1059,13 @@ final class EditorViewModel: ObservableObject {
                         .appendingPathComponent(UUID().uuidString)
                         .appendingPathExtension(ext)
                     try FileManager.default.copyItem(at: source, to: local)
-                    imported.append(
-                        contentsOf: try await makeVideoClips(from: local)
-                    )
+                    imported.append(contentsOf: try await makeVideoClips(from: local))
                 } catch {
                     continue
                 }
+
+                progressMessage =
+                    "파일 \(index + 1)/\(urls.count)개를 가져오는 중…"
             }
             addPickedItems(imported)
             if imported.isEmpty {
