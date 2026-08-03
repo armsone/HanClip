@@ -807,9 +807,12 @@ final class VideoComposer {
         let scale = max(1, min(renderSize.width, renderSize.height) / 390)
         let fontPointSize = 14 * scale * CGFloat(fontSize.multiplier)
         let text = watermarkText as NSString
-        _ = FontImportStore.importedFontNames
-        let font = UIFont(name: fontName, size: fontPointSize)
-            ?? UIFont.systemFont(ofSize: fontPointSize, weight: .semibold)
+        _ = FontRegistry.registerBundledCaptionFonts()
+        let font = FontRegistry.resolvedUIFont(
+            for: fontName,
+            size: fontPointSize,
+            weight: .semibold
+        )
         let textShadow = Self.watermarkShadow(
             enabled: shadowEnabled,
             color: shadowColor,

@@ -34,6 +34,20 @@
 		110000000000000000000001 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000001 /* ProjectStore.swift */; };
 		110000000000000000000002 /* AudioAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000002 /* AudioAnalysisService.swift */; };
 		110000000000000000000003 /* VideoTrimEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000003 /* VideoTrimEditor.swift */; };
+		110000000000000000000005 /* Pretendard-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000005 /* Pretendard-Regular.otf */; };
+		110000000000000000000006 /* Pretendard-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000006 /* Pretendard-LICENSE.txt */; };
+		110000000000000000000009 /* font-licenses README.md in Resources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000009 /* font-licenses README.md */; };
+		120000000000000000000001 /* MaruBuri-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000001 /* MaruBuri-Regular.ttf */; };
+		120000000000000000000002 /* Tenada.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000002 /* Tenada.ttf */; };
+		120000000000000000000003 /* Cafe24Ssurround.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000003 /* Cafe24Ssurround.ttf */; };
+		120000000000000000000004 /* PuradakGentleGothic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000004 /* PuradakGentleGothic.ttf */; };
+		120000000000000000000005 /* DdulgiMayo.otf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000005 /* DdulgiMayo.otf */; };
+		120000000000000000000006 /* MaruBuri-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000006 /* MaruBuri-LICENSE.txt */; };
+		120000000000000000000007 /* Tenada-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000007 /* Tenada-LICENSE.txt */; };
+		120000000000000000000008 /* Cafe24Ssurround-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000008 /* Cafe24Ssurround-LICENSE.txt */; };
+		120000000000000000000009 /* PuradakGentleGothic-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */; };
+		12000000000000000000000A /* DdulgiMayo-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000A /* DdulgiMayo-LICENSE.txt */; };
+		12000000000000000000000B /* Pretendard-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000B /* Pretendard-Bold.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,6 +104,22 @@
 		210000000000000000000001 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		210000000000000000000002 /* AudioAnalysisService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAnalysisService.swift; sourceTree = "<group>"; };
 		210000000000000000000003 /* VideoTrimEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimEditor.swift; sourceTree = "<group>"; };
+		210000000000000000000005 /* Pretendard-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/Pretendard-Regular.otf; sourceTree = "<group>"; };
+		210000000000000000000006 /* Pretendard-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/Pretendard-LICENSE.txt; sourceTree = "<group>"; };
+		210000000000000000000007 /* NanumGothic-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/NanumGothic-OFL.txt; sourceTree = "<group>"; };
+		210000000000000000000008 /* KakaoBigSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/KakaoBigSans-OFL.txt; sourceTree = "<group>"; };
+		210000000000000000000009 /* font-licenses README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Resources/font-licenses/README.md; sourceTree = "<group>"; };
+		220000000000000000000001 /* MaruBuri-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/MaruBuri-Regular.ttf; sourceTree = "<group>"; };
+		220000000000000000000002 /* Tenada.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/Tenada.ttf; sourceTree = "<group>"; };
+		220000000000000000000003 /* Cafe24Ssurround.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/Cafe24Ssurround.ttf; sourceTree = "<group>"; };
+		220000000000000000000004 /* PuradakGentleGothic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/PuradakGentleGothic.ttf; sourceTree = "<group>"; };
+		220000000000000000000005 /* DdulgiMayo.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/DdulgiMayo.otf; sourceTree = "<group>"; };
+		220000000000000000000006 /* MaruBuri-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/MaruBuri-LICENSE.txt; sourceTree = "<group>"; };
+		220000000000000000000007 /* Tenada-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/Tenada-LICENSE.txt; sourceTree = "<group>"; };
+		220000000000000000000008 /* Cafe24Ssurround-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/Cafe24Ssurround-LICENSE.txt; sourceTree = "<group>"; };
+		220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/PuradakGentleGothic-LICENSE.txt; sourceTree = "<group>"; };
+		22000000000000000000000A /* DdulgiMayo-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/DdulgiMayo-LICENSE.txt; sourceTree = "<group>"; };
+		22000000000000000000000B /* Pretendard-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/Pretendard-Bold.ttf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +171,22 @@
 				20000000000000000000001D /* KakaoBigSans-OFL.txt */,
 				20000000000000000000001E /* NanumGothic-Regular.ttf */,
 				20000000000000000000001F /* NanumGothic-OFL.txt */,
+				210000000000000000000005 /* Pretendard-Regular.otf */,
+				210000000000000000000006 /* Pretendard-LICENSE.txt */,
+				210000000000000000000007 /* NanumGothic-OFL.txt */,
+				210000000000000000000008 /* KakaoBigSans-OFL.txt */,
+				210000000000000000000009 /* font-licenses README.md */,
+				220000000000000000000001 /* MaruBuri-Regular.ttf */,
+				220000000000000000000002 /* Tenada.ttf */,
+				220000000000000000000003 /* Cafe24Ssurround.ttf */,
+				220000000000000000000004 /* PuradakGentleGothic.ttf */,
+				220000000000000000000005 /* DdulgiMayo.otf */,
+				220000000000000000000006 /* MaruBuri-LICENSE.txt */,
+				220000000000000000000007 /* Tenada-LICENSE.txt */,
+				220000000000000000000008 /* Cafe24Ssurround-LICENSE.txt */,
+				220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */,
+				22000000000000000000000A /* DdulgiMayo-LICENSE.txt */,
+				22000000000000000000000B /* Pretendard-Bold.ttf */,
 				20000000000000000000000F /* Info.plist */,
 				200000000000000000000010 /* HanClip.entitlements */,
 				200000000000000000000013 /* Assets.xcassets */,
@@ -304,6 +350,20 @@
 				10000000000000000000001A /* KakaoBigSans-OFL.txt in Resources */,
 				10000000000000000000001B /* NanumGothic-Regular.ttf in Resources */,
 				10000000000000000000001C /* NanumGothic-OFL.txt in Resources */,
+				110000000000000000000005 /* Pretendard-Regular.otf in Resources */,
+				110000000000000000000006 /* Pretendard-LICENSE.txt in Resources */,
+				110000000000000000000009 /* font-licenses README.md in Resources */,
+				120000000000000000000001 /* MaruBuri-Regular.ttf in Resources */,
+				120000000000000000000002 /* Tenada.ttf in Resources */,
+				120000000000000000000003 /* Cafe24Ssurround.ttf in Resources */,
+				120000000000000000000004 /* PuradakGentleGothic.ttf in Resources */,
+				120000000000000000000005 /* DdulgiMayo.otf in Resources */,
+				120000000000000000000006 /* MaruBuri-LICENSE.txt in Resources */,
+				120000000000000000000007 /* Tenada-LICENSE.txt in Resources */,
+				120000000000000000000008 /* Cafe24Ssurround-LICENSE.txt in Resources */,
+				120000000000000000000009 /* PuradakGentleGothic-LICENSE.txt in Resources */,
+				12000000000000000000000A /* DdulgiMayo-LICENSE.txt in Resources */,
+				12000000000000000000000B /* Pretendard-Bold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

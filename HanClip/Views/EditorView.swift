@@ -542,7 +542,7 @@ struct EditorView: View {
             Text(model.alertMessage ?? "")
         }
         .onAppear {
-            _ = FontImportStore.importedFontNames
+            _ = FontRegistry.registerBundledCaptionFonts()
             model.reloadProjects()
             model.handlePendingSharedItemsOnActivation()
             isSharedInboxBannerDismissed = false
@@ -1120,8 +1120,9 @@ struct EditorView: View {
             Button {
                 selectMediaImportSource("텍스트") {
                     if !model.textOverlaySettings.shouldRenderText {
-                        model.textOverlaySettings = WatermarkSettings
-                            .projectDefault()
+                        var settings = WatermarkSettings.projectDefault()
+                        settings.isEnabled = true
+                        model.textOverlaySettings = settings
                     }
                     showTextOverlaySettings = true
                 }
@@ -2392,13 +2393,31 @@ struct EditorView: View {
 
                 clipModeHeader
 
-                if model.textOverlaySettings.shouldRenderText {
-                    SwipeToDeleteRow(
-                        accessibilityLabel: "텍스트 넣기 삭제",
-                        cornerRadius: 0
-                    ) {
-                        model.textOverlaySettings.isEnabled = false
-                    } content: {
+                if model.isProjectOpen {
+                    if model.textOverlaySettings.shouldRenderText {
+                        SwipeToDeleteRow(
+                            accessibilityLabel: "텍스트 넣기 삭제",
+                            cornerRadius: 0
+                        ) {
+                            model.textOverlaySettings.isEnabled = false
+                        } content: {
+                            TextOverlaySummaryRow(
+                                settings: model.textOverlaySettings,
+                                onSelect: {
+                                    showTextOverlaySettings = true
+                                }
+                            )
+                            .padding(
+                                EdgeInsets(
+                                    top: 5,
+                                    leading: 14,
+                                    bottom: model.clips.isEmpty ? 18 : 5,
+                                    trailing: 14
+                                )
+                            )
+                            .background(HanClipTheme.panelFill)
+                        }
+                    } else {
                         TextOverlaySummaryRow(
                             settings: model.textOverlaySettings,
                             onSelect: {
@@ -3893,6 +3912,15 @@ private extension View {
                 }
         )
     }
+
+    func textOverlaySectionStyle() -> some View {
+        padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .background(
+                HanClipTheme.secondary.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+    }
 }
 
 private extension UIApplication {
@@ -4153,7 +4181,25 @@ private struct ImportantInfoSheet: View {
         ("달력 썸네일 버튼", "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다."),
         ("텍스트 넣기", "프로젝트 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
         ("외부 호출 주소", "hanclip://photo\nhanclip://calendar\nhanclip://files\nhanclip://open"),
-        ("내장 서체 저작권", "HanClip에는 Kakao Big Sans, Nanum Gothic 서체가 포함되어 있습니다. 각 서체는 SIL Open Font License 1.1에 따라 제공되며, 서체 파일 자체를 단독으로 판매할 수 없고 저작권 및 라이선스 고지를 유지해야 합니다. 라이선스 전문은 앱 번들에 포함된 각 OFL/라이선스 텍스트 파일을 따릅니다.")
+        ("내장 서체 저작권", """
+        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Dovemayo 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 텍스트 넣기와 영상 렌더링 과정에서만 선택적으로 사용됩니다.
+
+        Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Tenada는 SIL Open Font License 1.1 또는 그에 준하는 공식 오픈 라이선스 조건으로 제공됩니다. 해당 라이선스는 서체 파일을 단독으로 판매하지 않는 한 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
+
+        Nanum Gothic과 MaruBuri의 저작권은 NAVER 및 NAVER Cultural Foundation에 있으며, NAVER 안내에 따라 개인과 기업을 포함한 모든 사용자가 무료로 사용할 수 있고 상업적 사용이 가능합니다. NAVER 안내는 글꼴 자체를 유료로 판매하는 행위를 제외하고, 저작권 안내와 라이선스 전문을 포함해 다른 소프트웨어와 번들하거나 재배포할 수 있다고 설명합니다.
+
+        Pretendard는 Kil Hyung-jin 및 원 기반 서체 저작권자의 저작권 고지와 함께 SIL Open Font License 1.1로 제공됩니다. Pretendard, Source, Inter, M PLUS 1 등 예약된 서체명은 수정본에 임의로 사용할 수 없습니다. HanClip은 공식 배포 파일을 수정하지 않고 앱에 포함합니다.
+
+        Tenada는 공식 배포 페이지에서 SIL Open Font License 1.1로 제공됩니다. 앱에 포함된 Tenada.ttf는 공식 배포본의 원본 파일이며, HanClip에서는 골프 기록, 홀 정보, 스코어 같은 제목형 자막에 사용할 수 있도록 제공합니다.
+
+        Cafe24 Ssurround는 Cafe24 공식 안내에 따라 개인 및 기업 사용자를 포함한 모든 사용자에게 무료로 제공되며 상업적 사용이 가능합니다. Cafe24는 영상 제작 및 자막, 소프트웨어 번들, 특정 프로그램 임베드 등 사용 범위 제한 없이 이용할 수 있다고 안내합니다. 단, 글꼴 자체를 유료로 판매하는 행위는 금지됩니다.
+
+        Puradak Gentle Gothic은 Puradak Chicken 공식 폰트 페이지에서 무료로 배포되는 서체입니다. 공개 사용 안내에 따라 상업적, 비상업적 사용과 영상 자막, 앱 사용, 소프트웨어 번들이 가능하며, HanClip은 공식 TTF 파일을 수정하지 않고 포함합니다. 서체 파일 자체를 단독 판매하거나 저작권 고지를 제거해서 재배포해서는 안 됩니다.
+
+        Dovemayo는 제작자 공식 블로그에서 개인 및 기업의 상업적 이용이 가능하고 자유롭게 사용할 수 있다고 안내된 서체입니다. HanClip은 제작자가 공개한 원본 OTF 파일을 수정하지 않고 포함합니다. 다만 OFL처럼 세부 재배포 조건이 긴 전문 형태로 제공된 서체는 아니므로, HanClip에서는 원본 파일과 저작권 고지를 함께 보관하고 서체 파일 자체를 단독 판매하지 않습니다.
+
+        모든 내장 서체의 라이선스 전문, 저작권 고지, 확인한 공식 배포처 정보는 앱 번들에 포함된 font-licenses 파일을 기준으로 보관합니다. 서체 파일을 수정하거나 별도 재배포하는 경우에는 각 서체의 원 라이선스와 저작권 고지를 유지해야 하며, 예약된 서체명이 있는 경우 수정본에 원래 이름을 사용할 수 없습니다.
+        """)
     ]
 
     var body: some View {
@@ -4857,14 +4903,8 @@ private struct TextOverlaySettingsSheet: View {
     @Binding var lineSpacingScale: Double
     @Binding var fontSize: WatermarkFontSize
 
-    private let defaultFontChoices: [(title: String, fontName: String)] = [
-        ("시스템", WatermarkSettings.defaultFontName),
-        ("나눔고딕", "NanumGothic"),
-        ("카카오", "KakaoBigSans-Regular")
-    ]
-
     private var allowedTextFontNames: Set<String> {
-        Set(defaultFontChoices.map(\.fontName))
+        Set(FontRegistry.availableFonts.map(\.id))
     }
 
     var body: some View {
@@ -4874,8 +4914,9 @@ private struct TextOverlaySettingsSheet: View {
                     WatermarkModeSegmentedControl(isEnabled: $textEnabled)
 
                     if textEnabled {
-                        textInput
-                        styleSettings
+                        textInputSection
+                        fontSettings
+                        appearanceSettings
                         positionSettings
                     }
                 }
@@ -4936,6 +4977,13 @@ private struct TextOverlaySettingsSheet: View {
         }
     }
 
+    private var textInputSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            textInput
+        }
+        .textOverlaySectionStyle()
+    }
+
     private var textInput: some View {
         let textColor = Color(hexString: textColorHex) ?? HanClipTheme.primary
         let shadowColor = Color(hexString: shadowColorHex)
@@ -4947,43 +4995,48 @@ private struct TextOverlaySettingsSheet: View {
             .lineSpacing(textEditorLineSpacing(size: textEditorBaseSize))
             .multilineTextAlignment(textEditorAlignment)
             .autocorrectionDisabled()
-                .shadow(
-                    color: shadowColor,
-                    radius: shadowEnabled ? 9.0 : 0,
-                    x: 0,
-                    y: 0
-                )
+            .shadow(
+                color: shadowColor,
+                radius: shadowEnabled ? 9.0 : 0,
+                x: 0,
+                y: 0
+            )
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .frame(minHeight: 104)
+            .frame(minHeight: textInputMinimumHeight)
             .scrollContentBackground(.hidden)
             .background(
-                mixedTextInputBackgroundColor.opacity(0.10),
+                textInputBackgroundColor.opacity(0.72),
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(HanClipTheme.secondary.opacity(0.22), lineWidth: 1)
+                    .stroke(HanClipTheme.secondary.opacity(0.28), lineWidth: 1)
             }
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    clearSampleTextIfNeeded()
+                }
+            )
     }
 
-    private var styleSettings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("서체")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(HanClipTheme.text.opacity(0.72))
+    private var fontSettings: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            fontPresetRow
 
-                HStack(spacing: 8) {
-                    ForEach(defaultFontChoices, id: \.fontName) { choice in
-                        defaultFontButton(
-                            title: choice.title,
-                            choiceFontName: choice.fontName
-                        )
-                    }
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                ForEach(FontRegistry.availableFonts) { font in
+                    captionFontButton(font)
                 }
-
             }
+            .fixedSize(horizontal: false, vertical: true)
 
             if let fontImportNotice {
                 Text(fontImportNotice)
@@ -4991,58 +5044,54 @@ private struct TextOverlaySettingsSheet: View {
                     .foregroundStyle(HanClipTheme.text.opacity(0.62))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+        .textOverlaySectionStyle()
+    }
 
-            Picker("서체크기", selection: $fontSize) {
-                ForEach(WatermarkFontSize.allCases) { size in
-                    Text(size.title).tag(size)
-                }
-            }
-            .pickerStyle(.segmented)
-            .font(.system(size: 14, weight: .bold))
-
-            ColorPicker(
-                "글자색",
-                selection: Binding(
-                    get: { Color(hexString: textColorHex) ?? HanClipTheme.primary },
-                    set: {
-                        textColorHex = $0.hexString
-                            ?? WatermarkSettings.defaultTextColor
-                        shadowColorHex = Color(
-                            uiColor: complementaryTextOverlayShadowColor(for: UIColor($0))
-                        ).hexString
-                            ?? WatermarkSettings.defaultShadowColor
-                    }
-                ),
-                supportsOpacity: false
+    private var fontPresetRow: some View {
+        HStack(spacing: 8) {
+            fontPresetButton(
+                title: "가독성",
+                fontID: readableThemeFontID,
+                textColor: "#FFFFFF",
+                shadowColor: "#000000",
+                fontSize: .large
             )
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(HanClipTheme.text.opacity(0.72))
 
-            Toggle("그림자", isOn: $shadowEnabled)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(HanClipTheme.text.opacity(0.72))
-                .tint(HanClipTheme.primary)
+            fontPresetButton(
+                title: "러블리",
+                fontID: lovelyThemeFontID,
+                textColor: "#FF6FAE",
+                shadowColor: "#7A3FFF",
+                fontSize: .large
+            )
 
-            if shadowEnabled {
-                ColorPicker(
-                    "그림자색",
-                    selection: Binding(
-                        get: { Color(hexString: shadowColorHex) ?? .black },
-                        set: {
-                            shadowColorHex = $0.hexString
-                                ?? WatermarkSettings.defaultShadowColor
-                        }
-                    ),
-                    supportsOpacity: false
+            fontPresetButton(
+                title: "강력햐",
+                fontID: powerfulThemeFontID,
+                textColor: "#FFE600",
+                shadowColor: "#000000",
+                fontSize: .extraLarge
+            )
+        }
+    }
+
+    private var appearanceSettings: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    ForEach(WatermarkFontSize.allCases) { size in
+                        fontSizeButton(size)
+                    }
+                }
+                .padding(3)
+                .background(
+                    HanClipTheme.secondary.opacity(0.14),
+                    in: Capsule()
                 )
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(HanClipTheme.text.opacity(0.72))
-            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("줄간격")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(HanClipTheme.text.opacity(0.72))
+                appearanceDivider
+                    .padding(.vertical, 8)
 
                 HStack(spacing: 0) {
                     ForEach(WatermarkLineSpacing.displayOrder) { spacing in
@@ -5054,33 +5103,295 @@ private struct TextOverlaySettingsSheet: View {
                     HanClipTheme.secondary.opacity(0.14),
                     in: Capsule()
                 )
+
+                appearanceDivider
+                    .padding(.vertical, 8)
+
+                colorAndShadowControls
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Color.white.opacity(0.22),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(
-            HanClipTheme.secondary.opacity(0.08),
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .textOverlaySectionStyle()
+    }
+
+    private func fontPresetButton(
+        title: String,
+        fontID: String,
+        textColor: String,
+        shadowColor: String,
+        fontSize: WatermarkFontSize
+    ) -> some View {
+        let isSelected = isFontPresetSelected(
+            fontID: fontID,
+            textColor: textColor,
+            shadowColor: shadowColor,
+            fontSize: fontSize
         )
+        let previewColor = Color(hexString: textColor) ?? .white
+        let previewShadowColor = Color(hexString: shadowColor) ?? .black
+
+        return Button {
+            applyFontPreset(
+                fontID: fontID,
+                textColor: textColor,
+                shadowColor: shadowColor,
+                fontSize: fontSize
+            )
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .stroke(
+                            isSelected
+                                ? HanClipTheme.primary
+                                : HanClipTheme.secondary.opacity(0.52),
+                            lineWidth: 2
+                        )
+                        .frame(width: 16, height: 16)
+
+                    if isSelected {
+                        Circle()
+                            .fill(HanClipTheme.primary)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+
+                Text(title)
+                    .font(
+                        FontRegistry.resolvedSwiftUIFont(
+                            for: fontID,
+                            size: 12,
+                            weight: .bold
+                        )
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Spacer(minLength: 4)
+
+                Text("Aa")
+                    .font(
+                        FontRegistry.resolvedSwiftUIFont(
+                            for: fontID,
+                            size: 12,
+                            weight: .bold
+                        )
+                    )
+                    .foregroundStyle(previewColor)
+                    .shadow(color: previewShadowColor, radius: 4, x: 0, y: 0)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: 34)
+            .background(
+                isSelected
+                    ? HanClipTheme.secondary.opacity(0.14)
+                    : Color.white.opacity(0.28),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) 서체 테마")
+    }
+
+    private func fontSizeButton(_ size: WatermarkFontSize) -> some View {
+        let isSelected = fontSize == size
+
+        return Button {
+            fontSize = size
+        } label: {
+            Text("\(size.title) \(size.pointSize)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity)
+                .frame(height: 32)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(HanClipTheme.primary)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(size.title) \(size.pointSize)포인트")
+    }
+
+    private var colorAndShadowControls: some View {
+        HStack(spacing: 10) {
+            colorPickerRow(
+                title: "글자색",
+                selection: textColorBinding
+            )
+
+            Rectangle()
+                .fill(HanClipTheme.secondary.opacity(0.16))
+                .frame(width: 1, height: 28)
+
+            Toggle("그림자", isOn: $shadowEnabled)
+                .labelsHidden()
+                .tint(HanClipTheme.primary)
+                .frame(width: 52)
+                .accessibilityLabel("그림자")
+
+            colorPickerRow(
+                title: "그림자색",
+                selection: shadowColorBinding
+            )
+            .opacity(shadowEnabled ? 1 : 0.34)
+            .disabled(!shadowEnabled)
+        }
+        .frame(minHeight: 42)
+        .padding(.vertical, 2)
+    }
+
+    private var textColorBinding: Binding<Color> {
+        Binding(
+            get: { Color(hexString: textColorHex) ?? HanClipTheme.primary },
+            set: {
+                textColorHex = $0.hexString
+                    ?? WatermarkSettings.defaultTextColor
+                shadowColorHex = Color(
+                    uiColor: complementaryTextOverlayShadowColor(
+                        for: UIColor($0)
+                    )
+                ).hexString
+                    ?? WatermarkSettings.defaultShadowColor
+            }
+        )
+    }
+
+    private var shadowColorBinding: Binding<Color> {
+        Binding(
+            get: { Color(hexString: shadowColorHex) ?? .black },
+            set: {
+                shadowColorHex = $0.hexString
+                    ?? WatermarkSettings.defaultShadowColor
+            }
+        )
+    }
+
+    private var appearanceDivider: some View {
+        Rectangle()
+            .fill(HanClipTheme.secondary.opacity(0.10))
+            .frame(height: 1)
+    }
+
+    private func appearancePickerRow<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            content()
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func colorPickerRow(
+        title: String,
+        selection: Binding<Color>
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+            ColorPicker(
+                title,
+                selection: selection,
+                supportsOpacity: false
+            )
+            .labelsHidden()
+            .frame(width: 34, height: 34)
+        }
+        .frame(minHeight: 38)
     }
 
     private func fontMenuButton(_ font: String) -> some View {
         Button {
-            fontName = font
+            fontName = FontRegistry.normalizedID(forStoredValue: font)
         } label: {
             Text(displayFontName(font))
-                .font(.custom(font, size: 14))
+                .font(FontRegistry.resolvedSwiftUIFont(for: font, size: 14))
         }
+    }
+
+    private func captionFontButton(_ font: CaptionFontInfo) -> some View {
+        let isSelected = fontName == font.id
+
+        return Button {
+            fontName = font.id
+        } label: {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .stroke(
+                            isSelected
+                                ? HanClipTheme.primary
+                                : HanClipTheme.secondary.opacity(0.52),
+                            lineWidth: 2
+                        )
+                        .frame(width: 16, height: 16)
+
+                    if isSelected {
+                        Circle()
+                            .fill(HanClipTheme.primary)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+
+                Text(font.displayName)
+                    .font(
+                        FontRegistry.resolvedSwiftUIFont(
+                            for: font.id,
+                            size: 12,
+                            weight: .bold
+                        )
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .foregroundStyle(
+                isSelected ? HanClipTheme.primary : HanClipTheme.secondary
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: 34)
+            .background(
+                isSelected
+                    ? HanClipTheme.secondary.opacity(0.14)
+                    : Color.white.opacity(0.28),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(font.displayName)
     }
 
     private func defaultFontButton(
         title: String,
         choiceFontName: String
     ) -> some View {
-        let isSelected = fontName == choiceFontName
+        let normalizedID = FontRegistry.normalizedID(
+            forStoredValue: choiceFontName
+        )
+        let isSelected = fontName == normalizedID
 
         return Button {
-            fontName = choiceFontName
+            fontName = normalizedID
         } label: {
             HStack(spacing: 6) {
                 ZStack {
@@ -5101,7 +5412,7 @@ private struct TextOverlaySettingsSheet: View {
                 }
 
                 Text(title)
-                    .font(defaultFontPreview(choiceFontName, size: 12))
+                    .font(defaultFontPreview(normalizedID, size: 12))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
@@ -5162,12 +5473,60 @@ private struct TextOverlaySettingsSheet: View {
         }
     }
 
-    private var positionSettings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("위치")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(HanClipTheme.text.opacity(0.72))
+    private func isFontPresetSelected(
+        fontID: String,
+        textColor: String,
+        shadowColor: String,
+        fontSize: WatermarkFontSize
+    ) -> Bool {
+        fontName == fontID
+            && Self.normalizedHex(textColorHex) == Self.normalizedHex(textColor)
+            && shadowEnabled
+            && Self.normalizedHex(shadowColorHex)
+                == Self.normalizedHex(shadowColor)
+            && lineSpacing == .normal
+            && abs(
+                lineSpacingScale - WatermarkLineSpacing.defaultMultiplier
+            ) < 0.001
+            && self.fontSize == fontSize
+    }
 
+    private var readableThemeFontID: String {
+        allowedTextFontNames.contains("pretendard")
+            ? "pretendard"
+            : FontRegistry.systemFontID
+    }
+
+    private var lovelyThemeFontID: String {
+        allowedTextFontNames.contains("ddulgi_mayo")
+            ? "ddulgi_mayo"
+            : readableThemeFontID
+    }
+
+    private var powerfulThemeFontID: String {
+        allowedTextFontNames.contains("tenada")
+            ? "tenada"
+            : readableThemeFontID
+    }
+
+    private func applyFontPreset(
+        fontID: String,
+        textColor: String,
+        shadowColor: String,
+        fontSize: WatermarkFontSize
+    ) {
+        fontName = fontID
+        textColorHex = Self.normalizedHex(textColor)
+        shadowEnabled = true
+        shadowColorHex = Self.normalizedHex(shadowColor)
+        lineSpacing = .normal
+        lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
+        self.fontSize = fontSize
+        refreshTextInputBackground()
+    }
+
+    private var positionSettings: some View {
+        VStack(alignment: .leading, spacing: 0) {
             LazyVGrid(
                 columns: Array(
                     repeating: GridItem(.flexible(), spacing: 8),
@@ -5223,6 +5582,10 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private func displayFontName(_ fontName: String) -> String {
+        let info = FontRegistry.font(for: fontName)
+        if info.id != FontRegistry.systemFontID {
+            return info.displayName
+        }
         guard let font = UIFont(name: fontName, size: 14) else {
             return fontName
         }
@@ -5247,24 +5610,26 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private func selectedFontPreview(size: CGFloat) -> Font {
-        fontName.isEmpty
-            ? .system(size: size, weight: .semibold)
-            : .custom(fontName, size: size)
+        FontRegistry.resolvedSwiftUIFont(for: fontName, size: size)
     }
 
     private func defaultFontPreview(
         _ choiceFontName: String,
         size: CGFloat
     ) -> Font {
-        choiceFontName.isEmpty
-            ? .system(size: size, weight: .bold)
-            : .custom(choiceFontName, size: size)
+        FontRegistry.resolvedSwiftUIFont(
+            for: choiceFontName,
+            size: size,
+            weight: .bold
+        )
     }
 
     private func textEditorFont(size: CGFloat) -> Font {
-        fontName.isEmpty
-            ? .system(size: size, weight: .medium)
-            : .custom(fontName, size: size)
+        FontRegistry.resolvedSwiftUIFont(
+            for: fontName,
+            size: size,
+            weight: .medium
+        )
     }
 
     private var textEditorAlignment: TextAlignment {
@@ -5282,6 +5647,10 @@ private struct TextOverlaySettingsSheet: View {
         14 * CGFloat(fontSize.multiplier)
     }
 
+    private var textInputMinimumHeight: CGFloat {
+        max(112, textEditorBaseSize * 5.8)
+    }
+
     private func textEditorLineSpacing(size: CGFloat) -> CGFloat {
         size * CGFloat(lineSpacingScale - WatermarkLineSpacing.defaultMultiplier)
     }
@@ -5292,62 +5661,80 @@ private struct TextOverlaySettingsSheet: View {
         )
     }
 
-    private var mixedTextInputBackgroundColor: Color {
-        let textUIColor = UIColor(
-            Color(hexString: textColorHex) ?? HanClipTheme.primary
-        )
-        let shadowUIColor = UIColor(
-            Color(hexString: shadowColorHex) ?? HanClipTheme.secondary
-        )
-        var textRed: CGFloat = 0
-        var textGreen: CGFloat = 0
-        var textBlue: CGFloat = 0
-        var textAlpha: CGFloat = 0
-        var shadowRed: CGFloat = 0
-        var shadowGreen: CGFloat = 0
-        var shadowBlue: CGFloat = 0
-        var shadowAlpha: CGFloat = 0
-
-        guard textUIColor.getRed(
-            &textRed,
-            green: &textGreen,
-            blue: &textBlue,
-            alpha: &textAlpha
-        ),
-            shadowUIColor.getRed(
-                &shadowRed,
-                green: &shadowGreen,
-                blue: &shadowBlue,
-                alpha: &shadowAlpha
-            )
-        else { return HanClipTheme.secondary }
-
-        return Color(
-            red: Double((textRed + shadowRed) / 2),
-            green: Double((textGreen + shadowGreen) / 2),
-            blue: Double((textBlue + shadowBlue) / 2)
-        )
+    private var textInputBackgroundColor: Color {
+        Color(hexString: textInputBackgroundHex) ?? Color.white
     }
 
     private static func randomTextInputBackgroundHex(
         excluding excludedHexes: [String] = []
     ) -> String {
         let palette = [
-            "#F6E8EA",
-            "#E7F0FF",
-            "#EAF7EA",
-            "#FFF2D8",
-            "#EFE8FF",
-            "#E8F7F4",
-            "#F2F0E8",
-            "#F7EAF2"
+            "#FFF7C7",
+            "#DFF4FF",
+            "#E4FFD8",
+            "#FFE0EA",
+            "#EFE3FF",
+            "#E0FFF6",
+            "#FFF0D6",
+            "#F2F4FF"
         ]
-        let excluded = Set(excludedHexes.map(normalizedHex))
-        let choices = palette.filter {
-            !excluded.contains(normalizedHex($0))
+        let excludedColors = excludedHexes.compactMap(uiColor)
+        let candidates = palette.compactMap { hex -> (hex: String, score: CGFloat)? in
+            guard let color = uiColor(hex) else { return nil }
+            let score = excludedColors
+                .map { contrastRatio(between: color, and: $0) }
+                .min() ?? 1
+            return (hex, score)
         }
 
-        return choices.randomElement() ?? "#F2F0E8"
+        return candidates.max { $0.score < $1.score }?.hex ?? "#FFF7C7"
+    }
+
+    private static func uiColor(_ hexString: String) -> UIColor? {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") {
+            hex.removeFirst()
+        }
+        guard hex.count == 6,
+              let value = Int(hex, radix: 16)
+        else { return nil }
+
+        return UIColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    private static func contrastRatio(
+        between first: UIColor,
+        and second: UIColor
+    ) -> CGFloat {
+        let firstLuminance = relativeLuminance(of: first)
+        let secondLuminance = relativeLuminance(of: second)
+        let lighter = max(firstLuminance, secondLuminance)
+        let darker = min(firstLuminance, secondLuminance)
+        return (lighter + 0.05) / (darker + 0.05)
+    }
+
+    private static func relativeLuminance(of color: UIColor) -> CGFloat {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        else { return 1 }
+
+        func convert(_ component: CGFloat) -> CGFloat {
+            component <= 0.03928
+                ? component / 12.92
+                : pow((component + 0.055) / 1.055, 2.4)
+        }
+
+        return 0.2126 * convert(red)
+            + 0.7152 * convert(green)
+            + 0.0722 * convert(blue)
     }
 
     private static func normalizedHex(_ hex: String) -> String {
@@ -5379,7 +5766,7 @@ private struct TextOverlaySettingsSheet: View {
                 return
             }
 
-            fontName = firstFont
+            fontName = FontRegistry.normalizedID(forStoredValue: firstFont)
             fontImportNotice = "\(importedNames.count)개 서체를 가져왔습니다."
         } catch {
             fontImportNotice = "서체를 가져올 수 없습니다."
@@ -5389,9 +5776,9 @@ private struct TextOverlaySettingsSheet: View {
     private func resetSettings() {
         let defaults = WatermarkSettings.projectDefault()
         textEnabled = defaults.isEnabled
-        text = "여기에 글을 넣으세요."
+        text = WatermarkSettings.defaultText
         position = .center
-        fontName = defaults.fontName
+        fontName = FontRegistry.systemFontID
         textColorHex = Color(uiColor: HanClipTheme.primaryUIColor).hexString
             ?? defaults.textColorHex
         shadowEnabled = defaults.shadowEnabled
@@ -5406,8 +5793,20 @@ private struct TextOverlaySettingsSheet: View {
         refreshTextInputBackground()
     }
 
+    private func clearSampleTextIfNeeded() {
+        let sampleTexts = [
+            WatermarkSettings.defaultText,
+            WatermarkSettings.legacyDefaultText
+        ]
+        guard sampleTexts.contains(text) else { return }
+        text = ""
+    }
+
     private func applyDefaultSettingsIfNeeded() {
-        guard text == WatermarkSettings.defaultText,
+        guard [
+            WatermarkSettings.defaultText,
+            WatermarkSettings.legacyDefaultText
+        ].contains(text),
               position == WatermarkSettings.defaultPosition,
               textColorHex == WatermarkSettings.defaultTextColor,
               shadowColorHex == WatermarkSettings.defaultShadowColor
@@ -5436,8 +5835,11 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private func normalizeSelectedFont() {
-        if !allowedTextFontNames.contains(fontName) {
-            fontName = WatermarkSettings.defaultFontName
+        let normalizedID = FontRegistry.normalizedID(forStoredValue: fontName)
+        if allowedTextFontNames.contains(normalizedID) {
+            fontName = normalizedID
+        } else {
+            fontName = FontRegistry.systemFontID
         }
     }
 }
@@ -5482,9 +5884,11 @@ private struct InstalledFontPicker: UIViewControllerRepresentable {
                 return
             }
 
-            parent.fontName =
-                descriptor.fontAttributes[.name] as? String
+            let pickedName = descriptor.fontAttributes[.name] as? String
                 ?? UIFont(descriptor: descriptor, size: 14).fontName
+            parent.fontName = FontRegistry.normalizedID(
+                forStoredValue: pickedName
+            )
             parent.dismiss()
         }
 
@@ -5548,20 +5952,37 @@ private struct TextOverlaySummaryRow: View {
         settings.shadowEnabled ? "사용" : "안함"
     }
 
+    private var statusText: String {
+        settings.shouldRenderText ? "사용" : "안함"
+    }
+
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 8) {
                 Text("T")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.primary.opacity(0.86))
+                    .foregroundStyle(
+                        settings.shouldRenderText
+                            ? HanClipTheme.primary.opacity(0.86)
+                            : HanClipTheme.text.opacity(0.38)
+                    )
                     .frame(width: 18, height: 62, alignment: .center)
 
                 HStack(spacing: 12) {
                     TextOverlayPositionThumbnail(position: settings.position)
                         .frame(width: 62, height: 62)
-                        .opacity(0.88)
+                        .opacity(settings.shouldRenderText ? 0.88 : 0.42)
 
                     VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 8) {
+                            Text("텍스트 넣기")
+                                .font(.system(size: 12, weight: .black))
+                                .foregroundStyle(HanClipTheme.text.opacity(0.70))
+                                .lineLimit(1)
+
+                            summaryLabel("상태", value: statusText)
+                        }
+
                         HStack(spacing: 8) {
                             summaryLabel("서체", value: nil)
                             colorSwatch(settings.textColorHex)

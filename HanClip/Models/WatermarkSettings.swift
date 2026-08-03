@@ -122,6 +122,7 @@ enum WatermarkFontSize: String, CaseIterable, Codable, Identifiable {
     case small
     case normal
     case large
+    case extraLarge
 
     var id: String { rawValue }
 
@@ -133,6 +134,8 @@ enum WatermarkFontSize: String, CaseIterable, Codable, Identifiable {
             return "기본"
         case .large:
             return "크게"
+        case .extraLarge:
+            return "더크게"
         }
     }
 
@@ -144,6 +147,21 @@ enum WatermarkFontSize: String, CaseIterable, Codable, Identifiable {
             return 1.0
         case .large:
             return 1.5
+        case .extraLarge:
+            return 26.0 / 14.0
+        }
+    }
+
+    var pointSize: Int {
+        switch self {
+        case .small:
+            return 11
+        case .normal:
+            return 14
+        case .large:
+            return 21
+        case .extraLarge:
+            return 26
         }
     }
 }
@@ -213,11 +231,16 @@ struct WatermarkSettings: Codable {
         "hanClipCustomCopyrightIconPath"
     static let defaultIsEnabled = true
     static let defaultTextIsEnabled = false
-    static let defaultText = "여기에 글을 넣으세요."
+    static let legacyDefaultText = "여기에 글을 넣으세요."
+    static let defaultText = """
+    여기에 글을 넣으세요
+    I Love you ♡
+    +82 10-0000-0000
+    """
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip
     static let defaultPosition = WatermarkPosition.center
-    static let defaultFontName = ""
+    static let defaultFontName = FontRegistry.systemFontID
     static let defaultTextColor = "#007644"
     static let defaultShadowEnabled = true
     static let defaultShadowColor = "#29AB87"
@@ -342,8 +365,12 @@ struct WatermarkSettings: Codable {
             WatermarkPosition.self,
             forKey: .position
         ) ?? Self.defaultPosition
-        fontName = try container.decodeIfPresent(String.self, forKey: .fontName)
-            ?? Self.defaultFontName
+        fontName = FontRegistry.normalizedID(
+            forStoredValue: try container.decodeIfPresent(
+                String.self,
+                forKey: .fontName
+            ) ?? Self.defaultFontName
+        )
         textColorHex = try container.decodeIfPresent(
             String.self,
             forKey: .textColorHex
@@ -456,8 +483,10 @@ struct WatermarkSettings: Codable {
             address: address,
             platform: platform,
             position: position,
-            fontName: defaults.string(forKey: fontNameStorageKey)
-                ?? defaultFontName,
+            fontName: FontRegistry.normalizedID(
+                forStoredValue: defaults.string(forKey: fontNameStorageKey)
+                    ?? defaultFontName
+            ),
             textColorHex: defaults.string(forKey: textColorStorageKey)
                 ?? defaultTextColor,
             shadowEnabled: shadowEnabled,
