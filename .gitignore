@@ -24,6 +24,7 @@ xcuserdata/
 # Xcode build artifacts
 build/
 DerivedData/
+.build/
 
 # Obj-C/Swift specific
 *.hmap

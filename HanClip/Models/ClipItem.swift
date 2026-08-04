@@ -1,6 +1,168 @@
 import Foundation
 import UIKit
 
+struct BackgroundMusicSampleTrack: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let resourceName: String
+    let resourceExtension: String
+
+    var url: URL? {
+        Bundle.main.url(
+            forResource: resourceName,
+            withExtension: resourceExtension
+        )
+    }
+
+    var settings: BackgroundMusicSettings? {
+        guard let url else { return nil }
+        var settings = BackgroundMusicSettings.empty
+        settings.isEnabled = true
+        settings.fileURL = url
+        settings.displayName = title
+        return settings
+    }
+}
+
+struct BackgroundMusicSettings: Codable, Equatable {
+    var isEnabled: Bool
+    var fileURL: URL?
+    var displayName: String
+    var musicVolume: Double
+    var originalAudioVolume: Double
+    var loopsToFillVideo: Bool
+    var fadeInEnabled: Bool
+    var fadeOutEnabled: Bool
+
+    static let defaultMusicVolume = 0.35
+    static let defaultOriginalAudioVolume = 1.0
+    static let sampleTracks = [
+        BackgroundMusicSampleTrack(
+            id: "daily-loop",
+            title: "햇살 한 컷",
+            subtitle: "잔잔한 생활 이야기",
+            resourceName: "HanClipSampleLoop",
+            resourceExtension: "wav"
+        ),
+        BackgroundMusicSampleTrack(
+            id: "travel-joy",
+            title: "여행의 설렘",
+            subtitle: "밝은 피아노와 퍼커션 여행",
+            resourceName: "HanClipTravelJoy",
+            resourceExtension: "wav"
+        ),
+        BackgroundMusicSampleTrack(
+            id: "ad-classical-drama",
+            title: "광고 클래식 드라마",
+            subtitle: "오스티나토와 텐션",
+            resourceName: "HanClipAdClassicalDrama",
+            resourceExtension: "wav"
+        )
+    ]
+
+    static var empty: BackgroundMusicSettings {
+        BackgroundMusicSettings(
+            isEnabled: false,
+            fileURL: nil,
+            displayName: "",
+            musicVolume: defaultMusicVolume,
+            originalAudioVolume: defaultOriginalAudioVolume,
+            loopsToFillVideo: true,
+            fadeInEnabled: true,
+            fadeOutEnabled: true
+        )
+    }
+
+    static var sampleDisplayName: String {
+        sampleTracks.first?.title ?? "HanClip 샘플 음악"
+    }
+
+    static var bundledSample: BackgroundMusicSettings? {
+        sampleTracks.first?.settings
+    }
+
+    static var projectDefault: BackgroundMusicSettings {
+        bundledSample ?? .empty
+    }
+
+    var hasMusicFile: Bool {
+        fileURL != nil
+    }
+
+    var shouldRender: Bool {
+        isEnabled && hasMusicFile
+    }
+
+    var displayTitle: String {
+        displayName.isEmpty ? "음악 파일" : displayName
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case fileURL
+        case displayName
+        case musicVolume
+        case originalAudioVolume
+        case loopsToFillVideo
+        case fadeInEnabled
+        case fadeOutEnabled
+    }
+
+    init(
+        isEnabled: Bool,
+        fileURL: URL?,
+        displayName: String,
+        musicVolume: Double,
+        originalAudioVolume: Double,
+        loopsToFillVideo: Bool,
+        fadeInEnabled: Bool,
+        fadeOutEnabled: Bool
+    ) {
+        self.isEnabled = isEnabled
+        self.fileURL = fileURL
+        self.displayName = displayName
+        self.musicVolume = musicVolume
+        self.originalAudioVolume = originalAudioVolume
+        self.loopsToFillVideo = loopsToFillVideo
+        self.fadeInEnabled = fadeInEnabled
+        self.fadeOutEnabled = fadeOutEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .isEnabled
+        ) ?? false
+        fileURL = try values.decodeIfPresent(URL.self, forKey: .fileURL)
+        displayName = try values.decodeIfPresent(
+            String.self,
+            forKey: .displayName
+        ) ?? ""
+        musicVolume = try values.decodeIfPresent(
+            Double.self,
+            forKey: .musicVolume
+        ) ?? Self.defaultMusicVolume
+        originalAudioVolume = try values.decodeIfPresent(
+            Double.self,
+            forKey: .originalAudioVolume
+        ) ?? Self.defaultOriginalAudioVolume
+        loopsToFillVideo = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .loopsToFillVideo
+        ) ?? true
+        fadeInEnabled = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .fadeInEnabled
+        ) ?? true
+        fadeOutEnabled = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .fadeOutEnabled
+        ) ?? true
+    }
+}
+
 enum OutputAspectRatio: String, CaseIterable, Identifiable {
     case square = "1:1"
     case portrait3x4 = "3:4"

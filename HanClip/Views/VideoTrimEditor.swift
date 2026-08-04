@@ -20,6 +20,7 @@ struct VideoTrimEditor: View {
     let onFirst: () -> Void
     let onDelete: () -> Void
     let onPreview: () -> Void
+    var bottomThumbnailStrip: AnyView? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var player = AVPlayer()
     @State private var temporaryLivePhotoURL: URL?
@@ -117,6 +118,12 @@ struct VideoTrimEditor: View {
 
                 playbackControls
                     .padding(.horizontal, 22)
+            }
+
+            if let bottomThumbnailStrip {
+                bottomThumbnailStrip
+                    .padding(.horizontal, 14)
+                    .padding(.top, 2)
             }
 
             footerActions
@@ -268,8 +275,8 @@ struct VideoTrimEditor: View {
                             .frame(width: proxy.size.width * 0.60)
                             .accessibilityLabel(
                                 isPlaying
-                                    ? "시사회 일시 정지"
-                                    : "시사회 재생"
+                                    ? "편집 일시 정지"
+                                    : "편집 재생"
                             )
 
                             previewNavigationButton(
@@ -469,7 +476,7 @@ struct VideoTrimEditor: View {
             .padding(.leading, 2)
             .frame(height: 28)
             .accessibilityLabel(
-                "\(currentPosition) / \(totalClipCount)번째 시사회"
+                "\(currentPosition) / \(totalClipCount)번째 편집"
             )
     }
 

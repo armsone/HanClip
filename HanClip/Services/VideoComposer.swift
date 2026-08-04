@@ -15,6 +15,7 @@ final class VideoComposer {
         items: [ClipItem],
         renderSize requestedRenderSize: CGSize,
         watermarkSettings: WatermarkSettings = .stored(),
+        backgroundMusicSettings: BackgroundMusicSettings = .empty,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         guard !items.isEmpty else {
@@ -209,6 +210,13 @@ final class VideoComposer {
         )
         videoComposition.instructions = instructions
 
+        let audioMix = try await configureBackgroundMusic(
+            backgroundMusicSettings,
+            in: composition,
+            originalAudioTrack: compositionAudioTrack,
+            totalDuration: cursor
+        )
+
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("HanClip-\(UUID().uuidString)")
             .appendingPathExtension("mp4")
@@ -224,6 +232,7 @@ final class VideoComposer {
         exporter.outputFileType = .mp4
         exporter.shouldOptimizeForNetworkUse = true
         exporter.videoComposition = videoComposition
+        exporter.audioMix = audioMix
         logger.info("내보내기 시작: 사진 랜덤 줌인·줌아웃 합성 적용")
         await progressHandler(0.86)
         try Task.checkCancellation()
@@ -261,6 +270,119 @@ final class VideoComposer {
         await progressHandler(1)
         logger.info("영상 생성 완료")
         return watermarkedOutput
+    }
+
+    private func configureBackgroundMusic(
+        _ settings: BackgroundMusicSettings,
+        in composition: AVMutableComposition,
+        originalAudioTrack: AVMutableCompositionTrack?,
+        totalDuration: CMTime
+    ) async throws -> AVAudioMix? {
+        var inputParameters: [AVMutableAudioMixInputParameters] = []
+
+        if let originalAudioTrack {
+            let originalParameters = AVMutableAudioMixInputParameters(
+                track: originalAudioTrack
+            )
+            originalParameters.setVolume(
+                Float(Self.clampedVolume(settings.originalAudioVolume)),
+                at: .zero
+            )
+            inputParameters.append(originalParameters)
+        }
+
+        guard settings.shouldRender,
+              let musicURL = settings.fileURL,
+              let musicTrack = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+              )
+        else {
+            guard !inputParameters.isEmpty else { return nil }
+            let audioMix = AVMutableAudioMix()
+            audioMix.inputParameters = inputParameters
+            return audioMix
+        }
+
+        let asset = AVURLAsset(url: musicURL)
+        guard let sourceTrack = try await asset.loadTracks(
+            withMediaType: .audio
+        ).first else {
+            throw MediaError.exportFailed("음악 파일에서 소리를 읽을 수 없습니다.")
+        }
+
+        let sourceDuration = try await asset.load(.duration)
+        guard sourceDuration.seconds.isFinite,
+              CMTimeCompare(sourceDuration, .zero) > 0
+        else {
+            throw MediaError.exportFailed("음악 길이를 읽을 수 없습니다.")
+        }
+
+        var inserted = CMTime.zero
+        repeat {
+            let remaining = CMTimeSubtract(totalDuration, inserted)
+            guard CMTimeCompare(remaining, .zero) > 0 else { break }
+            let partDuration = CMTimeMinimum(sourceDuration, remaining)
+            try musicTrack.insertTimeRange(
+                CMTimeRange(start: .zero, duration: partDuration),
+                of: sourceTrack,
+                at: inserted
+            )
+            inserted = CMTimeAdd(inserted, partDuration)
+        } while settings.loopsToFillVideo
+            && CMTimeCompare(inserted, totalDuration) < 0
+
+        let musicParameters = AVMutableAudioMixInputParameters(
+            track: musicTrack
+        )
+        Self.configureMusicVolume(
+            musicParameters,
+            settings: settings,
+            totalDuration: totalDuration
+        )
+        inputParameters.append(musicParameters)
+
+        let audioMix = AVMutableAudioMix()
+        audioMix.inputParameters = inputParameters
+        return audioMix
+    }
+
+    private static func configureMusicVolume(
+        _ parameters: AVMutableAudioMixInputParameters,
+        settings: BackgroundMusicSettings,
+        totalDuration: CMTime
+    ) {
+        let targetVolume = Float(clampedVolume(settings.musicVolume))
+        let totalSeconds = max(0, totalDuration.seconds)
+        guard totalSeconds.isFinite, totalSeconds > 0 else {
+            parameters.setVolume(targetVolume, at: .zero)
+            return
+        }
+
+        let fadeSeconds = min(2.0, totalSeconds / 2)
+        let fadeDuration = CMTime(
+            seconds: fadeSeconds,
+            preferredTimescale: totalDuration.timescale
+        )
+
+        if settings.fadeInEnabled, fadeSeconds > 0 {
+            parameters.setVolumeRamp(
+                fromStartVolume: 0,
+                toEndVolume: targetVolume,
+                timeRange: CMTimeRange(start: .zero, duration: fadeDuration)
+            )
+        } else {
+            parameters.setVolume(targetVolume, at: .zero)
+        }
+
+        if settings.fadeOutEnabled, fadeSeconds > 0 {
+            let fadeStart = CMTimeSubtract(totalDuration, fadeDuration)
+            parameters.setVolumeRamp(
+                fromStartVolume: targetVolume,
+                toEndVolume: 0,
+                timeRange: CMTimeRange(start: fadeStart, duration: fadeDuration)
+            )
+        }
     }
 
     private func export(
@@ -768,6 +890,10 @@ final class VideoComposer {
 
     private static func timeText(_ seconds: Double) -> String {
         String(format: "%.3f초", seconds)
+    }
+
+    private static func clampedVolume(_ volume: Double) -> Double {
+        min(max(volume, 0), 1)
     }
 
     private static func watermarkTransform(

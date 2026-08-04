@@ -48,6 +48,9 @@
 		120000000000000000000009 /* PuradakGentleGothic-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */; };
 		12000000000000000000000A /* DdulgiMayo-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000A /* DdulgiMayo-LICENSE.txt */; };
 		12000000000000000000000B /* Pretendard-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000B /* Pretendard-Bold.ttf */; };
+		130000000000000000000001 /* HanClipSampleLoop.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000001 /* HanClipSampleLoop.wav */; };
+		130000000000000000000002 /* HanClipTravelJoy.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000002 /* HanClipTravelJoy.wav */; };
+		130000000000000000000003 /* HanClipAdClassicalDrama.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000003 /* HanClipAdClassicalDrama.wav */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +123,9 @@
 		220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/PuradakGentleGothic-LICENSE.txt; sourceTree = "<group>"; };
 		22000000000000000000000A /* DdulgiMayo-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/DdulgiMayo-LICENSE.txt; sourceTree = "<group>"; };
 		22000000000000000000000B /* Pretendard-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/Pretendard-Bold.ttf; sourceTree = "<group>"; };
+		230000000000000000000001 /* HanClipSampleLoop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipSampleLoop.wav; sourceTree = "<group>"; };
+		230000000000000000000002 /* HanClipTravelJoy.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipTravelJoy.wav; sourceTree = "<group>"; };
+		230000000000000000000003 /* HanClipAdClassicalDrama.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipAdClassicalDrama.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -187,6 +193,9 @@
 				220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */,
 				22000000000000000000000A /* DdulgiMayo-LICENSE.txt */,
 				22000000000000000000000B /* Pretendard-Bold.ttf */,
+				230000000000000000000001 /* HanClipSampleLoop.wav */,
+				230000000000000000000002 /* HanClipTravelJoy.wav */,
+				230000000000000000000003 /* HanClipAdClassicalDrama.wav */,
 				20000000000000000000000F /* Info.plist */,
 				200000000000000000000010 /* HanClip.entitlements */,
 				200000000000000000000013 /* Assets.xcassets */,
@@ -364,6 +373,9 @@
 				120000000000000000000009 /* PuradakGentleGothic-LICENSE.txt in Resources */,
 				12000000000000000000000A /* DdulgiMayo-LICENSE.txt in Resources */,
 				12000000000000000000000B /* Pretendard-Bold.ttf in Resources */,
+				130000000000000000000001 /* HanClipSampleLoop.wav in Resources */,
+				130000000000000000000002 /* HanClipTravelJoy.wav in Resources */,
+				130000000000000000000003 /* HanClipAdClassicalDrama.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

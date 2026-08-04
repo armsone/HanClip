@@ -8,13 +8,27 @@ enum HanClipThemeMode: String, CaseIterable {
     case rosyBrown
     case electricCobalt
     case blossomGlow
-    case readableComfort
     case grayscalePlay
+
+    static let baseModes: [HanClipThemeMode] = [
+        .automatic,
+        .light,
+        .dark
+    ]
+
+    static let customModes: [HanClipThemeMode] = [
+        .rosyBrown,
+        .electricCobalt,
+        .blossomGlow,
+        .grayscalePlay
+    ]
+
+    static let visibleModes: [HanClipThemeMode] = baseModes + customModes
 
     var colorScheme: ColorScheme? {
         switch self {
         case .light, .rosyBrown, .electricCobalt, .blossomGlow,
-             .readableComfort, .grayscalePlay:
+             .grayscalePlay:
             return .light
         case .dark:
             return .dark
@@ -37,8 +51,6 @@ enum HanClipThemeMode: String, CaseIterable {
             return "Electric Cobalt"
         case .blossomGlow:
             return "Blossom Glow"
-        case .readableComfort:
-            return "Readable Comfort"
         case .grayscalePlay:
             return "Grayscale Play"
         }
@@ -73,8 +85,8 @@ enum HanClipTheme {
             return nil
         case .light:
             return (
-                Color(uiColor: signalClearPrimary),
-                Color(uiColor: signalClearSecondary)
+                Color(uiColor: readableComfortPrimary),
+                Color(uiColor: readableComfortSecondary)
             )
         case .dark:
             return (
@@ -96,11 +108,6 @@ enum HanClipTheme {
                 Color(uiColor: blossomGlowPrimary),
                 Color(uiColor: blossomGlowSecondary)
             )
-        case .readableComfort:
-            return (
-                Color(uiColor: readableComfortPrimary),
-                Color(uiColor: readableComfortSecondary)
-            )
         case .grayscalePlay:
             return (
                 Color(uiColor: grayscalePrimary),
@@ -117,12 +124,10 @@ enum HanClipTheme {
             return electricCobalt
         case .blossomGlow:
             return blossomGlowPrimary
-        case .readableComfort:
-            return readableComfortPrimary
         case .grayscalePlay:
             return grayscalePrimary
         case .light:
-            return signalClearPrimary
+            return readableComfortPrimary
         case .dark:
             return nightSlatePrimary
         case .automatic:
@@ -142,12 +147,10 @@ enum HanClipTheme {
             return electricCobaltSecondary
         case .blossomGlow:
             return blossomGlowSecondary
-        case .readableComfort:
-            return readableComfortSecondary
         case .grayscalePlay:
             return grayscaleSecondary
         case .light:
-            return signalClearSecondary
+            return readableComfortSecondary
         case .dark:
             return nightSlateSecondary
         case .automatic:
@@ -171,6 +174,9 @@ enum HanClipTheme {
         let rawValue = UserDefaults.standard.string(
             forKey: "hanClipThemeMode"
         )
+        if rawValue == "readableComfort" {
+            return .light
+        }
         return HanClipThemeMode(rawValue: rawValue ?? "")
             ?? .automatic
     }
@@ -384,16 +390,13 @@ enum HanClipTheme {
             return Color(uiColor: electricCobaltBackground)
         }
         if selectedMode == .light {
-            return Color(uiColor: signalClearBackground)
+            return Color(uiColor: readableComfortBackground)
         }
         if selectedMode == .dark {
             return Color(uiColor: nightSlateBackground)
         }
         if selectedMode == .blossomGlow {
             return Color(uiColor: blossomGlowBackground)
-        }
-        if selectedMode == .readableComfort {
-            return Color(uiColor: readableComfortBackground)
         }
         if selectedMode == .grayscalePlay {
             return Color(uiColor: grayscaleBackground)
@@ -406,16 +409,13 @@ enum HanClipTheme {
             return Color(uiColor: electricCobaltBackgroundWithBlack)
         }
         if selectedMode == .light {
-            return Color(uiColor: signalClearBackgroundWithBlack)
+            return Color(uiColor: readableComfortBackgroundWithBlack)
         }
         if selectedMode == .dark {
             return Color(uiColor: nightSlateBackgroundWithBlack)
         }
         if selectedMode == .blossomGlow {
             return Color(uiColor: blossomGlowBackgroundWithBlack)
-        }
-        if selectedMode == .readableComfort {
-            return Color(uiColor: readableComfortBackgroundWithBlack)
         }
         if selectedMode == .grayscalePlay {
             return Color(uiColor: grayscaleBackgroundWithBlack)
@@ -436,16 +436,13 @@ enum HanClipTheme {
             return Color(uiColor: electricCobaltText)
         }
         if selectedMode == .light {
-            return Color(uiColor: signalClearText)
+            return Color(uiColor: readableComfortText)
         }
         if selectedMode == .dark {
             return Color(uiColor: nightSlateText)
         }
         if selectedMode == .blossomGlow {
             return Color(uiColor: blossomGlowText)
-        }
-        if selectedMode == .readableComfort {
-            return Color(uiColor: readableComfortText)
         }
         if selectedMode == .grayscalePlay {
             return Color(uiColor: grayscaleText)
@@ -486,16 +483,13 @@ enum HanClipTheme {
             return secondary.opacity(0.105)
         }
         if selectedMode == .light {
-            return secondary.opacity(0.085)
+            return secondary.opacity(0.18)
         }
         if selectedMode == .dark {
             return Color.white.opacity(0.06)
         }
         if selectedMode == .blossomGlow {
             return secondary.opacity(0.10)
-        }
-        if selectedMode == .readableComfort {
-            return secondary.opacity(0.18)
         }
         if selectedMode == .grayscalePlay {
             return secondary.opacity(0.12)
@@ -508,16 +502,13 @@ enum HanClipTheme {
             return primary.opacity(0.22)
         }
         if selectedMode == .light {
-            return primary.opacity(0.24)
+            return primary.opacity(0.36)
         }
         if selectedMode == .dark {
             return primary.opacity(0.30)
         }
         if selectedMode == .blossomGlow {
             return primary.opacity(0.20)
-        }
-        if selectedMode == .readableComfort {
-            return primary.opacity(0.36)
         }
         if selectedMode == .grayscalePlay {
             return primary.opacity(0.24)
@@ -530,16 +521,13 @@ enum HanClipTheme {
             return secondary.opacity(0.18)
         }
         if selectedMode == .light {
-            return secondary.opacity(0.16)
+            return secondary.opacity(0.28)
         }
         if selectedMode == .dark {
             return Color.white.opacity(0.08)
         }
         if selectedMode == .blossomGlow {
             return secondary.opacity(0.18)
-        }
-        if selectedMode == .readableComfort {
-            return secondary.opacity(0.28)
         }
         if selectedMode == .grayscalePlay {
             return secondary.opacity(0.18)
@@ -552,16 +540,13 @@ enum HanClipTheme {
             return secondary.opacity(0.075)
         }
         if selectedMode == .light {
-            return secondary.opacity(0.06)
+            return secondary.opacity(0.12)
         }
         if selectedMode == .dark {
             return Color.white.opacity(0.045)
         }
         if selectedMode == .blossomGlow {
             return secondary.opacity(0.065)
-        }
-        if selectedMode == .readableComfort {
-            return secondary.opacity(0.12)
         }
         if selectedMode == .grayscalePlay {
             return secondary.opacity(0.075)
@@ -574,16 +559,13 @@ enum HanClipTheme {
             return secondary.opacity(0.24)
         }
         if selectedMode == .light {
-            return secondary.opacity(0.22)
+            return primary.opacity(0.34)
         }
         if selectedMode == .dark {
             return primary.opacity(0.22)
         }
         if selectedMode == .blossomGlow {
             return primary.opacity(0.16)
-        }
-        if selectedMode == .readableComfort {
-            return primary.opacity(0.34)
         }
         if selectedMode == .grayscalePlay {
             return primary.opacity(0.20)
@@ -619,7 +601,7 @@ enum HanClipTheme {
     private static func themedColor(light: UIColor, dark: UIColor) -> Color {
         switch selectedMode {
         case .light, .rosyBrown, .electricCobalt, .blossomGlow,
-             .readableComfort, .grayscalePlay:
+             .grayscalePlay:
             return Color(uiColor: light)
         case .dark:
             return Color(uiColor: dark)

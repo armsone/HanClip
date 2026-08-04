@@ -22,6 +22,7 @@ struct LoadedProject {
     let outputAspectRatio: OutputAspectRatio?
     let automaticSourceSize: CGSize
     let textOverlaySettings: WatermarkSettings
+    let backgroundMusicSettings: BackgroundMusicSettings
 }
 
 enum ProjectStore {
@@ -60,6 +61,7 @@ enum ProjectStore {
         outputAspectRatio: OutputAspectRatio?,
         automaticSourceSize: CGSize,
         textOverlaySettings: WatermarkSettings,
+        backgroundMusicSettings: BackgroundMusicSettings,
         activeProjectID: UUID?
     ) throws -> UUID {
         let root = try projectsRoot()
@@ -140,6 +142,13 @@ enum ProjectStore {
                 }
             }
 
+            let storedBackgroundMusicSettings = try storeBackgroundMusic(
+                backgroundMusicSettings,
+                existing: existing,
+                existingDirectory: projectDirectory(for: projectID, root: root),
+                in: staging
+            )
+
             let stored = StoredProject(
                 id: projectID,
                 createdAt: existing?.createdAt ?? Date(),
@@ -151,6 +160,7 @@ enum ProjectStore {
                 automaticSourceWidth: automaticSourceSize.width,
                 automaticSourceHeight: automaticSourceSize.height,
                 textOverlaySettings: textOverlaySettings.withLogoEnabled(false),
+                backgroundMusicSettings: storedBackgroundMusicSettings,
                 clips: storedClips,
                 renderedVideoFilename: renderedVideoFilename,
                 renderedVideoByteCount: renderedVideoByteCount
@@ -284,7 +294,11 @@ enum ProjectStore {
                 height: stored.automaticSourceHeight
             ),
             textOverlaySettings: stored.textOverlaySettings
-                ?? WatermarkSettings.projectDefault()
+                ?? WatermarkSettings.projectDefault(),
+            backgroundMusicSettings: restoreBackgroundMusic(
+                stored.backgroundMusicSettings,
+                in: directory
+            )
         )
     }
 
@@ -492,6 +506,58 @@ enum ProjectStore {
         }
     }
 
+    private static func storeBackgroundMusic(
+        _ settings: BackgroundMusicSettings,
+        existing: StoredProject?,
+        existingDirectory: URL,
+        in staging: URL
+    ) throws -> BackgroundMusicSettings? {
+        guard settings.hasMusicFile, let sourceURL = settings.fileURL else {
+            return nil
+        }
+
+        let ext = sourceURL.pathExtension.isEmpty
+            ? "m4a"
+            : sourceURL.pathExtension
+        let filename = "background-music.\(ext)"
+        let destination = staging.appendingPathComponent(filename)
+
+        if FileManager.default.fileExists(atPath: sourceURL.path) {
+            try FileManager.default.copyItem(at: sourceURL, to: destination)
+        } else if let existingFilename = existing?
+            .backgroundMusicSettings?
+            .fileURL?
+            .lastPathComponent {
+            let existingURL = existingDirectory
+                .appendingPathComponent(existingFilename)
+            guard FileManager.default.fileExists(atPath: existingURL.path)
+            else { return nil }
+            try FileManager.default.copyItem(at: existingURL, to: destination)
+        } else {
+            return nil
+        }
+
+        var stored = settings
+        stored.fileURL = URL(fileURLWithPath: filename)
+        return stored
+    }
+
+    private static func restoreBackgroundMusic(
+        _ settings: BackgroundMusicSettings?,
+        in directory: URL
+    ) -> BackgroundMusicSettings {
+        guard var settings, let filename = settings.fileURL?.lastPathComponent
+        else {
+            return .projectDefault
+        }
+        let url = directory.appendingPathComponent(filename)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .projectDefault
+        }
+        settings.fileURL = url
+        return settings
+    }
+
     private static func sourceURL(
         _ filename: String?,
         in directory: URL
@@ -590,6 +656,7 @@ private struct StoredProject: Codable {
     let automaticSourceWidth: Double
     let automaticSourceHeight: Double
     let textOverlaySettings: WatermarkSettings?
+    let backgroundMusicSettings: BackgroundMusicSettings?
     let clips: [StoredClip]
     var renderedVideoFilename: String?
     var renderedVideoByteCount: Int64?

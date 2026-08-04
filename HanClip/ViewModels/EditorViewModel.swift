@@ -7,6 +7,34 @@ private enum PreviewSaveRequest {
     case files
 }
 
+private struct ProjectEditSignature: Equatable {
+    let clips: [ClipEditSignature]
+    let defaultDuration: Double
+    let outputAspectRatio: OutputAspectRatio?
+    let automaticSourceSize: CGSize
+    let textOverlaySettings: String
+    let backgroundMusicSettings: BackgroundMusicSettings
+}
+
+private struct ClipEditSignature: Equatable {
+    let id: UUID
+    let source: String
+    let duration: Double
+    let photoDuration: Double
+    let livePhotoDuration: Double?
+    let isLivePhoto: Bool
+    let livePhotoMode: LivePhotoMode
+    let mediaKind: ClipMediaKind
+    let sourceDuration: Double?
+    let trimStart: Double
+    let audioPeakTime: Double?
+    let audioPeakTimes: [Double]
+    let videoSegmentMode: VideoSegmentMode
+    let isVideoSegmentParent: Bool
+    let videoSegmentParentID: UUID?
+    let sourcePixelSize: CGSize
+}
+
 @MainActor
 final class EditorViewModel: ObservableObject {
     private static let defaultDurationStorageKey = "hanClipDefaultDuration"
@@ -23,6 +51,7 @@ final class EditorViewModel: ObservableObject {
     @Published var outputAspectRatio: OutputAspectRatio? =
         EditorViewModel.storedDefaultAspectRatio()
     @Published var textOverlaySettings = WatermarkSettings.projectDefault()
+    @Published var backgroundMusicSettings = BackgroundMusicSettings.projectDefault
     @Published private(set) var automaticSourceSize = CGSize(
         width: 1,
         height: 1
@@ -30,6 +59,7 @@ final class EditorViewModel: ObservableObject {
     @Published var isPickerPresented = false
     @Published var isCalendarPickerPresented = false
     @Published var isFileImporterPresented = false
+    @Published var isBackgroundMusicImporterPresented = false
     @Published var isExporting = false
     @Published var isLoadingCalendarPicker = false
     @Published var calendarPickerLoadProgress = 0.0
@@ -66,6 +96,7 @@ final class EditorViewModel: ObservableObject {
     private var pendingThumbnailTask: Task<Void, Never>?
     private var pendingPhotoAlbumName = ""
     private var previewSaveRequest: PreviewSaveRequest?
+    private var openedProjectSignature: ProjectEditSignature?
 
     init() {
         reloadProjects()
@@ -120,6 +151,11 @@ final class EditorViewModel: ObservableObject {
             return String(format: "%d분 %.1f초", minutes, seconds)
         }
         return String(format: "%.1f초", seconds)
+    }
+
+    var hasUnsavedProjectChanges: Bool {
+        guard let openedProjectSignature else { return true }
+        return currentProjectSignature() != openedProjectSignature
     }
 
     var fileDocument: VideoFileDocument? {
@@ -252,6 +288,52 @@ final class EditorViewModel: ObservableObject {
             importPendingItemsIntoNewProject()
         }
         isFileImporterPresented = true
+    }
+
+    func openBackgroundMusicPicker() {
+        if !isProjectOpen {
+            beginNewProject()
+            importPendingItemsIntoNewProject()
+        }
+        isBackgroundMusicImporterPresented = true
+    }
+
+    func importBackgroundMusic(_ urls: [URL]) {
+        guard let source = urls.first else { return }
+        let hasAccess = source.startAccessingSecurityScopedResource()
+        defer {
+            if hasAccess {
+                source.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            let ext = source.pathExtension.isEmpty
+                ? "m4a"
+                : source.pathExtension
+            let local = FileManager.default.temporaryDirectory
+                .appendingPathComponent("HanClip-BGM-\(UUID().uuidString)")
+                .appendingPathExtension(ext)
+            try FileManager.default.copyItem(at: source, to: local)
+            backgroundMusicSettings.fileURL = local
+            backgroundMusicSettings.displayName =
+                source.deletingPathExtension().lastPathComponent
+            backgroundMusicSettings.isEnabled = true
+        } catch {
+            alertMessage = "음악 파일을 가져올 수 없습니다."
+        }
+    }
+
+    func useSampleBackgroundMusic(_ sampleTrack: BackgroundMusicSampleTrack) {
+        guard let sample = sampleTrack.settings else {
+            alertMessage = "샘플 음악을 찾을 수 없습니다."
+            return
+        }
+        backgroundMusicSettings = sample
+    }
+
+    func removeBackgroundMusic() {
+        backgroundMusicSettings = .projectDefault
     }
 
     func addPickedItems(_ newItems: [ClipItem]) {
@@ -444,6 +526,7 @@ final class EditorViewModel: ObservableObject {
         isPickerPresented = false
         isCalendarPickerPresented = false
         isFileImporterPresented = false
+        isBackgroundMusicImporterPresented = false
         isExporting = false
         isLoadingCalendarPicker = false
         calendarPickerLoadProgress = 0
@@ -463,6 +546,7 @@ final class EditorViewModel: ObservableObject {
         showFileExporter = false
         alertMessage = nil
         activeProjectID = nil
+        openedProjectSignature = nil
         isProjectOpen = false
         reloadProjects()
     }
@@ -484,14 +568,17 @@ final class EditorViewModel: ObservableObject {
         progressMessage = "영화를 저장하는 중…"
 
         do {
-            _ = try ProjectStore.save(
+            let savedID = try ProjectStore.save(
                 clips: clips,
                 defaultDuration: defaultDuration,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
                 activeProjectID: activeProjectID
             )
+            newlySavedProjectID = savedID
+            openedProjectSignature = nil
             reset()
         } catch {
             isExporting = false
@@ -513,9 +600,12 @@ final class EditorViewModel: ObservableObject {
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
                 activeProjectID: activeProjectID
             )
             activeProjectID = savedID
+            newlySavedProjectID = savedID
+            openedProjectSignature = currentProjectSignature()
             isExporting = false
             progressMessage = ""
             reloadProjects()
@@ -542,6 +632,7 @@ final class EditorViewModel: ObservableObject {
                     outputAspectRatio: outputAspectRatio,
                     automaticSourceSize: automaticSourceSize,
                     textOverlaySettings: textOverlaySettings,
+                    backgroundMusicSettings: backgroundMusicSettings,
                     activeProjectID: activeProjectID
                 )
                 try Task.checkCancellation()
@@ -551,10 +642,13 @@ final class EditorViewModel: ObservableObject {
                 outputAspectRatio = savedProject.outputAspectRatio
                 automaticSourceSize = savedProject.automaticSourceSize
                 textOverlaySettings = savedProject.textOverlaySettings
+                backgroundMusicSettings = savedProject.backgroundMusicSettings
                 reloadProjects()
                 activeProjectID = savedProjects.contains {
                     $0.id == savedID
                 } ? savedID : nil
+                newlySavedProjectID = savedID
+                openedProjectSignature = currentProjectSignature()
 
                 let compositionItems = savedProject.clips.filter(
                     \.isRenderableClip
@@ -565,7 +659,8 @@ final class EditorViewModel: ObservableObject {
                     items: compositionItems,
                     renderSize: outputRenderSize,
                     watermarkSettings: textOverlaySettings
-                        .withCopyrightSettings(WatermarkSettings.stored())
+                        .withCopyrightSettings(WatermarkSettings.stored()),
+                    backgroundMusicSettings: backgroundMusicSettings
                 ) { [self] progress in
                     await updatePreviewProgress(progress)
                 }
@@ -641,13 +736,16 @@ final class EditorViewModel: ObservableObject {
         defaultDuration = Self.storedDefaultDuration()
         outputAspectRatio = Self.storedDefaultAspectRatio()
         textOverlaySettings = WatermarkSettings.projectDefault()
+        backgroundMusicSettings = .projectDefault
         automaticSourceSize = CGSize(width: 1, height: 1)
         isPickerPresented = false
         isFileImporterPresented = false
+        isBackgroundMusicImporterPresented = false
         isCalendarPickerPresented = false
         isLoadingCalendarPicker = false
         calendarPickerLoadProgress = 0
         activeProjectID = nil
+        openedProjectSignature = nil
     }
 
     func loadProject(id: UUID) {
@@ -658,11 +756,13 @@ final class EditorViewModel: ObservableObject {
             outputAspectRatio = project.outputAspectRatio
             automaticSourceSize = project.automaticSourceSize
             textOverlaySettings = project.textOverlaySettings
+            backgroundMusicSettings = project.backgroundMusicSettings
             exportedURL = nil
             showPreview = false
             activeProjectID = project.id
             isProjectOpen = true
             refreshLivePhotoDurations()
+            openedProjectSignature = currentProjectSignature()
         } catch {
             alertMessage = error.localizedDescription
             reloadProjects()
@@ -713,6 +813,79 @@ final class EditorViewModel: ObservableObject {
         savedProjects = ProjectStore.listProjects()
     }
 
+    private func currentProjectSignature() -> ProjectEditSignature {
+        ProjectEditSignature(
+            clips: clips.map(clipSignature),
+            defaultDuration: roundedSignatureValue(defaultDuration),
+            outputAspectRatio: outputAspectRatio,
+            automaticSourceSize: automaticSourceSize,
+            textOverlaySettings: watermarkSignature(textOverlaySettings),
+            backgroundMusicSettings: backgroundMusicSettings
+        )
+    }
+
+    private func clipSignature(_ clip: ClipItem) -> ClipEditSignature {
+        ClipEditSignature(
+            id: clip.id,
+            source: sourceSignature(clip.source),
+            duration: roundedSignatureValue(clip.duration),
+            photoDuration: roundedSignatureValue(clip.photoDuration),
+            livePhotoDuration: clip.livePhotoDuration.map(roundedSignatureValue),
+            isLivePhoto: clip.isLivePhoto,
+            livePhotoMode: clip.livePhotoMode,
+            mediaKind: clip.mediaKind,
+            sourceDuration: clip.sourceDuration.map(roundedSignatureValue),
+            trimStart: roundedSignatureValue(clip.trimStart),
+            audioPeakTime: clip.audioPeakTime.map(roundedSignatureValue),
+            audioPeakTimes: clip.audioPeakTimes.map(roundedSignatureValue),
+            videoSegmentMode: clip.videoSegmentMode,
+            isVideoSegmentParent: clip.isVideoSegmentParent,
+            videoSegmentParentID: clip.videoSegmentParentID,
+            sourcePixelSize: clip.sourcePixelSize
+        )
+    }
+
+    private func sourceSignature(_ source: ClipSource) -> String {
+        switch source {
+        case .photoAsset(let localIdentifier):
+            return "photo:\(localIdentifier)"
+        case .imageFile(let url):
+            return "image:\(url.standardizedFileURL.path)"
+        case .videoFile(let url):
+            return "video:\(url.standardizedFileURL.path)"
+        case .livePhotoFiles(let imageURL, let videoURL):
+            return "live:\(imageURL.standardizedFileURL.path)|\(videoURL.standardizedFileURL.path)"
+        }
+    }
+
+    private func roundedSignatureValue(_ value: Double) -> Double {
+        (value * 1000).rounded() / 1000
+    }
+
+    private func watermarkSignature(_ settings: WatermarkSettings) -> String {
+        [
+            "\(settings.isEnabled)",
+            "\(settings.logoEnabled)",
+            settings.text,
+            settings.address,
+            settings.platform.rawValue,
+            settings.position.rawValue,
+            settings.fontName,
+            settings.textColorHex,
+            "\(settings.shadowEnabled)",
+            settings.shadowColorHex,
+            settings.lineSpacing.rawValue,
+            "\(roundedSignatureValue(settings.lineSpacingScale))",
+            settings.fontSize.rawValue,
+            settings.copyrightPosition.rawValue,
+            settings.copyrightTextColorHex,
+            settings.copyrightShadowColorHex,
+            settings.copyrightIconColorMode.rawValue,
+            settings.copyrightIconColorHex,
+            settings.customCopyrightIconPath
+        ].joined(separator: "\u{1F}")
+    }
+
     func refreshPendingSharedItems() {
         let records = SharedInbox.pendingRecords()
         let thumbnailRecords = Array(records.prefix(9))
@@ -751,6 +924,7 @@ final class EditorViewModel: ObservableObject {
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
                 activeProjectID: activeProjectID
             )
             reset()
@@ -1003,6 +1177,7 @@ final class EditorViewModel: ObservableObject {
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
                 activeProjectID: activeProjectID
             )
         }
