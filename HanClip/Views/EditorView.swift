@@ -6,6 +6,7 @@ import PhotosUI
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import WebKit
 
 private enum SleepPreventionMode: String, CaseIterable, Identifiable {
     case alwaysOn = "alwaysOn"
@@ -85,7 +86,7 @@ struct EditorView: View {
     @AppStorage("hanClipThemeMode") private var themeModeRaw =
         HanClipThemeMode.automatic.rawValue
     @AppStorage("hanClipCustomThemeOrder") private var customThemeOrderRaw =
-        "rosyBrown,electricCobalt,blossomGlow,grayscalePlay"
+        "blossomGlow,grayscalePlay"
     @AppStorage(WatermarkSettings.logoEnabledStorageKey)
     private var logoWatermarkEnabled = WatermarkSettings.defaultIsEnabled
     @AppStorage(WatermarkSettings.enabledStorageKey)
@@ -117,12 +118,18 @@ struct EditorView: View {
     @AppStorage(WatermarkSettings.shadowEnabledStorageKey)
     private var watermarkShadowEnabled =
         WatermarkSettings.defaultShadowEnabled
+    @AppStorage(WatermarkSettings.shadowOpacityStorageKey)
+    private var watermarkShadowOpacity =
+        WatermarkSettings.defaultShadowOpacity
     @AppStorage(WatermarkSettings.shadowColorStorageKey)
     private var watermarkShadowColorHex =
         WatermarkSettings.defaultShadowColor
     @AppStorage(WatermarkSettings.copyrightShadowColorStorageKey)
     private var copyrightShadowColorHex =
         WatermarkSettings.defaultCopyrightShadowColor
+    @AppStorage(WatermarkSettings.copyrightShadowOpacityStorageKey)
+    private var copyrightShadowOpacity =
+        WatermarkSettings.defaultCopyrightShadowOpacity
     @AppStorage(WatermarkSettings.copyrightIconColorModeStorageKey)
     private var copyrightIconColorModeRaw =
         WatermarkSettings.defaultCopyrightIconColorMode.rawValue
@@ -138,6 +145,9 @@ struct EditorView: View {
     private var themeMode: HanClipThemeMode {
         if themeModeRaw == "readableComfort" {
             return .light
+        }
+        if themeModeRaw == "rosyBrown" || themeModeRaw == "electricCobalt" {
+            return .automatic
         }
         return HanClipThemeMode(rawValue: themeModeRaw) ?? .automatic
     }
@@ -441,9 +451,12 @@ struct EditorView: View {
                     && !showThemeSelection
                 {
                     ZStack {
-                        Color.black.opacity(0.12)
+                        Color.black.opacity(0.20)
                             .ignoresSafeArea()
-                            .transition(.opacity)
+                            .transition(.identity)
+                            .transaction { transaction in
+                                transaction.animation = nil
+                            }
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 withAnimation(aspectRatioPickerAnimation) {
@@ -508,12 +521,12 @@ struct EditorView: View {
                             maxHeight: .infinity,
                             alignment: .bottom
                         )
-                        .offset(y: 16)
-                        .padding(.bottom, 22)
+                        .offset(y: 27)
+                        .padding(.bottom, 33)
+                        .transition(
+                            .move(edge: .bottom).combined(with: .opacity)
+                        )
                     }
-                    .transition(
-                        .move(edge: .bottom).combined(with: .opacity)
-                    )
                     .allowsHitTesting(true)
                 }
             }
@@ -673,6 +686,7 @@ struct EditorView: View {
                 fontName: textOverlayBinding(\.fontName),
                 textColorHex: textOverlayBinding(\.textColorHex),
                 shadowEnabled: textOverlayBinding(\.shadowEnabled),
+                shadowOpacity: textOverlayBinding(\.shadowOpacity),
                 shadowColorHex: textOverlayBinding(\.shadowColorHex),
                 lineSpacing: textOverlayBinding(\.lineSpacing),
                 lineSpacingScale: textOverlayBinding(\.lineSpacingScale),
@@ -698,6 +712,9 @@ struct EditorView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         model.openBackgroundMusicPicker()
                     }
+                },
+                onImportDownloadedMusic: { url in
+                    model.importBackgroundMusic([url])
                 }
             )
         }
@@ -814,8 +831,58 @@ struct EditorView: View {
         .frame(height: 58)
         .padding(.top, 6)
         .padding(.horizontal, 14)
+        .background(alignment: .top) {
+            if model.isProjectOpen {
+                topHeaderScrim
+            }
+        }
         .accessibilityHint(
             "첫 화면에서 누르면 테마가 바뀌고, 길게 누르면 테마 선택창을 엽니다."
+        )
+    }
+
+    private var topHeaderScrim: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(topHeaderScrimMask)
+
+            LinearGradient(
+                stops: [
+                    .init(
+                        color: HanClipTheme.background.opacity(0.98),
+                        location: 0.00
+                    ),
+                    .init(
+                        color: HanClipTheme.background.opacity(0.96),
+                        location: 0.62
+                    ),
+                    .init(
+                        color: HanClipTheme.background.opacity(0.52),
+                        location: 0.86
+                    ),
+                    .init(color: .clear, location: 1.00)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .frame(height: 150)
+        .offset(y: -58)
+        .allowsHitTesting(false)
+        .ignoresSafeArea(.container, edges: .top)
+    }
+
+    private var topHeaderScrimMask: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .black, location: 0.00),
+                .init(color: .black, location: 0.62),
+                .init(color: .black.opacity(0.62), location: 0.86),
+                .init(color: .clear, location: 1.00)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 
@@ -849,20 +916,12 @@ struct EditorView: View {
                     }
                 }
             } else {
-                VStack(spacing: 3) {
-                    mediaImportMenu {
-                        HanClipHeaderActionCluster {
-                            Image(systemName: "photo.badge.plus")
-                                .symbolRenderingMode(.monochrome)
-                                .foregroundStyle(HanClipTheme.primary)
-                        }
+                mediaImportMenu {
+                    HanClipHeaderActionCluster {
+                        Image(systemName: "photo.badge.plus")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(HanClipTheme.primary)
                     }
-
-                    Text("영화 만들기")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
                 }
             }
         }
@@ -877,6 +936,7 @@ struct EditorView: View {
             positionRaw: $copyrightPositionRaw,
             textColorHex: $copyrightTextColorHex,
             shadowColorHex: $copyrightShadowColorHex,
+            shadowOpacity: $copyrightShadowOpacity,
             iconColorModeRaw: $copyrightIconColorModeRaw,
             iconColorHex: $copyrightIconColorHex
         )
@@ -4431,7 +4491,54 @@ struct EditorView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.clear)
+        .background(alignment: .bottom) {
+            bottomActionScrim
+        }
+    }
+
+    private var bottomActionScrim: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(bottomActionScrimMask)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.00),
+                    .init(
+                        color: HanClipTheme.background.opacity(0.18),
+                        location: 0.34
+                    ),
+                    .init(
+                        color: HanClipTheme.background.opacity(0.78),
+                        location: 0.66
+                    ),
+                    .init(
+                        color: HanClipTheme.background.opacity(0.98),
+                        location: 1.00
+                    )
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .frame(height: 128)
+        .offset(y: 34)
+        .allowsHitTesting(false)
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+
+    private var bottomActionScrimMask: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.00),
+                .init(color: .black.opacity(0.18), location: 0.34),
+                .init(color: .black.opacity(0.78), location: 0.66),
+                .init(color: .black, location: 1.00)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var currentAspectRatioButtonContent: some View {
@@ -5079,6 +5186,7 @@ private struct ImportantInfoSheet: View {
     @Binding var positionRaw: String
     @Binding var textColorHex: String
     @Binding var shadowColorHex: String
+    @Binding var shadowOpacity: Double
     @Binding var iconColorModeRaw: String
     @Binding var iconColorHex: String
     @State private var customIconPickerItem: PhotosPickerItem?
@@ -5099,7 +5207,7 @@ private struct ImportantInfoSheet: View {
         ("만들기", "전체 클립을 하나의 영상으로 생성하는 액션과 버튼입니다."),
         ("영상 생성 진행창", "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다."),
         ("개봉하기 창", "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다."),
-        ("테마 선택창", "로고를 길게 눌렀을 때 6개 테마를 선택하는 창입니다."),
+        ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다."),
         ("카피라이터 입력", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 SNS/기타 표시를 결과 영상에 합성할지 결정합니다."),
@@ -5109,34 +5217,43 @@ private struct ImportantInfoSheet: View {
         ("자클립", "모클립에서 사운드 피크 기준으로 만들어진 하위 클립입니다."),
         ("웨이브 / 웨이브 인디케이터", "영상/Live Photo 편집에서 소리 파형을 보여주는 영역입니다."),
         ("선택바", "웨이브 인디케이터의 좌우 끝에 있는 드래그 바입니다."),
-        ("자동 진행", "편집에서 클립 재생이 끝나면 다음 클립으로 이어지는 기능입니다."),
-        ("무한 루프", "편집 상태바의 루프 버튼으로 현재 클립을 반복 재생하는 기능입니다."),
+        ("자동 진행", "편집에서 클립 재생이 끝나면 다음 클립으로 이어지고, 마지막 클립 뒤에는 처음 클립으로 계속 이어지는 기능입니다."),
         ("달력 썸네일 버튼", "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다."),
         ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
         ("샘플 음악 저작권", """
         HanClip에 포함된 샘플 음악 \(BackgroundMusicSettings.sampleDisplayName)은 앱 기능 검증과 사용자의 일상 영상 배경음악을 위해 인공지능 생성 및 합성 방식으로 만든 샘플 음악입니다.
 
         이 샘플 음악은 외부 음원, 기존 곡, 상용 음악 라이브러리, 사람의 실연 녹음 파일을 가져와 사용하지 않았으며, HanClip 앱 안에서 제공되는 기본 샘플 자산입니다. 사용자는 이 샘플 음악을 HanClip으로 만든 영상 결과물의 배경음악으로 사용할 수 있습니다.
+
+        샘플 음악 중 '지우에게 첫눈이란'은 앱 제작자의 가족이 직접 만든 개인 창작 음악을 원 저작자의 허락을 받아 HanClip 앱 안에 샘플 음악으로 포함한 곡입니다. '베이비 워킹'은 이 곡에서 느껴지는 첫눈의 감정과 경쾌한 분위기를 참고하되, 원곡 음원이나 멜로디를 직접 사용하지 않고 HanClip 샘플용으로 새롭게 생성한 음악입니다.
+
+        음악 설정 화면의 '온라인 음악 찾기'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾을 수 있도록 공식 Pixabay Music 페이지를 여는 기능입니다. Pixabay에서 다운로드한 음악은 HanClip 내장 샘플 음악이 아니며, 사용자는 해당 음악의 Pixabay Content License와 다운로드 기록, 곡별 안내를 확인한 뒤 자신이 만든 영상에 사용할 책임이 있습니다.
         """),
         ("외부 호출 주소", "hanclip://photo\nhanclip://calendar\nhanclip://files\nhanclip://open"),
         ("내장 서체 저작권", """
-        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Dovemayo 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막과 영상 렌더링 과정에서만 선택적으로 사용됩니다.
+        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
 
-        Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Tenada는 SIL Open Font License 1.1 또는 그에 준하는 공식 오픈 라이선스 조건으로 제공됩니다. 해당 라이선스는 서체 파일을 단독으로 판매하지 않는 한 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
+        [[embedded_font_size_table]]
 
-        Nanum Gothic과 MaruBuri의 저작권은 NAVER 및 NAVER Cultural Foundation에 있으며, NAVER 안내에 따라 개인과 기업을 포함한 모든 사용자가 무료로 사용할 수 있고 상업적 사용이 가능합니다. NAVER 안내는 글꼴 자체를 유료로 판매하는 행위를 제외하고, 저작권 안내와 라이선스 전문을 포함해 다른 소프트웨어와 번들하거나 재배포할 수 있다고 설명합니다.
+        내장 자막 서체 파일의 원본 크기 합계는 약 38 MB입니다. 앱 번들, 압축, App Store 처리 방식에 따라 최종 설치 크기와 다운로드 크기는 달라질 수 있습니다.
+
+        Kakao Big Sans, Nanum Gothic, Pretendard, Tenada, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 SIL Open Font License 1.1로 제공되는 서체입니다. OFL은 서체 파일을 단독으로 판매하지 않는 조건에서 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
+
+        MaruBuri의 저작권은 NAVER 및 NAVER Cultural Foundation에 있습니다. NAVER 안내에 따라 개인과 기업을 포함한 모든 사용자가 무료로 사용할 수 있고 상업적 사용이 가능하며, 글꼴 자체를 유료로 판매하는 행위를 제외하고 저작권 안내와 라이선스 전문을 포함해 다른 소프트웨어와 번들하거나 재배포할 수 있다고 설명합니다.
 
         Pretendard는 Kil Hyung-jin 및 원 기반 서체 저작권자의 저작권 고지와 함께 SIL Open Font License 1.1로 제공됩니다. Pretendard, Source, Inter, M PLUS 1 등 예약된 서체명은 수정본에 임의로 사용할 수 없습니다. HanClip은 공식 배포 파일을 수정하지 않고 앱에 포함합니다.
 
+        Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 Google Fonts의 공식 google/fonts 저장소에서 제공되는 SIL Open Font License 1.1 서체입니다. Google Fonts 안내에 따라 상업적 제품, 앱, 웹사이트, 인쇄물, 영상 등에서 사용할 수 있으며, HanClip은 공식 저장소의 원본 TTF 파일과 OFL 라이선스 전문을 함께 포함합니다. 수정본을 배포하는 경우에는 OFL 조건과 예약 서체명 제한을 별도로 확인해야 합니다.
+
         Tenada는 공식 배포 페이지에서 SIL Open Font License 1.1로 제공됩니다. 앱에 포함된 Tenada.ttf는 공식 배포본의 원본 파일이며, HanClip에서는 골프 기록, 홀 정보, 스코어 같은 제목형 자막에 사용할 수 있도록 제공합니다.
 
-        Cafe24 Ssurround는 Cafe24 공식 안내에 따라 개인 및 기업 사용자를 포함한 모든 사용자에게 무료로 제공되며 상업적 사용이 가능합니다. Cafe24는 영상 제작 및 자막, 소프트웨어 번들, 특정 프로그램 임베드 등 사용 범위 제한 없이 이용할 수 있다고 안내합니다. 단, 글꼴 자체를 유료로 판매하는 행위는 금지됩니다.
+        Cafe24 Ssurround는 Cafe24 공식 안내에 따라 개인 및 기업 사용자를 포함한 모든 사용자에게 무료로 제공되며 상업적 사용이 가능합니다. Cafe24는 영상 제작 및 자막, 소프트웨어 번들, 특정 프로그램 임베드 등 사용 범위 제한 없이 이용할 수 있다고 안내합니다. 단, 글꼴 파일 자체를 유료로 판매하는 행위는 금지됩니다.
 
         Puradak Gentle Gothic은 Puradak Chicken 공식 폰트 페이지에서 무료로 배포되는 서체입니다. 공개 사용 안내에 따라 상업적, 비상업적 사용과 영상 자막, 앱 사용, 소프트웨어 번들이 가능하며, HanClip은 공식 TTF 파일을 수정하지 않고 포함합니다. 서체 파일 자체를 단독 판매하거나 저작권 고지를 제거해서 재배포해서는 안 됩니다.
 
-        Dovemayo는 제작자 공식 블로그에서 개인 및 기업의 상업적 이용이 가능하고 자유롭게 사용할 수 있다고 안내된 서체입니다. HanClip은 제작자가 공개한 원본 OTF 파일을 수정하지 않고 포함합니다. 다만 OFL처럼 세부 재배포 조건이 긴 전문 형태로 제공된 서체는 아니므로, HanClip에서는 원본 파일과 저작권 고지를 함께 보관하고 서체 파일 자체를 단독 판매하지 않습니다.
+        Ddulgi Mayo는 제작자 공식 블로그에서 개인 및 기업의 상업적 이용이 가능하고 자유롭게 사용할 수 있다고 안내된 서체입니다. HanClip은 제작자가 공개한 원본 OTF 파일을 수정하지 않고 포함합니다. 다만 OFL처럼 세부 재배포 조건이 긴 전문 형태로 제공된 서체는 아니므로, HanClip에서는 원본 파일과 저작권 고지를 함께 보관하고 서체 파일 자체를 단독 판매하지 않습니다. 향후 라이선스 정책이 바뀌거나 앱 번들/재배포 조건이 더 엄격하게 확인될 경우에는 우선 검토 또는 제거 대상입니다.
 
-        모든 내장 서체의 라이선스 전문, 저작권 고지, 확인한 공식 배포처 정보는 앱 번들에 포함된 font-licenses 파일을 기준으로 보관합니다. 서체 파일을 수정하거나 별도 재배포하는 경우에는 각 서체의 원 라이선스와 저작권 고지를 유지해야 하며, 예약된 서체명이 있는 경우 수정본에 원래 이름을 사용할 수 없습니다.
+        모든 내장 서체의 라이선스 전문, 저작권 고지, 확인한 공식 배포처 정보, 파일 크기 정리는 앱 번들에 포함된 font-licenses 파일을 기준으로 보관합니다. 서체 파일을 수정하거나 별도 재배포하는 경우에는 각 서체의 원 라이선스와 저작권 고지를 유지해야 하며, 예약된 서체명이 있는 경우 수정본에 원래 이름을 사용할 수 없습니다.
         """)
     ]
 
@@ -5152,7 +5269,14 @@ private struct ImportantInfoSheet: View {
                         sleepPreventionSettings
 
                         ForEach(items, id: \.title) { item in
-                            infoRow(title: item.title, body: item.body)
+                            if item.title == "내장 서체 저작권" {
+                                embeddedFontCopyrightRow(
+                                    title: item.title,
+                                    body: item.body
+                                )
+                            } else {
+                                infoRow(title: item.title, body: item.body)
+                            }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -5312,6 +5436,8 @@ private struct ImportantInfoSheet: View {
                                 }
                             )
                         )
+
+                        copyrightShadowOpacityControl
                     }
                 }
             }
@@ -5422,6 +5548,34 @@ private struct ImportantInfoSheet: View {
             }
     }
 
+    private var copyrightShadowOpacityControl: some View {
+        Slider(
+            value: Binding(
+                get: { shadowOpacity },
+                set: { value in
+                    shadowOpacity =
+                        WatermarkSettings.normalizedShadowOpacity(value)
+                }
+            ),
+            in: 0...1,
+            step: 0.05
+        )
+        .tint(HanClipTheme.primary)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .frame(height: 42)
+        .background(
+            Color.white.opacity(0.26),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(HanClipTheme.secondary.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityLabel("카피라이터 그림자 투명도")
+        .accessibilityValue("\(Int((shadowOpacity * 100).rounded()))퍼센트")
+    }
+
     private func copyrightPlatformButton(
         _ platform: WatermarkPlatform
     ) -> some View {
@@ -5435,7 +5589,8 @@ private struct ImportantInfoSheet: View {
                     platform: platform,
                     iconColorMode: selectedIconColorMode,
                     iconColorHex: iconColorHex,
-                    shadowColorHex: shadowColorHex
+                    shadowColorHex: shadowColorHex,
+                    shadowOpacity: shadowOpacity
                 )
                     .id(customIconRefreshID)
                     .frame(width: platform == .hanclip ? 42 : 30, height: 30)
@@ -5808,6 +5963,7 @@ private struct ImportantInfoSheet: View {
         copyrightEnabled = true
         platformRaw = resetPlatform.rawValue
         positionRaw = WatermarkSettings.defaultCopyrightPosition.rawValue
+        shadowOpacity = WatermarkSettings.defaultCopyrightShadowOpacity
         iconColorModeRaw =
             WatermarkSettings.defaultCopyrightIconColorMode.rawValue
         applyIconDefaultCopyrightColors(for: resetPlatform)
@@ -5821,9 +5977,72 @@ private struct ImportantInfoSheet: View {
             isCentered: title == "Special Thanks"
         )
     }
+
+    private func embeddedFontCopyrightRow(
+        title: String,
+        body: String
+    ) -> some View {
+        EmbeddedFontCopyrightRow(title: title, detail: body)
+    }
 }
 
 private struct TextOverlaySettingsSheet: View {
+    private struct FontPresetSpec: Identifiable {
+        let id: String
+        let title: String
+        let preferredFontIDs: [String]
+        let textColor: String
+        let shadowColor: String
+        let fontSize: WatermarkFontSize
+        let shadowOpacity: Double
+
+        init(
+            id: String,
+            title: String,
+            preferredFontIDs: [String],
+            textColor: String,
+            shadowColor: String,
+            fontSize: WatermarkFontSize,
+            shadowOpacity: Double = 0.5
+        ) {
+            self.id = id
+            self.title = title
+            self.preferredFontIDs = preferredFontIDs
+            self.textColor = textColor
+            self.shadowColor = shadowColor
+            self.fontSize = fontSize
+            self.shadowOpacity =
+                WatermarkSettings.normalizedShadowOpacity(shadowOpacity)
+        }
+    }
+
+    private struct FontPresetAppearance: Codable, Equatable {
+        var textColor: String
+        var shadowColor: String
+        var shadowOpacity: Double
+        var fontSize: WatermarkFontSize
+        var lineSpacing: WatermarkLineSpacing
+        var lineSpacingScale: Double
+
+        init(
+            textColor: String,
+            shadowColor: String,
+            shadowOpacity: Double,
+            fontSize: WatermarkFontSize,
+            lineSpacing: WatermarkLineSpacing = .normal,
+            lineSpacingScale: Double = WatermarkLineSpacing.defaultMultiplier
+        ) {
+            self.textColor = TextOverlaySettingsSheet.normalizedHex(textColor)
+            self.shadowColor = TextOverlaySettingsSheet.normalizedHex(shadowColor)
+            self.shadowOpacity =
+                WatermarkSettings.normalizedShadowOpacity(shadowOpacity)
+            self.fontSize = fontSize
+            self.lineSpacing = lineSpacing
+            self.lineSpacingScale =
+                WatermarkSettings.normalizedLineSpacingScale(lineSpacingScale)
+        }
+    }
+
     private struct SessionState: Equatable {
         var isEnabled: Bool
         var text: String
@@ -5831,6 +6050,7 @@ private struct TextOverlaySettingsSheet: View {
         var fontName: String
         var textColorHex: String
         var shadowEnabled: Bool
+        var shadowOpacity: Double
         var shadowColorHex: String
         var lineSpacing: WatermarkLineSpacing
         var lineSpacingScale: Double
@@ -5842,6 +6062,7 @@ private struct TextOverlaySettingsSheet: View {
                 && fontName == other.fontName
                 && textColorHex == other.textColorHex
                 && shadowEnabled == other.shadowEnabled
+                && abs(shadowOpacity - other.shadowOpacity) < 0.001
                 && shadowColorHex == other.shadowColorHex
                 && lineSpacing == other.lineSpacing
                 && abs(lineSpacingScale - other.lineSpacingScale) < 0.001
@@ -5857,12 +6078,18 @@ private struct TextOverlaySettingsSheet: View {
     @State private var textInputBackgroundHex =
         TextOverlaySettingsSheet.randomTextInputBackgroundHex()
     @State private var originalSessionState: SessionState?
+    @State private var activeFontPresetID: String?
+    @State private var suppressNextResetTap = false
+    @State private var fontPresetResetNotice: String?
+    @State private var fontPresetAppearances =
+        TextOverlaySettingsSheet.loadFontPresetAppearances()
     @Binding var textEnabled: Bool
     @Binding var text: String
     @Binding var position: WatermarkPosition
     @Binding var fontName: String
     @Binding var textColorHex: String
     @Binding var shadowEnabled: Bool
+    @Binding var shadowOpacity: Double
     @Binding var shadowColorHex: String
     @Binding var lineSpacing: WatermarkLineSpacing
     @Binding var lineSpacingScale: Double
@@ -5905,30 +6132,67 @@ private struct TextOverlaySettingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
+                        guard !suppressNextResetTap else {
+                            suppressNextResetTap = false
+                            return
+                        }
                         resetSettings()
                     } label: {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.system(size: 16, weight: .bold))
                     }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.6)
+                            .onEnded { _ in
+                                suppressNextResetTap = true
+                                resetFontPresetAppearances()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                    suppressNextResetTap = false
+                                }
+                            }
+                    )
                     .foregroundStyle(HanClipTheme.primary)
                     .accessibilityLabel("초기화")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        if hasSessionChanges {
-                            FloppyDiskIcon()
-                                .frame(width: 17, height: 17)
-                        } else {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .bold))
+                    if hasSessionChanges {
+                        HStack(spacing: 2) {
+                            Button {
+                                discardChangesAndDismiss()
+                            } label: {
+                                settingsToolbarIcon("xmark")
+                            }
+                            .accessibilityLabel("저장 없이 나가기")
+
+                            Button {
+                                dismiss()
+                            } label: {
+                                settingsToolbarSaveIcon
+                            }
+                            .accessibilityLabel("저장 후 닫기")
                         }
+                    } else {
+                        Button {
+                            dismiss()
+                        } label: {
+                            settingsToolbarIcon("xmark")
+                        }
+                        .accessibilityLabel("닫기")
                     }
-                    .foregroundStyle(HanClipTheme.primary)
-                    .accessibilityLabel(hasSessionChanges ? "저장 후 닫기" : "닫기")
                 }
+            }
+        }
+        .overlay(alignment: .top) {
+            if let fontPresetResetNotice {
+                Text(fontPresetResetNotice)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(HanClipTheme.primary, in: Capsule())
+                    .padding(.top, 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .fullScreenCover(isPresented: $showInstalledFontPicker) {
@@ -5957,6 +6221,30 @@ private struct TextOverlaySettingsSheet: View {
         .onChange(of: shadowColorHex) { _, _ in
             refreshTextInputBackground()
         }
+        .onChange(of: shadowOpacity) { _, newValue in
+            let normalized =
+                WatermarkSettings.normalizedShadowOpacity(newValue)
+            shadowOpacity = normalized
+            shadowEnabled = normalized > 0
+            rememberActiveFontPresetAppearance()
+        }
+        .onChange(of: textColorHex) { _, _ in
+            rememberActiveFontPresetAppearance()
+        }
+        .onChange(of: shadowColorHex) { _, _ in
+            rememberActiveFontPresetAppearance()
+        }
+        .onChange(of: fontSize) { _, _ in
+            rememberActiveFontPresetAppearance()
+        }
+        .onChange(of: lineSpacing) { _, _ in
+            rememberActiveFontPresetAppearance()
+        }
+        .onChange(of: lineSpacingScale) { _, newValue in
+            lineSpacingScale =
+                WatermarkSettings.normalizedLineSpacingScale(newValue)
+            rememberActiveFontPresetAppearance()
+        }
     }
 
     private var textInputSection: some View {
@@ -5967,26 +6255,21 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private var textInput: some View {
-        let textColor = Color(hexString: textColorHex) ?? HanClipTheme.primary
-        let shadowColor = Color(hexString: shadowColorHex)
-            ?? HanClipTheme.secondary
-
-        return TextEditor(text: $text)
-            .font(textEditorFont(size: textEditorBaseSize))
-            .foregroundStyle(textColor)
-            .lineSpacing(textEditorLineSpacing(size: textEditorBaseSize))
-            .multilineTextAlignment(textEditorAlignment)
-            .autocorrectionDisabled()
-            .shadow(
-                color: shadowColor,
-                radius: shadowEnabled ? 9.0 : 0,
-                x: 0,
-                y: 0
-            )
+        ShadowedCaptionTextView(
+            text: $text,
+            font: textEditorUIFont(size: textEditorBaseSize),
+            textColor: Self.uiColor(textColorHex)
+                ?? HanClipTheme.primaryUIColor,
+            shadowColor: Self.uiColor(shadowColorHex)
+                ?? HanClipTheme.secondaryUIColor,
+            shadowOpacity: shadowOpacity,
+            textAlignment: textEditorNSTextAlignment,
+            lineSpacing: textEditorLineSpacing(size: textEditorBaseSize),
+            onBeginEditing: clearSampleTextIfNeeded
+        )
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(minHeight: textInputMinimumHeight)
-            .scrollContentBackground(.hidden)
             .background(
                 textInputBackgroundColor.opacity(0.72),
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -5995,11 +6278,6 @@ private struct TextOverlaySettingsSheet: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(HanClipTheme.secondary.opacity(0.28), lineWidth: 1)
             }
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    clearSampleTextIfNeeded()
-                }
-            )
     }
 
     private var fontSettings: some View {
@@ -6067,31 +6345,95 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private var fontPresetRow: some View {
-        HStack(spacing: 8) {
-            fontPresetButton(
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ],
+            spacing: 8
+        ) {
+            ForEach(fontPresetSpecs) { preset in
+                fontPresetButton(preset)
+            }
+        }
+    }
+
+    private var fontPresetSpecs: [FontPresetSpec] {
+        [
+            FontPresetSpec(
+                id: "readable",
                 title: "가독성",
-                fontID: readableThemeFontID,
+                preferredFontIDs: ["pretendard"],
                 textColor: "#FFFFFF",
                 shadowColor: "#000000",
                 fontSize: .large
-            )
-
-            fontPresetButton(
+            ),
+            FontPresetSpec(
+                id: "lovely",
                 title: "러블리",
-                fontID: lovelyThemeFontID,
+                preferredFontIDs: ["ddulgi_mayo"],
                 textColor: "#FF6FAE",
                 shadowColor: "#7A3FFF",
                 fontSize: .large
-            )
-
-            fontPresetButton(
-                title: "강력",
-                fontID: powerfulThemeFontID,
+            ),
+            FontPresetSpec(
+                id: "strong_hya",
+                title: "강력햐",
+                preferredFontIDs: ["tenada"],
                 textColor: "#FFE600",
                 shadowColor: "#000000",
                 fontSize: .extraLarge
+            ),
+            FontPresetSpec(
+                id: "fresh",
+                title: "청량",
+                preferredFontIDs: ["gowun_dodum", "pretendard"],
+                textColor: "#FFFFFF",
+                shadowColor: "#18A8FF",
+                fontSize: .large
+            ),
+            FontPresetSpec(
+                id: "travel",
+                title: "여행",
+                preferredFontIDs: ["gowun_batang", "maruburi"],
+                textColor: "#FFF3D6",
+                shadowColor: "#3F6F63",
+                fontSize: .large
+            ),
+            FontPresetSpec(
+                id: "cinema",
+                title: "시네마",
+                preferredFontIDs: ["black_han_sans", "tenada"],
+                textColor: "#F8F3E7",
+                shadowColor: "#141414",
+                fontSize: .extraLarge
+            ),
+            FontPresetSpec(
+                id: "daily",
+                title: "데일리",
+                preferredFontIDs: ["do_hyeon", "cafe24_ssurround"],
+                textColor: "#FFFFFF",
+                shadowColor: "#FF7A3D",
+                fontSize: .large
+            ),
+            FontPresetSpec(
+                id: "sentimental",
+                title: "감성",
+                preferredFontIDs: ["gowun_batang", "maruburi"],
+                textColor: "#FFE9F0",
+                shadowColor: "#6E5BFF",
+                fontSize: .normal
+            ),
+            FontPresetSpec(
+                id: "green_golf",
+                title: "그린골프",
+                preferredFontIDs: ["do_hyeon", "black_han_sans"],
+                textColor: "#FFFFFF",
+                shadowColor: "#10B85A",
+                fontSize: .extraLarge
             )
-        }
+        ]
     }
 
     private var appearanceSettings: some View {
@@ -6138,27 +6480,57 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private func fontPresetButton(
+        _ preset: FontPresetSpec
+    ) -> some View {
+        let fontID = resolvedPresetFontID(preset.preferredFontIDs)
+        let appearance = appearance(for: preset)
+        return fontPresetButton(
+            presetID: preset.id,
+            title: preset.title,
+            fontID: fontID,
+            textColor: appearance.textColor,
+            shadowColor: appearance.shadowColor,
+            shadowOpacity: appearance.shadowOpacity,
+            fontSize: appearance.fontSize,
+            lineSpacing: appearance.lineSpacing,
+            lineSpacingScale: appearance.lineSpacingScale
+        )
+    }
+
+    private func fontPresetButton(
+        presetID: String,
         title: String,
         fontID: String,
         textColor: String,
         shadowColor: String,
-        fontSize: WatermarkFontSize
+        shadowOpacity presetShadowOpacity: Double,
+        fontSize: WatermarkFontSize,
+        lineSpacing presetLineSpacing: WatermarkLineSpacing,
+        lineSpacingScale presetLineSpacingScale: Double
     ) -> some View {
         let isSelected = isFontPresetSelected(
             fontID: fontID,
             textColor: textColor,
             shadowColor: shadowColor,
-            fontSize: fontSize
+            shadowOpacity: presetShadowOpacity,
+            fontSize: fontSize,
+            lineSpacing: presetLineSpacing,
+            lineSpacingScale: presetLineSpacingScale
         )
         let previewColor = Color(hexString: textColor) ?? .white
-        let previewShadowColor = Color(hexString: shadowColor) ?? .black
+        let previewShadowColor = (Color(hexString: shadowColor) ?? .black)
+            .opacity(presetShadowOpacity)
 
         return Button {
             applyFontPreset(
+                presetID: presetID,
                 fontID: fontID,
                 textColor: textColor,
                 shadowColor: shadowColor,
-                fontSize: fontSize
+                shadowOpacity: presetShadowOpacity,
+                fontSize: fontSize,
+                lineSpacing: presetLineSpacing,
+                lineSpacingScale: presetLineSpacingScale
             )
         } label: {
             HStack(spacing: 8) {
@@ -6201,7 +6573,18 @@ private struct TextOverlaySettingsSheet: View {
                         )
                     )
                     .foregroundStyle(previewColor)
-                    .shadow(color: previewShadowColor, radius: 4, x: 0, y: 0)
+                    .textOverlayOutline(
+                        color: previewShadowColor,
+                        width: presetShadowOpacity > 0 ? 0.45 : 0
+                    )
+                    .shadow(
+                        color: previewShadowColor,
+                        radius: fontPresetPreviewShadowRadius(
+                            for: presetShadowOpacity
+                        ),
+                        x: presetShadowOpacity > 0 ? 1 : 0,
+                        y: presetShadowOpacity > 0 ? 1 : 0
+                    )
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
@@ -6254,21 +6637,36 @@ private struct TextOverlaySettingsSheet: View {
                 .fill(HanClipTheme.secondary.opacity(0.16))
                 .frame(width: 1, height: 28)
 
-            Toggle("그림자", isOn: $shadowEnabled)
-                .labelsHidden()
-                .tint(HanClipTheme.primary)
-                .frame(width: 52)
-                .accessibilityLabel("그림자")
-
             colorPickerRow(
                 title: "그림자색",
                 selection: shadowColorBinding
             )
-            .opacity(shadowEnabled ? 1 : 0.34)
-            .disabled(!shadowEnabled)
+            .opacity(shadowOpacity > 0 ? 1 : 0.34)
+            .disabled(shadowOpacity <= 0)
+
+            shadowOpacityControl
         }
         .frame(minHeight: 42)
         .padding(.vertical, 2)
+    }
+
+    private var shadowOpacityControl: some View {
+        Slider(
+            value: Binding(
+                get: { shadowOpacity },
+                set: { value in
+                    shadowOpacity =
+                        WatermarkSettings.normalizedShadowOpacity(value)
+                    shadowEnabled = shadowOpacity > 0
+                }
+            ),
+            in: 0...1,
+            step: 0.05
+        )
+        .tint(HanClipTheme.primary)
+        .frame(width: 92)
+        .accessibilityLabel("그림자 투명도")
+        .accessibilityValue("\(Int((shadowOpacity * 100).rounded()))퍼센트")
     }
 
     private var textColorBinding: Binding<Color> {
@@ -6495,18 +6893,37 @@ private struct TextOverlaySettingsSheet: View {
         fontID: String,
         textColor: String,
         shadowColor: String,
-        fontSize: WatermarkFontSize
+        shadowOpacity presetShadowOpacity: Double,
+        fontSize: WatermarkFontSize,
+        lineSpacing presetLineSpacing: WatermarkLineSpacing,
+        lineSpacingScale presetLineSpacingScale: Double
     ) -> Bool {
         fontName == fontID
             && Self.normalizedHex(textColorHex) == Self.normalizedHex(textColor)
-            && shadowEnabled
             && Self.normalizedHex(shadowColorHex)
                 == Self.normalizedHex(shadowColor)
-            && lineSpacing == .normal
+            && abs(shadowOpacity - presetShadowOpacity) < 0.001
+            && lineSpacing == presetLineSpacing
             && abs(
-                lineSpacingScale - WatermarkLineSpacing.defaultMultiplier
+                lineSpacingScale - presetLineSpacingScale
             ) < 0.001
             && self.fontSize == fontSize
+    }
+
+    private func isFontPresetBaseSelected(_ preset: FontPresetSpec) -> Bool {
+        let fontID = resolvedPresetFontID(preset.preferredFontIDs)
+        let appearance = appearance(for: preset)
+        return fontName == fontID
+            && Self.normalizedHex(textColorHex)
+                == Self.normalizedHex(appearance.textColor)
+            && Self.normalizedHex(shadowColorHex)
+                == Self.normalizedHex(appearance.shadowColor)
+            && lineSpacing == appearance.lineSpacing
+            && abs(
+                lineSpacingScale - appearance.lineSpacingScale
+            ) < 0.001
+            && abs(shadowOpacity - appearance.shadowOpacity) < 0.001
+            && fontSize == appearance.fontSize
     }
 
     private var readableThemeFontID: String {
@@ -6515,31 +6932,87 @@ private struct TextOverlaySettingsSheet: View {
             : FontRegistry.systemFontID
     }
 
-    private var lovelyThemeFontID: String {
-        allowedTextFontNames.contains("ddulgi_mayo")
-            ? "ddulgi_mayo"
-            : readableThemeFontID
+    private func resolvedPresetFontID(_ preferredIDs: [String]) -> String {
+        preferredIDs.first { allowedTextFontNames.contains($0) }
+            ?? readableThemeFontID
     }
 
-    private var powerfulThemeFontID: String {
-        allowedTextFontNames.contains("tenada")
-            ? "tenada"
-            : readableThemeFontID
+    private func defaultAppearance(for preset: FontPresetSpec)
+        -> FontPresetAppearance
+    {
+        FontPresetAppearance(
+            textColor: preset.textColor,
+            shadowColor: preset.shadowColor,
+            shadowOpacity: preset.shadowOpacity,
+            fontSize: preset.fontSize
+        )
+    }
+
+    private func appearance(for preset: FontPresetSpec)
+        -> FontPresetAppearance
+    {
+        fontPresetAppearances[preset.id] ?? defaultAppearance(for: preset)
+    }
+
+    private func rememberActiveFontPresetAppearance() {
+        guard let presetID = activeFontPresetID else { return }
+        guard let preset = fontPresetSpecs.first(where: { $0.id == presetID })
+        else { return }
+        guard fontName == resolvedPresetFontID(preset.preferredFontIDs)
+        else { return }
+
+        rememberFontPresetAppearance(currentFontPresetAppearance, for: presetID)
+    }
+
+    private var currentFontPresetAppearance: FontPresetAppearance {
+        FontPresetAppearance(
+            textColor: textColorHex,
+            shadowColor: shadowColorHex,
+            shadowOpacity: shadowOpacity,
+            fontSize: fontSize,
+            lineSpacing: lineSpacing,
+            lineSpacingScale: lineSpacingScale
+        )
+    }
+
+    private func rememberFontPresetAppearance(
+        _ appearance: FontPresetAppearance,
+        for presetID: String
+    ) {
+        if fontPresetAppearances[presetID] == appearance { return }
+        fontPresetAppearances[presetID] = appearance
+        Self.saveFontPresetAppearances(fontPresetAppearances)
+    }
+
+    private func resetFontPresetAppearances() {
+        activeFontPresetID = nil
+        fontPresetAppearances = [:]
+        Self.clearFontPresetAppearances()
+        showFontPresetResetNotice()
     }
 
     private func applyFontPreset(
+        presetID: String,
         fontID: String,
         textColor: String,
         shadowColor: String,
-        fontSize: WatermarkFontSize
+        shadowOpacity presetShadowOpacity: Double,
+        fontSize: WatermarkFontSize,
+        lineSpacing presetLineSpacing: WatermarkLineSpacing,
+        lineSpacingScale presetLineSpacingScale: Double
     ) {
+        activeFontPresetID = presetID
         fontName = fontID
         textColorHex = Self.normalizedHex(textColor)
-        shadowEnabled = true
         shadowColorHex = Self.normalizedHex(shadowColor)
-        lineSpacing = .normal
-        lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
+        lineSpacing = presetLineSpacing
+        lineSpacingScale =
+            WatermarkSettings.normalizedLineSpacingScale(presetLineSpacingScale)
         self.fontSize = fontSize
+        shadowOpacity =
+            WatermarkSettings.normalizedShadowOpacity(presetShadowOpacity)
+        shadowEnabled = shadowOpacity > 0
+        rememberFontPresetAppearance(currentFontPresetAppearance, for: presetID)
         refreshTextInputBackground()
     }
 
@@ -6650,6 +7123,14 @@ private struct TextOverlaySettingsSheet: View {
         )
     }
 
+    private func textEditorUIFont(size: CGFloat) -> UIFont {
+        FontRegistry.resolvedUIFont(
+            for: fontName,
+            size: size,
+            weight: .bold
+        )
+    }
+
     private var textEditorAlignment: TextAlignment {
         switch position.gridColumn {
         case 0, 1:
@@ -6658,6 +7139,28 @@ private struct TextOverlaySettingsSheet: View {
             return .center
         default:
             return .trailing
+        }
+    }
+
+    private var textEditorFrameAlignment: Alignment {
+        switch position.gridColumn {
+        case 0, 1:
+            return .topLeading
+        case 2:
+            return .top
+        default:
+            return .topTrailing
+        }
+    }
+
+    private var textEditorNSTextAlignment: NSTextAlignment {
+        switch position.gridColumn {
+        case 0, 1:
+            return .left
+        case 2:
+            return .center
+        default:
+            return .right
         }
     }
 
@@ -6673,6 +7176,11 @@ private struct TextOverlaySettingsSheet: View {
         size * CGFloat(lineSpacingScale - WatermarkLineSpacing.defaultMultiplier)
     }
 
+    private func fontPresetPreviewShadowRadius(for opacity: Double) -> CGFloat {
+        guard opacity > 0 else { return 0 }
+        return 2.4
+    }
+
     private func refreshTextInputBackground() {
         textInputBackgroundHex = Self.randomTextInputBackgroundHex(
             excluding: [textColorHex, shadowColorHex]
@@ -6683,7 +7191,7 @@ private struct TextOverlaySettingsSheet: View {
         Color(hexString: textInputBackgroundHex) ?? Color.white
     }
 
-    private static func randomTextInputBackgroundHex(
+    nonisolated private static func randomTextInputBackgroundHex(
         excluding excludedHexes: [String] = []
     ) -> String {
         let palette = [
@@ -6708,7 +7216,7 @@ private struct TextOverlaySettingsSheet: View {
         return candidates.max { $0.score < $1.score }?.hex ?? "#FFF7C7"
     }
 
-    private static func uiColor(_ hexString: String) -> UIColor? {
+    nonisolated private static func uiColor(_ hexString: String) -> UIColor? {
         var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
         if hex.hasPrefix("#") {
             hex.removeFirst()
@@ -6725,7 +7233,7 @@ private struct TextOverlaySettingsSheet: View {
         )
     }
 
-    private static func contrastRatio(
+    nonisolated private static func contrastRatio(
         between first: UIColor,
         and second: UIColor
     ) -> CGFloat {
@@ -6736,7 +7244,7 @@ private struct TextOverlaySettingsSheet: View {
         return (lighter + 0.05) / (darker + 0.05)
     }
 
-    private static func relativeLuminance(of color: UIColor) -> CGFloat {
+    nonisolated private static func relativeLuminance(of color: UIColor) -> CGFloat {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
@@ -6755,12 +7263,39 @@ private struct TextOverlaySettingsSheet: View {
             + 0.0722 * convert(blue)
     }
 
-    private static func normalizedHex(_ hex: String) -> String {
+    nonisolated private static func normalizedHex(_ hex: String) -> String {
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
         return trimmed.hasPrefix("#")
             ? trimmed.uppercased()
             : "#\(trimmed.uppercased())"
+    }
+
+    nonisolated private static let fontPresetAppearanceStorageKey =
+        "hanClipTextOverlayFontPresetAppearances"
+
+    nonisolated private static func loadFontPresetAppearances()
+        -> [String: FontPresetAppearance]
+    {
+        guard let data = UserDefaults.standard.data(
+            forKey: fontPresetAppearanceStorageKey
+        ) else { return [:] }
+
+        return (try? JSONDecoder().decode(
+            [String: FontPresetAppearance].self,
+            from: data
+        )) ?? [:]
+    }
+
+    nonisolated private static func saveFontPresetAppearances(
+        _ values: [String: FontPresetAppearance]
+    ) {
+        guard let data = try? JSONEncoder().encode(values) else { return }
+        UserDefaults.standard.set(data, forKey: fontPresetAppearanceStorageKey)
+    }
+
+    nonisolated private static func clearFontPresetAppearances() {
+        UserDefaults.standard.removeObject(forKey: fontPresetAppearanceStorageKey)
     }
 
     private var fontContentTypes: [UTType] {
@@ -6792,18 +7327,38 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private func resetSettings() {
-        let defaults = WatermarkSettings.projectDefault()
-        textEnabled = defaults.isEnabled
-        text = WatermarkSettings.defaultText
-        position = defaults.position
-        fontName = defaults.fontName
-        textColorHex = defaults.textColorHex
-        shadowEnabled = defaults.shadowEnabled
-        shadowColorHex = defaults.shadowColorHex
-        lineSpacing = defaults.lineSpacing
-        lineSpacingScale = defaults.lineSpacingScale
-        fontSize = defaults.fontSize
+        activeFontPresetID = nil
+        if let originalSessionState {
+            applySessionState(originalSessionState)
+        } else {
+            let defaults = WatermarkSettings.projectDefault()
+            textEnabled = defaults.isEnabled
+            text = WatermarkSettings.defaultText
+            position = defaults.position
+            fontName = defaults.fontName
+            textColorHex = defaults.textColorHex
+            shadowEnabled = defaults.shadowEnabled
+            shadowOpacity = defaults.shadowOpacity
+            shadowColorHex = defaults.shadowColorHex
+            lineSpacing = defaults.lineSpacing
+            lineSpacingScale = defaults.lineSpacingScale
+            fontSize = defaults.fontSize
+        }
         refreshTextInputBackground()
+    }
+
+    private func showFontPresetResetNotice() {
+        let notice = "자막 프리셋을 초기화했습니다."
+        withAnimation(.snappy) {
+            fontPresetResetNotice = notice
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            guard fontPresetResetNotice == notice else { return }
+            withAnimation(.snappy) {
+                fontPresetResetNotice = nil
+            }
+        }
     }
 
     private func clearSampleTextIfNeeded() {
@@ -6822,6 +7377,9 @@ private struct TextOverlaySettingsSheet: View {
         ].contains(text),
               position == WatermarkSettings.defaultPosition,
               textColorHex == WatermarkSettings.defaultTextColor,
+              abs(
+                shadowOpacity - WatermarkSettings.defaultShadowOpacity
+              ) < 0.001,
               shadowColorHex == WatermarkSettings.defaultShadowColor
         else { return }
 
@@ -6846,6 +7404,27 @@ private struct TextOverlaySettingsSheet: View {
         textEnabled = false
     }
 
+    private func discardChangesAndDismiss() {
+        if let originalSessionState {
+            applySessionState(originalSessionState)
+        }
+        dismiss()
+    }
+
+    private func applySessionState(_ state: SessionState) {
+        textEnabled = state.isEnabled
+        text = state.text
+        position = state.position
+        fontName = state.fontName
+        textColorHex = state.textColorHex
+        shadowEnabled = state.shadowEnabled
+        shadowOpacity = state.shadowOpacity
+        shadowColorHex = state.shadowColorHex
+        lineSpacing = state.lineSpacing
+        lineSpacingScale = state.lineSpacingScale
+        fontSize = state.fontSize
+    }
+
     private var hasSessionChanges: Bool {
         guard let originalSessionState else { return false }
         let currentState = currentSessionState()
@@ -6865,11 +7444,28 @@ private struct TextOverlaySettingsSheet: View {
             fontName: fontName,
             textColorHex: Self.normalizedHex(textColorHex),
             shadowEnabled: shadowEnabled,
+            shadowOpacity: WatermarkSettings.normalizedShadowOpacity(
+                shadowOpacity
+            ),
             shadowColorHex: Self.normalizedHex(shadowColorHex),
             lineSpacing: lineSpacing,
             lineSpacingScale: lineSpacingScale,
             fontSize: fontSize
         )
+    }
+
+    private func settingsToolbarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 40, height: 44)
+    }
+
+    private var settingsToolbarSaveIcon: some View {
+        FloppyDiskIcon()
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 23, height: 23)
+            .frame(width: 40, height: 44)
     }
 
     private func complementaryTextOverlayShadowColor(
@@ -6995,6 +7591,324 @@ private struct InfoRow: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func textOverlayOutline(color: Color, width: CGFloat) -> some View {
+        if width > 0 {
+            self
+                .shadow(color: color, radius: 0, x: -width, y: -width)
+                .shadow(color: color, radius: 0, x: 0, y: -width)
+                .shadow(color: color, radius: 0, x: width, y: -width)
+                .shadow(color: color, radius: 0, x: -width, y: 0)
+                .shadow(color: color, radius: 0, x: width, y: 0)
+                .shadow(color: color, radius: 0, x: -width, y: width)
+                .shadow(color: color, radius: 0, x: 0, y: width)
+                .shadow(color: color, radius: 0, x: width, y: width)
+        } else {
+            self
+        }
+    }
+}
+
+private struct ShadowedCaptionTextView: UIViewRepresentable {
+    @Binding var text: String
+    let font: UIFont
+    let textColor: UIColor
+    let shadowColor: UIColor
+    let shadowOpacity: Double
+    let textAlignment: NSTextAlignment
+    let lineSpacing: CGFloat
+    let onBeginEditing: () -> Void
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.isOpaque = false
+        textView.clipsToBounds = false
+        textView.layer.masksToBounds = false
+        textView.isScrollEnabled = false
+        textView.autocorrectionType = .no
+        textView.autocapitalizationType = .none
+        textView.textContainerInset = UIEdgeInsets(
+            top: 6,
+            left: 0,
+            bottom: 6,
+            right: 0
+        )
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentCompressionResistancePriority(
+            .defaultLow,
+            for: .horizontal
+        )
+        applyAttributes(to: textView)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        context.coordinator.parent = self
+        applyAttributes(to: textView)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    private func applyAttributes(to textView: UITextView) {
+        let selectedRange = textView.selectedRange
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = textAlignment
+        paragraphStyle.lineSpacing = lineSpacing
+
+        let shadow = NSShadow()
+        let opacity = WatermarkSettings.normalizedShadowOpacity(shadowOpacity)
+        shadow.shadowColor = shadowColor.withAlphaComponent(opacity)
+        shadow.shadowBlurRadius = opacity > 0 ? 2.4 : 0
+        shadow.shadowOffset = .zero
+
+        textView.clipsToBounds = false
+        textView.layer.masksToBounds = false
+        textView.layer.shadowColor = shadowColor.cgColor
+        textView.layer.shadowOpacity = Float(opacity)
+        textView.layer.shadowRadius = opacity > 0 ? 2.4 : 0
+        textView.layer.shadowOffset = .zero
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle,
+            .shadow: shadow
+        ]
+        textView.typingAttributes = attributes
+
+        if textView.text != text || textView.attributedText.length == 0 {
+            textView.attributedText = NSAttributedString(
+                string: text,
+                attributes: attributes
+            )
+        } else {
+            textView.textStorage.setAttributes(
+                attributes,
+                range: NSRange(location: 0, length: textView.textStorage.length)
+            )
+        }
+
+        textView.textAlignment = textAlignment
+        let textLength = (textView.text as NSString).length
+        let clampedLocation = min(selectedRange.location, textLength)
+        textView.selectedRange = NSRange(
+            location: clampedLocation,
+            length: min(selectedRange.length, textLength - clampedLocation)
+        )
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: ShadowedCaptionTextView
+
+        init(parent: ShadowedCaptionTextView) {
+            self.parent = parent
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.onBeginEditing()
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+        }
+    }
+}
+
+private struct EmbeddedFontCopyrightRow: View {
+    let title: String
+    let detail: String
+
+    private let tableMarker = "[[embedded_font_size_table]]"
+
+    private let rows: [EmbeddedFontSizeRow] = [
+        EmbeddedFontSizeRow(
+            fontName: "고운바탕",
+            fileSize: "8.0 MB",
+            fontFamily: "GowunBatang-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "마루부리",
+            fileSize: "7.6 MB",
+            fontFamily: "MaruBuri-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "고운돋움",
+            fileSize: "6.9 MB",
+            fontFamily: "GowunDodum-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "써라운드",
+            fileSize: "3.7 MB",
+            fontFamily: "Cafe24Ssurround"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "프리텐다드B",
+            fileSize: "2.5 MB",
+            fontFamily: "Pretendard-Bold"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "나눔고딕",
+            fileSize: "2.0 MB",
+            fontFamily: "NanumGothic"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "프리텐다드 Regular",
+            fileSize: "1.5 MB",
+            fontFamily: "Pretendard-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "카카오",
+            fileSize: "1.5 MB",
+            fontFamily: "KakaoBigSans-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "젠틀고딕",
+            fileSize: "1.1 MB",
+            fontFamily: "PuradakGentleGothicR"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "검은고딕",
+            fileSize: "975 KB",
+            fontFamily: "BlackHanSans-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "태나다",
+            fileSize: "973 KB",
+            fontFamily: "Tenada"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "도현",
+            fileSize: "859 KB",
+            fontFamily: "DoHyeon-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "둘기마요",
+            fileSize: "743 KB",
+            fontFamily: "Dovemayo-Medium"
+        )
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+                .textSelection(.enabled)
+
+            ForEach(detailParts.indices, id: \.self) { index in
+                if !detailParts[index].isEmpty {
+                    detailText(detailParts[index])
+                }
+
+                if index == 0 {
+                    embeddedFontSizeTable
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            HanClipTheme.secondary.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HanClipTheme.secondary.opacity(0.12), lineWidth: 1)
+        }
+        .onAppear {
+            _ = FontRegistry.registerBundledCaptionFonts()
+        }
+    }
+
+    private var detailParts: [String] {
+        let parts = detail.components(separatedBy: tableMarker)
+        guard parts.count == 2 else { return [detail] }
+        return parts.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    private func detailText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14))
+            .foregroundStyle(HanClipTheme.text.opacity(0.78))
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+    }
+
+    private var embeddedFontSizeTable: some View {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 0) {
+            GridRow {
+                tableHeader("서체명")
+                tableHeader("파일크기")
+                tableHeader("샘플")
+            }
+
+            ForEach(rows) { row in
+                Divider()
+                    .gridCellColumns(3)
+                    .padding(.vertical, 4)
+
+                GridRow {
+                    tableCell(row.fontName)
+
+                    Text(row.fileSize)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.text.opacity(0.72))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text("안녕하세요")
+                        .font(.custom(row.fontFamily, size: 15))
+                        .foregroundStyle(HanClipTheme.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.white.opacity(0.38),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(HanClipTheme.secondary.opacity(0.16), lineWidth: 1)
+        }
+    }
+
+    private func tableHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(HanClipTheme.text.opacity(0.58))
+            .lineLimit(1)
+    }
+
+    private func tableCell(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(HanClipTheme.text.opacity(0.78))
+            .lineLimit(1)
+            .minimumScaleFactor(0.76)
+    }
+}
+
+private struct EmbeddedFontSizeRow: Identifiable {
+    let fontName: String
+    let fileSize: String
+    let fontFamily: String
+
+    var id: String { fontFamily }
+}
+
 private struct ThemeOrderDropDelegate: DropDelegate {
     let targetMode: HanClipThemeMode
     @Binding var draggedMode: HanClipThemeMode?
@@ -7050,7 +7964,7 @@ private struct TextOverlaySummaryRow: View {
         [
             settings.fontSize.title,
             settings.position.title,
-            settings.shadowEnabled ? "그림자 사용" : "그림자 안함"
+            "그림자 \(Int((settings.shadowOpacity * 100).rounded()))"
         ].joined(separator: " · ")
     }
 
@@ -7271,11 +8185,13 @@ private struct BackgroundMusicSettingsSheet: View {
     @Binding var fadeOutEnabled: Bool
     let onUseSampleMusic: (BackgroundMusicSampleTrack) -> Void
     let onPickMusic: () -> Void
+    let onImportDownloadedMusic: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var previewPlayer: AVAudioPlayer?
     @State private var activePreviewID: String?
     @State private var originalSessionState: SessionState?
     @State private var isOpeningMusicPicker = false
+    @State private var showOnlineMusicBrowser = false
 
     var body: some View {
         NavigationStack {
@@ -7307,9 +8223,16 @@ private struct BackgroundMusicSettingsSheet: View {
                         }
 
                         settingSection(spacing: 0, padding: 12) {
-                            HStack(spacing: 12) {
+                            HStack(spacing: 10) {
                                 toggleRow("페이드 인", isOn: $fadeInEnabled)
+                                    .frame(maxWidth: .infinity)
+
+                                Rectangle()
+                                    .fill(HanClipTheme.separator.opacity(0.70))
+                                    .frame(width: 1, height: 24)
+
                                 toggleRow("페이드 아웃", isOn: $fadeOutEnabled)
+                                    .frame(maxWidth: .infinity)
                             }
                         }
                     }
@@ -7333,19 +8256,30 @@ private struct BackgroundMusicSettingsSheet: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        if hasSessionChanges {
-                            FloppyDiskIcon()
-                                .frame(width: 17, height: 17)
-                        } else {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .bold))
+                    if hasSessionChanges {
+                        HStack(spacing: 2) {
+                            Button {
+                                discardChangesAndDismiss()
+                            } label: {
+                                settingsToolbarIcon("xmark")
+                            }
+                            .accessibilityLabel("저장 없이 나가기")
+
+                            Button {
+                                dismiss()
+                            } label: {
+                                settingsToolbarSaveIcon
+                            }
+                            .accessibilityLabel("저장 후 닫기")
                         }
+                    } else {
+                        Button {
+                            dismiss()
+                        } label: {
+                            settingsToolbarIcon("xmark")
+                        }
+                        .accessibilityLabel("닫기")
                     }
-                    .foregroundStyle(HanClipTheme.primary)
-                    .accessibilityLabel(hasSessionChanges ? "저장 후 닫기" : "닫기")
                 }
             }
         }
@@ -7358,6 +8292,12 @@ private struct BackgroundMusicSettingsSheet: View {
         .onDisappear {
             stopPreview()
             restoreDisabledStateIfUnchanged()
+        }
+        .fullScreenCover(isPresented: $showOnlineMusicBrowser) {
+            OnlineMusicBrowserView { url in
+                onImportDownloadedMusic(url)
+                showOnlineMusicBrowser = false
+            }
         }
     }
 
@@ -7378,6 +8318,11 @@ private struct BackgroundMusicSettingsSheet: View {
             Divider()
                 .overlay(HanClipTheme.separator)
 
+            onlineMusicRow
+
+            Divider()
+                .overlay(HanClipTheme.separator)
+
             fileMusicPickerRow
 
             if settings.hasMusicFile {
@@ -7390,6 +8335,15 @@ private struct BackgroundMusicSettingsSheet: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
+    }
+
+    private var onlineMusicRow: some View {
+        actionButton(
+            "온라인 음악 찾기",
+            systemImage: "globe",
+            isPrimary: false,
+            action: openPixabayMusic
+        )
     }
 
     private var fileMusicPickerRow: some View {
@@ -7474,6 +8428,10 @@ private struct BackgroundMusicSettingsSheet: View {
                 : HanClipTheme.primary.opacity(0.10),
             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
+    }
+
+    private func openPixabayMusic() {
+        showOnlineMusicBrowser = true
     }
 
     private func sampleMusicButton(
@@ -7643,6 +8601,31 @@ private struct BackgroundMusicSettingsSheet: View {
         isEnabled = false
     }
 
+    private func discardChangesAndDismiss() {
+        if let originalSessionState {
+            applySessionState(originalSessionState)
+        }
+        dismiss()
+    }
+
+    private func applySessionState(_ state: SessionState) {
+        settings.isEnabled = state.isEnabled
+        settings.fileURL = state.fileURL
+        settings.displayName = state.displayName
+        settings.musicVolume = state.musicVolume
+        settings.originalAudioVolume = state.originalAudioVolume
+        settings.loopsToFillVideo = state.loopsToFillVideo
+        settings.fadeInEnabled = state.fadeInEnabled
+        settings.fadeOutEnabled = state.fadeOutEnabled
+
+        isEnabled = state.isEnabled
+        musicVolume = state.musicVolume
+        originalAudioVolume = state.originalAudioVolume
+        loopsToFillVideo = state.loopsToFillVideo
+        fadeInEnabled = state.fadeInEnabled
+        fadeOutEnabled = state.fadeOutEnabled
+    }
+
     private var hasSessionChanges: Bool {
         guard let originalSessionState else { return false }
         let currentState = currentSessionState()
@@ -7665,6 +8648,20 @@ private struct BackgroundMusicSettingsSheet: View {
             fadeInEnabled: fadeInEnabled,
             fadeOutEnabled: fadeOutEnabled
         )
+    }
+
+    private func settingsToolbarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 40, height: 44)
+    }
+
+    private var settingsToolbarSaveIcon: some View {
+        FloppyDiskIcon()
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 23, height: 23)
+            .frame(width: 40, height: 44)
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -7701,6 +8698,201 @@ private struct BackgroundMusicSettingsSheet: View {
 
     private static func percentText(_ value: Double) -> String {
         "\(Int((min(max(value, 0), 1) * 100).rounded()))%"
+    }
+}
+
+private struct OnlineMusicBrowserView: View {
+    let onDownloaded: (URL) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var isDownloading = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                OnlineMusicWebView(
+                    url: URL(string: "https://pixabay.com/music/")!,
+                    isDownloading: $isDownloading,
+                    onDownloaded: onDownloaded
+                )
+                .ignoresSafeArea(edges: .bottom)
+
+                if isDownloading {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(HanClipTheme.primary)
+                        Text("음악을 가져오는 중")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.text)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(
+                        HanClipTheme.panelFill,
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule()
+                            .stroke(
+                                HanClipTheme.secondary.opacity(0.16),
+                                lineWidth: 1
+                            )
+                    }
+                    .padding(.bottom, 18)
+                }
+            }
+            .navigationTitle("온라인 음악")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.primary)
+                    .accessibilityLabel("닫기")
+                }
+            }
+        }
+    }
+}
+
+private struct OnlineMusicWebView: UIViewRepresentable {
+    let url: URL
+    @Binding var isDownloading: Bool
+    let onDownloaded: (URL) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            isDownloading: $isDownloading,
+            onDownloaded: onDownloaded
+        )
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKDownloadDelegate {
+        @Binding private var isDownloading: Bool
+        private let onDownloaded: (URL) -> Void
+        private var destinationURL: URL?
+
+        init(
+            isDownloading: Binding<Bool>,
+            onDownloaded: @escaping (URL) -> Void
+        ) {
+            _isDownloading = isDownloading
+            self.onDownloaded = onDownloaded
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            navigationResponse: WKNavigationResponse,
+            didBecome download: WKDownload
+        ) {
+            download.delegate = self
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            navigationAction: WKNavigationAction,
+            didBecome download: WKDownload
+        ) {
+            download.delegate = self
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationResponse: WKNavigationResponse,
+            decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+        ) {
+            guard let response = navigationResponse.response as? HTTPURLResponse,
+                  let mimeType = response.mimeType?.lowercased(),
+                  Self.isSupportedAudioMimeType(mimeType)
+            else {
+                decisionHandler(.allow)
+                return
+            }
+
+            if #available(iOS 14.5, *) {
+                decisionHandler(.download)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
+
+        func download(
+            _ download: WKDownload,
+            decideDestinationUsing response: URLResponse,
+            suggestedFilename: String,
+            completionHandler: @escaping (URL?) -> Void
+        ) {
+            isDownloading = true
+            let filename = Self.safeFilename(suggestedFilename, response: response)
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent("HanClip-OnlineMusic-")
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathComponent(filename)
+
+            do {
+                try FileManager.default.createDirectory(
+                    at: destination.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                destinationURL = destination
+                completionHandler(destination)
+            } catch {
+                isDownloading = false
+                completionHandler(nil)
+            }
+        }
+
+        func downloadDidFinish(_ download: WKDownload) {
+            isDownloading = false
+            guard let destinationURL else { return }
+            onDownloaded(destinationURL)
+        }
+
+        func download(
+            _ download: WKDownload,
+            didFailWithError error: Error,
+            resumeData: Data?
+        ) {
+            isDownloading = false
+        }
+
+        private static func isSupportedAudioMimeType(_ mimeType: String) -> Bool {
+            [
+                "audio/mpeg",
+                "audio/mp3",
+                "audio/wav",
+                "audio/x-wav",
+                "audio/aac",
+                "audio/mp4",
+                "audio/x-m4a"
+            ].contains(mimeType)
+        }
+
+        private static func safeFilename(
+            _ suggestedFilename: String,
+            response: URLResponse
+        ) -> String {
+            let fallback = response.url?.lastPathComponent ?? "online-music.mp3"
+            let raw = suggestedFilename.isEmpty ? fallback : suggestedFilename
+            let cleaned = raw
+                .components(separatedBy: CharacterSet(charactersIn: "/:"))
+                .joined(separator: "-")
+            return cleaned.isEmpty ? "online-music.mp3" : cleaned
+        }
     }
 }
 
@@ -7891,6 +9083,7 @@ private struct CopyrightPlatformLogo: View {
     let iconColorMode: CopyrightIconColorMode
     let iconColorHex: String
     let shadowColorHex: String
+    let shadowOpacity: Double
 
     private var renderingMode: Image.TemplateRenderingMode {
         .original
@@ -7923,7 +9116,7 @@ private struct CopyrightPlatformLogo: View {
         )
         .shadow(
             color: (Color(hexString: shadowColorHex) ?? HanClipTheme.secondary)
-                .opacity(0.42),
+                .opacity(0.42 * shadowOpacity),
             radius: 10,
             x: 0,
             y: 0
@@ -9222,12 +10415,13 @@ private struct PersistentVideoProgressBar: View {
             Slider(
                 value: Binding(
                     get: { min(currentSeconds, sliderMaximum) },
-                    set: { currentSeconds = $0 }
+                    set: { seekFromSlider(to: $0) }
                 ),
                 in: 0...sliderMaximum,
                 onEditingChanged: scrubberChanged
             )
             .tint(HanClipTheme.primary)
+            .frame(minHeight: 32)
 
             Text(formattedTime(durationSeconds))
                 .frame(width: 46, alignment: .leading)
@@ -9308,7 +10502,7 @@ private struct PersistentVideoProgressBar: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isLooping ? "무한 루프 끄기" : "무한 루프 켜기")
+        .accessibilityLabel(isLooping ? "반복 재생 끄기" : "반복 재생 켜기")
     }
 
     private func togglePlayback() {
@@ -9365,10 +10559,20 @@ private struct PersistentVideoProgressBar: View {
         isScrubbing = editing
         guard !editing else { return }
 
+        seek(to: currentSeconds)
+    }
+
+    private func seekFromSlider(to seconds: Double) {
+        currentSeconds = min(max(seconds, 0), sliderMaximum)
+        reachedEnd = false
+        seek(to: currentSeconds)
+    }
+
+    private func seek(to seconds: Double) {
         reachedEnd = durationSeconds > 0
-            && currentSeconds >= durationSeconds - 0.05
+            && seconds >= durationSeconds - 0.05
         player.seek(
-            to: CMTime(seconds: currentSeconds, preferredTimescale: 600),
+            to: CMTime(seconds: seconds, preferredTimescale: 600),
             toleranceBefore: .zero,
             toleranceAfter: .zero
         )
@@ -10400,7 +11604,7 @@ private struct CalendarMediaPickerView: View {
     }
 
     private var restDayColor: Color {
-        HanClipTheme.rosyBrownPrimary
+        HanClipTheme.primary
     }
 
     private var saturdayColor: Color {

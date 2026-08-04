@@ -217,9 +217,13 @@ final class VideoComposer {
             totalDuration: cursor
         )
 
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HanClip-\(UUID().uuidString)")
-            .appendingPathExtension("mp4")
+        let finalOutputURL = Self.renderedOutputURL()
+        let outputURL = watermarkSettings.shouldRender
+            ? FileManager.default.temporaryDirectory
+                .appendingPathComponent("HanClip-\(UUID().uuidString)")
+                .appendingPathExtension("mp4")
+            : finalOutputURL
+        try? FileManager.default.removeItem(at: outputURL)
 
         guard let exporter = AVAssetExportSession(
             asset: composition,
@@ -259,8 +263,10 @@ final class VideoComposer {
             logger.info("영상 생성 완료")
             return outputURL
         }
+        try? FileManager.default.removeItem(at: finalOutputURL)
         let watermarkedOutput = try await addTextWatermark(
             to: outputURL,
+            outputURL: finalOutputURL,
             renderSize: renderSize,
             settings: watermarkSettings
         ) { watermarkProgress in
@@ -359,28 +365,33 @@ final class VideoComposer {
             return
         }
 
-        let fadeSeconds = min(2.0, totalSeconds / 2)
-        let fadeDuration = CMTime(
-            seconds: fadeSeconds,
+        let fadeInSeconds = min(0.3, totalSeconds / 2)
+        let fadeOutSeconds = min(1.0, totalSeconds / 2)
+        let fadeInDuration = CMTime(
+            seconds: fadeInSeconds,
+            preferredTimescale: totalDuration.timescale
+        )
+        let fadeOutDuration = CMTime(
+            seconds: fadeOutSeconds,
             preferredTimescale: totalDuration.timescale
         )
 
-        if settings.fadeInEnabled, fadeSeconds > 0 {
+        if settings.fadeInEnabled, fadeInSeconds > 0 {
             parameters.setVolumeRamp(
                 fromStartVolume: 0,
                 toEndVolume: targetVolume,
-                timeRange: CMTimeRange(start: .zero, duration: fadeDuration)
+                timeRange: CMTimeRange(start: .zero, duration: fadeInDuration)
             )
         } else {
             parameters.setVolume(targetVolume, at: .zero)
         }
 
-        if settings.fadeOutEnabled, fadeSeconds > 0 {
-            let fadeStart = CMTimeSubtract(totalDuration, fadeDuration)
+        if settings.fadeOutEnabled, fadeOutSeconds > 0 {
+            let fadeStart = CMTimeSubtract(totalDuration, fadeOutDuration)
             parameters.setVolumeRamp(
                 fromStartVolume: targetVolume,
                 toEndVolume: 0,
-                timeRange: CMTimeRange(start: fadeStart, duration: fadeDuration)
+                timeRange: CMTimeRange(start: fadeStart, duration: fadeOutDuration)
             )
         }
     }
@@ -417,6 +428,7 @@ final class VideoComposer {
 
     private func addTextWatermark(
         to sourceURL: URL,
+        outputURL: URL,
         renderSize: CGSize,
         settings: WatermarkSettings,
         progressHandler: @escaping @Sendable (Double) async -> Void
@@ -446,7 +458,7 @@ final class VideoComposer {
                 text: settings.displayText,
                 fontName: settings.fontName,
                 textColor: UIColor(hexString: settings.textColorHex) ?? .white,
-                shadowEnabled: settings.shadowEnabled,
+                shadowOpacity: settings.shadowOpacity,
                 shadowColor: UIColor(hexString: settings.shadowColorHex)
                     ?? .black,
                 position: settings.position,
@@ -457,29 +469,50 @@ final class VideoComposer {
            )
             : nil
 
+        if settings.shouldRenderText {
+            logger.info(
+                "자막 렌더링: font=\(settings.fontName, privacy: .public), textColor=\(settings.textColorHex, privacy: .public), shadowColor=\(settings.shadowColorHex, privacy: .public), shadowOpacity=\(settings.shadowOpacity, privacy: .public)"
+            )
+        }
+
         if stackedWatermarks,
            let textWatermark,
            let copyrightWatermark {
             let gap = 4 * scale
+            var textOrigin = Self.watermarkOrigin(
+                watermarkSize: textWatermark.extent.size,
+                renderSize: renderSize,
+                position: settings.position,
+                inset: inset
+            )
+            let minimumTextY =
+                inset + copyrightWatermark.extent.height + gap
+            if textOrigin.y < minimumTextY {
+                let maximumTextY =
+                    renderSize.height - textWatermark.extent.height - inset
+                textOrigin.y = min(minimumTextY, maximumTextY)
+            }
+            let copyrightOrigin = Self.copyrightOriginBelowText(
+                copyrightSize: copyrightWatermark.extent.size,
+                textOrigin: textOrigin,
+                textSize: textWatermark.extent.size,
+                renderSize: renderSize,
+                inset: inset,
+                gap: gap
+            )
             overlayImages.append(
                 textWatermark.transformed(
-                    by: Self.watermarkTransform(
-                        watermarkSize: textWatermark.extent.size,
-                        renderSize: renderSize,
-                        position: settings.position,
-                        inset: inset,
-                        yOffset: (copyrightWatermark.extent.height + gap) / 2
+                    by: CGAffineTransform(
+                        translationX: textOrigin.x,
+                        y: textOrigin.y
                     )
                 )
             )
             overlayImages.append(
                 copyrightWatermark.transformed(
-                    by: Self.watermarkTransform(
-                        watermarkSize: copyrightWatermark.extent.size,
-                        renderSize: renderSize,
-                        position: copyrightPosition,
-                        inset: inset,
-                        yOffset: -(textWatermark.extent.height + gap) / 2
+                    by: CGAffineTransform(
+                        translationX: copyrightOrigin.x,
+                        y: copyrightOrigin.y
                     )
                 )
             )
@@ -531,10 +564,6 @@ final class VideoComposer {
             timescale: frameRate
         )
 
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HanClip-Watermarked-\(UUID().uuidString)")
-            .appendingPathExtension("mp4")
-
         guard let exporter = AVAssetExportSession(
             asset: asset,
             presetName: AVAssetExportPresetHighestQuality
@@ -564,6 +593,18 @@ final class VideoComposer {
         }
 
         return outputURL
+    }
+
+    private static func renderedOutputURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(renderedOutputFilename())
+    }
+
+    static func renderedOutputFilename(for date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyMMdd-HHmmss"
+        return "\(formatter.string(from: date))-hanClip.mp4"
     }
 
     private func resolveSource(
@@ -903,6 +944,24 @@ final class VideoComposer {
         inset: CGFloat,
         yOffset: CGFloat = 0
     ) -> CGAffineTransform {
+        let origin = watermarkOrigin(
+            watermarkSize: watermarkSize,
+            renderSize: renderSize,
+            position: position,
+            inset: inset
+        )
+        return CGAffineTransform(
+            translationX: origin.x,
+            y: origin.y + yOffset
+        )
+    }
+
+    private static func watermarkOrigin(
+        watermarkSize: CGSize,
+        renderSize: CGSize,
+        position: WatermarkPosition,
+        inset: CGFloat
+    ) -> CGPoint {
         let availableWidth = max(
             0,
             renderSize.width - watermarkSize.width - inset * 2
@@ -916,14 +975,31 @@ final class VideoComposer {
         let y = inset + availableHeight
             * CGFloat(1 - position.verticalFractionFromTop)
 
-        return CGAffineTransform(translationX: x, y: y + yOffset)
+        return CGPoint(x: x, y: y)
+    }
+
+    private static func copyrightOriginBelowText(
+        copyrightSize: CGSize,
+        textOrigin: CGPoint,
+        textSize: CGSize,
+        renderSize: CGSize,
+        inset: CGFloat,
+        gap: CGFloat
+    ) -> CGPoint {
+        let maxX = max(inset, renderSize.width - copyrightSize.width - inset)
+        let preferredX = textOrigin.x + (textSize.width - copyrightSize.width) / 2
+        let x = min(max(preferredX, inset), maxX)
+
+        let preferredY = textOrigin.y - copyrightSize.height - gap
+        let y = max(preferredY, inset)
+        return CGPoint(x: x, y: y)
     }
 
     private static func textWatermarkImage(
         text watermarkText: String,
         fontName: String,
         textColor: UIColor,
-        shadowEnabled: Bool,
+        shadowOpacity: Double,
         shadowColor: UIColor,
         position: WatermarkPosition,
         lineSpacingScale: Double,
@@ -937,14 +1013,28 @@ final class VideoComposer {
         let font = FontRegistry.resolvedUIFont(
             for: fontName,
             size: fontPointSize,
-            weight: .semibold
+            weight: .bold
+        )
+        let normalizedShadowOpacity =
+            WatermarkSettings.normalizedShadowOpacity(shadowOpacity)
+        let shadowBlurRadius =
+            normalizedShadowOpacity > 0 ? 2.4 * scale : 0
+        let shadowOffset =
+            normalizedShadowOpacity > 0
+                ? CGSize(width: 1.0 * scale, height: 1.0 * scale)
+                : CGSize.zero
+        let textOutlineColor = shadowColor.withAlphaComponent(
+            normalizedShadowOpacity
         )
         let textShadow = Self.watermarkShadow(
-            enabled: shadowEnabled,
-            color: shadowColor,
-            scale: scale
+            enabled: normalizedShadowOpacity > 0,
+            color: shadowColor.withAlphaComponent(
+                normalizedShadowOpacity
+            ),
+            scale: scale,
+            blurRadius: shadowBlurRadius,
+            offset: shadowOffset
         )
-        let textOutlineColor = shadowColor.withAlphaComponent(0.5)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = Self.textAlignment(for: position)
         paragraphStyle.lineHeightMultiple = CGFloat(lineSpacingScale)
@@ -953,6 +1043,17 @@ final class VideoComposer {
             foregroundColor: textColor,
             shadow: textShadow,
             outlineColor: textOutlineColor,
+            outlineWidth: 0,
+            paragraphStyle: paragraphStyle
+        )
+        let shadowAttributes: [NSAttributedString.Key: Any] = Self.textWatermarkAttributes(
+            font: font,
+            foregroundColor: shadowColor.withAlphaComponent(
+                normalizedShadowOpacity
+            ),
+            shadow: nil,
+            outlineColor: shadowColor.withAlphaComponent(0),
+            outlineWidth: 0,
             paragraphStyle: paragraphStyle
         )
         let maxTextWidth = renderSize.width * 0.70
@@ -962,7 +1063,12 @@ final class VideoComposer {
             attributes: textAttributes,
             context: nil
         ).integral.size
-        let padding = 3 * scale
+        let padding = max(
+            3 * scale,
+            shadowBlurRadius
+                + max(abs(shadowOffset.width), abs(shadowOffset.height))
+                + 4 * scale
+        )
         let imageSize = CGSize(
             width: ceil(padding * 2 + textRectSize.width),
             height: ceil(padding * 2 + textRectSize.height)
@@ -971,21 +1077,59 @@ final class VideoComposer {
         format.scale = 1
         format.opaque = false
 
-        return UIGraphicsImageRenderer(
-            size: imageSize,
-            format: format
-        ).image { _ in
-            let textRect = CGRect(
-                x: padding,
-                y: padding,
-                width: textRectSize.width,
-                height: textRectSize.height
-            )
-            text.draw(
-                in: textRect,
-                withAttributes: textAttributes
+        let textRect = CGRect(
+            x: padding,
+            y: padding,
+            width: textRectSize.width,
+            height: textRectSize.height
+        )
+        let shadowLayer = normalizedShadowOpacity > 0
+            ? UIGraphicsImageRenderer(size: imageSize, format: format).image { _ in
+                text.draw(
+                    in: textRect.offsetBy(
+                        dx: shadowOffset.width,
+                        dy: shadowOffset.height
+                    ),
+                    withAttributes: shadowAttributes
+                )
+            }
+            : nil
+        let blurredShadowLayer = shadowLayer.flatMap {
+            Self.blurredWatermarkShadowImage(
+                $0,
+                blurRadius: shadowBlurRadius,
+                size: imageSize
             )
         }
+
+        return UIGraphicsImageRenderer(size: imageSize, format: format).image { _ in
+            blurredShadowLayer?.draw(at: CGPoint.zero)
+            if normalizedShadowOpacity > 0 {
+                let outlineDistance = max(0.5 * scale, 0.5)
+                for offset in Self.outerTextOutlineOffsets(
+                    radius: outlineDistance
+                ) {
+                    text.draw(
+                        in: textRect.offsetBy(dx: offset.x, dy: offset.y),
+                        withAttributes: shadowAttributes
+                    )
+                }
+            }
+            text.draw(in: textRect, withAttributes: textAttributes)
+        }
+    }
+
+    private static func outerTextOutlineOffsets(radius: CGFloat) -> [CGPoint] {
+        [
+            CGPoint(x: -radius, y: -radius),
+            CGPoint(x: 0, y: -radius),
+            CGPoint(x: radius, y: -radius),
+            CGPoint(x: -radius, y: 0),
+            CGPoint(x: radius, y: 0),
+            CGPoint(x: -radius, y: radius),
+            CGPoint(x: 0, y: radius),
+            CGPoint(x: radius, y: radius)
+        ]
     }
 
     private static func textAlignment(
@@ -999,6 +1143,29 @@ final class VideoComposer {
         default:
             return .right
         }
+    }
+
+    private static func blurredWatermarkShadowImage(
+        _ image: UIImage,
+        blurRadius: CGFloat,
+        size: CGSize
+    ) -> UIImage {
+        guard blurRadius > 0,
+              let input = CIImage(image: image)
+        else { return image }
+
+        let clamped = input.clampedToExtent()
+        let blurred = clamped
+            .applyingFilter(
+                "CIGaussianBlur",
+                parameters: [kCIInputRadiusKey: blurRadius]
+            )
+            .cropped(to: input.extent)
+        let context = CIContext(options: nil)
+        guard let cgImage = context.createCGImage(blurred, from: input.extent)
+        else { return image }
+
+        return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
     }
 
     private static func copyrightWatermarkImage(
@@ -1023,18 +1190,23 @@ final class VideoComposer {
             : settings.displayAddress
         let text = textValue as NSString
         let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
-        let shadow = Self.watermarkShadow(
-            enabled: true,
-            color: UIColor(hexString: settings.copyrightShadowColorHex)
-                ?? HanClipTheme.secondaryUIColor,
-            scale: scale
-        )
+        let shadowOpacity = settings.copyrightShadowOpacity
         let shadowColor = UIColor(hexString: settings.copyrightShadowColorHex)
             ?? HanClipTheme.secondaryUIColor
+        let effectiveShadowColor = shadowColor.withAlphaComponent(
+            shadowOpacity
+        )
+        let shadow = Self.watermarkShadow(
+            enabled: shadowOpacity > 0,
+            color: effectiveShadowColor,
+            scale: scale
+        )
         let textColor = UIColor(
             hexString: settings.copyrightTextColorHex
         ) ?? HanClipTheme.primaryUIColor
-        let textOutlineColor = shadowColor.withAlphaComponent(0.5)
+        let textOutlineColor = shadowColor.withAlphaComponent(
+            0.5 * shadowOpacity
+        )
         let textAttributes: [NSAttributedString.Key: Any] = Self.textWatermarkAttributes(
             font: font,
             foregroundColor: textColor,
@@ -1075,7 +1247,7 @@ final class VideoComposer {
                 in: iconRect,
                 scale: scale,
                 settings: settings,
-                shadowColor: shadowColor
+                shadowColor: effectiveShadowColor
             )
             text.draw(
                 in: textRect,
@@ -1095,18 +1267,24 @@ final class VideoComposer {
         let padding = 3 * scale
         let text = "HanClip" as NSString
         let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let shadowOpacity = settings.copyrightShadowOpacity
         let shadowColor = UIColor(hexString: settings.copyrightShadowColorHex)
             ?? HanClipTheme.secondaryUIColor
+        let effectiveShadowColor = shadowColor.withAlphaComponent(
+            shadowOpacity
+        )
         let shadow = Self.watermarkShadow(
-            enabled: true,
-            color: shadowColor,
+            enabled: shadowOpacity > 0,
+            color: effectiveShadowColor,
             scale: scale
         )
         let textSize = text.size(
             withAttributes: [
                 .font: font,
                 .shadow: shadow as Any,
-                .strokeColor: shadowColor.withAlphaComponent(0.5),
+                .strokeColor: shadowColor.withAlphaComponent(
+                    0.5 * shadowOpacity
+                ),
                 .strokeWidth: -0.3
             ]
         )
@@ -1150,7 +1328,7 @@ final class VideoComposer {
                 }
 
                 Self.drawWatermarkGlow(
-                    color: shadowColor,
+                    color: effectiveShadowColor,
                     scale: scale,
                     draw: drawLogo
                 )
@@ -1174,14 +1352,16 @@ final class VideoComposer {
     private static func watermarkShadow(
         enabled: Bool,
         color: UIColor,
-        scale: CGFloat
+        scale: CGFloat,
+        blurRadius: CGFloat? = nil,
+        offset: CGSize = .zero
     ) -> NSShadow? {
         guard enabled else { return nil }
 
         let shadow = NSShadow()
         shadow.shadowColor = color
-        shadow.shadowBlurRadius = 12 * scale
-        shadow.shadowOffset = .zero
+        shadow.shadowBlurRadius = blurRadius ?? 12 * scale
+        shadow.shadowOffset = offset
         return shadow
     }
 
@@ -1210,14 +1390,17 @@ final class VideoComposer {
         foregroundColor: UIColor,
         shadow: NSShadow?,
         outlineColor: UIColor,
+        outlineWidth: CGFloat = 0.3,
         paragraphStyle: NSParagraphStyle? = nil
     ) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: foregroundColor,
-            .strokeColor: outlineColor,
-            .strokeWidth: -0.3
+            .foregroundColor: foregroundColor
         ]
+        if outlineWidth > 0 {
+            attributes[.strokeColor] = outlineColor
+            attributes[.strokeWidth] = -outlineWidth
+        }
         if let shadow {
             attributes[.shadow] = shadow
         }

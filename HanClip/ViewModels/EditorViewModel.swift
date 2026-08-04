@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Photos
 import SwiftUI
 
@@ -298,8 +299,9 @@ final class EditorViewModel: ObservableObject {
         isBackgroundMusicImporterPresented = true
     }
 
-    func importBackgroundMusic(_ urls: [URL]) {
-        guard let source = urls.first else { return }
+    @discardableResult
+    func importBackgroundMusic(_ urls: [URL]) -> Bool {
+        guard let source = urls.first else { return false }
         let hasAccess = source.startAccessingSecurityScopedResource()
         defer {
             if hasAccess {
@@ -319,8 +321,10 @@ final class EditorViewModel: ObservableObject {
             backgroundMusicSettings.displayName =
                 source.deletingPathExtension().lastPathComponent
             backgroundMusicSettings.isEnabled = true
+            return true
         } catch {
             alertMessage = "음악 파일을 가져올 수 없습니다."
+            return false
         }
     }
 
@@ -873,6 +877,7 @@ final class EditorViewModel: ObservableObject {
             settings.fontName,
             settings.textColorHex,
             "\(settings.shadowEnabled)",
+            "\(roundedSignatureValue(settings.shadowOpacity))",
             settings.shadowColorHex,
             settings.lineSpacing.rawValue,
             "\(roundedSignatureValue(settings.lineSpacingScale))",
@@ -880,6 +885,7 @@ final class EditorViewModel: ObservableObject {
             settings.copyrightPosition.rawValue,
             settings.copyrightTextColorHex,
             settings.copyrightShadowColorHex,
+            "\(roundedSignatureValue(settings.copyrightShadowOpacity))",
             settings.copyrightIconColorMode.rawValue,
             settings.copyrightIconColorHex,
             settings.customCopyrightIconPath
@@ -1028,8 +1034,14 @@ final class EditorViewModel: ObservableObject {
 
         Task {
             var imported: [ClipItem] = []
+            let audioRecords = records
+                .filter(Self.isSharedAudioRecord)
+                .sorted(by: sharedAudioRecordSortOrder)
+            let mediaRecords = records.filter {
+                !Self.isSharedAudioRecord($0)
+            }
             var unresolvedLivePhotoCount = 0
-            for (index, record) in records.enumerated() {
+            for (index, record) in mediaRecords.enumerated() {
                 do {
                     let primary = try SharedInbox.fileURL(
                         named: record.primaryFilename
@@ -1136,11 +1148,14 @@ final class EditorViewModel: ObservableObject {
                     + "불러오는 중…"
             }
 
+            let selectedAudioURL = audioRecords.first.flatMap {
+                try? SharedInbox.fileURL(named: $0.primaryFilename)
+            }
             isImportingSharedItems = false
             progressMessage = ""
             sharedImportProgress = 0
 
-            if !imported.isEmpty {
+            if !imported.isEmpty || selectedAudioURL != nil {
                 switch requestedDestination {
                 case .newProject:
                     prepareNewProjectForSharedImport()
@@ -1151,13 +1166,31 @@ final class EditorViewModel: ObservableObject {
                         beginNewProject()
                     }
                 }
-                addPickedItems(imported)
+                if !imported.isEmpty {
+                    addPickedItems(imported)
+                }
+                let didImportMusic: Bool
+                if let selectedAudioURL {
+                    didImportMusic = importBackgroundMusic([selectedAudioURL])
+                } else {
+                    didImportMusic = false
+                }
                 if unresolvedLivePhotoCount > 0 {
                     alertMessage =
                         "공유한 항목 \(imported.count)개를 가져왔습니다. "
                         + "Live Photo \(unresolvedLivePhotoCount)개는 "
                         + "사진 보관함에서 원본을 찾지 못해 사진으로 "
                         + "가져왔습니다."
+                } else if didImportMusic, imported.isEmpty {
+                    alertMessage = "공유한 음악 파일을 적용했습니다."
+                } else if didImportMusic {
+                    alertMessage =
+                        "공유한 항목 \(imported.count)개와 음악 파일을 "
+                        + "가져왔습니다."
+                } else if selectedAudioURL != nil {
+                    alertMessage = imported.isEmpty
+                        ? "음악 파일을 가져올 수 없습니다."
+                        : "공유한 항목 \(imported.count)개를 가져왔지만 음악 파일은 가져오지 못했습니다."
                 } else {
                     alertMessage =
                         "공유한 항목 \(imported.count)개를 가져왔습니다."
@@ -1167,6 +1200,38 @@ final class EditorViewModel: ObservableObject {
                     "공유한 항목을 불러오지 못했습니다."
             }
         }
+    }
+
+    private func sharedAudioRecordSortOrder(
+        _ lhs: SharedImportRecord,
+        _ rhs: SharedImportRecord
+    ) -> Bool {
+        let left = lhs.originalFilename ?? lhs.primaryFilename
+        let right = rhs.originalFilename ?? rhs.primaryFilename
+        return left.localizedStandardCompare(right) == .orderedAscending
+    }
+
+    nonisolated private static func isSharedAudioRecord(
+        _ record: SharedImportRecord
+    ) -> Bool {
+        return isSharedAudioFilename(record.primaryFilename)
+            || isSharedAudioFilename(record.originalFilename)
+    }
+
+    nonisolated private static func isSharedAudioFilename(
+        _ filename: String?
+    ) -> Bool {
+        guard let filename else { return false }
+        let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
+        return [
+            "aac",
+            "aif",
+            "aiff",
+            "caf",
+            "m4a",
+            "mp3",
+            "wav"
+        ].contains(ext)
     }
 
     private func prepareNewProjectForSharedImport() {
@@ -1695,11 +1760,27 @@ final class EditorViewModel: ObservableObject {
     private static func makePendingSharedThumbnails(
         for records: [SharedImportRecord]
     ) async -> [UIImage] {
-        await Task.detached {
+        let audioThumbnails = Dictionary(
+            uniqueKeysWithValues: records
+                .filter(isSharedAudioRecord)
+                .map {
+                    (
+                        $0.id,
+                        pendingAudioThumbnail(
+                            title: $0.originalFilename ?? $0.primaryFilename
+                        )
+                    )
+                }
+        )
+        let task = Task.detached { () -> [UIImage] in
             records.compactMap { record in
                 guard let url = try? SharedInbox.fileURL(
                     named: record.primaryFilename
                 ) else { return nil }
+
+                if isSharedAudioRecord(record) {
+                    return audioThumbnails[record.id]
+                }
 
                 switch record.kind {
                 case .image, .livePhoto:
@@ -1715,7 +1796,82 @@ final class EditorViewModel: ObservableObject {
                     return UIImage(cgImage: image)
                 }
             }
-        }.value
+        }
+        return await task.value
+    }
+
+    private static func pendingAudioThumbnail(title: String) -> UIImage {
+        let size = CGSize(width: 180, height: 180)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            let rect = CGRect(origin: .zero, size: size)
+            UIColor(
+                red: 0.06,
+                green: 0.47,
+                blue: 0.50,
+                alpha: 0.24
+            ).setFill()
+            UIBezierPath(
+                roundedRect: rect,
+                cornerRadius: 26
+            ).fill()
+
+            UIColor(
+                red: 0.02,
+                green: 0.23,
+                blue: 0.26,
+                alpha: 0.86
+            ).setFill()
+            UIBezierPath(
+                roundedRect: rect.insetBy(dx: 16, dy: 16),
+                cornerRadius: 22
+            ).fill()
+
+            let symbolConfig = UIImage.SymbolConfiguration(
+                pointSize: 42,
+                weight: .bold
+            )
+            let symbol = UIImage(
+                systemName: "music.note",
+                withConfiguration: symbolConfig
+            )?
+                .withTintColor(.white, renderingMode: .alwaysOriginal)
+            let symbolSize = symbol?.size ?? .zero
+            symbol?.draw(
+                in: CGRect(
+                    x: (size.width - symbolSize.width) / 2,
+                    y: 34,
+                    width: symbolSize.width,
+                    height: symbolSize.height
+                )
+            )
+
+            let trimmedTitle = title
+                .replacingOccurrences(of: "_", with: " ")
+                .replacingOccurrences(of: "-", with: " ")
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            paragraph.lineBreakMode = .byTruncatingTail
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 16, weight: .bold),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: trimmedTitle).draw(
+                in: CGRect(x: 18, y: 100, width: 144, height: 44),
+                withAttributes: attributes
+            )
+
+            let badgeAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 11, weight: .heavy),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.82),
+                .paragraphStyle: paragraph
+            ]
+            NSString(string: "오디오").draw(
+                in: CGRect(x: 18, y: 146, width: 144, height: 20),
+                withAttributes: badgeAttributes
+            )
+        }
     }
 
 }

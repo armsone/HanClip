@@ -212,6 +212,7 @@ struct WatermarkSettings: Codable {
     static let fontNameStorageKey = "hanClipWatermarkFontName"
     static let textColorStorageKey = "hanClipWatermarkTextColor"
     static let shadowEnabledStorageKey = "hanClipWatermarkShadowEnabled"
+    static let shadowOpacityStorageKey = "hanClipWatermarkShadowOpacity"
     static let shadowColorStorageKey = "hanClipWatermarkShadowColor"
     static let lineSpacingStorageKey = "hanClipWatermarkLineSpacing"
     static let lineSpacingScaleStorageKey =
@@ -223,6 +224,8 @@ struct WatermarkSettings: Codable {
         "hanClipCopyrightWatermarkTextColor"
     static let copyrightShadowColorStorageKey =
         "hanClipCopyrightWatermarkShadowColor"
+    static let copyrightShadowOpacityStorageKey =
+        "hanClipCopyrightWatermarkShadowOpacity"
     static let copyrightIconColorModeStorageKey =
         "hanClipCopyrightIconColorMode"
     static let copyrightIconColorStorageKey =
@@ -239,10 +242,11 @@ struct WatermarkSettings: Codable {
     """
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip
-    static let defaultPosition = WatermarkPosition.center
+    static let defaultPosition = WatermarkPosition.topLeading
     static let defaultFontName = "pretendard"
     static let defaultTextColor = "#FFFFFF"
     static let defaultShadowEnabled = true
+    static let defaultShadowOpacity = 0.2
     static let defaultShadowColor = "#000000"
     static let defaultLineSpacing = WatermarkLineSpacing.normal
     static let defaultLineSpacingScale =
@@ -251,6 +255,7 @@ struct WatermarkSettings: Codable {
     static let defaultCopyrightPosition = WatermarkPosition.bottomTrailing
     static let defaultCopyrightTextColor = "#007644"
     static let defaultCopyrightShadowColor = "#29AB87"
+    static let defaultCopyrightShadowOpacity = 0.2
     static let defaultCopyrightIconColorMode = CopyrightIconColorMode.original
     static let defaultCopyrightIconColor = "#007644"
     static let defaultCustomCopyrightIconPath = ""
@@ -264,6 +269,7 @@ struct WatermarkSettings: Codable {
     var fontName: String
     var textColorHex: String
     var shadowEnabled: Bool
+    var shadowOpacity: Double
     var shadowColorHex: String
     var lineSpacing: WatermarkLineSpacing
     var lineSpacingScale: Double
@@ -271,6 +277,7 @@ struct WatermarkSettings: Codable {
     var copyrightPosition: WatermarkPosition
     var copyrightTextColorHex: String
     var copyrightShadowColorHex: String
+    var copyrightShadowOpacity: Double
     var copyrightIconColorMode: CopyrightIconColorMode
     var copyrightIconColorHex: String
     var customCopyrightIconPath: String
@@ -285,6 +292,7 @@ struct WatermarkSettings: Codable {
         case fontName
         case textColorHex
         case shadowEnabled
+        case shadowOpacity
         case shadowColorHex
         case lineSpacing
         case lineSpacingScale
@@ -292,6 +300,7 @@ struct WatermarkSettings: Codable {
         case copyrightPosition
         case copyrightTextColorHex
         case copyrightShadowColorHex
+        case copyrightShadowOpacity
         case copyrightIconColorMode
         case copyrightIconColorHex
         case customCopyrightIconPath
@@ -307,6 +316,7 @@ struct WatermarkSettings: Codable {
         fontName: String,
         textColorHex: String,
         shadowEnabled: Bool,
+        shadowOpacity: Double = Self.defaultShadowOpacity,
         shadowColorHex: String,
         lineSpacing: WatermarkLineSpacing,
         lineSpacingScale: Double,
@@ -314,6 +324,7 @@ struct WatermarkSettings: Codable {
         copyrightPosition: WatermarkPosition,
         copyrightTextColorHex: String,
         copyrightShadowColorHex: String,
+        copyrightShadowOpacity: Double = Self.defaultCopyrightShadowOpacity,
         copyrightIconColorMode: CopyrightIconColorMode,
         copyrightIconColorHex: String,
         customCopyrightIconPath: String = Self.defaultCustomCopyrightIconPath
@@ -326,7 +337,8 @@ struct WatermarkSettings: Codable {
         self.position = position
         self.fontName = fontName
         self.textColorHex = textColorHex
-        self.shadowEnabled = shadowEnabled
+        self.shadowOpacity = Self.normalizedShadowOpacity(shadowOpacity)
+        self.shadowEnabled = shadowEnabled && self.shadowOpacity > 0
         self.shadowColorHex = shadowColorHex
         self.lineSpacing = lineSpacing
         self.lineSpacingScale = Self.normalizedLineSpacingScale(
@@ -336,6 +348,9 @@ struct WatermarkSettings: Codable {
         self.copyrightPosition = copyrightPosition
         self.copyrightTextColorHex = copyrightTextColorHex
         self.copyrightShadowColorHex = copyrightShadowColorHex
+        self.copyrightShadowOpacity = Self.normalizedShadowOpacity(
+            copyrightShadowOpacity
+        )
         self.copyrightIconColorMode = copyrightIconColorMode
         self.copyrightIconColorHex = copyrightIconColorHex
         self.customCopyrightIconPath = customCopyrightIconPath
@@ -379,6 +394,11 @@ struct WatermarkSettings: Codable {
             Bool.self,
             forKey: .shadowEnabled
         ) ?? Self.defaultShadowEnabled
+        shadowOpacity = Self.normalizedShadowOpacity(
+            try container.decodeIfPresent(Double.self, forKey: .shadowOpacity)
+                ?? (shadowEnabled ? Self.defaultShadowOpacity : 0)
+        )
+        shadowEnabled = shadowOpacity > 0
         shadowColorHex = try container.decodeIfPresent(
             String.self,
             forKey: .shadowColorHex
@@ -409,6 +429,12 @@ struct WatermarkSettings: Codable {
             String.self,
             forKey: .copyrightShadowColorHex
         ) ?? Self.defaultCopyrightShadowColor
+        copyrightShadowOpacity = Self.normalizedShadowOpacity(
+            try container.decodeIfPresent(
+                Double.self,
+                forKey: .copyrightShadowOpacity
+            ) ?? Self.defaultCopyrightShadowOpacity
+        )
         copyrightIconColorMode = try container.decodeIfPresent(
             CopyrightIconColorMode.self,
             forKey: .copyrightIconColorMode
@@ -475,6 +501,14 @@ struct WatermarkSettings: Codable {
         } else {
             shadowEnabled = defaults.bool(forKey: shadowEnabledStorageKey)
         }
+        let shadowOpacity: Double
+        if defaults.object(forKey: shadowOpacityStorageKey) == nil {
+            shadowOpacity = shadowEnabled ? defaultShadowOpacity : 0
+        } else {
+            shadowOpacity = normalizedShadowOpacity(
+                defaults.double(forKey: shadowOpacityStorageKey)
+            )
+        }
 
         return WatermarkSettings(
             isEnabled: isEnabled,
@@ -489,7 +523,8 @@ struct WatermarkSettings: Codable {
             ),
             textColorHex: defaults.string(forKey: textColorStorageKey)
                 ?? defaultTextColor,
-            shadowEnabled: shadowEnabled,
+            shadowEnabled: shadowOpacity > 0,
+            shadowOpacity: shadowOpacity,
             shadowColorHex: defaults.string(forKey: shadowColorStorageKey)
                 ?? defaultShadowColor,
             lineSpacing: defaults.string(forKey: lineSpacingStorageKey)
@@ -512,6 +547,13 @@ struct WatermarkSettings: Codable {
                 forKey: copyrightShadowColorStorageKey
             ) ?? defaults.string(forKey: shadowColorStorageKey)
                 ?? defaultCopyrightShadowColor,
+            copyrightShadowOpacity: defaults.object(
+                forKey: copyrightShadowOpacityStorageKey
+            ) == nil
+                ? defaultCopyrightShadowOpacity
+                : normalizedShadowOpacity(
+                    defaults.double(forKey: copyrightShadowOpacityStorageKey)
+                ),
             copyrightIconColorMode: defaults.string(
                 forKey: copyrightIconColorModeStorageKey
             ).flatMap(CopyrightIconColorMode.init(rawValue:))
@@ -537,6 +579,7 @@ struct WatermarkSettings: Codable {
             fontName: defaultFontName,
             textColorHex: defaultTextColor,
             shadowEnabled: defaultShadowEnabled,
+            shadowOpacity: defaultShadowOpacity,
             shadowColorHex: defaultShadowColor,
             lineSpacing: defaultLineSpacing,
             lineSpacingScale: defaultLineSpacingScale,
@@ -544,6 +587,7 @@ struct WatermarkSettings: Codable {
             copyrightPosition: defaultCopyrightPosition,
             copyrightTextColorHex: defaultCopyrightTextColor,
             copyrightShadowColorHex: defaultCopyrightShadowColor,
+            copyrightShadowOpacity: defaultCopyrightShadowOpacity,
             copyrightIconColorMode: defaultCopyrightIconColorMode,
             copyrightIconColorHex: defaultCopyrightIconColor,
             customCopyrightIconPath: defaultCustomCopyrightIconPath
@@ -561,6 +605,7 @@ struct WatermarkSettings: Codable {
             fontName: fontName,
             textColorHex: textColorHex,
             shadowEnabled: shadowEnabled,
+            shadowOpacity: shadowOpacity,
             shadowColorHex: shadowColorHex,
             lineSpacing: lineSpacing,
             lineSpacingScale: lineSpacingScale,
@@ -568,6 +613,7 @@ struct WatermarkSettings: Codable {
             copyrightPosition: copyrightPosition,
             copyrightTextColorHex: copyrightTextColorHex,
             copyrightShadowColorHex: copyrightShadowColorHex,
+            copyrightShadowOpacity: copyrightShadowOpacity,
             copyrightIconColorMode: copyrightIconColorMode,
             copyrightIconColorHex: copyrightIconColorHex,
             customCopyrightIconPath: customCopyrightIconPath
@@ -585,6 +631,7 @@ struct WatermarkSettings: Codable {
             fontName: fontName,
             textColorHex: textColorHex,
             shadowEnabled: shadowEnabled,
+            shadowOpacity: shadowOpacity,
             shadowColorHex: shadowColorHex,
             lineSpacing: lineSpacing,
             lineSpacingScale: lineSpacingScale,
@@ -592,6 +639,7 @@ struct WatermarkSettings: Codable {
             copyrightPosition: copyright.copyrightPosition,
             copyrightTextColorHex: copyright.copyrightTextColorHex,
             copyrightShadowColorHex: copyright.copyrightShadowColorHex,
+            copyrightShadowOpacity: copyright.copyrightShadowOpacity,
             copyrightIconColorMode: copyright.copyrightIconColorMode,
             copyrightIconColorHex: copyright.copyrightIconColorHex,
             customCopyrightIconPath: copyright.customCopyrightIconPath
@@ -607,6 +655,10 @@ struct WatermarkSettings: Codable {
             max(value, WatermarkLineSpacing.minimumMultiplier),
             WatermarkLineSpacing.maximumMultiplier
         )
+    }
+
+    static func normalizedShadowOpacity(_ value: Double) -> Double {
+        min(max(value, 0), 1)
     }
 }
 

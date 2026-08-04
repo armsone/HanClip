@@ -48,9 +48,20 @@
 		120000000000000000000009 /* PuradakGentleGothic-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */; };
 		12000000000000000000000A /* DdulgiMayo-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000A /* DdulgiMayo-LICENSE.txt */; };
 		12000000000000000000000B /* Pretendard-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000B /* Pretendard-Bold.ttf */; };
+		12000000000000000000000C /* GowunDodum-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000C /* GowunDodum-Regular.ttf */; };
+		12000000000000000000000D /* GowunDodum-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000D /* GowunDodum-OFL.txt */; };
+		12000000000000000000000E /* GowunBatang-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000E /* GowunBatang-Regular.ttf */; };
+		12000000000000000000000F /* GowunBatang-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 22000000000000000000000F /* GowunBatang-OFL.txt */; };
+		120000000000000000000010 /* BlackHanSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000010 /* BlackHanSans-Regular.ttf */; };
+		120000000000000000000011 /* BlackHanSans-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000011 /* BlackHanSans-OFL.txt */; };
+		120000000000000000000012 /* DoHyeon-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000012 /* DoHyeon-Regular.ttf */; };
+		120000000000000000000013 /* DoHyeon-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000013 /* DoHyeon-OFL.txt */; };
 		130000000000000000000001 /* HanClipSampleLoop.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000001 /* HanClipSampleLoop.wav */; };
 		130000000000000000000002 /* HanClipTravelJoy.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000002 /* HanClipTravelJoy.wav */; };
 		130000000000000000000003 /* HanClipAdClassicalDrama.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000003 /* HanClipAdClassicalDrama.wav */; };
+		130000000000000000000004 /* HanClipGolfLetsGo.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000004 /* HanClipGolfLetsGo.wav */; };
+		130000000000000000000005 /* HanClipJiwooFirstSnow.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000005 /* HanClipJiwooFirstSnow.wav */; };
+		130000000000000000000006 /* HanClipJiwooFirstSnowOriginal.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000006 /* HanClipJiwooFirstSnowOriginal.mp3 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -123,9 +134,20 @@
 		220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/PuradakGentleGothic-LICENSE.txt; sourceTree = "<group>"; };
 		22000000000000000000000A /* DdulgiMayo-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/DdulgiMayo-LICENSE.txt; sourceTree = "<group>"; };
 		22000000000000000000000B /* Pretendard-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/Pretendard-Bold.ttf; sourceTree = "<group>"; };
+		22000000000000000000000C /* GowunDodum-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/GowunDodum-Regular.ttf; sourceTree = "<group>"; };
+		22000000000000000000000D /* GowunDodum-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/GowunDodum-OFL.txt; sourceTree = "<group>"; };
+		22000000000000000000000E /* GowunBatang-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/GowunBatang-Regular.ttf; sourceTree = "<group>"; };
+		22000000000000000000000F /* GowunBatang-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/GowunBatang-OFL.txt; sourceTree = "<group>"; };
+		220000000000000000000010 /* BlackHanSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/BlackHanSans-Regular.ttf; sourceTree = "<group>"; };
+		220000000000000000000011 /* BlackHanSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/BlackHanSans-OFL.txt; sourceTree = "<group>"; };
+		220000000000000000000012 /* DoHyeon-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Resources/Fonts/DoHyeon-Regular.ttf; sourceTree = "<group>"; };
+		220000000000000000000013 /* DoHyeon-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/font-licenses/DoHyeon-OFL.txt; sourceTree = "<group>"; };
 		230000000000000000000001 /* HanClipSampleLoop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipSampleLoop.wav; sourceTree = "<group>"; };
 		230000000000000000000002 /* HanClipTravelJoy.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipTravelJoy.wav; sourceTree = "<group>"; };
 		230000000000000000000003 /* HanClipAdClassicalDrama.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipAdClassicalDrama.wav; sourceTree = "<group>"; };
+		230000000000000000000004 /* HanClipGolfLetsGo.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipGolfLetsGo.wav; sourceTree = "<group>"; };
+		230000000000000000000005 /* HanClipJiwooFirstSnow.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipJiwooFirstSnow.wav; sourceTree = "<group>"; };
+		230000000000000000000006 /* HanClipJiwooFirstSnowOriginal.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Resources/Audio/HanClipJiwooFirstSnowOriginal.mp3; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -193,9 +215,20 @@
 				220000000000000000000009 /* PuradakGentleGothic-LICENSE.txt */,
 				22000000000000000000000A /* DdulgiMayo-LICENSE.txt */,
 				22000000000000000000000B /* Pretendard-Bold.ttf */,
+				22000000000000000000000C /* GowunDodum-Regular.ttf */,
+				22000000000000000000000D /* GowunDodum-OFL.txt */,
+				22000000000000000000000E /* GowunBatang-Regular.ttf */,
+				22000000000000000000000F /* GowunBatang-OFL.txt */,
+				220000000000000000000010 /* BlackHanSans-Regular.ttf */,
+				220000000000000000000011 /* BlackHanSans-OFL.txt */,
+				220000000000000000000012 /* DoHyeon-Regular.ttf */,
+				220000000000000000000013 /* DoHyeon-OFL.txt */,
 				230000000000000000000001 /* HanClipSampleLoop.wav */,
 				230000000000000000000002 /* HanClipTravelJoy.wav */,
 				230000000000000000000003 /* HanClipAdClassicalDrama.wav */,
+				230000000000000000000004 /* HanClipGolfLetsGo.wav */,
+				230000000000000000000005 /* HanClipJiwooFirstSnow.wav */,
+				230000000000000000000006 /* HanClipJiwooFirstSnowOriginal.mp3 */,
 				20000000000000000000000F /* Info.plist */,
 				200000000000000000000010 /* HanClip.entitlements */,
 				200000000000000000000013 /* Assets.xcassets */,
@@ -373,9 +406,20 @@
 				120000000000000000000009 /* PuradakGentleGothic-LICENSE.txt in Resources */,
 				12000000000000000000000A /* DdulgiMayo-LICENSE.txt in Resources */,
 				12000000000000000000000B /* Pretendard-Bold.ttf in Resources */,
+				12000000000000000000000C /* GowunDodum-Regular.ttf in Resources */,
+				12000000000000000000000D /* GowunDodum-OFL.txt in Resources */,
+				12000000000000000000000E /* GowunBatang-Regular.ttf in Resources */,
+				12000000000000000000000F /* GowunBatang-OFL.txt in Resources */,
+				120000000000000000000010 /* BlackHanSans-Regular.ttf in Resources */,
+				120000000000000000000011 /* BlackHanSans-OFL.txt in Resources */,
+				120000000000000000000012 /* DoHyeon-Regular.ttf in Resources */,
+				120000000000000000000013 /* DoHyeon-OFL.txt in Resources */,
 				130000000000000000000001 /* HanClipSampleLoop.wav in Resources */,
 				130000000000000000000002 /* HanClipTravelJoy.wav in Resources */,
 				130000000000000000000003 /* HanClipAdClassicalDrama.wav in Resources */,
+				130000000000000000000004 /* HanClipGolfLetsGo.wav in Resources */,
+				130000000000000000000005 /* HanClipJiwooFirstSnow.wav in Resources */,
+				130000000000000000000006 /* HanClipJiwooFirstSnowOriginal.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -439,13 +483,53 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = "DEBUG=1 $(inherited)";
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_FAST_MATH = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -458,10 +542,50 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_FAST_MATH = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -488,7 +612,9 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -512,7 +638,9 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -537,7 +665,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -562,7 +692,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

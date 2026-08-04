@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import SwiftUI
 import UIKit
 
@@ -694,6 +695,7 @@ struct VideoTrimEditor: View {
                 trimHandle(
                     edge: .leading,
                     x: startX,
+                    oppositeX: endX,
                     geometry: proxy
                 )
                 .zIndex(12)
@@ -701,6 +703,7 @@ struct VideoTrimEditor: View {
                 trimHandle(
                     edge: .trailing,
                     x: endX,
+                    oppositeX: startX,
                     geometry: proxy
                 )
                 .zIndex(11)
@@ -825,9 +828,17 @@ struct VideoTrimEditor: View {
     private func trimHandle(
         edge: TrimEdge,
         x: CGFloat,
+        oppositeX: CGFloat,
         geometry: GeometryProxy
     ) -> some View {
-        ZStack {
+        let displayX = trimHandleDisplayX(
+            edge: edge,
+            x: x,
+            oppositeX: oppositeX,
+            width: geometry.size.width
+        )
+
+        return ZStack {
             Capsule()
                 .fill(HanClipTheme.primary.opacity(0.88))
                 .frame(width: 14, height: geometry.size.height - 10)
@@ -852,19 +863,54 @@ struct VideoTrimEditor: View {
         .frame(width: 44, height: geometry.size.height)
         .contentShape(Rectangle())
             .position(
-                x: min(
-                    max(26, x),
-                    max(26, geometry.size.width - 26)
-            ),
+                x: displayX,
             y: geometry.size.height / 2 - 4
         )
         .highPriorityGesture(
-            moveSelectionGesture(width: geometry.size.width),
+            trimGesture(
+                edge: edge,
+                waveformWidth: geometry.size.width
+            ),
             including: .all
         )
         .accessibilityLabel(
-            edge == .leading ? "선택 구간 왼쪽 이동" : "선택 구간 오른쪽 이동"
+            edge == .leading ? "선택 구간 시작 조절" : "선택 구간 끝 조절"
         )
+    }
+
+    private func trimHandleDisplayX(
+        edge: TrimEdge,
+        x: CGFloat,
+        oppositeX: CGFloat,
+        width: CGFloat
+    ) -> CGFloat {
+        let minimumX: CGFloat = 26
+        let maximumX = max(minimumX, width - minimumX)
+        let minimumSpacing: CGFloat = 52
+        let rawDistance = abs(x - oppositeX)
+
+        guard rawDistance < minimumSpacing else {
+            return min(max(minimumX, x), maximumX)
+        }
+
+        let midpoint = (x + oppositeX) / 2
+        var leadingX = midpoint - minimumSpacing / 2
+        var trailingX = midpoint + minimumSpacing / 2
+
+        if leadingX < minimumX {
+            let shift = minimumX - leadingX
+            leadingX += shift
+            trailingX += shift
+        }
+
+        if trailingX > maximumX {
+            let shift = trailingX - maximumX
+            leadingX -= shift
+            trailingX -= shift
+        }
+
+        let displayX = edge == .leading ? leadingX : trailingX
+        return min(max(minimumX, displayX), maximumX)
     }
 
     private func trimGesture(
@@ -877,16 +923,6 @@ struct VideoTrimEditor: View {
         )
         .onChanged { value in
             pausePlayback()
-            if shouldMoveSelectionWhenDraggingHandle(
-                waveformWidth: waveformWidth
-            ) {
-                moveSelection(
-                    translationWidth: value.translation.width,
-                    waveformWidth: waveformWidth
-                )
-                return
-            }
-
             let currentBoundary = edge == .leading
                 ? clip.trimStart
                 : clip.trimEnd
@@ -936,15 +972,6 @@ struct VideoTrimEditor: View {
             selectionMoveOrigin = nil
             selectionMoveDuration = nil
         }
-    }
-
-    private func shouldMoveSelectionWhenDraggingHandle(
-        waveformWidth: CGFloat
-    ) -> Bool {
-        let selectionWidth = CGFloat(clip.duration / sourceDuration)
-            * waveformWidth
-        let visibleGap = selectionWidth - 8
-        return visibleGap <= 4
     }
 
     private func moveSelectionGesture(width: CGFloat) -> some Gesture {
@@ -1129,7 +1156,7 @@ struct VideoTrimEditor: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            autoAdvanceLoops ? "무한 루프 끄기" : "무한 루프 켜기"
+            autoAdvanceLoops ? "자동 진행 끄기" : "자동 진행 켜기"
         )
     }
 

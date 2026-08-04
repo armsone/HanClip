@@ -84,6 +84,17 @@ enum FontRegistry {
             legacyStoredValues: ["Pretendard", "Pretendard-Regular"]
         ),
         CaptionFontInfo(
+            id: "pretendard_bold",
+            displayName: "프리텐다드B",
+            familyName: "Pretendard-Bold",
+            category: .basic,
+            assetPath: "Resources/Fonts/Pretendard-Bold.ttf",
+            availableWeights: [.bold],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/Pretendard-LICENSE.txt",
+            legacyStoredValues: ["Pretendard-Bold", "Pretendard Bold"]
+        ),
+        CaptionFontInfo(
             id: "puradak_gentle",
             displayName: "젠틀고딕",
             familyName: "PuradakGentleGothicR",
@@ -129,6 +140,50 @@ enum FontRegistry {
             fallbackFont: systemFontID,
             licenseFilePath: "Resources/font-licenses/MaruBuri-LICENSE.txt",
             legacyStoredValues: ["MaruBuri-Regular", "MaruBuri"]
+        ),
+        CaptionFontInfo(
+            id: "gowun_dodum",
+            displayName: "고운돋움",
+            familyName: "GowunDodum-Regular",
+            category: .emotional,
+            assetPath: "Resources/Fonts/GowunDodum-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/GowunDodum-OFL.txt",
+            legacyStoredValues: ["GowunDodum-Regular", "Gowun Dodum"]
+        ),
+        CaptionFontInfo(
+            id: "gowun_batang",
+            displayName: "고운바탕",
+            familyName: "GowunBatang-Regular",
+            category: .emotional,
+            assetPath: "Resources/Fonts/GowunBatang-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/GowunBatang-OFL.txt",
+            legacyStoredValues: ["GowunBatang-Regular", "Gowun Batang"]
+        ),
+        CaptionFontInfo(
+            id: "black_han_sans",
+            displayName: "검은고딕",
+            familyName: "BlackHanSans-Regular",
+            category: .title,
+            assetPath: "Resources/Fonts/BlackHanSans-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/BlackHanSans-OFL.txt",
+            legacyStoredValues: ["BlackHanSans-Regular", "Black Han Sans"]
+        ),
+        CaptionFontInfo(
+            id: "do_hyeon",
+            displayName: "도현",
+            familyName: "DoHyeon-Regular",
+            category: .vlog,
+            assetPath: "Resources/Fonts/DoHyeon-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/DoHyeon-OFL.txt",
+            legacyStoredValues: ["DoHyeon-Regular", "Do Hyeon"]
         ),
         CaptionFontInfo(
             id: "ddulgi_mayo",

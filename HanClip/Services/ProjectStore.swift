@@ -189,7 +189,10 @@ enum ProjectStore {
             root: try projectsRoot()
         )
         var stored = try readStoredProject(at: directory)
-        let filename = "rendered-video.mp4"
+        let sourceFilename = sourceURL.lastPathComponent
+        let filename = sourceFilename.isEmpty
+            ? VideoComposer.renderedOutputFilename()
+            : sourceFilename
         let destination = directory.appendingPathComponent(filename)
         let staging = directory.appendingPathComponent(
             ".rendered-video-\(UUID().uuidString).mp4"
@@ -197,6 +200,12 @@ enum ProjectStore {
 
         do {
             try FileManager.default.copyItem(at: sourceURL, to: staging)
+            if let oldFilename = stored.renderedVideoFilename,
+               oldFilename != filename {
+                try? FileManager.default.removeItem(
+                    at: directory.appendingPathComponent(oldFilename)
+                )
+            }
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
             }

@@ -58,6 +58,27 @@ struct BackgroundMusicSettings: Codable, Equatable {
             subtitle: "오스티나토와 텐션",
             resourceName: "HanClipAdClassicalDrama",
             resourceExtension: "wav"
+        ),
+        BackgroundMusicSampleTrack(
+            id: "golf-lets-go",
+            title: "골프치러 가자",
+            subtitle: "경쾌한 출발과 기대감",
+            resourceName: "HanClipGolfLetsGo",
+            resourceExtension: "wav"
+        ),
+        BackgroundMusicSampleTrack(
+            id: "jiwoo-first-snow-original",
+            title: "지우에게 첫눈이란",
+            subtitle: "첫눈을 본 5살 아이의 감정",
+            resourceName: "HanClipJiwooFirstSnowOriginal",
+            resourceExtension: "mp3"
+        ),
+        BackgroundMusicSampleTrack(
+            id: "jiwoo-first-snow",
+            title: "베이비 워킹",
+            subtitle: "작고 경쾌한 첫걸음",
+            resourceName: "HanClipJiwooFirstSnow",
+            resourceExtension: "wav"
         )
     ]
 

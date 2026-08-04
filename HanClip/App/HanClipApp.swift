@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -5,8 +6,6 @@ enum HanClipThemeMode: String, CaseIterable {
     case automatic
     case light
     case dark
-    case rosyBrown
-    case electricCobalt
     case blossomGlow
     case grayscalePlay
 
@@ -17,8 +16,6 @@ enum HanClipThemeMode: String, CaseIterable {
     ]
 
     static let customModes: [HanClipThemeMode] = [
-        .rosyBrown,
-        .electricCobalt,
         .blossomGlow,
         .grayscalePlay
     ]
@@ -27,8 +24,7 @@ enum HanClipThemeMode: String, CaseIterable {
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .light, .rosyBrown, .electricCobalt, .blossomGlow,
-             .grayscalePlay:
+        case .light, .blossomGlow, .grayscalePlay:
             return .light
         case .dark:
             return .dark
@@ -45,10 +41,6 @@ enum HanClipThemeMode: String, CaseIterable {
             return "Dark Mode"
         case .automatic:
             return "Automatic Mode"
-        case .rosyBrown:
-            return "Rosy Brown"
-        case .electricCobalt:
-            return "Electric Cobalt"
         case .blossomGlow:
             return "Blossom Glow"
         case .grayscalePlay:
@@ -68,8 +60,6 @@ enum HanClipTheme {
 
     static var onSecondary: Color {
         switch selectedMode {
-        case .electricCobalt:
-            return Color(uiColor: electricCobalt)
         case .grayscalePlay:
             return Color(uiColor: grayscaleBackground)
         default:
@@ -93,16 +83,6 @@ enum HanClipTheme {
                 Color(uiColor: nightSlatePrimary),
                 Color(uiColor: nightSlateSecondary)
             )
-        case .rosyBrown:
-            return (
-                Color(uiColor: rosyBrown),
-                Color(uiColor: dimGray)
-            )
-        case .electricCobalt:
-            return (
-                Color(uiColor: electricCobalt),
-                Color(uiColor: electricCobaltSecondary)
-            )
         case .blossomGlow:
             return (
                 Color(uiColor: blossomGlowPrimary),
@@ -118,10 +98,6 @@ enum HanClipTheme {
 
     static var primaryUIColor: UIColor {
         switch selectedMode {
-        case .rosyBrown:
-            return rosyBrown
-        case .electricCobalt:
-            return electricCobalt
         case .blossomGlow:
             return blossomGlowPrimary
         case .grayscalePlay:
@@ -141,10 +117,6 @@ enum HanClipTheme {
 
     static var secondaryUIColor: UIColor {
         switch selectedMode {
-        case .rosyBrown:
-            return dimGray
-        case .electricCobalt:
-            return electricCobaltSecondary
         case .blossomGlow:
             return blossomGlowSecondary
         case .grayscalePlay:
@@ -162,10 +134,6 @@ enum HanClipTheme {
         }
     }
 
-    static var rosyBrownPrimary: Color {
-        Color(uiColor: rosyBrown)
-    }
-
     static var lightSecondary: Color {
         Color(uiColor: signalClearSecondary)
     }
@@ -176,6 +144,9 @@ enum HanClipTheme {
         )
         if rawValue == "readableComfort" {
             return .light
+        }
+        if rawValue == "rosyBrown" || rawValue == "electricCobalt" {
+            return .automatic
         }
         return HanClipThemeMode(rawValue: rawValue ?? "")
             ?? .automatic
@@ -191,48 +162,6 @@ enum HanClipTheme {
         red: 41.0 / 255.0,
         green: 171.0 / 255.0,
         blue: 135.0 / 255.0,
-        alpha: 1
-    )
-    private static let rosyBrown = UIColor(
-        red: 169.0 / 255.0,
-        green: 111.0 / 255.0,
-        blue: 103.0 / 255.0,
-        alpha: 1
-    )
-    private static let dimGray = UIColor(
-        red: 92.0 / 255.0,
-        green: 86.0 / 255.0,
-        blue: 80.0 / 255.0,
-        alpha: 1
-    )
-    private static let electricCobalt = UIColor(
-        red: 0.0 / 255.0,
-        green: 71.0 / 255.0,
-        blue: 255.0 / 255.0,
-        alpha: 1
-    )
-    private static let electricCobaltSecondary = UIColor(
-        red: 0.0 / 255.0,
-        green: 153.0 / 255.0,
-        blue: 255.0 / 255.0,
-        alpha: 1
-    )
-    private static let electricCobaltBackground = UIColor(
-        red: 240.0 / 255.0,
-        green: 248.0 / 255.0,
-        blue: 255.0 / 255.0,
-        alpha: 1
-    )
-    private static let electricCobaltBackgroundWithBlack = UIColor(
-        red: 222.0 / 255.0,
-        green: 239.0 / 255.0,
-        blue: 255.0 / 255.0,
-        alpha: 1
-    )
-    private static let electricCobaltText = UIColor(
-        red: 10.0 / 255.0,
-        green: 22.0 / 255.0,
-        blue: 62.0 / 255.0,
         alpha: 1
     )
     private static let signalClearPrimary = UIColor(
@@ -386,9 +315,6 @@ enum HanClipTheme {
         alpha: 1
     )
     static var background: Color {
-        if selectedMode == .electricCobalt {
-            return Color(uiColor: electricCobaltBackground)
-        }
         if selectedMode == .light {
             return Color(uiColor: readableComfortBackground)
         }
@@ -405,9 +331,6 @@ enum HanClipTheme {
     }
 
     static var backgroundWithBlack: Color {
-        if selectedMode == .electricCobalt {
-            return Color(uiColor: electricCobaltBackgroundWithBlack)
-        }
         if selectedMode == .light {
             return Color(uiColor: readableComfortBackgroundWithBlack)
         }
@@ -432,9 +355,6 @@ enum HanClipTheme {
     }
 
     static var text: Color {
-        if selectedMode == .electricCobalt {
-            return Color(uiColor: electricCobaltText)
-        }
         if selectedMode == .light {
             return Color(uiColor: readableComfortText)
         }
@@ -479,9 +399,6 @@ enum HanClipTheme {
     }
 
     static var panelFill: Color {
-        if selectedMode == .electricCobalt {
-            return secondary.opacity(0.105)
-        }
         if selectedMode == .light {
             return secondary.opacity(0.18)
         }
@@ -498,9 +415,6 @@ enum HanClipTheme {
     }
 
     static var panelStroke: Color {
-        if selectedMode == .electricCobalt {
-            return primary.opacity(0.22)
-        }
         if selectedMode == .light {
             return primary.opacity(0.36)
         }
@@ -517,9 +431,6 @@ enum HanClipTheme {
     }
 
     static var groupFill: Color {
-        if selectedMode == .electricCobalt {
-            return secondary.opacity(0.18)
-        }
         if selectedMode == .light {
             return secondary.opacity(0.28)
         }
@@ -536,9 +447,6 @@ enum HanClipTheme {
     }
 
     static var childFill: Color {
-        if selectedMode == .electricCobalt {
-            return secondary.opacity(0.075)
-        }
         if selectedMode == .light {
             return secondary.opacity(0.12)
         }
@@ -555,9 +463,6 @@ enum HanClipTheme {
     }
 
     static var separator: Color {
-        if selectedMode == .electricCobalt {
-            return secondary.opacity(0.24)
-        }
         if selectedMode == .light {
             return primary.opacity(0.34)
         }
@@ -600,8 +505,7 @@ enum HanClipTheme {
 
     private static func themedColor(light: UIColor, dark: UIColor) -> Color {
         switch selectedMode {
-        case .light, .rosyBrown, .electricCobalt, .blossomGlow,
-             .grayscalePlay:
+        case .light, .blossomGlow, .grayscalePlay:
             return Color(uiColor: light)
         case .dark:
             return Color(uiColor: dark)
