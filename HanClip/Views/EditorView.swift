@@ -40,6 +40,18 @@ private enum SleepPreventionMode: String, CaseIterable, Identifiable {
     static let defaultValue = SleepPreventionMode.automatic
 }
 
+private struct HomeLaunchButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.965 : 1)
+            .brightness(configuration.isPressed ? -0.045 : 0)
+            .animation(
+                .easeOut(duration: 0.12),
+                value: configuration.isPressed
+            )
+    }
+}
+
 struct EditorView: View {
     private struct SelectAllClipSnapshot: Equatable {
         let id: UUID
@@ -61,6 +73,8 @@ struct EditorView: View {
     @State private var showImportantInfo = false
     @State private var showTextOverlaySettings = false
     @State private var showBackgroundMusicSettings = false
+    @State private var showOnlineMusicBrowser = false
+    @State private var showAutoCaptureCamera = false
     @State private var showAspectRatioPicker = false
     @State private var didLongPressCloseButton = false
     @State private var themeNotice: String?
@@ -187,13 +201,17 @@ struct EditorView: View {
     }
 
     private var shouldDisableIdleTimer: Bool {
+        if showAutoCaptureCamera {
+            return true
+        }
+
         switch sleepPreventionMode {
         case .alwaysOn:
-            true
+            return true
         case .alwaysOff:
-            false
+            return false
         case .automatic:
-            shouldKeepScreenOnForBackgroundWork
+            return shouldKeepScreenOnForBackgroundWork
         }
     }
 
@@ -577,6 +595,20 @@ struct EditorView: View {
             }
             .ignoresSafeArea()
         }
+        .fullScreenCover(isPresented: $showOnlineMusicBrowser) {
+            OnlineMusicBrowserView { url in
+                showOnlineMusicBrowser = false
+                if model.queueOnlineMusicDownloadAsSharedItem(url) {
+                    isSharedInboxBannerDismissed = false
+                    model.handlePendingSharedItemsOnActivation()
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showAutoCaptureCamera) {
+            AutoCaptureCameraView { url, triggerTime in
+                model.addAutoCapturedVideo(url: url, triggerTime: triggerTime)
+            }
+        }
         .fullScreenCover(
             isPresented: Binding(
                 get: { selectedClipID != nil },
@@ -606,7 +638,7 @@ struct EditorView: View {
                         totalClipCount: currentPreviewClips.count,
                         defaultDuration: model.defaultDuration,
                         totalDurationText: model.totalDurationText,
-                        autoplayOnLoad: true,
+                        autoplayOnLoad: shouldAutoplaySelectedClip,
                         onAutoplayConsumed: {
                             shouldAutoplaySelectedClip = false
                         },
@@ -619,12 +651,21 @@ struct EditorView: View {
                         onPrevious: {
                             guard index > currentPreviewClips.startIndex
                             else { return }
-                            shouldAutoplaySelectedClip = true
+                            shouldAutoplaySelectedClip = false
                             selectedClipID = currentPreviewClips[
                                 currentPreviewClips.index(before: index)
                             ].id
                         },
                         onNext: {
+                            guard index < currentPreviewClips.index(
+                                before: currentPreviewClips.endIndex
+                            ) else { return }
+                            shouldAutoplaySelectedClip = false
+                            selectedClipID = currentPreviewClips[
+                                currentPreviewClips.index(after: index)
+                            ].id
+                        },
+                        onAutoNext: {
                             guard index < currentPreviewClips.index(
                                 before: currentPreviewClips.endIndex
                             ) else { return }
@@ -634,6 +675,12 @@ struct EditorView: View {
                             ].id
                         },
                         onFirst: {
+                            guard let firstClip = currentPreviewClips.first
+                            else { return }
+                            shouldAutoplaySelectedClip = false
+                            selectedClipID = firstClip.id
+                        },
+                        onAutoFirst: {
                             guard let firstClip = currentPreviewClips.first
                             else { return }
                             shouldAutoplaySelectedClip = true
@@ -773,6 +820,9 @@ struct EditorView: View {
             }
         }
         .onChange(of: sleepPreventionModeRaw) { _, _ in
+            updateIdleTimerState()
+        }
+        .onChange(of: showAutoCaptureCamera) { _, _ in
             updateIdleTimerState()
         }
         .onChange(of: shouldKeepScreenOnForBackgroundWork) { _, _ in
@@ -964,12 +1014,16 @@ struct EditorView: View {
         switch action {
         case .open:
             isSharedInboxBannerDismissed = false
+        case .autoCapture:
+            openAutoCapture()
         case .photo:
             model.openPicker()
         case .calendar:
             model.openCalendarPicker()
         case .files:
             model.openFilePicker()
+        case .search:
+            showOnlineMusicBrowser = true
         }
     }
 
@@ -1627,6 +1681,14 @@ struct EditorView: View {
     ) -> some View {
         Menu {
             Button {
+                selectMediaImportSource("자동촬영") {
+                    openAutoCapture()
+                }
+            } label: {
+                Label("자동촬영", systemImage: "camera.fill")
+            }
+
+            Button {
                 selectMediaImportSource("사진") {
                     model.openPicker()
                 }
@@ -1652,6 +1714,7 @@ struct EditorView: View {
             } label: {
                 Label("파일", systemImage: "folder")
             }
+
         } label: {
             label()
         }
@@ -2458,6 +2521,7 @@ struct EditorView: View {
         dismissPanel: Bool = true,
         showNotice: Bool = true
     ) {
+        UserDefaults.standard.set(mode.rawValue, forKey: "hanClipThemeMode")
         themeModeRaw = mode.rawValue
         let notice = "\(mode.displayName)로 변경했습니다."
 
@@ -2561,107 +2625,17 @@ struct EditorView: View {
     private var emptyState: some View {
         GeometryReader { proxy in
             ScrollView {
-                VStack(spacing: 6) {
-                    Button {
-                        model.openPicker()
-                    } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HanClipTitleLine(
-                                "영화 만들기",
-                                systemImage: "photo.badge.plus"
-                            )
+                VStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HanClipTitleLine(
+                            "영화 프리셋",
+                            systemImage: "square.grid.2x2.fill"
+                        )
 
-                            ZStack {
-                                LinearGradient(
-                                    colors: [
-                                        HanClipTheme.primary.opacity(0.10),
-                                        HanClipTheme.secondary.opacity(0.08),
-                                        Color.white.opacity(0.16)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-
-                                Circle()
-                                    .fill(HanClipTheme.secondary.opacity(0.16))
-                                    .frame(width: 120, height: 120)
-                                    .blur(radius: 28)
-                                    .offset(x: 110, y: -58)
-
-                                Circle()
-                                    .fill(HanClipTheme.primary.opacity(0.10))
-                                    .frame(width: 96, height: 96)
-                                    .blur(radius: 24)
-                                    .offset(x: -118, y: 64)
-
-                                VStack(spacing: 14) {
-                                    HStack(spacing: 9) {
-                                        Image(systemName: "photo.stack.fill")
-                                        Text("사진과 영상을 한 편으로")
-                                        Image(systemName: "sparkles")
-                                    }
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundStyle(HanClipTheme.primaryText)
-
-                                    Text("고르고, 다듬고, 바로 만드세요.")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .lineSpacing(2)
-                                        .multilineTextAlignment(.center)
-                                        .foregroundStyle(
-                                            HanClipTheme.secondaryText
-                                        )
-
-                                    Label(
-                                        "영화 제작",
-                                        systemImage: "plus.circle.fill"
-                                    )
-                                    .font(.system(size: 17, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 24)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        LinearGradient(
-                                            colors: [
-                                                HanClipTheme.primary,
-                                                HanClipTheme.secondary.opacity(0.88)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        in: Capsule()
-                                    )
-                                    .shadow(
-                                        color: HanClipTheme.primary.opacity(0.16),
-                                        radius: 10,
-                                        y: 5
-                                    )
-                                }
-                            }
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius: 26,
-                                    style: .continuous
-                                )
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .aspectRatio(16 / 9, contentMode: .fit)
-                            .shadow(
-                                color: HanClipTheme.primary.opacity(0.10),
-                                radius: 18,
-                                y: 8
-                            )
-                            .hanClipGlassPanel(cornerRadius: 26)
-                            .padding(.horizontal, 16)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
+                        homeMoviePresetGrid
                     }
-                    .padding(.vertical, 20)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("사진 및 영상 선택")
-                    .accessibilityHint(
-                        "미디어 선택 화면을 엽니다."
-                    )
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
 
                     if !model.savedProjects.isEmpty {
                         savedProjectList
@@ -2682,23 +2656,202 @@ struct EditorView: View {
             )
             .scrollIndicators(.hidden)
         }
+        .id("home-\(themeModeRaw)")
+    }
+
+    private var homeMoviePresetGrid: some View {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(.flexible(), spacing: 12),
+                count: 2
+            ),
+            spacing: 12
+        ) {
+            homeQuickStartButton(
+                title: "새 영화",
+                subtitle: "모든 영화의 시작",
+                systemImage: "film.stack.fill",
+                accent: HanClipTheme.primary,
+                secondaryAccent: HanClipTheme.secondary
+            ) {
+                model.openMoviePreset(.newMovie)
+            }
+
+            homeQuickStartButton(
+                title: "자동촬영",
+                subtitle: "자동으로 샷 촬영",
+                systemImage: "camera.fill",
+                badgeSystemImage: "sparkles",
+                accent: HanClipTheme.primary,
+                secondaryAccent: HanClipTheme.secondary,
+                action: openAutoCapture
+            )
+
+            homeQuickStartButton(
+                title: "여행영화",
+                subtitle: "여행의 기억을 추억으로",
+                systemImage: "airplane",
+                accent: HanClipTheme.primary.opacity(0.82),
+                secondaryAccent: HanClipTheme.secondary.opacity(0.88)
+            ) {
+                model.openMoviePreset(.travel)
+            }
+
+            homeQuickStartButton(
+                title: "골프영화",
+                subtitle: "공도 넣고 기억도 넣고",
+                systemImage: "figure.golf",
+                accent: HanClipTheme.secondary,
+                secondaryAccent: HanClipTheme.primary
+            ) {
+                model.openMoviePreset(.golf)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func homeQuickStartButton(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        badgeSystemImage: String? = nil,
+        accent: Color,
+        secondaryAccent: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                ZStack {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 21, weight: .bold))
+
+                    if let badgeSystemImage {
+                        Image(systemName: badgeSystemImage)
+                            .font(.system(size: 10, weight: .black))
+                            .offset(x: 13, y: -13)
+                    }
+                }
+                .foregroundStyle(HanClipTheme.onSecondary)
+                .frame(width: 46, height: 46)
+                .background(
+                    LinearGradient(
+                        colors: [accent, secondaryAccent],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            HanClipTheme.onSecondary.opacity(0.22),
+                            lineWidth: 1
+                        )
+                }
+                .shadow(
+                    color: accent.opacity(0.16),
+                    radius: 5,
+                    y: 3
+                )
+
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 18)
+                    .padding(.top, 8)
+
+                Text(subtitle)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 14)
+                    .padding(.top, 2)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 21)
+            .padding(.bottom, 15)
+            .frame(maxWidth: .infinity)
+            .frame(height: 124)
+            .background(
+                LinearGradient(
+                    colors: [
+                        HanClipTheme.background.opacity(0.97),
+                        HanClipTheme.panelFill.opacity(0.84),
+                        accent.opacity(0.07)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                accent.opacity(0.30),
+                                HanClipTheme.panelStroke.opacity(0.72)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(
+                color: HanClipTheme.text.opacity(0.06),
+                radius: 7,
+                y: 4
+            )
+        }
+        .buttonStyle(HomeLaunchButtonStyle())
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(title.replacingOccurrences(of: "\n", with: " "))
+        .accessibilityHint(subtitle)
+    }
+
+    private func openAutoCapture() {
+        guard model.openAutoCapture(), model.isProjectOpen else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            showAutoCaptureCamera = true
+        }
+    }
+
+    private func resumeAutoCaptureProject(id: UUID) {
+        model.loadProject(id: id)
+        guard model.isProjectOpen else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            showAutoCaptureCamera = true
+        }
     }
 
     private var importantInfoButton: some View {
-        Button {
-            showImportantInfo = true
-        } label: {
-            Text("i")
-                .font(.system(size: 18, weight: .bold, design: .serif))
-                .foregroundStyle(HanClipTheme.secondary)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
+        Text("i")
+            .font(.system(size: 18, weight: .bold, design: .serif))
+            .foregroundStyle(HanClipTheme.secondary)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            .onTapGesture {
+                showImportantInfo = true
+            }
+            .onLongPressGesture(minimumDuration: 0.55) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showOnlineMusicBrowser = true
+            }
         .background {
             if #available(iOS 26.0, *) {
                 Circle()
-                    .fill(Color.white.opacity(0.14))
+                    .fill(HanClipTheme.panelFill.opacity(0.72))
                     .glassEffect(
                         .regular
                             .tint(HanClipTheme.secondary.opacity(0.16))
@@ -2707,13 +2860,13 @@ struct EditorView: View {
                     )
             } else {
                 Circle()
-                    .fill(Color.white.opacity(0.24))
+                    .fill(HanClipTheme.panelFill.opacity(0.78))
                     .background(.ultraThinMaterial, in: Circle())
             }
         }
         .overlay {
             Circle()
-                .stroke(Color.white.opacity(0.62), lineWidth: 1)
+                .stroke(HanClipTheme.panelStroke.opacity(0.72), lineWidth: 1)
         }
         .shadow(
             color: HanClipTheme.secondary.opacity(0.18),
@@ -2721,8 +2874,9 @@ struct EditorView: View {
             y: 4
         )
         .padding(.bottom, 8)
+        .id("important-info-\(themeModeRaw)")
         .accessibilityLabel("카피라이터")
-        .accessibilityHint("설정 창을 엽니다.")
+        .accessibilityHint("한 번 누르면 설정 창을 열고, 길게 누르면 온라인 음악찾기를 엽니다.")
     }
 
     private var savedProjectList: some View {
@@ -2752,19 +2906,92 @@ struct EditorView: View {
             }
             .padding(.horizontal, 18)
 
-            LazyVStack(spacing: 8) {
-                ForEach(model.savedProjects) { project in
-                    SwipeToDeleteRow {
-                        withAnimation {
-                            model.deleteProject(id: project.id)
-                        }
-                    } content: {
-                        savedProjectRow(project)
+            if !autoCaptureProjects.isEmpty {
+                projectCategoryHeader(
+                    title: "자동촬영",
+                    count: autoCaptureProjects.count,
+                    systemImage: "figure.golf"
+                )
+
+                savedProjectRows(autoCaptureProjects)
+            }
+
+            if !standardProjects.isEmpty {
+                projectCategoryHeader(
+                    title: "일반 영화",
+                    count: standardProjects.count,
+                    systemImage: "film.stack"
+                )
+
+                savedProjectRows(standardProjects)
+            }
+        }
+    }
+
+    private var autoCaptureProjects: [SavedProjectSummary] {
+        model.savedProjects.filter { $0.kind == .autoCapture }
+    }
+
+    private var standardProjects: [SavedProjectSummary] {
+        model.savedProjects.filter { $0.kind == .standard }
+    }
+
+    private func projectCategoryHeader(
+        title: String,
+        count: Int,
+        systemImage: String
+    ) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(HanClipTheme.onSecondary)
+                .frame(width: 26, height: 26)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.primary,
+                            HanClipTheme.secondary
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 7)
+                )
+
+            Text(title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(HanClipTheme.primaryText)
+
+            Text("\(count)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(HanClipTheme.secondary)
+                .frame(minWidth: 22, minHeight: 22)
+                .background(
+                    HanClipTheme.secondary.opacity(0.10),
+                    in: Circle()
+                )
+
+            Spacer()
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 2)
+    }
+
+    private func savedProjectRows(
+        _ projects: [SavedProjectSummary]
+    ) -> some View {
+        LazyVStack(spacing: 8) {
+            ForEach(projects) { project in
+                SwipeToDeleteRow {
+                    withAnimation {
+                        model.deleteProject(id: project.id)
                     }
+                } content: {
+                    savedProjectRow(project)
                 }
             }
-            .padding(.horizontal, 16)
         }
+        .padding(.horizontal, 16)
     }
 
     private func savedProjectRow(
@@ -2779,7 +3006,11 @@ struct EditorView: View {
                             .resizable()
                             .scaledToFill()
                     } else {
-                        Image(systemName: "photo")
+                        Image(
+                            systemName: project.kind == .autoCapture
+                                ? "figure.golf"
+                                : "photo"
+                        )
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(HanClipTheme.secondary)
                     }
@@ -2845,32 +3076,62 @@ struct EditorView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    model.loadProjectAndImportPending(id: project.id)
+                    if project.kind == .autoCapture {
+                        resumeAutoCaptureProject(id: project.id)
+                    } else {
+                        model.loadProjectAndImportPending(id: project.id)
+                    }
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityHint(
-                    "한 번 누르면 영화를 엽니다."
+                    project.kind == .autoCapture
+                        ? "한 번 누르면 자동촬영을 계속합니다."
+                        : "한 번 누르면 영화를 엽니다."
                 )
 
-                Button {
-                    withAnimation {
-                        model.toggleProjectPin(id: project.id)
+                if project.kind == .autoCapture {
+                    Button {
+                        resumeAutoCaptureProject(id: project.id)
+                    } label: {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(HanClipTheme.onSecondary)
+                            .frame(width: 34, height: 34)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        HanClipTheme.primary,
+                                        HanClipTheme.secondary
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: Circle()
+                            )
                     }
-                } label: {
-                    Image(systemName: project.isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(
-                            project.isPinned
-                                ? HanClipTheme.primary
-                                : HanClipTheme.secondaryText.opacity(0.38)
-                        )
-                        .frame(width: 32, height: 32)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("자동촬영 계속")
+                } else {
+                    Button {
+                        withAnimation {
+                            model.toggleProjectPin(id: project.id)
+                        }
+                    } label: {
+                        Image(systemName: project.isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(
+                                project.isPinned
+                                    ? HanClipTheme.primary
+                                    : HanClipTheme.secondaryText.opacity(0.38)
+                            )
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(project.isPinned ? "핀 해제" : "핀 고정")
+                    .accessibilityHint(
+                        "이 영화를 영화 목록 상단에 고정하거나 해제합니다."
+                    )
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(project.isPinned ? "핀 해제" : "핀 고정")
-                .accessibilityHint(
-                    "이 영화를 영화 목록 상단에 고정하거나 해제합니다."
-                )
             }
             .frame(height: 56)
 
@@ -2891,7 +3152,9 @@ struct EditorView: View {
             LinearGradient(
                 colors: [
                     HanClipTheme.panelFill.opacity(0.96),
-                    HanClipTheme.secondary.opacity(0.045),
+                    HanClipTheme.secondary.opacity(
+                        project.kind == .autoCapture ? 0.10 : 0.045
+                    ),
                     Color.white.opacity(0.08)
                 ],
                 startPoint: .topLeading,
@@ -5000,6 +5263,9 @@ struct HanClipLogoButton: View {
 }
 
 struct HanClipHeaderPill<Content: View>: View {
+    @AppStorage("hanClipThemeMode") private var themeModeRaw =
+        HanClipThemeMode.automatic.rawValue
+
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -5008,18 +5274,22 @@ struct HanClipHeaderPill<Content: View>: View {
             .padding(.vertical, 7)
             .background(.ultraThinMaterial, in: Capsule())
             .background(
-                Color.white.opacity(0.30),
+                HanClipTheme.panelFill.opacity(0.72),
                 in: Capsule()
             )
             .overlay {
                 Capsule()
-                    .stroke(Color.white.opacity(0.34), lineWidth: 1)
+                    .stroke(
+                        HanClipTheme.panelStroke.opacity(0.62),
+                        lineWidth: 1
+                    )
             }
             .shadow(
                 color: HanClipTheme.secondary.opacity(0.08),
                 radius: 12,
                 y: 5
             )
+            .id(themeModeRaw)
     }
 }
 
@@ -5041,12 +5311,15 @@ struct HanClipHeaderActionCluster<Content: View>: View {
         .padding(.horizontal, 16)
         .background(.ultraThinMaterial, in: Capsule())
         .background(
-            Color.white.opacity(0.30),
+            HanClipTheme.panelFill.opacity(0.72),
             in: Capsule()
         )
         .overlay {
             Capsule()
-                .stroke(Color.white.opacity(0.34), lineWidth: 1)
+                .stroke(
+                    HanClipTheme.panelStroke.opacity(0.62),
+                    lineWidth: 1
+                )
         }
         .shadow(
             color: HanClipTheme.secondary.opacity(0.08),
@@ -5195,8 +5468,8 @@ private struct ImportantInfoSheet: View {
     private let items: [(title: String, body: String)] = [
         (SpecialThanksInfo.title, SpecialThanksInfo.body),
         ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 설정과 설정 정보를 보여주는 창입니다."),
-        ("첫 화면", "앱 실행 후 영화 만들기와 저장된 영화 목록이 보이는 홈 화면입니다."),
-        ("영화 만들기 영역", "첫 화면 상단의 영화 제작 카드입니다. 영화를 시작하기 위해 미디어를 고르는 영역입니다."),
+        ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
+        ("영화 프리셋", "첫 화면 상단에서 새 영화, 자동촬영, 여행영화, 골프영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
         ("영화 목록", "첫 화면에 저장된 영화들이 표시되는 영역입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다."),
         ("영화 설정", "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다."),
@@ -5220,16 +5493,23 @@ private struct ImportantInfoSheet: View {
         ("자동 진행", "편집에서 클립 재생이 끝나면 다음 클립으로 이어지고, 마지막 클립 뒤에는 처음 클립으로 계속 이어지는 기능입니다."),
         ("달력 썸네일 버튼", "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다."),
         ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
-        ("샘플 음악 저작권", """
+        ("외부 호출 주소", "hanclip://files\nhanclip://calendar\nhanclip://photo\nhanclip://search\nhanclip://open"),
+        ("샘플 음악", """
         HanClip에 포함된 샘플 음악 \(BackgroundMusicSettings.sampleDisplayName)은 앱 기능 검증과 사용자의 일상 영상 배경음악을 위해 인공지능 생성 및 합성 방식으로 만든 샘플 음악입니다.
 
         이 샘플 음악은 외부 음원, 기존 곡, 상용 음악 라이브러리, 사람의 실연 녹음 파일을 가져와 사용하지 않았으며, HanClip 앱 안에서 제공되는 기본 샘플 자산입니다. 사용자는 이 샘플 음악을 HanClip으로 만든 영상 결과물의 배경음악으로 사용할 수 있습니다.
 
         샘플 음악 중 '지우에게 첫눈이란'은 앱 제작자의 가족이 직접 만든 개인 창작 음악을 원 저작자의 허락을 받아 HanClip 앱 안에 샘플 음악으로 포함한 곡입니다. '베이비 워킹'은 이 곡에서 느껴지는 첫눈의 감정과 경쾌한 분위기를 참고하되, 원곡 음원이나 멜로디를 직접 사용하지 않고 HanClip 샘플용으로 새롭게 생성한 음악입니다.
 
-        음악 설정 화면의 '온라인 음악 찾기'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾을 수 있도록 공식 Pixabay Music 페이지를 여는 기능입니다. Pixabay에서 다운로드한 음악은 HanClip 내장 샘플 음악이 아니며, 사용자는 해당 음악의 Pixabay Content License와 다운로드 기록, 곡별 안내를 확인한 뒤 자신이 만든 영상에 사용할 책임이 있습니다.
+        영화 프리셋의 '여행의 설렘'과 '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 각 프리셋에서 자동으로 선택됩니다.
         """),
-        ("외부 호출 주소", "hanclip://photo\nhanclip://calendar\nhanclip://files\nhanclip://open"),
+        ("외부 음악", """
+        음악 설정 화면의 '온라인 음악 찾기'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
+
+        Pixabay Music과 Mixkit Music에서 다운로드한 음악은 HanClip 내장 샘플 음악이 아니며, 각 음원의 권리와 이용 조건은 해당 사이트의 라이선스와 곡별 안내를 따릅니다. 사용자는 다운로드 시점의 Pixabay Content License, Mixkit License, 곡별 안내, 다운로드 기록을 확인하고 보관한 뒤 자신이 만든 영상에 사용할 책임이 있습니다.
+
+        HanClip은 외부 음원 파일을 독립 음원으로 판매, 배포, 재라이선스하거나 음악 라이브러리 형태로 제공하지 않습니다. 외부 음원은 사용자가 선택한 영상 결과물 안에 배경음악으로 합성될 때만 사용되며, TV/라디오 방송, 게임, CD/DVD, 음원 단독 배포 등 각 사이트가 제한하는 용도에는 사용자가 별도 라이선스 확인 또는 권리자의 허락을 받아야 합니다.
+        """),
         ("내장 서체 저작권", """
         HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
 
@@ -5272,10 +5552,15 @@ private struct ImportantInfoSheet: View {
                             if item.title == "내장 서체 저작권" {
                                 embeddedFontCopyrightRow(
                                     title: item.title,
-                                    body: item.body
+                                    body: item.body,
+                                    systemImage: infoIcon(for: item.title)
                                 )
                             } else {
-                                infoRow(title: item.title, body: item.body)
+                                infoRow(
+                                    title: item.title,
+                                    body: item.body,
+                                    systemImage: infoIcon(for: item.title)
+                                )
                             }
                         }
                     }
@@ -5343,13 +5628,14 @@ private struct ImportantInfoSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HanClipTitleLine(
                 "카피라이터 설정",
+                systemImage: "person.text.rectangle.fill",
                 leadingInset: 18,
                 trailingInset: -2
             )
 
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
-                    sectionTitle("SNS / 로고")
+                    sectionTitle("SNS / 로고", systemImage: "person.crop.circle.badge.checkmark")
 
                     LazyVGrid(
                         columns: Array(
@@ -5402,7 +5688,7 @@ private struct ImportantInfoSheet: View {
                 copyrightPositionSettings
 
                 VStack(alignment: .leading, spacing: 10) {
-                    sectionTitle("색상")
+                    sectionTitle("색상", systemImage: "paintpalette.fill")
 
                     HStack(spacing: 10) {
                         copyrightColorPicker(
@@ -5462,7 +5748,7 @@ private struct ImportantInfoSheet: View {
 
     private var copyrightPositionSettings: some View {
         VStack(alignment: .leading, spacing: 7) {
-            sectionTitle("위치")
+            sectionTitle("위치", systemImage: "scope")
 
             LazyVGrid(
                 columns: Array(
@@ -5489,7 +5775,7 @@ private struct ImportantInfoSheet: View {
 
     private var sleepPreventionSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("화면 꺼짐 방지")
+            sectionTitle("화면 꺼짐 방지", systemImage: "sun.max.fill")
 
             Picker("화면 꺼짐 방지", selection: $sleepPreventionModeRaw) {
                 ForEach(SleepPreventionMode.allCases) { mode in
@@ -5522,10 +5808,19 @@ private struct ImportantInfoSheet: View {
         )
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(HanClipTheme.secondaryText)
+    private func sectionTitle(
+        _ title: String,
+        systemImage: String? = nil
+    ) -> some View {
+        HStack(spacing: 6) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .foregroundStyle(HanClipTheme.secondary)
+            }
+            Text(title)
+        }
+        .font(.system(size: 13, weight: .bold))
+        .foregroundStyle(HanClipTheme.secondaryText)
     }
 
     private func copyrightColorPicker(
@@ -5970,19 +6265,66 @@ private struct ImportantInfoSheet: View {
         loadAddress(for: resetPlatform)
     }
 
-    private func infoRow(title: String, body: String) -> some View {
+    private func infoRow(
+        title: String,
+        body: String,
+        systemImage: String
+    ) -> some View {
         InfoRow(
             title: title,
             detail: body,
+            systemImage: systemImage,
             isCentered: title == "Special Thanks"
         )
     }
 
     private func embeddedFontCopyrightRow(
         title: String,
-        body: String
+        body: String,
+        systemImage: String
     ) -> some View {
-        EmbeddedFontCopyrightRow(title: title, detail: body)
+        EmbeddedFontCopyrightRow(
+            title: title,
+            detail: body,
+            systemImage: systemImage
+        )
+    }
+
+    private func infoIcon(for title: String) -> String {
+        switch title {
+        case "Special Thanks": "heart.fill"
+        case "카피라이터": "info.circle.fill"
+        case "첫 화면": "house.fill"
+        case "영화 프리셋": "square.grid.2x2.fill"
+        case "영화 목록": "rectangle.stack.fill"
+        case "영화 화면": "film.fill"
+        case "영화 설정": "slider.horizontal.3"
+        case "클립 리스트": "list.bullet.rectangle.fill"
+        case "순서변경 상태": "arrow.up.arrow.down"
+        case "편집 영역 / 편집 모드": "slider.horizontal.below.rectangle"
+        case "시사회": "play.rectangle.fill"
+        case "만들기": "wand.and.stars"
+        case "영상 생성 진행창": "progress.indicator"
+        case "개봉하기 창": "square.and.arrow.up.fill"
+        case "테마 선택창": "paintpalette.fill"
+        case "첫 화면 이동 팝업": "house.and.flag.fill"
+        case "로고": "play.hexagon.fill"
+        case "카피라이터 입력": "signature"
+        case "세그먼트 컨트롤": "rectangle.split.2x1.fill"
+        case "단일 / 다중": "square.stack.3d.up.fill"
+        case "모클립": "rectangle.stack.fill"
+        case "자클립": "rectangle.fill.on.rectangle.fill"
+        case "웨이브 / 웨이브 인디케이터": "waveform"
+        case "선택바": "arrow.left.and.right"
+        case "자동 진행": "repeat"
+        case "달력 썸네일 버튼": "calendar"
+        case "자막": "captions.bubble.fill"
+        case "외부 호출 주소": "link"
+        case "샘플 음악": "music.note.list"
+        case "외부 음악": "globe"
+        case "내장 서체 저작권": "textformat"
+        default: "info.circle.fill"
+        }
     }
 }
 
@@ -6428,10 +6770,11 @@ private struct TextOverlaySettingsSheet: View {
             FontPresetSpec(
                 id: "green_golf",
                 title: "그린골프",
-                preferredFontIDs: ["do_hyeon", "black_han_sans"],
-                textColor: "#FFFFFF",
-                shadowColor: "#10B85A",
-                fontSize: .extraLarge
+                preferredFontIDs: WatermarkSettings.greenGolfPreferredFontIDs,
+                textColor: WatermarkSettings.greenGolfTextColor,
+                shadowColor: WatermarkSettings.greenGolfShadowColor,
+                fontSize: WatermarkSettings.greenGolfFontSize,
+                shadowOpacity: WatermarkSettings.greenGolfShadowOpacity
             )
         ]
     }
@@ -7556,6 +7899,7 @@ private struct InstalledFontPicker: UIViewControllerRepresentable {
 private struct InfoRow: View {
     let title: String
     let detail: String
+    let systemImage: String
     let isCentered: Bool
 
     var body: some View {
@@ -7563,7 +7907,7 @@ private struct InfoRow: View {
             alignment: isCentered ? .center : .leading,
             spacing: 6
         ) {
-            Text(title)
+            Label(title, systemImage: systemImage)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(HanClipTheme.primary)
                 .frame(maxWidth: .infinity, alignment: isCentered ? .center : .leading)
@@ -7722,6 +8066,7 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
 private struct EmbeddedFontCopyrightRow: View {
     let title: String
     let detail: String
+    let systemImage: String
 
     private let tableMarker = "[[embedded_font_size_table]]"
 
@@ -7795,7 +8140,7 @@ private struct EmbeddedFontCopyrightRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
+            Label(title, systemImage: systemImage)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(HanClipTheme.primary)
                 .textSelection(.enabled)
@@ -8704,44 +9049,61 @@ private struct BackgroundMusicSettingsSheet: View {
 private struct OnlineMusicBrowserView: View {
     let onDownloaded: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("hanClipOnlineMusicFavorites")
+    private var favoriteMusicSitesRaw = "https://pixabay.com/music/\nhttps://mixkit.co/free-stock-music/\nhttps://intosharp.com/"
     @State private var isDownloading = false
+    @State private var currentURLText = "https://pixabay.com/music/"
+    @State private var addressText = "https://pixabay.com/music/"
+    @State private var requestedURL: URL?
+    @State private var canGoBack = false
+    @State private var isPageLoading = false
+    @State private var goBackTrigger = 0
+    @State private var stopLoadingTrigger = 0
+    @State private var downloadStatusText = "음악을 가져오는 중"
+    @State private var showFavoriteEditor = false
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                OnlineMusicWebView(
-                    url: URL(string: "https://pixabay.com/music/")!,
-                    isDownloading: $isDownloading,
-                    onDownloaded: onDownloaded
-                )
-                .ignoresSafeArea(edges: .bottom)
+            VStack(spacing: 0) {
+                addressBar
 
-                if isDownloading {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .tint(HanClipTheme.primary)
-                        Text("음악을 가져오는 중")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-                    .foregroundStyle(HanClipTheme.text)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(
-                        HanClipTheme.panelFill,
-                        in: Capsule()
+                ZStack(alignment: .bottom) {
+                    OnlineMusicWebView(
+                        url: firstFavoriteMusicSiteURL,
+                        currentURLText: $currentURLText,
+                        requestedURL: $requestedURL,
+                        canGoBack: $canGoBack,
+                        isPageLoading: $isPageLoading,
+                        goBackTrigger: $goBackTrigger,
+                        stopLoadingTrigger: $stopLoadingTrigger,
+                        isDownloading: $isDownloading,
+                        downloadStatusText: $downloadStatusText,
+                        onDownloaded: onDownloaded
                     )
-                    .overlay {
-                        Capsule()
-                            .stroke(
-                                HanClipTheme.secondary.opacity(0.16),
-                                lineWidth: 1
-                            )
+                    .ignoresSafeArea(edges: .bottom)
+
+                    if isDownloading {
+                        downloadStatusOverlay
                     }
-                    .padding(.bottom, 18)
                 }
+            }
+            .sheet(isPresented: $showFavoriteEditor) {
+                OnlineMusicFavoritesEditorView(
+                    favoritesRaw: $favoriteMusicSitesRaw
+                )
+                .presentationDetents([.medium, .large])
             }
             .navigationTitle("온라인 음악")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: currentURLText) { _, newValue in
+                addressText = newValue
+            }
+            .onAppear {
+                ensureDefaultFavorites()
+                let initialURL = firstFavoriteMusicSiteURL
+                currentURLText = initialURL.absoluteString
+                addressText = initialURL.absoluteString
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -8756,22 +9118,424 @@ private struct OnlineMusicBrowserView: View {
             }
         }
     }
+
+    private var addressBar: some View {
+        HStack(spacing: 8) {
+            Button {
+                goBackTrigger += 1
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(
+                        canGoBack
+                            ? HanClipTheme.primary
+                            : HanClipTheme.text.opacity(0.28)
+                    )
+                    .frame(width: 30, height: 30)
+                    .background(
+                        HanClipTheme.panelFill.opacity(0.95),
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoBack)
+            .accessibilityLabel("이전 페이지")
+
+            TextField("웹 주소 입력", text: $addressText)
+                .font(.system(size: 13, weight: .semibold))
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.go)
+                .onSubmit(loadAddress)
+
+            Button(action: primaryAddressAction) {
+                Image(systemName: isPageLoading ? "xmark" : "arrow.right")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(HanClipTheme.primary, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isPageLoading ? "로딩 중지" : "주소로 이동")
+
+            Button(action: toggleCurrentFavorite) {
+                Image(systemName: isCurrentFavorite ? "star.fill" : "star")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(
+                        isCurrentFavorite
+                            ? HanClipTheme.primary
+                            : HanClipTheme.text.opacity(0.62)
+                    )
+                    .frame(width: 30, height: 30)
+                    .background(
+                        HanClipTheme.panelFill.opacity(0.95),
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isCurrentFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가")
+
+            Menu {
+                ForEach(favoriteMusicSites, id: \.self) { favorite in
+                    Button {
+                        openFavorite(favorite)
+                    } label: {
+                        Label(
+                            favoriteDisplayTitle(favorite),
+                            systemImage: "bookmark"
+                        )
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    showFavoriteEditor = true
+                } label: {
+                    Label("즐겨찾기 편집", systemImage: "slider.horizontal.3")
+                }
+            } label: {
+                Image(systemName: "bookmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        HanClipTheme.panelFill.opacity(0.95),
+                        in: Circle()
+                    )
+            }
+            .disabled(favoriteMusicSites.isEmpty)
+            .accessibilityLabel("즐겨찾기 목록")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(HanClipTheme.background.opacity(0.96))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(HanClipTheme.secondary.opacity(0.18))
+                .frame(height: 1)
+        }
+    }
+
+    private var downloadStatusOverlay: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .tint(HanClipTheme.primary)
+            Text(downloadStatusText)
+                .font(.system(size: 13, weight: .bold))
+        }
+        .foregroundStyle(HanClipTheme.text)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background(
+            HanClipTheme.panelFill,
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .stroke(
+                    HanClipTheme.secondary.opacity(0.16),
+                    lineWidth: 1
+                )
+        }
+        .padding(.bottom, 18)
+    }
+
+    private func loadAddress() {
+        guard let url = Self.normalizedURL(from: addressText) else { return }
+        requestedURL = url
+        currentURLText = url.absoluteString
+        addressText = url.absoluteString
+    }
+
+    private func primaryAddressAction() {
+        if isPageLoading {
+            stopLoadingTrigger += 1
+        } else {
+            loadAddress()
+        }
+    }
+
+    private var favoriteMusicSites: [String] {
+        favoriteMusicSitesRaw
+            .split(separator: "\n")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+    }
+
+    private var firstFavoriteMusicSiteURL: URL {
+        favoriteMusicSites
+            .compactMap(Self.normalizedURL)
+            .first
+            ?? URL(string: "https://pixabay.com/music/")!
+    }
+
+    private var normalizedCurrentURLString: String? {
+        Self.normalizedURL(from: currentURLText)?.absoluteString
+    }
+
+    private var isCurrentFavorite: Bool {
+        guard let normalizedCurrentURLString else { return false }
+        return favoriteMusicSites.contains(normalizedCurrentURLString)
+    }
+
+    private func toggleCurrentFavorite() {
+        guard let normalized = normalizedCurrentURLString else { return }
+        var favorites = favoriteMusicSites
+        if let index = favorites.firstIndex(of: normalized) {
+            favorites.remove(at: index)
+        } else {
+            favorites.append(normalized)
+        }
+        favoriteMusicSitesRaw = favorites.joined(separator: "\n")
+    }
+
+    private func ensureDefaultFavorites() {
+        var favorites = favoriteMusicSites
+        guard favorites.contains("https://pixabay.com/music/") else { return }
+
+        let mixkit = "https://mixkit.co/free-stock-music/"
+        let intosharp = "https://intosharp.com/"
+
+        if let existingMixkitIndex = favorites.firstIndex(of: mixkit) {
+            favorites.remove(at: existingMixkitIndex)
+        }
+
+        if let pixabayIndex = favorites.firstIndex(of: "https://pixabay.com/music/") {
+            favorites.insert(mixkit, at: min(pixabayIndex + 1, favorites.endIndex))
+        } else {
+            favorites.append(mixkit)
+        }
+
+        if !favorites.contains(intosharp) {
+            favorites.append(intosharp)
+        }
+        favoriteMusicSitesRaw = favorites.joined(separator: "\n")
+    }
+
+    private func openFavorite(_ favorite: String) {
+        addressText = favorite
+        loadAddress()
+    }
+
+    private func favoriteDisplayTitle(_ favorite: String) -> String {
+        guard let url = URL(string: favorite),
+              let host = url.host(percentEncoded: false)
+        else { return favorite }
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return path.isEmpty ? host : "\(host)/\(path)"
+    }
+
+    nonisolated private static func normalizedURL(from text: String) -> URL? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let url = URL(string: trimmed), url.scheme != nil {
+            return url
+        }
+        return URL(string: "https://\(trimmed)")
+    }
+}
+
+private struct OnlineMusicFavoritesEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var favoritesRaw: String
+    @State private var favorites: [String]
+    @State private var editMode = EditMode.active
+
+    init(favoritesRaw: Binding<String>) {
+        _favoritesRaw = favoritesRaw
+        _favorites = State(
+            initialValue: Self.favorites(from: favoritesRaw.wrappedValue)
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(favorites, id: \.self) { favorite in
+                    favoriteRow(favorite)
+                        .listRowInsets(
+                            EdgeInsets(
+                                top: 5,
+                                leading: 16,
+                                bottom: 5,
+                                trailing: 16
+                            )
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+                .onMove { source, destination in
+                    favorites.move(fromOffsets: source, toOffset: destination)
+                    save()
+                }
+            }
+            .listStyle(.plain)
+            .environment(\.editMode, $editMode)
+            .scrollContentBackground(.hidden)
+            .background(HanClipTheme.background.ignoresSafeArea())
+            .safeAreaInset(edge: .bottom) {
+                if !favorites.isEmpty {
+                    Text("행을 길게 잡고 움직여 순서를 바꿉니다.")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.secondaryText)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            HanClipTheme.panelFill.opacity(0.92),
+                            in: Capsule()
+                        )
+                        .padding(.bottom, 8)
+                }
+            }
+            .overlay {
+                if favorites.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "bookmark")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(HanClipTheme.secondary)
+                        Text("등록된 즐겨찾기가 없습니다.")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(HanClipTheme.secondaryText)
+                    }
+                }
+            }
+            .navigationTitle("즐겨찾기")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        favorites = []
+                        save()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "trash")
+                            Text("전체삭제")
+                        }
+                        .font(.system(size: 14, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.primary)
+                    .disabled(favorites.isEmpty)
+                    .accessibilityLabel("즐겨찾기 모두 삭제")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                    .foregroundStyle(HanClipTheme.primary)
+                    .accessibilityLabel("닫기")
+                }
+            }
+        }
+    }
+
+    private func favoriteRow(_ favorite: String) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(displayTitle(for: favorite))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primaryText)
+                    .lineLimit(1)
+
+                Text(favorite)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            favoriteIconButton("trash") {
+                if let index = favorites.firstIndex(of: favorite) {
+                    favorites.remove(at: index)
+                    save()
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            HanClipTheme.panelFill.opacity(0.92),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(HanClipTheme.panelStroke.opacity(0.70), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func favoriteIconButton(
+        _ systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(HanClipTheme.primary)
+                .frame(width: 28, height: 28)
+                .background(
+                    Color.white.opacity(0.45),
+                    in: Circle()
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func save() {
+        favoritesRaw = favorites.joined(separator: "\n")
+    }
+
+    private func displayTitle(for favorite: String) -> String {
+        guard let url = URL(string: favorite),
+              let host = url.host(percentEncoded: false)
+        else { return favorite }
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return path.isEmpty ? host : "\(host)/\(path)"
+    }
+
+    private static func favorites(from raw: String) -> [String] {
+        raw.split(separator: "\n")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+    }
 }
 
 private struct OnlineMusicWebView: UIViewRepresentable {
     let url: URL
+    @Binding var currentURLText: String
+    @Binding var requestedURL: URL?
+    @Binding var canGoBack: Bool
+    @Binding var isPageLoading: Bool
+    @Binding var goBackTrigger: Int
+    @Binding var stopLoadingTrigger: Int
     @Binding var isDownloading: Bool
+    @Binding var downloadStatusText: String
     let onDownloaded: (URL) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
+            currentURLText: $currentURLText,
+            requestedURL: $requestedURL,
+            canGoBack: $canGoBack,
+            isPageLoading: $isPageLoading,
+            goBackTrigger: $goBackTrigger,
+            stopLoadingTrigger: $stopLoadingTrigger,
             isDownloading: $isDownloading,
+            downloadStatusText: $downloadStatusText,
             onDownloaded: onDownloaded
         )
     }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
@@ -8779,19 +9543,130 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.updateBindings(
+            currentURLText: $currentURLText,
+            requestedURL: $requestedURL,
+            canGoBack: $canGoBack,
+            isPageLoading: $isPageLoading,
+            goBackTrigger: $goBackTrigger,
+            stopLoadingTrigger: $stopLoadingTrigger,
+            isDownloading: $isDownloading,
+            downloadStatusText: $downloadStatusText
+        )
+        context.coordinator.handleBrowserControls(in: webView)
+        guard let requestedURL else { return }
+        if webView.url != requestedURL {
+            webView.load(URLRequest(url: requestedURL))
+        }
+        DispatchQueue.main.async {
+            self.requestedURL = nil
+        }
+    }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKDownloadDelegate {
+        @Binding private var currentURLText: String
+        @Binding private var requestedURL: URL?
+        @Binding private var canGoBack: Bool
+        @Binding private var isPageLoading: Bool
+        @Binding private var goBackTrigger: Int
+        @Binding private var stopLoadingTrigger: Int
         @Binding private var isDownloading: Bool
+        @Binding private var downloadStatusText: String
         private let onDownloaded: (URL) -> Void
         private var destinationURL: URL?
+        private var handledGoBackTrigger = 0
+        private var handledStopLoadingTrigger = 0
 
         init(
+            currentURLText: Binding<String>,
+            requestedURL: Binding<URL?>,
+            canGoBack: Binding<Bool>,
+            isPageLoading: Binding<Bool>,
+            goBackTrigger: Binding<Int>,
+            stopLoadingTrigger: Binding<Int>,
             isDownloading: Binding<Bool>,
+            downloadStatusText: Binding<String>,
             onDownloaded: @escaping (URL) -> Void
         ) {
+            _currentURLText = currentURLText
+            _requestedURL = requestedURL
+            _canGoBack = canGoBack
+            _isPageLoading = isPageLoading
+            _goBackTrigger = goBackTrigger
+            _stopLoadingTrigger = stopLoadingTrigger
             _isDownloading = isDownloading
+            _downloadStatusText = downloadStatusText
             self.onDownloaded = onDownloaded
+        }
+
+        func updateBindings(
+            currentURLText: Binding<String>,
+            requestedURL: Binding<URL?>,
+            canGoBack: Binding<Bool>,
+            isPageLoading: Binding<Bool>,
+            goBackTrigger: Binding<Int>,
+            stopLoadingTrigger: Binding<Int>,
+            isDownloading: Binding<Bool>,
+            downloadStatusText: Binding<String>
+        ) {
+            _currentURLText = currentURLText
+            _requestedURL = requestedURL
+            _canGoBack = canGoBack
+            _isPageLoading = isPageLoading
+            _goBackTrigger = goBackTrigger
+            _stopLoadingTrigger = stopLoadingTrigger
+            _isDownloading = isDownloading
+            _downloadStatusText = downloadStatusText
+        }
+
+        func handleBrowserControls(in webView: WKWebView) {
+            if goBackTrigger != handledGoBackTrigger {
+                handledGoBackTrigger = goBackTrigger
+                if webView.canGoBack {
+                    webView.goBack()
+                }
+            }
+            if stopLoadingTrigger != handledStopLoadingTrigger {
+                handledStopLoadingTrigger = stopLoadingTrigger
+                webView.stopLoading()
+                isPageLoading = false
+            }
+            updateCurrentURL(from: webView)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didStartProvisionalNavigation navigation: WKNavigation!
+        ) {
+            isPageLoading = true
+            updateCurrentURL(from: webView)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFinish navigation: WKNavigation!
+        ) {
+            isPageLoading = false
+            updateCurrentURL(from: webView)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFail navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            isPageLoading = false
+            updateCurrentURL(from: webView)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            isPageLoading = false
+            updateCurrentURL(from: webView)
         }
 
         func webView(
@@ -8799,6 +9674,8 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             navigationResponse: WKNavigationResponse,
             didBecome download: WKDownload
         ) {
+            downloadStatusText = "다운로드 감지됨"
+            isDownloading = true
             download.delegate = self
         }
 
@@ -8807,7 +9684,26 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             navigationAction: WKNavigationAction,
             didBecome download: WKDownload
         ) {
+            downloadStatusText = "다운로드 감지됨"
+            isDownloading = true
             download.delegate = self
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            if let url = navigationAction.request.url {
+                currentURLText = url.absoluteString
+                if Self.isSupportedAudioURL(url), #available(iOS 14.5, *) {
+                    downloadStatusText = "음악 파일 다운로드 감지됨"
+                    isDownloading = true
+                    decisionHandler(.download)
+                    return
+                }
+            }
+            decisionHandler(.allow)
         }
 
         func webView(
@@ -8824,6 +9720,8 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             }
 
             if #available(iOS 14.5, *) {
+                downloadStatusText = "음악 파일 다운로드 감지됨"
+                isDownloading = true
                 decisionHandler(.download)
             } else {
                 decisionHandler(.allow)
@@ -8837,6 +9735,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             completionHandler: @escaping (URL?) -> Void
         ) {
             isDownloading = true
+            downloadStatusText = "음악을 가져오는 중"
             let filename = Self.safeFilename(suggestedFilename, response: response)
             let destination = FileManager.default.temporaryDirectory
                 .appendingPathComponent("HanClip-OnlineMusic-")
@@ -8858,6 +9757,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
 
         func downloadDidFinish(_ download: WKDownload) {
             isDownloading = false
+            downloadStatusText = "음악을 가져오는 중"
             guard let destinationURL else { return }
             onDownloaded(destinationURL)
         }
@@ -8868,6 +9768,14 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             resumeData: Data?
         ) {
             isDownloading = false
+            downloadStatusText = "다운로드 실패"
+        }
+
+        private func updateCurrentURL(from webView: WKWebView) {
+            if let url = webView.url {
+                currentURLText = url.absoluteString
+            }
+            canGoBack = webView.canGoBack
         }
 
         private static func isSupportedAudioMimeType(_ mimeType: String) -> Bool {
@@ -8880,6 +9788,15 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 "audio/mp4",
                 "audio/x-m4a"
             ].contains(mimeType)
+        }
+
+        private static func isSupportedAudioURL(_ url: URL) -> Bool {
+            [
+                "mp3",
+                "m4a",
+                "aac",
+                "wav"
+            ].contains(url.pathExtension.lowercased())
         }
 
         private static func safeFilename(

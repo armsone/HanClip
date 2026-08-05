@@ -1,10 +1,16 @@
 import Foundation
 import UIKit
 
+enum ProjectKind: String, Codable {
+    case standard
+    case autoCapture
+}
+
 struct SavedProjectSummary: Identifiable, Equatable {
     let id: UUID
     let createdAt: Date
     let updatedAt: Date
+    let kind: ProjectKind
     let isPinned: Bool
     let clipCount: Int
     let totalDuration: Double
@@ -17,8 +23,10 @@ struct SavedProjectSummary: Identifiable, Equatable {
 
 struct LoadedProject {
     let id: UUID
+    let kind: ProjectKind
     let clips: [ClipItem]
     let defaultDuration: Double
+    let defaultVideoSegmentMode: VideoSegmentMode
     let outputAspectRatio: OutputAspectRatio?
     let automaticSourceSize: CGSize
     let textOverlaySettings: WatermarkSettings
@@ -58,11 +66,13 @@ enum ProjectStore {
     static func save(
         clips: [ClipItem],
         defaultDuration: Double,
+        defaultVideoSegmentMode: VideoSegmentMode = .single,
         outputAspectRatio: OutputAspectRatio?,
         automaticSourceSize: CGSize,
         textOverlaySettings: WatermarkSettings,
         backgroundMusicSettings: BackgroundMusicSettings,
-        activeProjectID: UUID?
+        activeProjectID: UUID?,
+        kind: ProjectKind = .standard
     ) throws -> UUID {
         let root = try projectsRoot()
         let existing = activeProjectID.flatMap {
@@ -153,9 +163,11 @@ enum ProjectStore {
                 id: projectID,
                 createdAt: existing?.createdAt ?? Date(),
                 updatedAt: Date(),
+                kind: existing?.kind ?? kind,
                 isPinned: existing?.isPinned ?? false,
                 memo: existing?.memo,
                 defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode.rawValue,
                 outputAspectRatio: outputAspectRatio?.rawValue,
                 automaticSourceWidth: automaticSourceSize.width,
                 automaticSourceHeight: automaticSourceSize.height,
@@ -293,8 +305,11 @@ enum ProjectStore {
 
         return LoadedProject(
             id: stored.id,
+            kind: stored.kind ?? .standard,
             clips: clips,
             defaultDuration: stored.defaultDuration,
+            defaultVideoSegmentMode: stored.defaultVideoSegmentMode
+                .map(VideoSegmentMode.init(storedValue:)) ?? .single,
             outputAspectRatio: stored.outputAspectRatio.flatMap(
                 OutputAspectRatio.init(rawValue:)
             ),
@@ -306,7 +321,8 @@ enum ProjectStore {
                 ?? WatermarkSettings.projectDefault(),
             backgroundMusicSettings: restoreBackgroundMusic(
                 stored.backgroundMusicSettings,
-                in: directory
+                in: directory,
+                fallback: stored.kind == .autoCapture ? .empty : .projectDefault
             )
         )
     }
@@ -553,15 +569,16 @@ enum ProjectStore {
 
     private static func restoreBackgroundMusic(
         _ settings: BackgroundMusicSettings?,
-        in directory: URL
+        in directory: URL,
+        fallback: BackgroundMusicSettings
     ) -> BackgroundMusicSettings {
         guard var settings, let filename = settings.fileURL?.lastPathComponent
         else {
-            return .projectDefault
+            return fallback
         }
         let url = directory.appendingPathComponent(filename)
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return .projectDefault
+            return fallback
         }
         settings.fileURL = url
         return settings
@@ -658,9 +675,11 @@ private struct StoredProject: Codable {
     let id: UUID
     let createdAt: Date
     var updatedAt: Date
+    var kind: ProjectKind?
     var isPinned: Bool
     var memo: String?
     let defaultDuration: Double
+    let defaultVideoSegmentMode: String?
     let outputAspectRatio: String?
     let automaticSourceWidth: Double
     let automaticSourceHeight: Double
@@ -675,6 +694,7 @@ private struct StoredProject: Codable {
             id: id,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            kind: kind ?? .standard,
             isPinned: isPinned,
             clipCount: clips.filter { $0.isVideoSegmentParent != true }.count,
             totalDuration: clips

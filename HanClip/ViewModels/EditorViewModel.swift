@@ -11,10 +11,18 @@ private enum PreviewSaveRequest {
 private struct ProjectEditSignature: Equatable {
     let clips: [ClipEditSignature]
     let defaultDuration: Double
+    let defaultVideoSegmentMode: VideoSegmentMode
     let outputAspectRatio: OutputAspectRatio?
     let automaticSourceSize: CGSize
     let textOverlaySettings: String
     let backgroundMusicSettings: BackgroundMusicSettings
+}
+
+enum MoviePreset {
+    case newMovie
+    case autoCapture
+    case travel
+    case golf
 }
 
 private struct ClipEditSignature: Equatable {
@@ -49,6 +57,7 @@ final class EditorViewModel: ObservableObject {
             Self.storeDefaultDuration(defaultDuration)
         }
     }
+    @Published private(set) var defaultVideoSegmentMode: VideoSegmentMode = .single
     @Published var outputAspectRatio: OutputAspectRatio? =
         EditorViewModel.storedDefaultAspectRatio()
     @Published var textOverlaySettings = WatermarkSettings.projectDefault()
@@ -236,6 +245,18 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    func openMoviePreset(_ preset: MoviePreset) {
+        guard !isProjectOpen else { return }
+        beginNewProject()
+        applyMoviePreset(preset)
+        importPendingItemsIntoNewProject()
+        if preset == .travel {
+            openCalendarPicker()
+        } else {
+            openPicker()
+        }
+    }
+
     func openCalendarPicker() {
         if !isProjectOpen {
             beginNewProject()
@@ -289,6 +310,85 @@ final class EditorViewModel: ObservableObject {
             importPendingItemsIntoNewProject()
         }
         isFileImporterPresented = true
+    }
+
+    @discardableResult
+    func openAutoCapture() -> Bool {
+        if !isProjectOpen {
+            beginNewProject()
+            applyMoviePreset(.autoCapture)
+        }
+
+        guard activeProjectID == nil, clips.isEmpty else { return true }
+
+        do {
+            let savedID = try ProjectStore.save(
+                clips: [],
+                defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
+                outputAspectRatio: outputAspectRatio,
+                automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
+                activeProjectID: nil,
+                kind: .autoCapture
+            )
+            activeProjectID = savedID
+            newlySavedProjectID = savedID
+            openedProjectSignature = currentProjectSignature()
+            reloadProjects()
+            return true
+        } catch {
+            let message = error.localizedDescription
+            reset()
+            alertMessage = message
+            return false
+        }
+    }
+
+    private func applyMoviePreset(_ preset: MoviePreset) {
+        var overlay = WatermarkSettings.projectDefault()
+        let musicTrackID: String?
+
+        switch preset {
+        case .newMovie:
+            defaultDuration = 2
+            defaultVideoSegmentMode = .single
+            overlay.isEnabled = false
+            musicTrackID = nil
+        case .autoCapture:
+            defaultDuration = 4
+            defaultVideoSegmentMode = .multiple
+            overlay = .greenGolfPreset(text: Self.golfCaptionText())
+            musicTrackID = nil
+        case .golf:
+            defaultDuration = 4
+            defaultVideoSegmentMode = .multiple
+            overlay = .greenGolfPreset(text: Self.golfCaptionText())
+            musicTrackID = "golf-lets-go"
+        case .travel:
+            defaultDuration = 1.5
+            defaultVideoSegmentMode = .multiple
+            overlay.isEnabled = true
+            overlay.text = "여행"
+            musicTrackID = "travel-joy"
+        }
+
+        textOverlaySettings = overlay
+        backgroundMusicSettings = musicTrackID.flatMap { trackID in
+            BackgroundMusicSettings.sampleTracks
+                .first { $0.id == trackID }?
+                .settings
+        } ?? .empty
+    }
+
+    private static func golfCaptionText(for date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yy.MM.dd(EEE)"
+        return formatter.string(from: date)
     }
 
     func openBackgroundMusicPicker() {
@@ -348,7 +448,7 @@ final class EditorViewModel: ObservableObject {
             automaticSourceSize = first.sourcePixelSize
             outputAspectRatio = Self.storedDefaultAspectRatio()
         }
-        clips.append(contentsOf: newItems.compactMap { item in
+        let newClipIDs = newItems.compactMap { item -> UUID? in
             let stableItem: ClipItem
             do {
                 stableItem = try item.replacingSource(
@@ -390,9 +490,91 @@ final class EditorViewModel: ObservableObject {
                     (sourceDuration - adjusted.duration) / 2
                 )
             }
-            return adjusted
-        })
+            adjusted.videoSegmentMode = .single
+            clips.append(adjusted)
+            return adjusted.id
+        }
+        if defaultVideoSegmentMode == .multiple {
+            newClipIDs.forEach { id in
+                setVideoSegmentMode(id: id, mode: .multiple)
+            }
+        }
         refreshLivePhotoDurations()
+    }
+
+    func addAutoCapturedVideo(url: URL, triggerTime: Double) {
+        Task {
+            do {
+                let thumbnail = try await videoThumbnail(
+                    for: url,
+                    at: max(0, triggerTime)
+                )
+                let sourceDuration = try await PhotoLibraryService
+                    .videoDuration(at: url)
+                let analysis = try? await AudioAnalysisService.analyze(url: url)
+                let captureSideDuration = 5.0
+                let selectedDuration = min(
+                    captureSideDuration * 2,
+                    max(0.5, sourceDuration)
+                )
+                let trimStart = max(
+                    0,
+                    min(
+                        sourceDuration - selectedDuration,
+                        triggerTime - captureSideDuration
+                    )
+                )
+                let stableSource = try WorkingClipSourceStore.persist(
+                    .videoFile(url)
+                )
+                let clip = ClipItem(
+                    source: stableSource,
+                    thumbnail: thumbnail,
+                    duration: selectedDuration,
+                    photoDuration: selectedDuration,
+                    mediaKind: .video,
+                    sourceDuration: sourceDuration,
+                    trimStart: trimStart,
+                    audioWaveform: analysis?.waveform ?? [],
+                    audioPeakTime: triggerTime,
+                    audioPeakTimes: analysis?.peakTimes ?? [triggerTime],
+                    sourcePixelSize: thumbnail.size
+                )
+
+                if clips.isEmpty {
+                    automaticSourceSize = clip.sourcePixelSize
+                    outputAspectRatio = Self.storedDefaultAspectRatio()
+                }
+                clips.append(clip)
+                isProjectOpen = true
+                saveProjectSnapshotAfterAutoCapture()
+            } catch {
+                alertMessage = "자동촬영 클립을 추가할 수 없습니다."
+            }
+        }
+    }
+
+    private func saveProjectSnapshotAfterAutoCapture() {
+        guard !clips.isEmpty, !isExporting else { return }
+
+        do {
+            let savedID = try ProjectStore.save(
+                clips: clips,
+                defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
+                outputAspectRatio: outputAspectRatio,
+                automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
+                activeProjectID: activeProjectID
+            )
+            activeProjectID = savedID
+            newlySavedProjectID = savedID
+            openedProjectSignature = currentProjectSignature()
+            reloadProjects()
+        } catch {
+            alertMessage = error.localizedDescription
+        }
     }
 
     func applyDefaultDurationToAll() {
@@ -575,6 +757,7 @@ final class EditorViewModel: ObservableObject {
             let savedID = try ProjectStore.save(
                 clips: clips,
                 defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
@@ -601,6 +784,7 @@ final class EditorViewModel: ObservableObject {
             let savedID = try ProjectStore.save(
                 clips: clips,
                 defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
@@ -633,6 +817,7 @@ final class EditorViewModel: ObservableObject {
                 let savedID = try ProjectStore.save(
                     clips: clips,
                     defaultDuration: defaultDuration,
+                    defaultVideoSegmentMode: defaultVideoSegmentMode,
                     outputAspectRatio: outputAspectRatio,
                     automaticSourceSize: automaticSourceSize,
                     textOverlaySettings: textOverlaySettings,
@@ -643,6 +828,7 @@ final class EditorViewModel: ObservableObject {
                 let savedProject = try ProjectStore.load(id: savedID)
                 clips = savedProject.clips
                 defaultDuration = savedProject.defaultDuration
+                defaultVideoSegmentMode = savedProject.defaultVideoSegmentMode
                 outputAspectRatio = savedProject.outputAspectRatio
                 automaticSourceSize = savedProject.automaticSourceSize
                 textOverlaySettings = savedProject.textOverlaySettings
@@ -738,6 +924,7 @@ final class EditorViewModel: ObservableObject {
         clips = []
         WorkingClipSourceStore.clear()
         defaultDuration = Self.storedDefaultDuration()
+        defaultVideoSegmentMode = .single
         outputAspectRatio = Self.storedDefaultAspectRatio()
         textOverlaySettings = WatermarkSettings.projectDefault()
         backgroundMusicSettings = .projectDefault
@@ -757,6 +944,7 @@ final class EditorViewModel: ObservableObject {
             let project = try ProjectStore.load(id: id)
             clips = project.clips
             defaultDuration = project.defaultDuration
+            defaultVideoSegmentMode = project.defaultVideoSegmentMode
             outputAspectRatio = project.outputAspectRatio
             automaticSourceSize = project.automaticSourceSize
             textOverlaySettings = project.textOverlaySettings
@@ -821,6 +1009,7 @@ final class EditorViewModel: ObservableObject {
         ProjectEditSignature(
             clips: clips.map(clipSignature),
             defaultDuration: roundedSignatureValue(defaultDuration),
+            defaultVideoSegmentMode: defaultVideoSegmentMode,
             outputAspectRatio: outputAspectRatio,
             automaticSourceSize: automaticSourceSize,
             textOverlaySettings: watermarkSignature(textOverlaySettings),
@@ -927,6 +1116,7 @@ final class EditorViewModel: ObservableObject {
             let savedID = try ProjectStore.save(
                 clips: clips,
                 defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
@@ -947,6 +1137,31 @@ final class EditorViewModel: ObservableObject {
         SharedInbox.clearPendingImports()
         pendingSharedItemCount = 0
         pendingSharedThumbnails = []
+    }
+
+    func queueOnlineMusicDownloadAsSharedItem(_ url: URL) -> Bool {
+        do {
+            let filename = try Self.copyFileToSharedInbox(
+                url,
+                fallbackExtension: "mp3"
+            )
+            SharedInbox.append([
+                SharedImportRecord(
+                    kind: .image,
+                    primaryFilename: filename,
+                    originalFilename: url.lastPathComponent.isEmpty
+                        ? filename
+                        : url.lastPathComponent
+                )
+            ])
+            refreshPendingSharedItems()
+            return true
+        } catch {
+            alertMessage =
+                "온라인 음악 파일을 공유 대기 목록에 넣지 못했습니다. "
+                + error.localizedDescription
+            return false
+        }
     }
 
     func loadProjectAndImportPending(id: UUID) {
@@ -1239,6 +1454,7 @@ final class EditorViewModel: ObservableObject {
             _ = try? ProjectStore.save(
                 clips: clips,
                 defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
                 outputAspectRatio: outputAspectRatio,
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
@@ -1872,6 +2088,23 @@ final class EditorViewModel: ObservableObject {
                 withAttributes: badgeAttributes
             )
         }
+    }
+
+    private static func copyFileToSharedInbox(
+        _ source: URL,
+        fallbackExtension: String
+    ) throws -> String {
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        let ext = source.pathExtension.isEmpty
+            ? fallbackExtension
+            : source.pathExtension
+        let filename = "\(UUID().uuidString).\(ext)"
+        let destination = try SharedInbox.fileURL(named: filename)
+        try FileManager.default.copyItem(at: source, to: destination)
+        return filename
     }
 
 }

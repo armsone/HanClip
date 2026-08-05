@@ -259,6 +259,11 @@ struct WatermarkSettings: Codable {
     static let defaultCopyrightIconColorMode = CopyrightIconColorMode.original
     static let defaultCopyrightIconColor = "#007644"
     static let defaultCustomCopyrightIconPath = ""
+    static let greenGolfPreferredFontIDs = ["do_hyeon", "black_han_sans"]
+    static let greenGolfTextColor = "#FFFFFF"
+    static let greenGolfShadowColor = "#10B85A"
+    static let greenGolfShadowOpacity = 0.5
+    static let greenGolfFontSize = WatermarkFontSize.extraLarge
 
     var isEnabled: Bool
     var logoEnabled: Bool
@@ -592,6 +597,25 @@ struct WatermarkSettings: Codable {
             copyrightIconColorHex: defaultCopyrightIconColor,
             customCopyrightIconPath: defaultCustomCopyrightIconPath
         )
+    }
+
+    static func greenGolfPreset(text: String) -> WatermarkSettings {
+        var settings = projectDefault()
+        let availableFontIDs = Set(FontRegistry.availableFonts.map(\.id))
+
+        settings.isEnabled = true
+        settings.text = text
+        settings.fontName = greenGolfPreferredFontIDs.first {
+            availableFontIDs.contains($0)
+        } ?? defaultFontName
+        settings.textColorHex = greenGolfTextColor
+        settings.shadowEnabled = true
+        settings.shadowOpacity = greenGolfShadowOpacity
+        settings.shadowColorHex = greenGolfShadowColor
+        settings.fontSize = greenGolfFontSize
+        settings.lineSpacing = .normal
+        settings.lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
+        return settings
     }
 
     func withLogoEnabled(_ logoEnabled: Bool) -> WatermarkSettings {

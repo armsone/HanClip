@@ -528,9 +528,11 @@ enum HanClipTheme {
 
 enum HanClipQuickAction: Equatable {
     case open
+    case autoCapture
     case photo
     case calendar
     case files
+    case search
 
     init?(url: URL) {
         guard url.scheme == "hanclip" else { return nil }
@@ -539,12 +541,16 @@ enum HanClipQuickAction: Equatable {
         switch actionName {
         case "open":
             self = .open
+        case "auto-capture":
+            self = .autoCapture
         case "photo":
             self = .photo
         case "calendar":
             self = .calendar
         case "files":
             self = .files
+        case "search":
+            self = .search
         default:
             return nil
         }
@@ -552,12 +558,16 @@ enum HanClipQuickAction: Equatable {
 
     init?(shortcutItem: UIApplicationShortcutItem) {
         switch shortcutItem.type {
+        case "com.intosharp.hanclip.auto-capture":
+            self = .autoCapture
         case "com.intosharp.hanclip.photo":
             self = .photo
         case "com.intosharp.hanclip.calendar":
             self = .calendar
         case "com.intosharp.hanclip.files":
             self = .files
+        case "com.intosharp.hanclip.search":
+            self = .search
         default:
             return nil
         }

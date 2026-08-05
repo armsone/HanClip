@@ -27,6 +27,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>티샷과 박수 소리에 반응해 자동촬영 클립을 만들기 위해 카메라 접근이 필요합니다.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>티샷과 박수 소리를 감지해 자동촬영 시점을 찾기 위해 마이크 접근이 필요합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>완성된 영화를 사진 앱으로 개봉하기 위해 접근이 필요합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -51,11 +55,19 @@
 	<array>
 		<dict>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>photo.on.rectangle</string>
+			<string>camera.fill</string>
 			<key>UIApplicationShortcutItemTitle</key>
-			<string>사진</string>
+			<string>자동촬영</string>
 			<key>UIApplicationShortcutItemType</key>
-			<string>com.intosharp.hanclip.photo</string>
+			<string>com.intosharp.hanclip.auto-capture</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>folder</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>파일</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.intosharp.hanclip.files</string>
 		</dict>
 		<dict>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
@@ -67,11 +79,19 @@
 		</dict>
 		<dict>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>folder</string>
+			<string>photo.on.rectangle</string>
 			<key>UIApplicationShortcutItemTitle</key>
-			<string>파일</string>
+			<string>사진</string>
 			<key>UIApplicationShortcutItemType</key>
-			<string>com.intosharp.hanclip.files</string>
+			<string>com.intosharp.hanclip.photo</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>globe</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>찾기</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.intosharp.hanclip.search</string>
 		</dict>
 	</array>
 	<key>UILaunchScreen</key>

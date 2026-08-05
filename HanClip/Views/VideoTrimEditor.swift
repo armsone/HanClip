@@ -18,7 +18,9 @@ struct VideoTrimEditor: View {
     let canGoNext: Bool
     let onPrevious: () -> Void
     let onNext: () -> Void
+    let onAutoNext: () -> Void
     let onFirst: () -> Void
+    let onAutoFirst: () -> Void
     let onDelete: () -> Void
     let onPreview: () -> Void
     var bottomThumbnailStrip: AnyView? = nil
@@ -676,7 +678,7 @@ struct VideoTrimEditor: View {
                             y: proxy.size.height / 2
                         )
                         .allowsHitTesting(false)
-                        .zIndex(7)
+                    .zIndex(7)
                 }
 
                 if isPlaying {
@@ -709,6 +711,7 @@ struct VideoTrimEditor: View {
                 .zIndex(11)
             }
             .coordinateSpace(name: "waveform")
+            .contentShape(Rectangle())
             .padding(.vertical, 4)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .background(
@@ -776,7 +779,8 @@ struct VideoTrimEditor: View {
             .highPriorityGesture(
                 trimGesture(
                     edge: edge,
-                    waveformWidth: waveformWidth
+                    waveformWidth: waveformWidth,
+                    usesAbsoluteLocation: true
                 ),
                 including: .all
             )
@@ -837,11 +841,18 @@ struct VideoTrimEditor: View {
             oppositeX: oppositeX,
             width: geometry.size.width
         )
+        let visualHandleWidth: CGFloat = 8.5
+        let handleCenterX = edge == .leading
+            ? displayX + visualHandleWidth / 2
+            : displayX - visualHandleWidth / 2
 
         return ZStack {
             Capsule()
                 .fill(HanClipTheme.primary.opacity(0.88))
-                .frame(width: 14, height: geometry.size.height - 10)
+                .frame(
+                    width: visualHandleWidth,
+                    height: max(18, (geometry.size.height - 10) * 0.6)
+                )
                 .overlay {
                     Capsule()
                         .stroke(Color.white.opacity(0.18), lineWidth: 1)
@@ -857,19 +868,20 @@ struct VideoTrimEditor: View {
                     ? "chevron.right"
                     : "chevron.left"
             )
-            .font(.system(size: 10, weight: .bold))
+            .font(.system(size: 7, weight: .bold))
             .foregroundStyle(.white)
         }
         .frame(width: 44, height: geometry.size.height)
         .contentShape(Rectangle())
             .position(
-                x: displayX,
+                x: handleCenterX,
             y: geometry.size.height / 2 - 4
         )
         .highPriorityGesture(
             trimGesture(
                 edge: edge,
-                waveformWidth: geometry.size.width
+                waveformWidth: geometry.size.width,
+                usesAbsoluteLocation: false
             ),
             including: .all
         )
@@ -915,7 +927,8 @@ struct VideoTrimEditor: View {
 
     private func trimGesture(
         edge: TrimEdge,
-        waveformWidth: CGFloat
+        waveformWidth: CGFloat,
+        usesAbsoluteLocation: Bool
     ) -> some Gesture {
         DragGesture(
             minimumDistance: 0,
@@ -931,16 +944,11 @@ struct VideoTrimEditor: View {
                 trimDragBoundaryOrigin = currentBoundary
             }
             let boundaryOrigin = trimDragBoundaryOrigin ?? currentBoundary
-            let time = min(
-                sourceDuration,
-                max(
-                    0,
-                    boundaryOrigin
-                        + Double(
-                            value.translation.width
-                                / max(1, waveformWidth)
-                        ) * sourceDuration
-                )
+            let time = trimGestureTime(
+                value: value,
+                boundaryOrigin: boundaryOrigin,
+                waveformWidth: waveformWidth,
+                usesAbsoluteLocation: usesAbsoluteLocation
             )
 
             switch edge {
@@ -972,6 +980,23 @@ struct VideoTrimEditor: View {
             selectionMoveOrigin = nil
             selectionMoveDuration = nil
         }
+    }
+
+    private func trimGestureTime(
+        value: DragGesture.Value,
+        boundaryOrigin: Double,
+        waveformWidth: CGFloat,
+        usesAbsoluteLocation: Bool
+    ) -> Double {
+        let width = max(1, waveformWidth)
+        let rawTime: Double
+        if usesAbsoluteLocation {
+            rawTime = Double(value.location.x / width) * sourceDuration
+        } else {
+            rawTime = boundaryOrigin
+                + Double(value.translation.width / width) * sourceDuration
+        }
+        return min(sourceDuration, max(0, rawTime))
     }
 
     private func moveSelectionGesture(width: CGFloat) -> some Gesture {
@@ -1437,7 +1462,7 @@ struct VideoTrimEditor: View {
 
     private func navigateToPrevious() {
         guard canGoPrevious else { return }
-        shouldAutoplayAfterNavigation = true
+        shouldAutoplayAfterNavigation = false
         pausePlayback()
         stillAutoAdvanceTask?.cancel()
         stillAutoAdvanceTask = nil
@@ -1446,11 +1471,19 @@ struct VideoTrimEditor: View {
 
     private func navigateToNext() {
         guard canGoNext else { return }
-        shouldAutoplayAfterNavigation = true
+        shouldAutoplayAfterNavigation = false
         pausePlayback()
         stillAutoAdvanceTask?.cancel()
         stillAutoAdvanceTask = nil
         onNext()
+    }
+
+    private func autoAdvanceToNext() {
+        guard canGoNext else { return }
+        pausePlayback()
+        stillAutoAdvanceTask?.cancel()
+        stillAutoAdvanceTask = nil
+        onAutoNext()
     }
 
     private func pausePlayback() {
@@ -1600,7 +1633,7 @@ struct VideoTrimEditor: View {
     private func startAutoAdvanceForCurrentClip() {
         stillAutoAdvanceTask?.cancel()
         stillAutoAdvanceTask = nil
-        guard autoAdvanceEnabled else { return }
+        guard autoAdvanceEnabled, autoAdvanceLoops else { return }
 
         if hasPlayableMedia {
             playFromSelectionStart()
@@ -1663,11 +1696,13 @@ struct VideoTrimEditor: View {
     }
 
     private func advanceAfterCurrentClipIfNeeded() {
-        guard autoAdvanceEnabled, !didAutoAdvanceCurrentClip else { return }
+        guard autoAdvanceEnabled, autoAdvanceLoops, !didAutoAdvanceCurrentClip else {
+            return
+        }
         didAutoAdvanceCurrentClip = true
 
         if canGoNext {
-            navigateToNext()
+            autoAdvanceToNext()
         } else if autoAdvanceLoops {
             guard totalClipCount > 1 else {
                 didAutoAdvanceCurrentClip = false
@@ -1680,11 +1715,10 @@ struct VideoTrimEditor: View {
                 return
             }
 
-            shouldAutoplayAfterNavigation = true
             pausePlayback()
             stillAutoAdvanceTask?.cancel()
             stillAutoAdvanceTask = nil
-            onFirst()
+            onAutoFirst()
         } else {
             autoAdvanceEnabled = false
         }
