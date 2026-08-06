@@ -93,6 +93,7 @@ fun HomeRoute(
     exportedMovieSummaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
+    draftProjectSummary: DraftProjectSummary?,
     sharedInboxCount: Int,
     sleepPreventionMode: SleepPreventionMode,
     onStartPreset: (MoviePreset) -> Unit,
@@ -145,6 +146,7 @@ fun HomeRoute(
                 summaries = exportedMovieSummaries,
                 recentlySavedMovieUriString = recentlySavedMovieUriString,
                 hasDraftProject = hasDraftProject,
+                draftProjectSummary = draftProjectSummary,
                 onOpenProject = onOpenProject,
                 onOpenExportedMovie = onOpenExportedMovie,
                 onRemoveExportedMovie = { removalCandidate = it },
@@ -296,6 +298,13 @@ fun HomeRoute(
         )
     }
 }
+
+data class DraftProjectSummary(
+    val presetTitle: String,
+    val clipCount: Int,
+    val totalDurationSeconds: Double,
+    val outputText: String
+)
 
 private val HomePrimary = Color(0xFF0B7A4E)
 private val HomeText = Color(0xFF14221A)
@@ -920,6 +929,7 @@ private fun SavedProjectSection(
     summaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
+    draftProjectSummary: DraftProjectSummary?,
     onOpenProject: () -> Unit,
     onOpenExportedMovie: (ExportedMovieSummary) -> Unit,
     onRemoveExportedMovie: (ExportedMovieSummary) -> Unit,
@@ -960,7 +970,10 @@ private fun SavedProjectSection(
             )
         }
         if (hasDraftProject) {
-            DraftProjectRow(onClick = onOpenProject)
+            DraftProjectRow(
+                summary = draftProjectSummary,
+                onClick = onOpenProject
+            )
         }
         if (summaries.isEmpty() && !hasDraftProject) {
             EmptySavedProjectRow()
@@ -1258,7 +1271,10 @@ private fun SavedProjectCategoryHeader(
 }
 
 @Composable
-private fun DraftProjectRow(onClick: () -> Unit) {
+private fun DraftProjectRow(
+    summary: DraftProjectSummary?,
+    onClick: () -> Unit
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1278,15 +1294,38 @@ private fun DraftProjectRow(onClick: () -> Unit) {
                 tint = HomePrimary
             )
             Column(Modifier.weight(1f)) {
-                Text("작업 중 영화", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "이어서 편집하기",
+                    summary?.presetTitle ?: "작업 중 영화",
+                    fontWeight = FontWeight.SemiBold,
+                    color = HomeText
+                )
+                Text(
+                    summary?.let { draftSummaryText(it) } ?: "이어서 편집하기",
                     style = MaterialTheme.typography.bodySmall,
-                    color = HomeSubText
+                    color = HomeSubText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White,
+                border = BorderStroke(1.dp, HomeBorder)
+            ) {
+                Text(
+                    text = "이어하기",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    color = HomePrimary,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
         }
     }
+}
+
+private fun draftSummaryText(summary: DraftProjectSummary): String {
+    return "${summary.clipCount}개 클립 · ${movieDurationText(summary.totalDurationSeconds)} · ${summary.outputText}"
 }
 
 @Composable

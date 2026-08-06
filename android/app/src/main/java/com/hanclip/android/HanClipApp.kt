@@ -31,6 +31,7 @@ import com.hanclip.android.feature.browser.OnlineMusicBrowserRoute
 import com.hanclip.android.feature.editor.EditorImportAction
 import com.hanclip.android.feature.editor.EditorRoute
 import com.hanclip.android.feature.editor.EditorViewModel
+import com.hanclip.android.feature.home.DraftProjectSummary
 import com.hanclip.android.feature.home.HomeRoute
 import com.hanclip.android.feature.preview.PreviewMovieSummary
 import com.hanclip.android.feature.preview.PreviewRoute
@@ -58,6 +59,42 @@ fun HanClipApp(
     var exportedMovieSummaries by remember { mutableStateOf<List<ExportedMovieSummary>>(emptyList()) }
     var previewHistorySummary by remember { mutableStateOf<ExportedMovieSummary?>(null) }
     var hasDraftProject by remember { mutableStateOf(false) }
+    val draftProjectSummary = remember(
+        hasDraftProject,
+        editorState.clips,
+        editorState.preset,
+        editorState.totalDurationSeconds,
+        editorState.outputAspectRatio,
+        editorState.outputQualityPreset
+    ) {
+        if (!hasDraftProject) {
+            null
+        } else if (editorState.clips.isNotEmpty()) {
+            DraftProjectSummary(
+                presetTitle = editorState.preset.title,
+                clipCount = editorState.renderableClips.size,
+                totalDurationSeconds = editorState.totalDurationSeconds,
+                outputText = listOfNotNull(
+                    editorState.outputAspectRatio?.title ?: "원본 비율",
+                    editorState.outputQualityPreset.detail
+                ).joinToString(" · ")
+            )
+        } else {
+            DraftProjectStore.load(context)?.let { draft ->
+                DraftProjectSummary(
+                    presetTitle = draft.preset.title,
+                    clipCount = draft.clips.count { clip -> clip.isRenderableClip },
+                    totalDurationSeconds = draft.clips
+                        .filter { clip -> clip.isRenderableClip }
+                        .sumOf { clip -> clip.durationSeconds },
+                    outputText = listOfNotNull(
+                        draft.outputAspectRatio?.title ?: "원본 비율",
+                        draft.outputQualityPreset.detail
+                    ).joinToString(" · ")
+                )
+            }
+        }
+    }
 
     LaunchedEffect(sharedMediaUris) {
         val signature = sharedMediaUris.joinToString("|")
@@ -185,6 +222,7 @@ fun HanClipApp(
                 exportedMovieSummaries = exportedMovieSummaries,
                 recentlySavedMovieUriString = editorState.recentlySavedMovieUriString,
                 hasDraftProject = hasDraftProject,
+                draftProjectSummary = draftProjectSummary,
                 sharedInboxCount = pendingSharedCount,
                 sleepPreventionMode = sleepPreventionMode,
                 onStartPreset = { preset ->
