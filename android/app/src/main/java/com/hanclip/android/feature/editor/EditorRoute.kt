@@ -1026,9 +1026,16 @@ private fun ExportConfirmationDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "아래 설정으로 MP4 완성본을 만듭니다. 완료 후 시사회에서 확인하고 기본 사진첩 저장과 공유를 이어갑니다.",
+                    "아래 설정으로 HanClip MP4 완성본을 만듭니다. 완료 후 시사회에서 확인하고 기본 사진첩 저장과 공유를 이어갑니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
+                )
+                ExportConfirmationHero(
+                    clipText = "${renderableClipCount}개 클립",
+                    durationText = formatSummaryDuration(state.totalDurationSeconds),
+                    sizeText = "${estimatedRenderSize.first}x${estimatedRenderSize.second}",
+                    formatText = OutputQualityPreset.ExportFormatTitle,
+                    palette = palette
                 )
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
                 ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
@@ -1037,7 +1044,7 @@ private fun ExportConfirmationDialog(
                 }
                 ExportConfirmationLine("화면", aspectRatioText, palette)
                 ExportConfirmationLine("품질", state.outputQualityPreset.chipTitle, palette)
-                ExportConfirmationLine("저장 형식", OutputQualityPreset.ExportFormatDetail, palette)
+                ExportConfirmationLine("저장 형식", "${OutputQualityPreset.ExportFormatDetail} · 기본 사진첩 저장 가능", palette)
                 ExportConfirmationLine("음악", musicText, palette)
                 ExportConfirmationLine("오디오", audioMixText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
@@ -1080,6 +1087,67 @@ private fun estimatedMovieSizeText(
         megabytes < 10.0 -> "약 %.1fMB".format(megabytes)
         megabytes < 1024.0 -> "약 %.0fMB".format(megabytes)
         else -> "약 %.1fGB".format(megabytes / 1024.0)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ExportConfirmationHero(
+    clipText: String,
+    durationText: String,
+    sizeText: String,
+    formatText: String,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "완성본 요약",
+                color = palette.text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ExportConfirmationPill(clipText, palette, active = true)
+                ExportConfirmationPill(durationText, palette, active = true)
+                ExportConfirmationPill(sizeText, palette, active = true)
+                ExportConfirmationPill(formatText, palette, active = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportConfirmationPill(
+    text: String,
+    palette: HanClipPalette,
+    active: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.panel else palette.panel.copy(alpha = 0.68f),
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.38f) else palette.border)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            color = if (active) palette.text else palette.subText,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
