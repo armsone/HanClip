@@ -3054,10 +3054,13 @@ struct EditorView: View {
 
             savedProjectRows(standardProjects)
             standardEmptyProjectRows(
-                count: max(
-                    0,
-                    ProjectStore.maximumProjectCount
-                        - model.savedProjects.count
+                count: min(
+                    4,
+                    max(
+                        0,
+                        ProjectStore.maximumProjectCount
+                            - model.savedProjects.count
+                    )
                 )
             )
         }
