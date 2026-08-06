@@ -1026,7 +1026,7 @@ private fun ExportConfirmationDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "아래 설정으로 HanClip MP4 완성본을 만듭니다. 완료 후 시사회에서 확인하고 기본 사진첩 저장과 공유를 이어갑니다.",
+                    "아래 설정으로 HanClip MP4 완성본을 만듭니다. 고른 번호순으로 이어 붙인 뒤 시사회에서 확인하고 기본 사진첩 저장과 공유를 이어갑니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -1039,6 +1039,7 @@ private fun ExportConfirmationDialog(
                 )
                 ExportConfirmationLine("완료 후", "시사회에서 확인 · 기본 사진첩 저장 · 공유", palette)
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
+                ExportConfirmationLine("순서", "선택 번호순으로 이어붙임", palette)
                 ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
                 if (autoSegmentCount > 0) {
                     ExportConfirmationLine("자동 컷", "${autoSegmentCount}개 · 타격점 중심 자동 컷", palette)
@@ -1122,6 +1123,7 @@ private fun ExportConfirmationHero(
             ) {
                 ExportConfirmationPill(clipText, palette, active = true)
                 ExportConfirmationPill(durationText, palette, active = true)
+                ExportConfirmationPill("번호순 연결", palette, active = true)
                 ExportConfirmationPill(sizeText, palette, active = true)
                 ExportConfirmationPill("시사회 확인", palette, active = true)
                 ExportConfirmationPill(formatText, palette, active = false)
