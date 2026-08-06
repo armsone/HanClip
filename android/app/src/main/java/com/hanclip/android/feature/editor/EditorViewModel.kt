@@ -790,11 +790,11 @@ class EditorViewModel : ViewModel() {
                     .filter { groupId -> rebalanced.any { it.similarPhotoGroupId == groupId } }
                     .toSet(),
                 alertMessage = if (removedCount > 1) {
-                    "클립 ${removedCount}개를 삭제했습니다."
+                    "MP4 완성본 번호순에서 클립 ${removedCount}개를 제외했습니다. 현재 작업도 자동 저장됩니다."
                 } else {
-                    "클립을 삭제했습니다."
+                    "MP4 완성본 번호순에서 클립을 제외했습니다. 현재 작업도 자동 저장됩니다."
                 },
-                undoDeleteMessage = "방금 삭제한 클립을 되돌릴 수 있습니다."
+                undoDeleteMessage = "방금 제외한 클립을 되돌릴 수 있습니다."
             )
         }
     }
