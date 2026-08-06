@@ -1006,7 +1006,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "HanClip에서 만든 MP4와 이어서 편집할 작업을 확인합니다",
+                    text = "HanClip 앨범에 저장한 MP4와 이어서 편집할 작업을 확인합니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1825,7 +1825,7 @@ private fun savedMovieDetailText(summary: ExportedMovieSummary): String {
         add(movieDurationText(summary.totalDurationSeconds))
         summary.outputAspectRatio?.let { add(it.title) }
         summary.outputQualityPreset?.let { add(it.chipTitle) }
-        add("사진첩 MP4")
+        add("HanClip MP4")
         if (summary.hasBackgroundMusic == true) add("음악")
         overlayDetailParts(summary).forEach(::add)
     }
