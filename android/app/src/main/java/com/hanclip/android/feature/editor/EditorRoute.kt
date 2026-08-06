@@ -1707,13 +1707,15 @@ private fun ImportStatusPanel(message: String) {
                 Text(
                     text = message.ifBlank { "사진/영상을 클립으로 준비하는 중..." },
                     color = Color(0xFF1D4F38),
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "사진첩과 파일에서 고른 항목을 완성본 클립으로 정리합니다.",
+                    text = "고른 번호순으로 배치하고, 영상은 스윙 타격점 기준 자동 컷을 준비합니다.",
                     color = Color(0xFF4F7B64),
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }

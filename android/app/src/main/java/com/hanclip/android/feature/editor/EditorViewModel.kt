@@ -116,7 +116,7 @@ class EditorViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     isImportingMedia = true,
-                    progressMessage = "선택한 사진/영상 ${uris.size}개를 번호순 클립으로 준비하는 중...",
+                    progressMessage = "사진첩 선택 ${uris.size}개를 번호순으로 정리하는 중...",
                     alertMessage = null
                 )
             }
@@ -126,7 +126,7 @@ class EditorViewModel : ViewModel() {
             uris.forEachIndexed { index, uri ->
                 _uiState.update {
                     it.copy(
-                        progressMessage = "선택 번호순 ${index + 1}/${uris.size}개를 클립으로 준비하는 중..."
+                        progressMessage = "선택 번호순 ${index + 1}/${uris.size} · 영상은 타격점 자동 컷 준비 중..."
                     )
                 }
                 runCatching {
