@@ -2768,7 +2768,7 @@ private fun BottomMakeBar(
             ) {
                 Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (isExporting) "만드는 중..." else "영화 만들기")
+                Text(if (isExporting) "만드는 중..." else "완성본 만들기")
             }
         }
     }
@@ -2789,7 +2789,7 @@ private fun bottomMakeSummary(
         overlayStatusText(hasTextOverlay, hasLogoOverlay).takeIf { it != "자막/로고 꺼짐" },
         "음악".takeIf { hasMusic }
     ).joinToString(" · ").ifBlank { "자막/로고 꺼짐" }
-    return "$mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · $overlaySummary"
+    return "$mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle} · $overlaySummary"
 }
 
 private fun overlayStatusText(hasTextOverlay: Boolean, hasLogoOverlay: Boolean): String {
