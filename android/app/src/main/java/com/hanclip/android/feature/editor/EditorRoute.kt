@@ -1667,7 +1667,7 @@ private fun AutoSegmentStatusPanel(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "스윙 소리 후보를 중심으로 ${segmentCount}개 클립을 만들었습니다.",
+                    text = "스윙 소리 피크를 기준으로 ${segmentCount}개 자동 컷을 만들었습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -1682,7 +1682,7 @@ private fun AutoSegmentStatusPanel(
                 )
             }
             Text(
-                text = "후보 ${segmentCount}",
+                text = "자동 컷 ${segmentCount}",
                 color = palette.primary,
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.labelLarge
