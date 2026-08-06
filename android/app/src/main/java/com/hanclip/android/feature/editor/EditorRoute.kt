@@ -2648,9 +2648,9 @@ private fun GlobalTimePanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("전체 영상 시간", fontWeight = FontWeight.Bold, color = palette.text)
+                    Text("클립 기본 시간", fontWeight = FontWeight.Bold, color = palette.text)
                     Text(
-                        "사진 표시 시간과 영상 클립 길이를 한 번에 맞춥니다.",
+                        "사진 표시 시간과 영상 클립 길이를 같은 기준으로 맞춥니다.",
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.subText
                     )
@@ -2682,7 +2682,7 @@ private fun GlobalTimePanel(
                     FilterChip(
                         selected = defaultDuration == seconds,
                         onClick = { onSetDuration(seconds) },
-                        label = { Text("%.1f".format(seconds)) },
+                        label = { Text("%.1f초".format(seconds)) },
                         colors = clearFilterChipColors(palette),
                         border = FilterChipDefaults.filterChipBorder(
                             enabled = true,
@@ -2701,7 +2701,9 @@ private fun GlobalTimePanel(
                     contentColor = Color.White
                 )
             ) {
-                Text("모든 사진/영상 클립 %.1f초로 맞추기".format(defaultDuration))
+                Icon(Icons.Outlined.AutoFixHigh, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("모든 클립 %.1f초 적용".format(defaultDuration))
             }
             OutlinedButton(
                 onClick = onSelectFullRange,
@@ -2715,7 +2717,9 @@ private fun GlobalTimePanel(
                     disabledContentColor = palette.subText
                 )
             ) {
-                Text("영상 클립은 원본 전체 길이로")
+                Icon(Icons.Outlined.MovieCreation, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("영상은 원본 전체 길이로")
             }
         }
     }
