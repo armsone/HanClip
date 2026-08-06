@@ -90,7 +90,7 @@ fun PhotoDurationSheet(
                         color = palette.text
                     )
                     Text(
-                        "이 사진 한 장이 영화에 보이는 길이를 정합니다.",
+                        "이 사진 한 장이 완성본에 보이는 길이를 정합니다.",
                         color = palette.subText
                     )
                 }

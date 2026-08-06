@@ -1465,7 +1465,7 @@ private fun ReorderStrip(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "왼쪽부터 영화에 이어집니다. 위/아래 버튼으로 앞뒤 순서를 조정합니다.",
+                        "왼쪽부터 완성본에 이어집니다. 위/아래 버튼으로 앞뒤 순서를 조정합니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -2399,9 +2399,9 @@ private fun clipPreviewSubtitle(clip: ClipItem, childSegmentCount: Int): String 
     } else if (clip.mediaKind == ClipMediaKind.Video) {
         "구간 ${formatClipSeconds(clip.trimStartSeconds)} - ${formatClipSeconds(clip.trimEndSeconds)} · 클립 ${formatClipSeconds(clip.durationSeconds)}"
     } else if (clip.mediaKind == ClipMediaKind.LivePhoto) {
-        "Live Photo ${formatClipSeconds(clip.durationSeconds)} · 영화에 이 길이로 들어갑니다"
+        "Live Photo ${formatClipSeconds(clip.durationSeconds)} · 완성본에 이 길이로 들어갑니다"
     } else {
-        "사진 ${formatClipSeconds(clip.durationSeconds)} · 영화에 이 길이로 들어갑니다"
+        "사진 ${formatClipSeconds(clip.durationSeconds)} · 완성본에 이 길이로 들어갑니다"
     }
 }
 
@@ -2507,8 +2507,8 @@ private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
         clip.isVideoSegmentParent -> "스윙 피크 자동 분할 ${childSegmentCount}개"
         clip.isVideoSegmentChild -> "타격점 중심 구간"
-        clip.isSimilarPhotoGroupMember -> "아직 영화에 미포함 · 사용하면 독립 클립으로 추가"
-        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 영화에 들어가는 대표 컷"
+        clip.isSimilarPhotoGroupMember -> "아직 완성본에 미포함 · 사용하면 독립 클립으로 추가"
+        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 완성본에 들어가는 대표 컷"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "자동 타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
     }
