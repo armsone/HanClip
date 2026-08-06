@@ -392,7 +392,7 @@ private fun PreviewSummaryPanel(
                 )
                 SummaryInfoCell(
                     label = "화면",
-                    value = summary.outputAspectRatio?.title ?: "자동",
+                    value = previewAspectRatioText(summary.outputAspectRatio),
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
@@ -441,6 +441,10 @@ private fun PreviewSummaryPanel(
             }
         }
     }
+}
+
+private fun previewAspectRatioText(ratio: OutputAspectRatio?): String {
+    return ratio?.let { "${it.title} · ${it.width}x${it.height}" } ?: "자동 비율"
 }
 
 @Composable
