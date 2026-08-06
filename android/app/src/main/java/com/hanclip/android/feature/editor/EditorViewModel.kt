@@ -101,7 +101,15 @@ class EditorViewModel : ViewModel() {
     }
 
     fun addPickedMedia(context: Context, uris: List<Uri>) {
-        if (uris.isEmpty()) return
+        if (uris.isEmpty()) {
+            _uiState.update {
+                it.copy(
+                    alertMessage = "선택된 사진이나 영상이 없습니다. Android 기본 사진첩에서 사용할 항목을 선택해 주세요.",
+                    undoDeleteMessage = null
+                )
+            }
+            return
+        }
 
         viewModelScope.launch {
             val appContext = context.applicationContext

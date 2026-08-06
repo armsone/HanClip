@@ -158,6 +158,8 @@ fun EditorRoute(
         if (result.resultCode == Activity.RESULT_OK) {
             result.data.persistPickedUriPermissions(context)
             viewModel.addPickedMedia(context, result.data.extractPickedUris())
+        } else {
+            viewModel.showAlert("미디어 선택을 취소했습니다. 사진첩 버튼으로 다시 선택할 수 있습니다.")
         }
     }
     val musicPicker = rememberLauncherForActivityResult(
