@@ -105,7 +105,7 @@ fun TextOverlaySheet(
                         fontWeight = FontWeight.Bold,
                         color = palette.text
                     )
-                    Text("영상 위 문구와 HanClip 로고를 정합니다.", color = palette.subText)
+                    Text("완성 MP4에 들어갈 문구와 HanClip 로고를 정합니다.", color = palette.subText)
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
@@ -135,7 +135,7 @@ fun TextOverlaySheet(
             ) {
                 Column {
                     Text("HanClip 로고", fontWeight = FontWeight.SemiBold, color = SheetText)
-                    Text("완성 영상에 작은 HanClip 표시를 넣습니다.", color = SheetSubText)
+                    Text("완성본에 HanClip 표시를 작게 넣습니다.", color = SheetSubText)
                 }
                 Switch(
                     checked = draft.logoEnabled,
