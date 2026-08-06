@@ -183,19 +183,20 @@ class EditorViewModel : ViewModel() {
         }
 
         exportJob = viewModelScope.launch {
+            val renderSize = state.outputAspectRatio?.let { it.width to it.height }
+                ?: OutputAspectRatio.automaticSize(
+                    clips.firstOrNull()?.sourceWidth ?: 1080,
+                    clips.firstOrNull()?.sourceHeight ?: 1920
+                )
+            val exportLabel = "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second}"
             _uiState.update {
                 it.copy(
                     isExporting = true,
-                    progressMessage = "영화를 만드는 중...",
+                    progressMessage = "영화를 만드는 중... $exportLabel",
                     alertMessage = null
                 )
             }
             runCatching {
-                val renderSize = state.outputAspectRatio?.let { it.width to it.height }
-                    ?: OutputAspectRatio.automaticSize(
-                        clips.firstOrNull()?.sourceWidth ?: 1080,
-                        clips.firstOrNull()?.sourceHeight ?: 1920
-                    )
                 Media3TransformerExportService(context.applicationContext).export(
                     VideoExportRequest(
                         clips = clips,
@@ -208,7 +209,9 @@ class EditorViewModel : ViewModel() {
                     )
                 ) { progress ->
                     _uiState.update {
-                        it.copy(progressMessage = "영화를 만드는 중... ${(progress * 100).toInt()}%")
+                        it.copy(
+                            progressMessage = "영화를 만드는 중... ${(progress * 100).toInt()}% · $exportLabel"
+                        )
                     }
                 }
             }.onSuccess { outputUri ->

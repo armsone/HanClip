@@ -38,7 +38,13 @@ import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Collections
 import java.nio.ByteBuffer
@@ -114,6 +120,7 @@ class Media3TransformerExportService(
             .build()
 
         return suspendCancellableCoroutine { continuation ->
+            var progressJob: Job? = null
             val transformer = Transformer.Builder(context)
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
                 .addListener(object : Transformer.Listener {
@@ -121,6 +128,7 @@ class Media3TransformerExportService(
                         composition: Composition,
                         exportResult: ExportResult
                     ) {
+                        progressJob?.cancel()
                         onProgress(1.0)
                         if (continuation.isActive) {
                             continuation.resume(Uri.fromFile(outputFile))
@@ -132,6 +140,7 @@ class Media3TransformerExportService(
                         exportResult: ExportResult,
                         exportException: ExportException
                     ) {
+                        progressJob?.cancel()
                         if (continuation.isActive) {
                             continuation.resumeWithException(exportException)
                         }
@@ -140,10 +149,33 @@ class Media3TransformerExportService(
                 .build()
 
             continuation.invokeOnCancellation {
+                progressJob?.cancel()
                 transformer.cancel()
             }
             onProgress(0.05)
             transformer.start(composition, outputFile.absolutePath)
+            progressJob = pollTransformerProgress(transformer, onProgress)
+        }
+    }
+
+    private fun pollTransformerProgress(
+        transformer: Transformer,
+        onProgress: (Double) -> Unit
+    ): Job {
+        val progressHolder = ProgressHolder()
+        return CoroutineScope(Dispatchers.Main.immediate).launch {
+            var lastProgress = 5
+            while (true) {
+                val state = transformer.getProgress(progressHolder)
+                if (state == Transformer.PROGRESS_STATE_AVAILABLE) {
+                    val progress = progressHolder.progress.coerceIn(0, 99)
+                    if (progress > lastProgress) {
+                        lastProgress = progress
+                        onProgress(progress / 100.0)
+                    }
+                }
+                delay(250)
+            }
         }
     }
 
