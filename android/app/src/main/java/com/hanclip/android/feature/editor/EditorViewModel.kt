@@ -138,7 +138,7 @@ class EditorViewModel : ViewModel() {
                     it.copy(
                         isImportingMedia = false,
                         progressMessage = "",
-                        alertMessage = "선택한 미디어를 불러오지 못했습니다."
+                        alertMessage = "선택한 미디어를 불러오지 못했습니다. Android 기본 사진첩 권한을 확인하거나 파일 버튼으로 다시 선택해 주세요."
                     )
                 } else {
                     val failedCount = uris.size - imported.size
@@ -1261,7 +1261,7 @@ class EditorViewModel : ViewModel() {
                 add("비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 묶었습니다.")
             }
             if (failedCount > 0) {
-                add("${failedCount}개는 지원하지 않거나 읽을 수 없습니다.")
+                add("${failedCount}개는 지원하지 않거나 읽을 수 없습니다. 필요하면 파일 버튼으로 다시 선택해 주세요.")
             }
         }
         return buildString {
