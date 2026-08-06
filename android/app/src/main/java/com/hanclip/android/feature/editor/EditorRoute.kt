@@ -430,6 +430,9 @@ fun EditorRoute(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 palette = palette,
                 isExporting = state.isExporting,
+                clipCount = state.renderableClips.size,
+                totalSeconds = state.totalDurationSeconds,
+                qualityTitle = state.outputQualityPreset.displayTitle,
                 onMakeMovie = { isExportConfirmationVisible = true }
             )
         }
@@ -2562,6 +2565,9 @@ private fun BottomMakeBar(
     modifier: Modifier,
     palette: HanClipPalette,
     isExporting: Boolean,
+    clipCount: Int,
+    totalSeconds: Double,
+    qualityTitle: String,
     onMakeMovie: () -> Unit
 ) {
     Surface(
@@ -2569,24 +2575,38 @@ private fun BottomMakeBar(
         color = palette.panel.copy(alpha = 0.96f),
         shadowElevation = 8.dp
     ) {
-        Button(
-            onClick = onMakeMovie,
-            enabled = !isExporting,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(16.dp)
-                .height(54.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = palette.primary,
-                contentColor = Color.White,
-                disabledContainerColor = palette.chip,
-                disabledContentColor = palette.subText
-            )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Outlined.MovieCreation, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(if (isExporting) "만드는 중..." else "영화 만들기")
+            Text(
+                text = "${clipCount}개 클립 · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle}",
+                color = palette.subText,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Button(
+                onClick = onMakeMovie,
+                enabled = !isExporting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = palette.primary,
+                    contentColor = Color.White,
+                    disabledContainerColor = palette.chip,
+                    disabledContentColor = palette.subText
+                )
+            ) {
+                Icon(Icons.Outlined.MovieCreation, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (isExporting) "만드는 중..." else "영화 만들기")
+            }
         }
     }
 }
