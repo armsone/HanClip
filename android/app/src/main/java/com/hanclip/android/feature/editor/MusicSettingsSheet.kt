@@ -122,7 +122,7 @@ fun MusicSettingsSheet(
             ) {
                 Column {
                     Text(
-                        "배경음악",
+                        "음악/원본 소리",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = palette.text
@@ -328,9 +328,9 @@ private fun MusicMixSummaryPanel(
             }
             Text(
                 text = if (currentTitle == null) {
-                    "배경음악 없이 타격음과 원본 소리만 사용합니다."
+                    "배경음악 없이 스윙 타격음과 원본 소리만 사용합니다."
                 } else {
-                    "${currentTitle}을 타격음/원본 소리와 함께 섞습니다."
+                    "${currentTitle}을 얹고 스윙 타격음/원본 소리는 남깁니다."
                 },
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
