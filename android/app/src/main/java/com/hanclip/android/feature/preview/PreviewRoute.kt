@@ -144,7 +144,7 @@ fun PreviewRoute(
                 }
             }.onSuccess { savedUri ->
                 onSavedMovie(savedUri)
-                message = "갤러리에 저장했습니다."
+                message = "기본 갤러리의 Movies/HanClip 폴더에 저장했습니다."
             }.onFailure {
                 message = "갤러리에 저장하지 못했습니다."
             }
@@ -172,7 +172,7 @@ fun PreviewRoute(
                 }
             }.onSuccess {
                 onSavedMovie(targetUri)
-                message = "파일로 저장했습니다."
+                message = "선택한 파일 위치에 MP4로 저장했습니다."
             }.onFailure {
                 message = "파일로 저장하지 못했습니다."
             }
@@ -579,7 +579,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("개봉하기")
+            Text("저장")
         }
     }
 }
@@ -618,13 +618,13 @@ private fun SaveOptionsSheet(
                 ) {
                     Column {
                         Text(
-                            text = "개봉",
+                            text = "저장",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = palette.text
                         )
                         Text(
-                            text = "완성된 영화를 저장할 위치를 선택합니다.",
+                            text = "완성된 영화를 어디에 둘지 선택합니다.",
                             color = palette.subText
                         )
                     }
@@ -633,8 +633,8 @@ private fun SaveOptionsSheet(
                     }
                 }
                 SaveDestinationCard(
-                    title = "갤러리로 개봉",
-                    body = "기본 갤러리의 HanClip 폴더에 저장합니다.",
+                    title = "기본 갤러리에 저장",
+                    body = "Android 사진첩에서 바로 볼 수 있게 Movies/HanClip 폴더에 저장합니다.",
                     icon = Icons.Outlined.Download,
                     palette = palette,
                     primary = true,
