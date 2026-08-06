@@ -2545,7 +2545,7 @@ private fun GlobalTimePanel(
                 Column {
                     Text("전체 영상 시간", fontWeight = FontWeight.Bold, color = palette.text)
                     Text(
-                        "사진과 영상 클립 길이를 한 번에 맞춥니다.",
+                        "사진 표시 시간과 영상 클립 길이를 한 번에 맞춥니다.",
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.subText
                     )
@@ -2596,7 +2596,7 @@ private fun GlobalTimePanel(
                     contentColor = Color.White
                 )
             ) {
-                Text("사진/영상 클립에 %.1f초 적용".format(defaultDuration))
+                Text("모든 사진/영상 클립 %.1f초로 맞추기".format(defaultDuration))
             }
             OutlinedButton(
                 onClick = onSelectFullRange,
@@ -2610,7 +2610,7 @@ private fun GlobalTimePanel(
                     disabledContentColor = palette.subText
                 )
             ) {
-                Text("영상은 원본 전체로 맞추기")
+                Text("영상 클립은 원본 전체 길이로")
             }
         }
     }
