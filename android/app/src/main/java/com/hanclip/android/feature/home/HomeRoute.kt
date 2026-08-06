@@ -536,7 +536,7 @@ private fun HomeHeader(
             ) {
                 HanClipBrandCapsule()
                 Text(
-                    text = "내 사진과 영상을 한 번에 골라 HanClip 완성본으로",
+                    text = "골프 사진과 영상을 한 번에 골라 HanClip 완성본으로",
                     style = MaterialTheme.typography.bodyLarge,
                     color = palette.subText
                 )
