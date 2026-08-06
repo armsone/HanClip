@@ -230,7 +230,9 @@ fun EditorRoute(
         state.watermarkSettings,
         state.backgroundMusicUri,
         state.backgroundMusicTitle,
-        state.backgroundMusicSampleId
+        state.backgroundMusicSampleId,
+        state.backgroundMusicVolume,
+        state.originalAudioVolume
     ) {
         if (state.clips.isNotEmpty() && !state.isImportingMedia && !state.isExporting) {
             viewModel.saveDraft(context)
@@ -571,7 +573,7 @@ fun EditorRoute(
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
                 title = { Text("편집을 닫을까요?") },
-                text = { Text("현재 작업은 자동 저장됩니다. 홈의 `작업 열기`에서 바로 이어 편집할 수 있습니다.") }
+                text = { Text("현재 작업과 저장 시각이 자동 저장됩니다. 홈의 `편집 이어가기`에서 바로 계속할 수 있습니다.") }
             )
         }
         if (isExportConfirmationVisible) {
