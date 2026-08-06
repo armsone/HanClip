@@ -1063,7 +1063,10 @@ private fun AiShotMovieCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         color = Color.White,
-        border = BorderStroke(1.dp, HomeBorder)
+        border = BorderStroke(
+            width = if (isRecentlySaved) 1.5.dp else 1.dp,
+            color = if (isRecentlySaved) HomePrimary.copy(alpha = 0.52f) else HomeBorder
+        )
     ) {
         Row(
             modifier = Modifier.padding(9.dp),
@@ -1475,7 +1478,10 @@ private fun SavedProjectRow(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = Color.White,
-        border = BorderStroke(1.dp, HomeBorder)
+        border = BorderStroke(
+            width = if (isRecentlySaved) 1.5.dp else 1.dp,
+            color = if (isRecentlySaved) HomePrimary.copy(alpha = 0.52f) else HomeBorder
+        )
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -1578,8 +1584,8 @@ private fun NewSavedMovieBadge() {
         border = BorderStroke(1.dp, Color(0xFFEB3B45).copy(alpha = 0.32f))
     ) {
         Text(
-            text = "NEW",
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+            text = "방금 저장",
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
             color = Color(0xFFC8212C),
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.labelSmall,
