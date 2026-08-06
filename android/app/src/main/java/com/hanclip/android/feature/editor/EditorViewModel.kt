@@ -85,7 +85,7 @@ class EditorViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
     private var exportJob: Job? = null
-    private var lastDeleteSnapshot: DeleteUndoSnapshot? = null
+    private var lastUndoSnapshot: EditorUndoSnapshot? = null
 
     fun openPreset(context: Context, preset: MoviePreset) {
         _uiState.update {
@@ -737,10 +737,9 @@ class EditorViewModel : ViewModel() {
                 clip.id == id || clip.videoSegmentParentId == id
             }
             val rebalanced = removedGroupId?.let { rebalanceSimilarPhotoGroup(nextClips, it) } ?: nextClips
-            lastDeleteSnapshot = DeleteUndoSnapshot(
-                clips = state.clips,
-                importedMediaCount = state.importedMediaCount,
-                expandedSimilarPhotoGroupIds = state.expandedSimilarPhotoGroupIds
+            lastUndoSnapshot = EditorUndoSnapshot(
+                state = state,
+                restoredMessage = "삭제를 되돌렸습니다."
             )
             val removedCount = state.clips.size - rebalanced.size
             state.copy(
@@ -759,15 +758,15 @@ class EditorViewModel : ViewModel() {
         }
     }
 
-    fun undoLastDelete() {
-        val snapshot = lastDeleteSnapshot ?: return
-        lastDeleteSnapshot = null
+    fun undoLastEditorAction() {
+        val snapshot = lastUndoSnapshot ?: return
+        lastUndoSnapshot = null
         _uiState.update {
-            it.copy(
-                clips = snapshot.clips,
-                importedMediaCount = snapshot.importedMediaCount,
-                expandedSimilarPhotoGroupIds = snapshot.expandedSimilarPhotoGroupIds,
-                alertMessage = "삭제를 되돌렸습니다.",
+            snapshot.state.copy(
+                isImportingMedia = false,
+                isExporting = false,
+                progressMessage = "",
+                alertMessage = snapshot.restoredMessage,
                 undoDeleteMessage = null
             )
         }
@@ -826,6 +825,13 @@ class EditorViewModel : ViewModel() {
     }
 
     fun resetProject(context: Context) {
+        val previousState = _uiState.value
+        if (previousState.clips.isNotEmpty()) {
+            lastUndoSnapshot = EditorUndoSnapshot(
+                state = previousState,
+                restoredMessage = "초기화를 되돌렸습니다."
+            )
+        }
         DraftProjectStore.clear(context.applicationContext)
         _uiState.update { state ->
             state.copy(
@@ -833,7 +839,16 @@ class EditorViewModel : ViewModel() {
                 importedMediaCount = 0,
                 exportedVideoUri = null,
                 progressMessage = "",
-                alertMessage = "현재 영화를 초기화했습니다."
+                alertMessage = if (previousState.clips.isNotEmpty()) {
+                    "현재 영화를 초기화했습니다. 필요하면 방금 작업을 되돌릴 수 있습니다."
+                } else {
+                    "현재 영화를 초기화했습니다."
+                },
+                undoDeleteMessage = if (previousState.clips.isNotEmpty()) {
+                    "방금 초기화한 작업을 되돌릴 수 있습니다."
+                } else {
+                    null
+                }
             )
         }
     }
@@ -1412,8 +1427,7 @@ class EditorViewModel : ViewModel() {
     }
 }
 
-private data class DeleteUndoSnapshot(
-    val clips: List<ClipItem>,
-    val importedMediaCount: Int,
-    val expandedSimilarPhotoGroupIds: Set<String>
+private data class EditorUndoSnapshot(
+    val state: EditorUiState,
+    val restoredMessage: String
 )

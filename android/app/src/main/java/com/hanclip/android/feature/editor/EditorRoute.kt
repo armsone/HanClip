@@ -458,7 +458,7 @@ fun EditorRoute(
                 dismissButton = if (state.undoDeleteMessage != null) {
                     {
                         OutlinedButton(
-                            onClick = viewModel::undoLastDelete,
+                            onClick = viewModel::undoLastEditorAction,
                             border = BorderStroke(1.dp, palette.border),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = palette.panel,
