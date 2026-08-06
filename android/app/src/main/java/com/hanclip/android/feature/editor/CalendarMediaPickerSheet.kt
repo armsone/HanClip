@@ -188,6 +188,7 @@ fun CalendarMediaPickerSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val selectedSummary = selectedMediaSummaryText(visibleItems, selectedUris)
                 OutlinedButton(
                     modifier = Modifier.weight(1f).height(48.dp),
                     onClick = onDismiss,
@@ -219,7 +220,7 @@ fun CalendarMediaPickerSheet(
                         disabledContentColor = palette.subText
                     )
                 ) {
-                    Text("가져오기 ${selectedUris.size}개", fontWeight = FontWeight.Bold)
+                    Text("가져오기 $selectedSummary", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -258,7 +259,7 @@ fun CalendarMediaPickerSheet(
             titleContentColor = palette.text,
             textContentColor = palette.subText,
             title = { Text("많은 미디어 가져오기") },
-            text = { Text("${uris.size}개를 선택했습니다. 선택한 순서대로 클립을 만들까요?") }
+            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택한 순서대로 클립을 만들까요?") }
         )
     }
 }
@@ -278,6 +279,22 @@ private enum class MediaSortOrder(val label: String) {
     fun next(): MediaSortOrder {
         return if (this == NewestFirst) OldestFirst else NewestFirst
     }
+}
+
+private fun selectedMediaSummaryText(
+    items: List<CalendarMediaItem>,
+    selectedUris: List<Uri>
+): String {
+    val selectedItems = selectedUris.mapNotNull { selectedUri ->
+        items.firstOrNull { it.uri == selectedUri }
+    }
+    val photoCount = selectedItems.count { it.kind != ClipMediaKind.Video }
+    val videoCount = selectedItems.count { it.kind == ClipMediaKind.Video }
+    return listOfNotNull(
+        selectedUris.size.takeIf { it > 0 }?.let { "${it}개" },
+        photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
+        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" }
+    ).joinToString(" · ").ifBlank { "0개" }
 }
 
 @Composable
