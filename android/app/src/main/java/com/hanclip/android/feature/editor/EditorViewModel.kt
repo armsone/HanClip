@@ -414,7 +414,7 @@ class EditorViewModel : ViewModel() {
                 backgroundMusicTitle = displayNameForUri(appContext, uri),
                 backgroundMusicSampleId = null,
                 backgroundMusicVolume = 0.35,
-                alertMessage = "배경 음악을 선택했습니다."
+                alertMessage = "배경 음악을 MP4 완성본에 적용했습니다. 현재 작업도 자동 저장됩니다."
             )
         }
     }
@@ -426,7 +426,7 @@ class EditorViewModel : ViewModel() {
                 backgroundMusicTitle = sample.title,
                 backgroundMusicSampleId = sample.id,
                 backgroundMusicVolume = 0.35,
-                alertMessage = "${sample.title} 음악을 선택했습니다."
+                alertMessage = "${sample.title} 음악을 MP4 완성본에 적용했습니다. 현재 작업도 자동 저장됩니다."
             )
         }
     }
@@ -450,7 +450,7 @@ class EditorViewModel : ViewModel() {
                 backgroundMusicTitle = null,
                 backgroundMusicSampleId = null,
                 backgroundMusicVolume = 0.35,
-                alertMessage = "음악을 제거했습니다."
+                alertMessage = "MP4 완성본에서 배경 음악을 제거했습니다. 현재 작업도 자동 저장됩니다."
             )
         }
     }
