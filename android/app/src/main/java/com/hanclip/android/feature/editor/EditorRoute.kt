@@ -2139,13 +2139,13 @@ private fun ClipRow(
                             }
                             ClipControlPill(
                                 palette = palette,
-                                text = "-0.5초",
+                                text = "짧게 0.5초",
                                 icon = { Icon(Icons.Outlined.Remove, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onDecreaseDuration
                             )
                             ClipControlPill(
                                 palette = palette,
-                                text = "+0.5초",
+                                text = "길게 0.5초",
                                 icon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onIncreaseDuration
                             )
