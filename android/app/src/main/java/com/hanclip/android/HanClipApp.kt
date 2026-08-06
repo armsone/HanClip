@@ -32,6 +32,7 @@ import com.hanclip.android.feature.editor.EditorImportAction
 import com.hanclip.android.feature.editor.EditorRoute
 import com.hanclip.android.feature.editor.EditorViewModel
 import com.hanclip.android.feature.home.HomeRoute
+import com.hanclip.android.feature.preview.PreviewMovieSummary
 import com.hanclip.android.feature.preview.PreviewRoute
 
 @Composable
@@ -258,6 +259,15 @@ fun HanClipApp(
         composable(HanClipDestination.Preview.route) {
             PreviewRoute(
                 exportedVideoUri = editorState.exportedVideoUri,
+                movieSummary = PreviewMovieSummary(
+                    presetTitle = editorState.preset.title,
+                    clipCount = editorState.renderableClips.size,
+                    totalDurationSeconds = editorState.totalDurationSeconds,
+                    outputAspectRatio = editorState.outputAspectRatio,
+                    hasBackgroundMusic = editorState.backgroundMusicUri != null ||
+                        editorState.backgroundMusicSampleId != null,
+                    watermarkSettings = editorState.watermarkSettings
+                ),
                 onEdit = { navController.popBackStack() },
                 onDone = { navController.popBackStack(HanClipDestination.Home.route, false) },
                 onSavedMovie = { uri ->

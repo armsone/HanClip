@@ -16,9 +16,9 @@ import java.util.Date
 import java.util.Locale
 
 object VideoSaveShare {
-    fun saveToGallery(context: Context, sourceUri: Uri): Uri {
+    fun saveToGallery(context: Context, sourceUri: Uri, label: String? = null): Uri {
         val resolver = context.contentResolver
-        val filename = newMovieFileName()
+        val filename = newMovieFileName(label)
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, filename)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
@@ -88,9 +88,14 @@ object VideoSaveShare {
         )
     }
 
-    fun newMovieFileName(): String {
+    fun newMovieFileName(label: String? = null): String {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.KOREAN).format(Date())
-        return "HanClip-$stamp.mp4"
+        val safeLabel = label
+            ?.trim()
+            ?.replace(Regex("[^\\p{L}\\p{N}_-]+"), "-")
+            ?.trim('-')
+            ?.takeIf { it.isNotBlank() }
+        return listOfNotNull("HanClip", safeLabel, stamp).joinToString("-") + ".mp4"
     }
 }
 

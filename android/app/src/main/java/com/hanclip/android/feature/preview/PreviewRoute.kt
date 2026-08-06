@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -63,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.hanclip.android.core.media.VideoSaveShare
+import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeStore
 import androidx.core.content.ContextCompat
@@ -76,9 +79,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class PreviewMovieSummary(
+    val presetTitle: String,
+    val clipCount: Int,
+    val totalDurationSeconds: Double,
+    val outputAspectRatio: OutputAspectRatio?,
+    val hasBackgroundMusic: Boolean,
+    val watermarkSettings: WatermarkSettings
+)
+
 @Composable
 fun PreviewRoute(
     exportedVideoUri: Uri?,
+    movieSummary: PreviewMovieSummary,
     onEdit: () -> Unit,
     onDone: () -> Unit,
     onSavedMovie: (Uri) -> Unit
@@ -99,7 +112,11 @@ fun PreviewRoute(
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    VideoSaveShare.saveToGallery(context, exportedVideoUri)
+                    VideoSaveShare.saveToGallery(
+                        context = context,
+                        sourceUri = exportedVideoUri,
+                        label = movieSummary.presetTitle
+                    )
                 }
             }.onSuccess { savedUri ->
                 onSavedMovie(savedUri)
@@ -192,6 +209,12 @@ fun PreviewRoute(
             }
         }
         item {
+            PreviewSummaryPanel(
+                summary = movieSummary,
+                palette = palette
+            )
+        }
+        item {
             PreviewActionRow(
                 palette = palette,
                 onEdit = onEdit,
@@ -267,7 +290,9 @@ fun PreviewRoute(
             },
             onSaveToFile = {
                 showSaveOptions = false
-                createVideoDocumentLauncher.launch(VideoSaveShare.newMovieFileName())
+                createVideoDocumentLauncher.launch(
+                    VideoSaveShare.newMovieFileName(movieSummary.presetTitle)
+                )
             }
         )
     }
@@ -279,6 +304,170 @@ fun PreviewRoute(
     }
     if (isSavingVideo) {
         SavingMovieDialog(palette)
+    }
+}
+
+@Composable
+private fun PreviewSummaryPanel(
+    summary: PreviewMovieSummary,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "완성 정보",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.text
+                    )
+                    Text(
+                        text = summary.presetTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.subText
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = palette.chip,
+                    border = BorderStroke(1.dp, palette.border)
+                ) {
+                    Text(
+                        text = if (summary.clipCount > 0) "${summary.clipCount}개 클립" else "클립 없음",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.primary
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SummaryInfoCell(
+                    label = "전체 길이",
+                    value = formatPreviewDuration(summary.totalDurationSeconds),
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryInfoCell(
+                    label = "화면",
+                    value = summary.outputAspectRatio?.title ?: "자동",
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SummaryStatusChip(
+                    label = if (summary.hasBackgroundMusic) "음악 적용" else "음악 없음",
+                    active = summary.hasBackgroundMusic,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryStatusChip(
+                    label = if (summary.watermarkSettings.shouldRender) "자막 적용" else "자막 없음",
+                    active = summary.watermarkSettings.shouldRender,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryInfoCell(
+    label: String,
+    value: String,
+    palette: HanClipPalette,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = palette.subText
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = palette.text
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryStatusChip(
+    label: String,
+    active: Boolean,
+    palette: HanClipPalette,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.primary.copy(alpha = 0.14f) else palette.chip,
+        border = BorderStroke(
+            1.dp,
+            if (active) palette.primary.copy(alpha = 0.42f) else palette.border
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = RoundedCornerShape(50),
+                color = if (active) palette.primary else palette.subText.copy(alpha = 0.45f)
+            ) {}
+            Box(Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (active) palette.primary else palette.subText
+            )
+        }
+    }
+}
+
+private fun formatPreviewDuration(seconds: Double): String {
+    val safeSeconds = seconds.coerceAtLeast(0.0)
+    val minutes = (safeSeconds / 60).toInt()
+    val remainingSeconds = safeSeconds - minutes * 60
+    return if (minutes > 0) {
+        "%d분 %.1f초".format(minutes, remainingSeconds)
+    } else {
+        "%.1f초".format(remainingSeconds)
     }
 }
 
