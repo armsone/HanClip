@@ -169,7 +169,8 @@ class EditorViewModel : ViewModel() {
                         renderableCount = groupedImported.count { clip -> clip.isRenderableClip },
                         failedCount = failedCount,
                         hiddenSimilarPhotoCount = hiddenSimilarPhotoCount,
-                        autoSegmentCount = groupedImported.count { clip -> clip.isVideoSegmentChild }
+                        autoSegmentCount = groupedImported.count { clip -> clip.isVideoSegmentChild },
+                        replacedSamples = shouldReplaceSamples
                     )
                     it.copy(
                         clips = if (shouldReplaceSamples) groupedImported else it.clips + groupedImported,
@@ -1313,7 +1314,8 @@ class EditorViewModel : ViewModel() {
         renderableCount: Int,
         failedCount: Int,
         hiddenSimilarPhotoCount: Int,
-        autoSegmentCount: Int
+        autoSegmentCount: Int,
+        replacedSamples: Boolean
     ): String {
         val photoCount = imported.count { it.mediaKind != ClipMediaKind.Video }
         val videoCount = imported.count { it.mediaKind == ClipMediaKind.Video }
@@ -1327,6 +1329,9 @@ class EditorViewModel : ViewModel() {
             else -> "가져오기 완료 · 미디어 ${imported.size}개"
         }
         val notes = buildList {
+            if (replacedSamples) {
+                add("기본 샘플을 선택한 미디어로 교체했습니다.")
+            }
             if (autoSegmentCount > 0) {
                 add("타격점 기준 자동 컷 ${autoSegmentCount}개를 만들었습니다.")
             }
