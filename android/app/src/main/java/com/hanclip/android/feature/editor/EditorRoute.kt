@@ -1547,20 +1547,27 @@ private fun AutoSegmentStatusPanel(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "자동 분할 완료",
+                    text = "자동 타격점 분할 완료",
                     color = palette.text,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "원본 ${sourceCount}개에서 ${segmentCount}개 클립 · 평균 ${autoSegmentAverageDurationText(segmentCount, defaultDuration)}",
+                    text = "스윙 소리 후보를 중심으로 ${segmentCount}개 클립을 만들었습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Text(
+                    text = "원본 ${sourceCount}개 · 클립당 약 ${autoSegmentAverageDurationText(segmentCount, defaultDuration)}",
+                    color = palette.subText,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Text(
-                text = "기준 %.1f초".format(defaultDuration),
+                text = "후보 ${segmentCount}",
                 color = palette.primary,
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.labelLarge
