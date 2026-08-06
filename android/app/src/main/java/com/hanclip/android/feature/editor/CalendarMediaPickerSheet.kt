@@ -221,7 +221,7 @@ fun CalendarMediaPickerSheet(
                     )
                 ) {
                     Text(
-                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "가져오기 ${selectedUris.size}개",
+                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "순서대로 가져오기 ${selectedUris.size}개",
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -262,7 +262,7 @@ fun CalendarMediaPickerSheet(
             titleContentColor = palette.text,
             textContentColor = palette.subText,
             title = { Text("많은 미디어 가져오기") },
-            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택한 순서대로 클립을 만들까요?") }
+            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 썸네일의 번호 순서대로 클립을 만들까요?") }
         )
     }
 }
@@ -574,7 +574,7 @@ private fun MediaSelectionSummary(
                 text = if (selectedUris.isEmpty()) {
                     "사진이나 영상을 선택해 주세요."
                 } else {
-                    "선택 ${selectedUris.size}개"
+                    "선택 ${selectedUris.size}개 · 번호순"
                 },
                 color = if (selectedUris.isEmpty()) palette.subText else palette.primary,
                 fontWeight = FontWeight.Bold,
@@ -586,7 +586,8 @@ private fun MediaSelectionSummary(
                 } else {
                     listOfNotNull(
                         photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
-                        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" }
+                        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" },
+                        selectedUris.size.takeIf { it > 1 }?.let { "1-${it} 순서" }
                     ).joinToString(" · ")
                 },
                 color = palette.subText,
