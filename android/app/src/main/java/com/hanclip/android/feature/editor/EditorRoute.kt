@@ -174,7 +174,7 @@ fun EditorRoute(
         if (grants.values.any { it }) {
             isCalendarPickerVisible = true
         } else {
-            viewModel.showAlert("휴대폰 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. 파일 선택을 사용할 수도 있습니다.")
+            viewModel.showAlert("기본 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. Android 설정에서 HanClip 권한을 허용하거나, 파일 버튼으로 직접 선택해 주세요.")
         }
     }
 

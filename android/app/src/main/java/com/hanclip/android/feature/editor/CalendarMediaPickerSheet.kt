@@ -179,6 +179,11 @@ fun CalendarMediaPickerSheet(
                     }
                 }
             )
+            MediaSelectionSummary(
+                palette = palette,
+                items = visibleItems,
+                selectedUris = selectedUris
+            )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -517,6 +522,55 @@ private fun CalendarMediaStrip(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MediaSelectionSummary(
+    palette: HanClipPalette,
+    items: List<CalendarMediaItem>,
+    selectedUris: List<Uri>
+) {
+    val selectedItems = selectedUris.mapNotNull { selectedUri ->
+        items.firstOrNull { it.uri == selectedUri }
+    }
+    val photoCount = selectedItems.count { it.kind != ClipMediaKind.Video }
+    val videoCount = selectedItems.count { it.kind == ClipMediaKind.Video }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = if (selectedUris.isEmpty()) palette.panel else palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (selectedUris.isEmpty()) {
+                    "사진이나 영상을 선택해 주세요."
+                } else {
+                    "선택 ${selectedUris.size}개"
+                },
+                color = if (selectedUris.isEmpty()) palette.subText else palette.primary,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = if (selectedUris.isEmpty()) {
+                    "기본 사진첩"
+                } else {
+                    listOfNotNull(
+                        photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
+                        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" }
+                    ).joinToString(" · ")
+                },
+                color = palette.subText,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
