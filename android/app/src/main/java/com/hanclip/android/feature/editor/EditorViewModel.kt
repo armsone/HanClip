@@ -1314,7 +1314,7 @@ class EditorViewModel : ViewModel() {
         val parts = buildList {
             if (photoCount > 0) add("사진 ${photoCount}개")
             if (videoCount > 0) add("영상 ${videoCount}개")
-            add("사용 클립 ${renderableCount}개")
+            add("완성본 클립 ${renderableCount}개")
         }
         val status = when {
             failedCount > 0 -> "가져오기 완료 · 선택 ${selectedCount}개 중 ${imported.size}개 성공"
@@ -1325,10 +1325,10 @@ class EditorViewModel : ViewModel() {
                 add("기본 샘플을 선택한 사진/영상 클립으로 교체했습니다.")
             }
             if (autoSegmentCount > 0) {
-                add("타격점 기준 자동 컷 ${autoSegmentCount}개를 만들었습니다.")
+                add("타격점 기준 자동 컷 ${autoSegmentCount}개를 준비했습니다.")
             }
             if (hiddenSimilarPhotoCount > 0) {
-                add("비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 묶었습니다.")
+                add("비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 정리했습니다.")
             }
             if (failedCount > 0) {
                 add("${failedCount}개는 지원하지 않거나 읽을 수 없습니다. 필요하면 파일 선택으로 다시 준비해 주세요.")
