@@ -135,7 +135,7 @@ fun HomeRoute(
         }
         item {
             if (sharedInboxCount > 0) {
-                SharedInboxBanner(sharedInboxCount)
+                SharedInboxBanner(sharedInboxCount, palette)
             }
         }
         item {
@@ -785,11 +785,15 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
 )
 
 @Composable
-private fun SharedInboxBanner(sharedInboxCount: Int) {
+private fun SharedInboxBanner(
+    sharedInboxCount: Int,
+    palette: HanClipPalette
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFFEAF5F0),
+        color = palette.chip,
         shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, palette.border),
         tonalElevation = 0.dp
     ) {
         Row(
@@ -800,31 +804,31 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
             Icon(
                 imageVector = Icons.Outlined.Collections,
                 contentDescription = null,
-                tint = HomePrimary
+                tint = palette.primary
             )
             Column(Modifier.weight(1f)) {
                 Text(
                     text = "공유 파일 ${sharedInboxCount}개 대기",
                     fontWeight = FontWeight.SemiBold,
-                    color = HomeText
+                    color = palette.text
                 )
                 Text(
-                    text = "사진첩이나 다른 앱에서 보낸 파일을 바로 완성본으로 엽니다.",
+                    text = "기본 사진첩이나 다른 앱에서 보낸 파일을 바로 완성본으로 엽니다.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = HomeSubText,
+                    color = palette.subText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             Surface(
                 shape = RoundedCornerShape(50),
-                color = Color.White,
-                border = BorderStroke(1.dp, HomeBorder)
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
             ) {
                 Text(
                     text = "연결됨",
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    color = HomePrimary,
+                    color = palette.primary,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1
@@ -986,7 +990,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "앱 목록입니다. 폰 갤러리 저장본은 Movies/HanClip에서 확인",
+                    text = "앱 목록입니다. 기본 사진첩 저장본은 Movies/HanClip에서 확인",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
