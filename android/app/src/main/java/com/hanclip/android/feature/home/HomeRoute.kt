@@ -536,7 +536,7 @@ private fun HomeHeader(
             ) {
                 HanClipBrandCapsule()
                 Text(
-                    text = "사진과 영상을 짧은 영화로",
+                    text = "사진과 영상을 한 번에 골라 짧은 영화로",
                     style = MaterialTheme.typography.bodyLarge,
                     color = palette.subText
                 )
@@ -1380,7 +1380,7 @@ private fun EmptySavedProjectRow() {
             Column(Modifier.weight(1f)) {
                 Text("최근 항목 없음", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "영화를 만들면 여기에 표시됩니다.",
+                    "사진과 영상을 골라 HanClip 영화를 만들면 여기에 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText
                 )
