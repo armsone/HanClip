@@ -2396,11 +2396,13 @@ private fun clipTitle(clip: ClipItem): String {
 private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String {
     val source = clip.sourceDurationSeconds ?: clip.durationSeconds
     return if (clip.isVideoSegmentParent) {
-        "전체 ${formatClipSeconds(source)} · ${childSegmentCount}개"
+        "원본 ${formatClipSeconds(source)} · 자동 컷 ${childSegmentCount}개"
     } else if (clip.mediaKind == ClipMediaKind.Video) {
-        "${formatClipSeconds(clip.durationSeconds)} / 전체 ${formatClipSeconds(source)}"
+        "클립 ${formatClipSeconds(clip.durationSeconds)} / 원본 ${formatClipSeconds(source)}"
+    } else if (clip.mediaKind == ClipMediaKind.LivePhoto) {
+        "Live Photo ${formatClipSeconds(clip.durationSeconds)}"
     } else {
-        formatClipSeconds(clip.durationSeconds)
+        "사진 ${formatClipSeconds(clip.durationSeconds)}"
     }
 }
 
