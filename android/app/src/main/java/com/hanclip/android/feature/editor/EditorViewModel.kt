@@ -1268,7 +1268,7 @@ class EditorViewModel : ViewModel() {
 
     private fun watermarkApplyMessage(settings: WatermarkSettings): String {
         if (!settings.shouldRender) {
-            return "자막과 HanClip 로고를 껐습니다."
+            return "MP4 완성본 자막과 HanClip 로고를 껐습니다. 현재 작업도 자동 저장됩니다."
         }
         val parts = buildList {
             if (settings.shouldRenderText) {
@@ -1279,7 +1279,7 @@ class EditorViewModel : ViewModel() {
                 add("HanClip 로고 ${watermarkPositionTitle(settings.copyrightPosition)}")
             }
         }
-        return parts.joinToString(" · ", postfix = " 적용했습니다.")
+        return parts.joinToString(" · ", postfix = " MP4 완성본에 적용했습니다. 현재 작업도 자동 저장됩니다.")
     }
 
     private fun watermarkPositionTitle(position: WatermarkPosition): String {
