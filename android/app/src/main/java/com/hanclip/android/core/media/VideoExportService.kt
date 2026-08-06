@@ -131,7 +131,13 @@ class Media3TransformerExportService(
                         progressJob?.cancel()
                         onProgress(1.0)
                         if (continuation.isActive) {
-                            continuation.resume(Uri.fromFile(outputFile))
+                            if (outputFile.length() > 0L) {
+                                continuation.resume(Uri.fromFile(outputFile))
+                            } else {
+                                continuation.resumeWithException(
+                                    IllegalStateException("완성된 영상 파일이 비어 있습니다.")
+                                )
+                            }
                         }
                     }
 
@@ -141,6 +147,7 @@ class Media3TransformerExportService(
                         exportException: ExportException
                     ) {
                         progressJob?.cancel()
+                        runCatching { outputFile.delete() }
                         if (continuation.isActive) {
                             continuation.resumeWithException(exportException)
                         }
@@ -423,6 +430,7 @@ class Media3TransformerExportService(
             val buffer = ByteBuffer.allocate(maxInputSize)
             val info = MediaCodec.BufferInfo()
             var firstSampleTimeUs = -1L
+            var wroteSample = false
             muxer.start()
             onProgress(0.1)
 
@@ -448,10 +456,14 @@ class Media3TransformerExportService(
                     mediaCodecFlagsForSample(extractor.sampleFlags)
                 )
                 muxer.writeSampleData(muxerTrackIndex, buffer, info)
+                wroteSample = true
                 val elapsed = (sampleTimeUs - startUs).coerceAtLeast(0)
                 val total = (endUs - startUs).coerceAtLeast(1)
                 onProgress((elapsed.toDouble() / total.toDouble()).coerceIn(0.1, 0.95))
                 extractor.advance()
+            }
+            require(wroteSample && outputFile.length() > 0L) {
+                "선택한 구간에서 내보낼 영상 데이터를 찾지 못했습니다."
             }
             onProgress(1.0)
             return Uri.fromFile(outputFile)
@@ -459,6 +471,9 @@ class Media3TransformerExportService(
             runCatching { muxer.stop() }
             muxer.release()
             extractor.release()
+            if (outputFile.length() <= 0L) {
+                runCatching { outputFile.delete() }
+            }
         }
     }
 

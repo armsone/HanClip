@@ -239,6 +239,9 @@ class EditorViewModel : ViewModel() {
             }.onFailure { error ->
                 val message = if (error is CancellationException) {
                     "영화 만들기를 취소했습니다."
+                } else if (error is IllegalStateException || error is IllegalArgumentException) {
+                    error.message?.takeIf { it.isNotBlank() }
+                        ?: "선택한 구간에서 영상을 만들 수 없습니다. 클립 시간을 다시 조절해 주세요."
                 } else {
                     "영화를 만들지 못했습니다. 사진/영상 파일을 다시 선택한 뒤 시도해 주세요."
                 }
