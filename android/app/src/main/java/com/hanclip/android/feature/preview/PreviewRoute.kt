@@ -145,9 +145,9 @@ fun PreviewRoute(
                 }
             }.onSuccess { savedUri ->
                 onSavedMovie(savedUri)
-                message = "기본 갤러리의 Movies/HanClip 폴더에 저장했습니다."
+                message = "저장 완료 · Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다."
             }.onFailure {
-                message = "갤러리에 저장하지 못했습니다."
+                message = "갤러리에 저장하지 못했습니다. 파일로 저장을 선택해 다시 시도해 주세요."
             }
             isSavingVideo = false
         }
@@ -173,9 +173,9 @@ fun PreviewRoute(
                 }
             }.onSuccess {
                 onSavedMovie(targetUri)
-                message = "선택한 파일 위치에 MP4로 저장했습니다."
+                message = "파일 저장 완료 · 선택한 위치에 MP4 영상으로 저장했습니다."
             }.onFailure {
-                message = "파일로 저장하지 못했습니다."
+                message = "파일로 저장하지 못했습니다. 저장 위치 권한을 확인해 주세요."
             }
             isSavingVideo = false
         }
@@ -251,7 +251,7 @@ fun PreviewRoute(
                         runCatching {
                             VideoSaveShare.shareVideo(context, exportedVideoUri)
                         }.onFailure {
-                            message = "공유를 열지 못했습니다."
+                            message = "공유 화면을 열지 못했습니다. 먼저 갤러리나 파일로 저장한 뒤 공유해 주세요."
                         }
                     }
                 },
