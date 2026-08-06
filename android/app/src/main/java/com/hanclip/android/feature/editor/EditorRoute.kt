@@ -1037,6 +1037,7 @@ private fun ExportConfirmationDialog(
                     formatText = OutputQualityPreset.ExportFormatTitle,
                     palette = palette
                 )
+                ExportConfirmationLine("완료 후", "시사회에서 확인 · 기본 사진첩 저장 · 공유", palette)
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
                 ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
                 if (autoSegmentCount > 0) {
@@ -1044,7 +1045,7 @@ private fun ExportConfirmationDialog(
                 }
                 ExportConfirmationLine("화면", aspectRatioText, palette)
                 ExportConfirmationLine("품질", state.outputQualityPreset.chipTitle, palette)
-                ExportConfirmationLine("저장 형식", "${OutputQualityPreset.ExportFormatDetail} · 기본 사진첩 저장 가능", palette)
+                ExportConfirmationLine("파일", "${OutputQualityPreset.ExportFormatDetail} · HanClip 앨범 저장 가능", palette)
                 ExportConfirmationLine("음악", musicText, palette)
                 ExportConfirmationLine("오디오", audioMixText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
@@ -1122,6 +1123,7 @@ private fun ExportConfirmationHero(
                 ExportConfirmationPill(clipText, palette, active = true)
                 ExportConfirmationPill(durationText, palette, active = true)
                 ExportConfirmationPill(sizeText, palette, active = true)
+                ExportConfirmationPill("시사회 확인", palette, active = true)
                 ExportConfirmationPill(formatText, palette, active = false)
             }
         }
