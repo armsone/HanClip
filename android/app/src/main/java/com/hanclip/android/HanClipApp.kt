@@ -78,7 +78,8 @@ fun HanClipApp(
                 outputText = listOfNotNull(
                     editorState.outputAspectRatio?.title ?: "원본 비율",
                     editorState.outputQualityPreset.detail
-                ).joinToString(" · ")
+                ).joinToString(" · "),
+                savedAtMillis = System.currentTimeMillis()
             )
         } else {
             DraftProjectStore.load(context)?.let { draft ->
@@ -91,7 +92,8 @@ fun HanClipApp(
                     outputText = listOfNotNull(
                         draft.outputAspectRatio?.title ?: "원본 비율",
                         draft.outputQualityPreset.detail
-                    ).joinToString(" · ")
+                    ).joinToString(" · "),
+                    savedAtMillis = draft.savedAtMillis
                 )
             }
         }

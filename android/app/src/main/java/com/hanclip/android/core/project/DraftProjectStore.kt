@@ -29,7 +29,8 @@ data class DraftProject(
     val backgroundMusicTitle: String? = null,
     val backgroundMusicSampleId: String? = null,
     val backgroundMusicVolume: Double = 0.35,
-    val originalAudioVolume: Double = 1.0
+    val originalAudioVolume: Double = 1.0,
+    val savedAtMillis: Long = System.currentTimeMillis()
 )
 
 object DraftProjectStore {
@@ -78,6 +79,7 @@ private fun DraftProject.toJson(): JSONObject {
         .put("backgroundMusicSampleId", backgroundMusicSampleId)
         .put("backgroundMusicVolume", backgroundMusicVolume)
         .put("originalAudioVolume", originalAudioVolume)
+        .put("savedAtMillis", savedAtMillis)
         .put("watermarkSettings", watermarkSettings.toJson())
         .put("clips", JSONArray().also { array ->
             clips.forEach { clip -> array.put(clip.toJson()) }
@@ -113,7 +115,8 @@ private fun JSONObject.toDraftProject(): DraftProject {
         backgroundMusicSampleId = optString("backgroundMusicSampleId")
             .takeIf { it.isNotBlank() && it != "null" },
         backgroundMusicVolume = optDouble("backgroundMusicVolume", 0.35),
-        originalAudioVolume = optDouble("originalAudioVolume", 1.0)
+        originalAudioVolume = optDouble("originalAudioVolume", 1.0),
+        savedAtMillis = optLong("savedAtMillis", System.currentTimeMillis())
     )
 }
 

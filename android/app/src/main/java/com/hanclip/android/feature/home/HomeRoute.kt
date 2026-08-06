@@ -308,7 +308,8 @@ data class DraftProjectSummary(
     val presetTitle: String,
     val clipCount: Int,
     val totalDurationSeconds: Double,
-    val outputText: String
+    val outputText: String,
+    val savedAtMillis: Long
 )
 
 private val HomePrimary = Color(0xFF0B7A4E)
@@ -1380,6 +1381,7 @@ private fun DraftProjectRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         DraftInfoPill("자동 저장")
+                        DraftInfoPill(homeProjectDateText(summary.savedAtMillis))
                         DraftInfoPill("${summary.clipCount}개 클립")
                         DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
                     }
@@ -1422,7 +1424,7 @@ private fun DraftInfoPill(text: String) {
 }
 
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "사진/영상, 순서, 자막, 음악 설정을 보관 중 · ${summary.outputText}"
+    return "${homeProjectDateText(summary.savedAtMillis)} 저장 · 사진/영상, 순서, 자막, 음악 설정 보관 · ${summary.outputText}"
 }
 
 @Composable
