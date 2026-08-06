@@ -169,9 +169,9 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · Android 기본 사진첩의 HanClip 앨범에서 확인하세요."
+                message = "저장 완료 · 폰 기본 사진첩의 HanClip 앨범에서 확인하세요."
             }.onFailure {
-                message = "Android 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
+                message = "폰 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
             isSavingVideo = false
         }
@@ -277,7 +277,7 @@ fun PreviewRoute(
                         runCatching {
                             VideoSaveShare.shareVideo(context, shareUri)
                         }.onFailure {
-                            message = "공유 화면을 열지 못했습니다. 기본 사진첩 저장 후 다시 공유해 주세요."
+                            message = "공유 화면을 열지 못했습니다. 폰 기본 사진첩의 HanClip 앨범에 저장한 뒤 다시 공유해 주세요."
                         }
                     }
                 },
