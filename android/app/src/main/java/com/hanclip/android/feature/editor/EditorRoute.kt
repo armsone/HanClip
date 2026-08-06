@@ -1441,7 +1441,7 @@ private fun EmptyClipPanel(
         ) {
             Text(
                 text = if (preset == MoviePreset.Golf || preset == MoviePreset.AiShot) {
-                    "기본 사진첩에서 골프 영상과 사진을 선택하세요"
+                    "기본 사진첩에서 골프 사진과 영상을 고르세요"
                 } else {
                     "기본 사진첩에서 사진과 영상을 선택하세요"
                 },
@@ -1451,9 +1451,9 @@ private fun EmptyClipPanel(
             )
             Text(
                 text = if (preset == MoviePreset.Golf || preset == MoviePreset.AiShot) {
-                    "사진과 영상을 같이 고르면 선택한 순서대로 놓고, 스윙 소리 피크를 찾아 짧은 골프 클립으로 정리합니다."
+                    "사진은 선택한 길이로 보여주고, 영상은 스윙 타격점 중심으로 자동 컷을 준비합니다. 고른 번호순 그대로 HanClip 완성본에 이어집니다."
                 } else {
-                    "사진과 영상을 같이 고르면 선택한 순서대로 클립을 만들고 한 번에 이어 붙입니다."
+                    "사진과 영상을 같이 고르면 선택한 번호순으로 클립을 만들고 한 번에 이어 붙입니다."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = palette.subText
@@ -1462,9 +1462,12 @@ private fun EmptyClipPanel(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                PresetStatusPill("Android 기본 사진첩", active = true, palette = palette)
-                PresetStatusPill("사진+영상", active = false, palette = palette)
-                PresetStatusPill("선택 순서 유지", active = false, palette = palette)
+                PresetStatusPill("폰 기본 사진첩", active = true, palette = palette)
+                PresetStatusPill("사진+영상 한 번에", active = false, palette = palette)
+                PresetStatusPill("번호순 유지", active = false, palette = palette)
+                if (preset == MoviePreset.Golf || preset == MoviePreset.AiShot) {
+                    PresetStatusPill("타격점 자동 컷", active = false, palette = palette)
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
