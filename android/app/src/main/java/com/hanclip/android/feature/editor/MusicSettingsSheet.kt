@@ -128,7 +128,7 @@ fun MusicSettingsSheet(
                         color = palette.text
                     )
                     Text(
-                        currentTitle ?: "샘플 음악이나 내 파일을 선택합니다.",
+                        currentTitle ?: "샘플 음악이나 내 파일을 고르고 타격음은 원본 소리로 남깁니다.",
                         color = palette.subText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -176,7 +176,7 @@ fun MusicSettingsSheet(
 
             MusicVolumePanel(
                 title = "원본 소리",
-                subtitle = "영상에 들어 있는 현장 소리를 남기는 비율입니다.",
+                subtitle = "스윙 타격음과 현장 소리를 남기는 비율입니다.",
                 value = originalAudioVolume,
                 enabled = true,
                 palette = palette,
@@ -328,9 +328,9 @@ private fun MusicMixSummaryPanel(
             }
             Text(
                 text = if (currentTitle == null) {
-                    "배경음악 없이 원본 소리만 사용합니다."
+                    "배경음악 없이 타격음과 원본 소리만 사용합니다."
                 } else {
-                    "${currentTitle}을 영상 소리와 함께 섞습니다."
+                    "${currentTitle}을 타격음/원본 소리와 함께 섞습니다."
                 },
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
