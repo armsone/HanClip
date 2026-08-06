@@ -1571,6 +1571,15 @@ private fun SavedProjectRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                } else if (isRecentlySaved) {
+                    Text(
+                        "탭해서 시사회에서 확인",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = HomePrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             CompactSavedMovieIconButton(onClick = onEditMemo) {
