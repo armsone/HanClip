@@ -2172,13 +2172,13 @@ private fun ClipRow(
                             }
                             ClipControlPill(
                                 palette = palette,
-                                text = "짧게 0.5초",
+                                text = "-0.5초",
                                 icon = { Icon(Icons.Outlined.Remove, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onDecreaseDuration
                             )
                             ClipControlPill(
                                 palette = palette,
-                                text = "길게 0.5초",
+                                text = "+0.5초",
                                 icon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onIncreaseDuration
                             )
@@ -2487,12 +2487,12 @@ private fun clipFallbackBrush(clip: ClipItem, palette: HanClipPalette): Brush {
 
 private fun clipTitle(clip: ClipItem): String {
     if (clip.isVideoSegmentParent) return "원본 영상"
-    if (clip.isVideoSegmentChild) return "자동 클립"
+    if (clip.isVideoSegmentChild) return "자동 컷"
     if (clip.isSimilarPhotoGroupMember) return "묶음 대기 사진"
-    if (clip.similarPhotoGroupCount > 1) return "대표 사진 클립"
+    if (clip.similarPhotoGroupCount > 1) return "대표 사진"
     return when (clip.mediaKind) {
-        ClipMediaKind.Video -> "영상 클립"
-        ClipMediaKind.Photo -> "사진 클립"
+        ClipMediaKind.Video -> "영상"
+        ClipMediaKind.Photo -> "사진"
         ClipMediaKind.LivePhoto -> "Live Photo"
     }
 }
@@ -2517,11 +2517,11 @@ private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String 
 
 private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
-        clip.isVideoSegmentParent -> "스윙 피크 자동 분할 ${childSegmentCount}개"
-        clip.isVideoSegmentChild -> "타격점 중심 구간"
-        clip.isSimilarPhotoGroupMember -> "아직 완성본에 미포함 · 사용하면 독립 클립으로 추가"
-        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 완성본에 들어가는 대표 컷"
-        clip.videoSegmentMode == VideoSegmentMode.Multiple -> "자동 타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
+        clip.isVideoSegmentParent -> "타격점 기준 자동 컷 ${childSegmentCount}개"
+        clip.isVideoSegmentChild -> "완성본에 들어갈 타격점 구간"
+        clip.isSimilarPhotoGroupMember -> "완성본 제외 중 · 사용하면 클립으로 추가"
+        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 대표 컷"
+        clip.videoSegmentMode == VideoSegmentMode.Multiple -> "타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
     }
 }
