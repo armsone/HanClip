@@ -1229,7 +1229,7 @@ private fun PresetStatusPill(text: String, active: Boolean, palette: HanClipPale
 
 private fun presetStatusDescription(preset: MoviePreset): String {
     return when (preset) {
-        MoviePreset.NewMovie -> "Android 기본 사진첩에서 사진/영상을 한 번에 골라 완성본으로 만듭니다."
+        MoviePreset.NewMovie -> "기본 사진첩에서 사진과 영상을 한 번에 골라 HanClip 완성본으로 만듭니다."
         MoviePreset.AiShot -> "스윙 순간을 자동 촬영하고 바로 클립으로 편집합니다."
         MoviePreset.Travel -> "여행 사진과 영상을 순서대로 엮어 짧은 완성본으로 만듭니다."
         MoviePreset.Golf -> "타격점을 중심으로 골프 클립과 HanClip 로고를 자동 구성합니다."
@@ -1260,6 +1260,11 @@ private fun ImportActionRow(
             Spacer(Modifier.width(6.dp))
             ActionButtonText("기본 사진첩에서 선택")
         }
+        Text(
+            text = "사진과 영상을 여러 개 골라도 선택한 순서대로 클립에 들어갑니다.",
+            color = palette.subText,
+            style = MaterialTheme.typography.bodySmall
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 modifier = Modifier
@@ -1273,7 +1278,7 @@ private fun ImportActionRow(
             ) {
                 Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                ActionButtonText("영상만")
+                ActionButtonText("영상만 선택")
             }
             OutlinedButton(
                 modifier = Modifier
@@ -1288,7 +1293,7 @@ private fun ImportActionRow(
             ) {
                 Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                ActionButtonText("날짜별 보기")
+                ActionButtonText("날짜별 사진첩")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1386,7 +1391,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("사진첩")
+                    ActionButtonText("기본 사진첩")
                 }
                 Button(
                     modifier = Modifier.weight(1f).height(50.dp),
@@ -1398,7 +1403,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("영상만")
+                    ActionButtonText("영상만 선택")
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1413,7 +1418,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("날짜별 보기")
+                    ActionButtonText("날짜별 사진첩")
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f).height(50.dp),
