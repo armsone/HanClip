@@ -996,7 +996,7 @@ private fun ExportConfirmationDialog(
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
                 ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
                 ExportConfirmationLine("화면", aspectRatioText, palette)
-                ExportConfirmationLine("품질", state.outputQualityPreset.displayTitle, palette)
+                ExportConfirmationLine("품질", state.outputQualityPreset.chipTitle, palette)
                 ExportConfirmationLine("형식", OutputQualityPreset.ExportFormatDetail, palette)
                 ExportConfirmationLine("음악", musicText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
@@ -1133,7 +1133,7 @@ private fun PresetStatusPanel(
                     palette = palette
                 )
                 PresetStatusPill(
-                    text = selectedQuality.displayTitle,
+                    text = selectedQuality.chipTitle,
                     active = selectedQuality != OutputQualityPreset.Standard,
                     palette = palette
                 )
@@ -1802,7 +1802,7 @@ private fun ProjectControls(
                 FilterChip(
                     selected = selectedQuality == quality,
                     onClick = { onSelectQuality(quality) },
-                    label = { Text("${quality.displayTitle} ${quality.detail}") },
+                    label = { Text(quality.chipTitle) },
                     leadingIcon = {
                         Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     },

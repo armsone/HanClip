@@ -403,7 +403,7 @@ private fun PreviewSummaryPanel(
             ) {
                 SummaryInfoCell(
                     label = "품질",
-                    value = summary.outputQualityPreset.displayTitle,
+                    value = summary.outputQualityPreset.chipTitle,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
