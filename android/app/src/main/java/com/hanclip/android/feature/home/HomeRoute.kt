@@ -1754,9 +1754,21 @@ private fun savedMovieDetailText(
         summary.outputQualityPreset?.let { add(it.detail) }
         add(OutputQualityPreset.ExportFormatTitle)
         if (summary.hasBackgroundMusic == true) add("음악")
-        if (summary.hasWatermark == true) add("자막")
+        overlayDetailParts(summary).forEach(::add)
     }
     return parts.joinToString(" · ")
+}
+
+private fun overlayDetailParts(summary: ExportedMovieSummary): List<String> {
+    val hasText = summary.hasTextOverlay
+    val hasLogo = summary.hasLogoOverlay
+    return when {
+        hasText == true && hasLogo == true -> listOf("자막", "HanClip 로고")
+        hasText == true -> listOf("자막")
+        hasLogo == true -> listOf("HanClip 로고")
+        hasText == null && hasLogo == null && summary.hasWatermark == true -> listOf("자막/로고")
+        else -> emptyList()
+    }
 }
 
 private fun movieDurationText(durationSeconds: Double): String {
