@@ -1523,6 +1523,8 @@ private fun WorkProgressOverlay(
     message: String,
     onCancel: (() -> Unit)? = null
 ) {
+    val title = progressTitle(message, onCancel != null)
+    val detail = progressDetail(message, onCancel != null)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1547,11 +1549,18 @@ private fun WorkProgressOverlay(
                     trackColor = palette.chip
                 )
                 Text(
-                    text = message,
+                    text = title,
                     color = palette.text,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium
                 )
+                if (detail.isNotBlank()) {
+                    Text(
+                        text = detail,
+                        color = palette.subText,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
                 Text(
                     text = if (onCancel == null) {
                         "잠시만 기다려 주세요."
@@ -1575,6 +1584,30 @@ private fun WorkProgressOverlay(
                 }
             }
         }
+    }
+}
+
+private fun progressTitle(message: String, isExporting: Boolean): String {
+    val cleanMessage = message.trim()
+    val percent = Regex("""\d+%""").find(cleanMessage)?.value
+    return when {
+        isExporting && percent != null -> "영화 만드는 중 $percent"
+        isExporting -> "영화를 만드는 중"
+        cleanMessage.contains("불러오는 중") -> "미디어를 불러오는 중"
+        cleanMessage.isNotBlank() -> cleanMessage.substringBefore(" · ").substringBefore("...")
+        else -> "작업 중"
+    }
+}
+
+private fun progressDetail(message: String, isExporting: Boolean): String {
+    val cleanMessage = message.trim()
+    return when {
+        isExporting -> cleanMessage
+            .substringAfter(" · ", missingDelimiterValue = cleanMessage)
+            .removePrefix("영화를 만드는 중...")
+            .trim()
+        cleanMessage.contains("불러오는 중") -> cleanMessage
+        else -> ""
     }
 }
 
