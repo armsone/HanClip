@@ -404,19 +404,24 @@ class EditorViewModel : ViewModel() {
     }
 
     fun setBackgroundMusic(context: Context, uri: Uri?) {
-        val appContext = context.applicationContext
-        val storedUri = uri?.let { musicUri ->
-            persistBackgroundMusic(appContext, musicUri)
+        if (uri == null) {
+            _uiState.update {
+                it.copy(
+                    alertMessage = "선택된 음악 파일이 없습니다. 음악 설정에서 다시 선택하거나 샘플 음악을 사용할 수 있습니다.",
+                    undoDeleteMessage = null
+                )
+            }
+            return
         }
+        val appContext = context.applicationContext
+        val storedUri = persistBackgroundMusic(appContext, uri)
         _uiState.update {
             it.copy(
                 backgroundMusicUri = storedUri,
-                backgroundMusicTitle = uri?.let { musicUri ->
-                    displayNameForUri(appContext, musicUri)
-                },
+                backgroundMusicTitle = displayNameForUri(appContext, uri),
                 backgroundMusicSampleId = null,
                 backgroundMusicVolume = 0.35,
-                alertMessage = if (uri == null) "음악을 제거했습니다." else "배경 음악을 선택했습니다."
+                alertMessage = "배경 음악을 선택했습니다."
             )
         }
     }

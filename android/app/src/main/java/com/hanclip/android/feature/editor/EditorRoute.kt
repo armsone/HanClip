@@ -168,6 +168,8 @@ fun EditorRoute(
         if (result.resultCode == Activity.RESULT_OK) {
             result.data.persistPickedUriPermissions(context)
             viewModel.setBackgroundMusic(context, result.data?.data)
+        } else {
+            viewModel.showAlert("음악 선택을 취소했습니다. 음악 설정에서 다시 선택하거나 샘플 음악을 사용할 수 있습니다.")
         }
     }
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
