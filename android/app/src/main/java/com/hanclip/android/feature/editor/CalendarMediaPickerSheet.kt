@@ -188,7 +188,6 @@ fun CalendarMediaPickerSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                val selectedSummary = selectedMediaSummaryText(visibleItems, selectedUris)
                 OutlinedButton(
                     modifier = Modifier.weight(1f).height(48.dp),
                     onClick = onDismiss,
@@ -220,7 +219,7 @@ fun CalendarMediaPickerSheet(
                         disabledContentColor = palette.subText
                     )
                 ) {
-                    Text("가져오기 $selectedSummary", fontWeight = FontWeight.Bold)
+                    Text("가져오기 ${selectedUris.size}개", fontWeight = FontWeight.Bold)
                 }
             }
         }
