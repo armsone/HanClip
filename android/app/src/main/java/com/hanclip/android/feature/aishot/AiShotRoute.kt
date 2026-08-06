@@ -111,7 +111,7 @@ private enum class ShotLength(
         get() = ceil(fullSeconds).toLong()
 
     val timingDescription: String
-        get() = "앞 ${durationText(beforeSeconds)}초 · 뒤 ${durationText(afterSeconds)}초"
+        get() = "타격 전 ${durationText(beforeSeconds)}초 · 후 ${durationText(afterSeconds)}초"
 
     val totalDurationDescription: String
         get() = "${durationText(fullSeconds)}초"
@@ -962,6 +962,12 @@ private fun PermissionPanel(onRequest: () -> Unit) {
             ) {
                 Icon(Icons.Outlined.SettingsVoice, contentDescription = null, tint = Color(0xFF0B7A4E))
                 Text("카메라와 마이크 권한이 필요합니다.", fontWeight = FontWeight.Bold)
+                Text(
+                    "카메라는 스윙 영상을 찍고, 마이크는 타격음을 감지해 HanClip 클립을 자동 저장합니다.",
+                    color = Color(0xFF4B5A57),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
                 Button(onClick = onRequest) {
                     Text("권한 허용")
                 }
