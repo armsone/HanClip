@@ -3327,7 +3327,7 @@ struct EditorView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(HanClipTheme.panelStroke.opacity(0.68), lineWidth: 1)
         }
-        .opacity(0.05)
+        .opacity(0.15)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -3399,7 +3399,7 @@ struct EditorView: View {
                 radius: 10,
                 y: 5
             )
-            .opacity(0.05)
+            .opacity(0.15)
             .padding(.horizontal, 16)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
