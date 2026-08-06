@@ -1094,6 +1094,9 @@ private fun AiShotMovieCard(
                     if (isRecentlySaved) {
                         NewSavedMovieBadge()
                     }
+                    if (summary.isPinned) {
+                        PinnedSavedMovieBadge()
+                    }
                 }
                 Text(
                     savedMovieDetailText(context, summary),
@@ -1468,6 +1471,9 @@ private fun SavedProjectRow(
                     if (isRecentlySaved) {
                         NewSavedMovieBadge()
                     }
+                    if (summary.isPinned) {
+                        PinnedSavedMovieBadge()
+                    }
                 }
                 Text(
                     savedMovieDetailText(context, summary),
@@ -1547,6 +1553,24 @@ private fun NewSavedMovieBadge() {
             text = "NEW",
             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
             color = Color(0xFFC8212C),
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun PinnedSavedMovieBadge() {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = HomePrimary.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, HomePrimary.copy(alpha = 0.28f))
+    ) {
+        Text(
+            text = "고정",
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+            color = HomePrimary,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1
