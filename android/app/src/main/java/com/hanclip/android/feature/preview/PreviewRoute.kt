@@ -852,10 +852,12 @@ private fun ExportedVideoPlayer(
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(uri))
             this.repeatMode = repeatMode
+            playWhenReady = true
             prepare()
         }
     }
     player.repeatMode = repeatMode
+    player.playWhenReady = true
     DisposableEffect(player) {
         onDispose { player.release() }
     }
