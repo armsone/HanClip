@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -634,7 +635,7 @@ private fun SaveOptionsSheet(
                 }
                 SaveDestinationCard(
                     title = "기본 갤러리에 저장",
-                    body = "Android 사진첩에서 바로 볼 수 있게 Movies/HanClip 폴더에 저장합니다.",
+                    body = "추천 · Android 기본 사진첩의 Movies/HanClip 폴더에서 바로 볼 수 있습니다.",
                     icon = Icons.Outlined.Download,
                     palette = palette,
                     primary = true,
@@ -648,6 +649,7 @@ private fun SaveOptionsSheet(
                     primary = false,
                     onClick = onSaveToFile
                 )
+                SaveFormatNote(palette)
                 OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
@@ -660,6 +662,48 @@ private fun SaveOptionsSheet(
                     Icon(Icons.Outlined.Close, contentDescription = null)
                     Text("취소")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveFormatNote(palette: HanClipPalette) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.VideoFile,
+                    contentDescription = null,
+                    tint = palette.primary,
+                    modifier = Modifier.padding(9.dp)
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "저장 형식",
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    text = OutputQualityPreset.ExportFormatDetail,
+                    color = palette.subText,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }
