@@ -2581,8 +2581,8 @@ private fun clipTitle(clip: ClipItem, position: Int?): String {
     if (clip.isVideoSegmentChild) {
         return position?.let { "완성본 자동 컷 ${it}번" } ?: "완성본 자동 컷"
     }
-    if (clip.isSimilarPhotoGroupMember) return "완성본 제외 사진"
-    if (clip.similarPhotoGroupCount > 1) return "대표 사진"
+    if (clip.isSimilarPhotoGroupMember) return "완성본 제외 후보"
+    if (clip.similarPhotoGroupCount > 1) return "완성본 대표 사진"
     return when (clip.mediaKind) {
         ClipMediaKind.Video -> "영상"
         ClipMediaKind.Photo -> "사진"
@@ -2612,8 +2612,8 @@ private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
         clip.isVideoSegmentParent -> "원본은 보관하고 타격점 기준 자동 컷만 완성본에 넣습니다"
         clip.isVideoSegmentChild -> "타격점 중심 구간 · 완성본 번호순 포함"
-        clip.isSimilarPhotoGroupMember -> "완성본 제외 중 · 대표 사진만 사용"
-        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 대표 컷"
+        clip.isSimilarPhotoGroupMember -> "비슷한 사진 묶음에서 제외 중 · 사용하면 대표로 바뀝니다"
+        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 이 사진만 완성본에 넣습니다"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
     }
@@ -2658,7 +2658,7 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
             add("자동 ${childSegmentCount}컷")
         }
         if (clip.similarPhotoGroupCount > 1) {
-            add(if (clip.isSimilarPhotoGroupMember) "대기 묶음" else "대표 ${clip.similarPhotoGroupCount}장")
+            add(if (clip.isSimilarPhotoGroupMember) "후보 묶음" else "대표 선택")
         }
     }
 }
