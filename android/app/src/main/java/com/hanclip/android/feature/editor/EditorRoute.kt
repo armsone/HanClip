@@ -275,6 +275,7 @@ fun EditorRoute(
                     clipCount = state.renderableClips.size,
                     photoCount = state.renderableClips.count { it.mediaKind != ClipMediaKind.Video },
                     videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video },
+                    autoSegmentCount = state.renderableClips.count { it.isVideoSegmentChild },
                     totalSeconds = state.totalDurationSeconds,
                     defaultDuration = state.defaultDurationSeconds,
                     segmentMode = state.defaultVideoSegmentMode,
@@ -838,11 +839,13 @@ private fun SummaryPanel(
     clipCount: Int,
     photoCount: Int,
     videoCount: Int,
+    autoSegmentCount: Int,
     totalSeconds: Double,
     defaultDuration: Double,
     segmentMode: VideoSegmentMode,
     palette: HanClipPalette
 ) {
+    val compositionText = mediaCountSummary(photoCount, videoCount, clipCount)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -873,14 +876,14 @@ private fun SummaryPanel(
                     modifier = Modifier.weight(1.35f)
                 )
                 SummaryReadinessPill(
-                    text = "사진 ${photoCount}개",
-                    active = photoCount > 0,
+                    text = compositionText,
+                    active = clipCount > 0,
                     palette = palette,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1.15f)
                 )
                 SummaryReadinessPill(
-                    text = "영상 ${videoCount}개",
-                    active = videoCount > 0,
+                    text = if (autoSegmentCount > 0) "자동 컷 ${autoSegmentCount}개" else "자동 컷 대기",
+                    active = autoSegmentCount > 0,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
