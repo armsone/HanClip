@@ -293,10 +293,14 @@ private fun selectedMediaSummaryText(
     }
     val photoCount = selectedItems.count { it.kind != ClipMediaKind.Video }
     val videoCount = selectedItems.count { it.kind == ClipMediaKind.Video }
+    val selectedVideoDurationMillis = selectedItems.sumOf { item ->
+        item.durationMillis.takeIf { item.kind == ClipMediaKind.Video } ?: 0L
+    }
     return listOfNotNull(
         selectedUris.size.takeIf { it > 0 }?.let { "${it}개" },
         photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
-        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" }
+        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" },
+        selectedVideoDurationMillis.takeIf { it > 0L }?.let { "원본 ${formatDurationBadge(it)}" }
     ).joinToString(" · ").ifBlank { "0개" }
 }
 
@@ -559,6 +563,9 @@ private fun MediaSelectionSummary(
     }
     val photoCount = selectedItems.count { it.kind != ClipMediaKind.Video }
     val videoCount = selectedItems.count { it.kind == ClipMediaKind.Video }
+    val selectedVideoDurationMillis = selectedItems.sumOf { item ->
+        item.durationMillis.takeIf { item.kind == ClipMediaKind.Video } ?: 0L
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -587,6 +594,7 @@ private fun MediaSelectionSummary(
                     listOfNotNull(
                         photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
                         videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" },
+                        selectedVideoDurationMillis.takeIf { it > 0L }?.let { "원본 ${formatDurationBadge(it)}" },
                         selectedUris.size.takeIf { it > 1 }?.let { "1-${it} 순서" }
                     ).joinToString(" · ")
                 },
