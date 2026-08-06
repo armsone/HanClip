@@ -150,6 +150,15 @@ fun CalendarMediaPickerSheet(
                     visibleMonth = visibleMonth,
                     selectedDates = selectedDates,
                     itemCountsByDate = itemsByDate.mapValues { it.value.size },
+                    onResetToToday = {
+                        visibleMonth = YearMonth.now()
+                        selectedDates = setOf(LocalDate.now())
+                        selectedUris = emptyList()
+                    },
+                    onClearExtraDates = {
+                        selectedDates = setOf(selectedDates.minOrNull() ?: LocalDate.now())
+                        selectedUris = emptyList()
+                    },
                     onToggleDate = { date ->
                         selectedDates = if (date in selectedDates && selectedDates.size > 1) {
                             selectedDates - date
@@ -374,6 +383,8 @@ private fun CalendarMonthGrid(
     visibleMonth: YearMonth,
     selectedDates: Set<LocalDate>,
     itemCountsByDate: Map<LocalDate, Int>,
+    onResetToToday: () -> Unit,
+    onClearExtraDates: () -> Unit,
     onToggleDate: (LocalDate) -> Unit
 ) {
     val firstDayOffset = (visibleMonth.atDay(1).dayOfWeek.value % 7)
@@ -399,6 +410,33 @@ private fun CalendarMonthGrid(
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(
+                modifier = Modifier.height(32.dp),
+                onClick = onResetToToday,
+                border = BorderStroke(1.dp, palette.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = palette.panel,
+                    contentColor = palette.text
+                )
+            ) {
+                Text("오늘", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                modifier = Modifier.height(32.dp),
+                onClick = onClearExtraDates,
+                enabled = selectedDates.size > 1,
+                border = BorderStroke(1.dp, palette.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = palette.panel,
+                    contentColor = palette.text,
+                    disabledContainerColor = palette.chip,
+                    disabledContentColor = palette.subText
+                )
+            ) {
+                Text("선택 해제", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             listOf("일", "월", "화", "수", "목", "금", "토").forEach { label ->
