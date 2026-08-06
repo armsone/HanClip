@@ -402,9 +402,9 @@ private fun TrimPrecisionControls(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("정밀 조절", color = palette.text, fontWeight = FontWeight.Bold)
+            Text("타격점 구간 미세 조정", color = palette.text, fontWeight = FontWeight.Bold)
             Text(
-                "자주 쓰는 클립 길이",
+                "자주 쓰는 자동 컷 길이",
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold
@@ -435,7 +435,7 @@ private fun TrimPrecisionControls(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TrimAdjustButton(
-                    text = "시작 -0.1초",
+                    text = "앞으로 0.1초",
                     icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
                     enabled = startSeconds > 0.0,
                     palette = palette,
@@ -443,7 +443,7 @@ private fun TrimPrecisionControls(
                     onClick = { onStartChange(startSeconds - 0.1) }
                 )
                 TrimAdjustButton(
-                    text = "시작 +0.1초",
+                    text = "뒤로 0.1초",
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                     enabled = startSeconds < sourceDuration - durationSeconds,
                     palette = palette,
@@ -453,7 +453,7 @@ private fun TrimPrecisionControls(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TrimAdjustButton(
-                    text = "길이 -0.1초",
+                    text = "짧게 0.1초",
                     icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
                     enabled = durationSeconds > 0.5,
                     palette = palette,
@@ -461,7 +461,7 @@ private fun TrimPrecisionControls(
                     onClick = { onDurationChange(durationSeconds - 0.1) }
                 )
                 TrimAdjustButton(
-                    text = "길이 +0.1초",
+                    text = "길게 0.1초",
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                     enabled = durationSeconds < sourceDuration,
                     palette = palette,
