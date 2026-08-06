@@ -112,6 +112,12 @@ fun HanClipApp(
             }
             if (visualUris.isNotEmpty()) {
                 editorViewModel.addPickedMedia(context, visualUris)
+            } else if (audioUris.isNotEmpty()) {
+                Toast.makeText(
+                    context,
+                    "공유한 음악을 배경음악으로 적용했습니다. 기본 사진첩에서 사진이나 영상을 선택해 주세요.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
             pendingSharedCount = 0
         }
