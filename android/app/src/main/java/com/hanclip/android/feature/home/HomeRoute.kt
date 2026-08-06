@@ -990,7 +990,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "기본 사진첩에 저장한 HanClip MP4를 다시 확인합니다",
+                    text = "HanClip에서 만든 MP4와 이어서 편집할 작업을 확인합니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1347,7 +1347,7 @@ private fun DraftProjectRow(
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    summary?.let { "편집 중 · ${it.presetTitle}" } ?: "편집 중인 작업 없음",
+                    summary?.let { "자동 저장된 편집 · ${it.presetTitle}" } ?: "편집 중인 작업 없음",
                     fontWeight = FontWeight.SemiBold,
                     color = HomeText
                 )
@@ -1363,7 +1363,7 @@ private fun DraftProjectRow(
                         modifier = Modifier.padding(top = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        DraftInfoPill("편집 중")
+                        DraftInfoPill("자동 저장")
                         DraftInfoPill("${summary.clipCount}개 클립")
                         DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
                     }
@@ -1406,7 +1406,7 @@ private fun DraftInfoPill(text: String) {
 }
 
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "자동 저장됨 · ${summary.outputText}"
+    return "사진/영상과 편집 설정을 보관 중 · ${summary.outputText}"
 }
 
 @Composable
@@ -1430,7 +1430,7 @@ private fun EmptySavedProjectRow() {
             Column(Modifier.weight(1f)) {
                 Text("최근 항목 없음", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "사진과 영상을 골라 완성본을 만들면 여기에 표시됩니다.",
+                    "사진과 영상을 골라 HanClip 완성본을 만들면 여기에 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText
                 )
