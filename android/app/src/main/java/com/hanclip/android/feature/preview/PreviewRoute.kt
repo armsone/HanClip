@@ -272,7 +272,7 @@ fun PreviewRoute(
                 onShare = {
                     val shareUri = preferredShareUri ?: exportedVideoUri
                     if (shareUri == null) {
-                        message = "공유할 영상이 없습니다."
+                        message = "공유할 MP4가 없습니다. 먼저 HanClip 앨범 또는 파일로 저장해 주세요."
                     } else {
                         runCatching {
                             VideoSaveShare.shareVideo(context, shareUri)
@@ -630,7 +630,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.IosShare, contentDescription = null)
-            Text("공유")
+            Text("MP4 공유")
         }
         Button(
             onClick = onRelease,
