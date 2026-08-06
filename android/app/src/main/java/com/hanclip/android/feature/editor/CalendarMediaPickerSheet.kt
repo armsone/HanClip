@@ -701,16 +701,16 @@ private fun EmptyMediaStrip(
             Spacer(Modifier.height(10.dp))
             Text(
                 text = if (mode == MediaPickerSheetMode.Videos) {
-                    "이 달 기본 사진첩에는 영상이 없습니다."
+                    "이번 달 기본 사진첩에는 영상이 없습니다."
                 } else {
-                    "이 달 기본 사진첩에는 사진이나 영상이 없습니다."
+                    "이번 달 기본 사진첩에는 사진이나 영상이 없습니다."
                 },
                 color = palette.text,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "상단 화살표로 다른 달을 확인하거나 파일 선택으로 직접 가져올 수 있습니다.",
+                text = "상단 화살표로 다른 달을 보거나, 편집 화면의 파일 선택으로 직접 가져오세요.",
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center
@@ -730,14 +730,14 @@ private fun mediaStripTitle(
     val count = items.size
     if (mode == MediaPickerSheetMode.Recent) {
         return if (count == 0) {
-            "${visibleMonth.monthValue}월 기본 사진첩에 사진이나 영상이 없습니다."
+            "${visibleMonth.monthValue}월 기본 사진첩에는 사진이나 영상이 없습니다."
         } else {
             mediaCountText("이번 달", photoCount, videoCount)
         }
     }
     if (mode == MediaPickerSheetMode.Videos) {
         return if (count == 0) {
-            "${visibleMonth.monthValue}월 기본 사진첩에 영상이 없습니다."
+            "${visibleMonth.monthValue}월 기본 사진첩에는 영상이 없습니다."
         } else {
             "이번 달 영상 ${videoCount}개"
         }
@@ -748,7 +748,7 @@ private fun mediaStripTitle(
         "선택 ${selectedDates.size}일"
     }
     return if (count == 0) {
-        "${selectedDateText} 기본 사진첩에 사진이나 영상이 없습니다."
+        "${selectedDateText} 기본 사진첩에는 사진이나 영상이 없습니다."
     } else {
         mediaCountText(selectedDateText, photoCount, videoCount)
     }
