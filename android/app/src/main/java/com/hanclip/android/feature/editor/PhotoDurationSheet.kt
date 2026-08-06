@@ -3,10 +3,12 @@ package com.hanclip.android.feature.editor
 import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +55,7 @@ private val SheetSubText = Color(0xFF46564C)
 private val SheetBorder = Color(0xFFD4DDD7)
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun PhotoDurationSheet(
     clip: ClipItem,
     palette: HanClipPalette,
@@ -108,7 +111,10 @@ fun PhotoDurationSheet(
                 valueRange = 0.5f..30f,
                 steps = 58
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 listOf(1.5f, 2f, 3f, 4f, 6f).forEach { seconds ->
                     FilterChip(
                         selected = kotlin.math.abs(duration - seconds) < 0.05f,
@@ -128,6 +134,30 @@ fun PhotoDurationSheet(
                         )
                     )
                 }
+                FilterChip(
+                    selected = kotlin.math.abs(duration - clip.durationSeconds.toFloat()) < 0.05f,
+                    onClick = {
+                        duration = clip.durationSeconds.toFloat().coerceIn(0.5f, 30f)
+                    },
+                    label = {
+                        Text(
+                            "현재 %.1f초".format(clip.durationSeconds),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.White,
+                        labelColor = palette.text,
+                        selectedContainerColor = palette.primary,
+                        selectedLabelColor = Color.White
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = kotlin.math.abs(duration - clip.durationSeconds.toFloat()) < 0.05f,
+                        borderColor = palette.border,
+                        selectedBorderColor = palette.primary
+                    )
+                )
             }
             Button(
                 onClick = {
