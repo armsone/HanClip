@@ -1748,9 +1748,9 @@ private fun ProjectControls(
                 label = {
                     Text(
                         if (hasMusic) {
-                            "${musicTitle ?: "음악"} ${percentText(musicVolume)} · 원본 ${percentText(originalAudioVolume)}"
+                            "배경음악 ${percentText(musicVolume)} · 원본 ${percentText(originalAudioVolume)}"
                         } else {
-                            "음악"
+                            "음악/원본 소리"
                         },
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,

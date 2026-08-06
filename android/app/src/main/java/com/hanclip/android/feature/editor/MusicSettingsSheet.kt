@@ -121,7 +121,7 @@ fun MusicSettingsSheet(
             ) {
                 Column {
                     Text(
-                        "음악",
+                        "배경음악",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = palette.text
@@ -163,7 +163,7 @@ fun MusicSettingsSheet(
             )
 
             MusicVolumePanel(
-                title = "음악",
+                title = "배경음악",
                 subtitle = if (currentTitle == null) "음악을 선택하면 이 비율로 섞입니다." else currentTitle,
                 value = musicVolume,
                 enabled = currentTitle != null,
@@ -304,17 +304,17 @@ private fun MusicMixSummaryPanel(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("사운드 믹스", color = palette.text, fontWeight = FontWeight.Bold)
+            Text("소리 믹스", color = palette.text, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MusicMixChip(
-                    label = "음악",
+                    label = "배경음악",
                     value = if (currentTitle == null) "꺼짐" else percentText(musicVolume),
                     active = currentTitle != null,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
                 MusicMixChip(
-                    label = "원본",
+                    label = "원본 소리",
                     value = percentText(originalAudioVolume),
                     active = originalAudioVolume > 0.0,
                     palette = palette,
