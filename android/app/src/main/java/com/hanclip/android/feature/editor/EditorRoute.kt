@@ -944,6 +944,7 @@ private fun ExportConfirmationDialog(
     val renderableClipCount = state.renderableClips.size
     val photoCount = state.renderableClips.count { it.mediaKind != ClipMediaKind.Video }
     val videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video }
+    val autoSegmentCount = state.renderableClips.count { it.isVideoSegmentChild }
     val estimatedRenderSize = estimatedRenderSize(state)
     val aspectRatioText = state.outputAspectRatio?.let(::outputRatioChipText)
         ?: "자동 ${estimatedRenderSize.first}x${estimatedRenderSize.second}"
@@ -958,6 +959,19 @@ private fun ExportConfirmationDialog(
         state.watermarkSettings.logoEnabled -> "HanClip 로고"
         else -> "자막 없음"
     }
+    val audioMixText = when {
+        state.backgroundMusicUri != null || state.backgroundMusicSampleId != null ->
+            "배경 ${percentText(state.backgroundMusicVolume)} · 원본 ${percentText(state.originalAudioVolume)}"
+        state.renderableClips.any { it.mediaKind == ClipMediaKind.Video } ->
+            "원본 ${percentText(state.originalAudioVolume)}"
+        else -> "음악 없음"
+    }
+    val estimatedSizeText = estimatedMovieSizeText(
+        seconds = state.totalDurationSeconds,
+        quality = state.outputQualityPreset,
+        renderWidth = estimatedRenderSize.first,
+        renderHeight = estimatedRenderSize.second
+    )
     AlertDialog(
         onDismissRequest = onDismiss,
         dismissButton = {
@@ -998,11 +1012,16 @@ private fun ExportConfirmationDialog(
                 )
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
                 ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
+                if (autoSegmentCount > 0) {
+                    ExportConfirmationLine("자동 컷", "${autoSegmentCount}개 · 타격점 중심", palette)
+                }
                 ExportConfirmationLine("화면", aspectRatioText, palette)
                 ExportConfirmationLine("품질", state.outputQualityPreset.chipTitle, palette)
                 ExportConfirmationLine("형식", OutputQualityPreset.ExportFormatDetail, palette)
                 ExportConfirmationLine("음악", musicText, palette)
+                ExportConfirmationLine("오디오", audioMixText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
+                ExportConfirmationLine("예상 용량", estimatedSizeText, palette)
             }
         }
     )
@@ -1023,6 +1042,24 @@ private fun mediaCountSummary(photoCount: Int, videoCount: Int, fallbackClipCoun
         photoCount > 0 -> "사진 ${photoCount}장"
         videoCount > 0 -> "영상 ${videoCount}개"
         else -> "${fallbackClipCount}개 클립"
+    }
+}
+
+private fun estimatedMovieSizeText(
+    seconds: Double,
+    quality: OutputQualityPreset,
+    renderWidth: Int,
+    renderHeight: Int
+): String {
+    if (seconds <= 0.0) return "계산 전"
+    val pixelScale = (renderWidth * renderHeight).toDouble() / (1080.0 * 1920.0)
+    val frameRateScale = quality.frameRate / 30.0
+    val megabitsPerSecond = (8.0 * pixelScale * frameRateScale).coerceIn(4.0, 24.0)
+    val megabytes = seconds * megabitsPerSecond / 8.0
+    return when {
+        megabytes < 10.0 -> "약 %.1fMB".format(megabytes)
+        megabytes < 1024.0 -> "약 %.0fMB".format(megabytes)
+        else -> "약 %.1fGB".format(megabytes / 1024.0)
     }
 }
 
