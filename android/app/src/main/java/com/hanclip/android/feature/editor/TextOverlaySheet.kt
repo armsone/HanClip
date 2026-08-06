@@ -109,7 +109,7 @@ fun TextOverlaySheet(
                         fontWeight = FontWeight.Bold,
                         color = palette.text
                     )
-                    Text("미리보기 그대로 완성 MP4에 합성할 자막과 HanClip 로고를 정합니다.", color = palette.subText)
+                    Text("미리보기 위치 그대로 완성 MP4에 합성할 자막과 HanClip 로고를 정합니다.", color = palette.subText)
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
@@ -690,6 +690,16 @@ private fun CaptionStateSummary(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            CaptionStateChip(
+                text = "미리보기 위치 그대로",
+                active = settings.shouldRender,
+                palette = palette
+            )
+            CaptionStateChip(
+                text = "완성 MP4 합성",
+                active = settings.shouldRender,
+                palette = palette
+            )
             CaptionStateChip(
                 text = if (settings.shouldRenderText) "MP4 자막 켬" else "MP4 자막 꺼짐",
                 active = settings.shouldRenderText,
