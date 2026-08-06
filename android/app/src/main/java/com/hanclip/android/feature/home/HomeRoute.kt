@@ -816,15 +816,20 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            AssistChip(
-                onClick = {},
-                label = { Text("연결됨", fontWeight = FontWeight.SemiBold) },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = Color.White,
-                    labelColor = HomePrimary
-                ),
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White,
                 border = BorderStroke(1.dp, HomeBorder)
-            )
+            ) {
+                Text(
+                    text = "연결됨",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = HomePrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
