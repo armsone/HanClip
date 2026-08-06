@@ -260,7 +260,7 @@ fun AiShotRoute(
     }
     var zoomPreset by remember { mutableStateOf(AiShotPreferenceStore.loadZoomPreset(context)) }
     var level by remember { mutableDoubleStateOf(0.0) }
-    var statusText by remember { mutableStateOf("감지 준비") }
+    var statusText by remember { mutableStateOf("스윙 감지 대기") }
     var savedCount by remember { mutableIntStateOf(0) }
     var recordingRemainingSeconds by remember { mutableStateOf(0L) }
     var activeRecordingSeconds by remember { mutableStateOf(shotLength.recordingSeconds) }
@@ -292,10 +292,10 @@ fun AiShotRoute(
                 activeRecordingSeconds = shotLength.recordingSeconds
                 if (!event.hasError()) {
                     savedCount += 1
-                    statusText = "저장 완료"
+                    statusText = "클립 저장 완료"
                     onClipReady(Uri.fromFile(outputFile))
                 } else {
-                    statusText = "저장 불가"
+                    statusText = "클립 저장 실패"
                 }
             }
         }
@@ -410,7 +410,7 @@ fun AiShotRoute(
                 onImpact = {
                     withContext(Dispatchers.Main) {
                         startClip(
-                            reason = "감지 됨",
+                            reason = "타격 감지",
                             captureSeconds = shotLength.afterSeconds
                         )
                     }
@@ -488,7 +488,7 @@ fun AiShotRoute(
             isRecording = recording != null,
             onManualRecord = {
                 if (recording == null) {
-                    startClip("수동 저장 중")
+                    startClip("수동 클립 저장 중")
                 } else {
                     recording?.stop()
                 }
@@ -614,7 +614,7 @@ private fun AiShotBottomPanel(
                         contentColor = Color(0xFF0B7A4E)
                     )
                 ) {
-                    Text("클립 편집으로", fontWeight = FontWeight.Bold)
+                    Text("HanClip 편집으로", fontWeight = FontWeight.Bold)
                 }
             }
         }
