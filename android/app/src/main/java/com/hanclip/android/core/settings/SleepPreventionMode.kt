@@ -9,8 +9,8 @@ enum class SleepPreventionMode(
 ) {
     AlwaysOn(
         title = "항상켜짐",
-        chipTitle = "화면 항상",
-        detail = "화면이 꺼지지 않게 항상 유지합니다."
+        chipTitle = "화면 계속",
+        detail = "편집 중에도 화면이 꺼지지 않게 계속 유지합니다."
     ),
     AlwaysOff(
         title = "끔",
@@ -19,8 +19,8 @@ enum class SleepPreventionMode(
     ),
     Automatic(
         title = "오토",
-        chipTitle = "화면 오토",
-        detail = "가져오기, 저장, 내보내기, AiShot 중에만 화면을 유지합니다."
+        chipTitle = "작업중 유지",
+        detail = "가져오기, 완성본 만들기, 사진첩 저장, AiShot 중에만 화면을 유지합니다."
     );
 
     fun next(): SleepPreventionMode {

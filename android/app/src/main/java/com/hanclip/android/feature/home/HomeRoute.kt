@@ -650,7 +650,7 @@ private fun SettingsInfoDialog(
                                 style = MaterialTheme.typography.titleLarge
                             )
                             Text(
-                                "HanClip 기능 안내와 화면 유지",
+                                "HanClip 기능 안내와 작업 중 화면 유지",
                                 color = palette.subText,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -720,7 +720,7 @@ private fun SleepPreventionInfoCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(Icons.Outlined.LightMode, contentDescription = null, tint = palette.primary)
-                    Text("화면 꺼짐 방지", color = palette.text, fontWeight = FontWeight.Bold)
+                    Text("작업 중 화면 유지", color = palette.text, fontWeight = FontWeight.Bold)
                 }
                 AssistChip(
                     onClick = onCycle,
@@ -770,7 +770,7 @@ private fun ImportantInfoRow(
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
     "첫 화면" to "앱 실행 후 내 사진과 영상을 한 번에 골라 HanClip 완성본을 시작하는 홈 화면입니다.",
     "고마운 분들" to "HanClip 제작과 테스트를 도와준 사용자와 골프 영상을 더 쉽게 만들고 싶은 사람들을 위한 감사 안내입니다.",
-    "기능 안내" to "첫 화면의 설정 버튼에서 HanClip 기능 안내와 화면 꺼짐 방지 상태를 확인합니다.",
+    "기능 안내" to "첫 화면의 설정 버튼에서 HanClip 기능 안내와 작업 중 화면 유지 상태를 확인합니다.",
     "완성본 프리셋" to "새 완성본, AiShot, 여행 완성본, 골프 완성본 중 원하는 흐름으로 사진과 영상을 골라 시작합니다.",
     "AiShot" to "필요한 순간을 자동으로 찾아 클립에 담는 카메라입니다. 감도, 샷 길이, 줌, 전면/후면 카메라 선택을 기억합니다.",
     "Ai 버전" to "현재 Ai 버전은 0.2.1입니다. 798 영상 보정 Ai 기준으로 소리의 피크와 이어지는 반응을 함께 참고합니다.",
