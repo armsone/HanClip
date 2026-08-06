@@ -1006,10 +1006,10 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "HanClip 앨범에 저장한 MP4와 이어서 편집할 작업을 확인합니다",
+                    text = "폰 기본 사진첩의 HanClip 앨범에 저장한 MP4와 이어서 편집할 작업을 확인합니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -1446,7 +1446,7 @@ private fun EmptySavedProjectRow() {
             Column(Modifier.weight(1f)) {
                 Text("최근 항목 없음", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "사진과 영상을 골라 HanClip 완성본을 만들면 여기에 표시됩니다.",
+                    "사진과 영상을 골라 완성본을 만들면 HanClip 앨범 저장 이력이 여기에 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText
                 )
@@ -1589,7 +1589,7 @@ private fun SavedProjectRow(
                     )
                 } else if (isRecentlySaved) {
                     Text(
-                        "방금 만든 완성본 · 탭해서 시사회 열기",
+                        "방금 만든 완성본 · HanClip 앨범 저장 · 탭해서 시사회 열기",
                         style = MaterialTheme.typography.bodySmall,
                         color = HomePrimary,
                         fontWeight = FontWeight.SemiBold,
