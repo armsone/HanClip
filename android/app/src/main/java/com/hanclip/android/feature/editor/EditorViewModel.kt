@@ -351,7 +351,7 @@ class EditorViewModel : ViewModel() {
                     }
                 },
                 alertMessage = if (changedCount > 0) {
-                    "완성본 클립 ${changedCount}개를 %.1f초 리듬으로 맞췄습니다."
+                    "MP4 완성본 클립 ${changedCount}개를 %.1f초 리듬으로 맞췄습니다. 현재 작업도 자동 저장됩니다."
                         .format(state.defaultDurationSeconds)
                 } else {
                     "적용할 클립이 없습니다."
@@ -560,7 +560,7 @@ class EditorViewModel : ViewModel() {
                         clip
                     }
                 },
-                alertMessage = "선택한 사진만 %.1f초로 적용했습니다.".format(safeDuration),
+                alertMessage = "선택한 사진만 MP4 완성본에서 %.1f초로 적용했습니다. 현재 작업도 자동 저장됩니다.".format(safeDuration),
                 undoDeleteMessage = null
             )
         }
