@@ -584,7 +584,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("저장")
+            Text("저장하기")
         }
     }
 }
@@ -623,7 +623,7 @@ private fun SaveOptionsSheet(
                 ) {
                     Column {
                         Text(
-                            text = "저장",
+                            text = "저장 위치 선택",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = palette.text
