@@ -219,7 +219,7 @@ fun HomeRoute(
             titleContentColor = HomeText,
             textContentColor = HomeSubText,
             title = { Text("목록에서 제거") },
-            text = { Text("저장된 영화 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 원본 영상은 삭제하지 않습니다.") }
+            text = { Text("저장된 완성본 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 원본 영상은 삭제하지 않습니다.") }
         )
     }
     memoCandidate?.let { summary ->
@@ -259,7 +259,7 @@ fun HomeRoute(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "저장된 영화 목록에 표시할 짧은 메모를 남깁니다.",
+                        "저장된 완성본 목록에 표시할 짧은 메모를 남깁니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -293,7 +293,7 @@ fun HomeRoute(
             textContentColor = palette.subText,
             title = { Text("핀 고정 제한") },
             text = {
-                Text("핀 고정은 최대 ${ExportHistoryStore.MaxPinnedItems}개까지 가능합니다. 다른 영화를 해제한 뒤 다시 고정해 주세요.")
+                Text("핀 고정은 최대 ${ExportHistoryStore.MaxPinnedItems}개까지 가능합니다. 다른 완성본을 해제한 뒤 다시 고정해 주세요.")
             }
         )
     }
@@ -536,7 +536,7 @@ private fun HomeHeader(
             ) {
                 HanClipBrandCapsule()
                 Text(
-                    text = "내 사진과 영상을 한 번에 골라 골프 영화로",
+                    text = "내 사진과 영상을 한 번에 골라 HanClip 완성본으로",
                     style = MaterialTheme.typography.bodyLarge,
                     color = palette.subText
                 )
@@ -768,17 +768,17 @@ private fun ImportantInfoRow(
 }
 
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
-    "첫 화면" to "앱 실행 후 내 사진과 영상을 한 번에 골라 HanClip 영화를 시작하는 홈 화면입니다.",
+    "첫 화면" to "앱 실행 후 내 사진과 영상을 한 번에 골라 HanClip 완성본을 시작하는 홈 화면입니다.",
     "고마운 분들" to "HanClip 제작과 테스트를 도와준 사용자와 골프 영상을 더 쉽게 만들고 싶은 사람들을 위한 감사 안내입니다.",
     "기능 안내" to "첫 화면의 설정 버튼에서 HanClip 기능 안내와 화면 꺼짐 방지 상태를 확인합니다.",
-    "영화 프리셋" to "새 영화, AiShot, 여행 영화, 골프 영화 중 원하는 흐름으로 사진과 영상을 골라 시작합니다.",
+    "완성본 프리셋" to "새 완성본, AiShot, 여행 완성본, 골프 완성본 중 원하는 흐름으로 사진과 영상을 골라 시작합니다.",
     "AiShot" to "필요한 순간을 자동으로 찾아 클립에 담는 카메라입니다. 감도, 샷 길이, 줌, 전면/후면 카메라 선택을 기억합니다.",
     "Ai 버전" to "현재 Ai 버전은 0.2.1입니다. 798 영상 보정 Ai 기준으로 소리의 피크와 이어지는 반응을 함께 참고합니다.",
     "클립 리스트" to "선택한 사진과 영상이 순서대로 표시됩니다. 썸네일, 시간, 단일 컷/자동 컷, 길이 조절 버튼으로 빠르게 편집합니다.",
     "단일 컷 / 자동 컷" to "영상을 하나의 구간으로 쓰거나, Ai가 찾은 타격점 후보 기준으로 여러 자클립으로 나눕니다.",
     "자막" to "영상 위에 문구, 폰트, 색상, 그림자, 위치를 설정하고 최종 MP4에 합성합니다.",
     "HanClip 로고" to "로고 워터마크의 표시 여부, 위치, 색상, 그림자 설정을 저장하고 최종 영상에 반영합니다.",
-    "시사회" to "영화 만들기 완료 후 전체 영상을 확인하고 완성본 저장, 기본 사진첩 저장, 파일 저장, 공유를 실행합니다. 저장 중에는 화면을 유지합니다.",
+    "시사회" to "완성본 만들기 완료 후 전체 영상을 확인하고 기본 사진첩 저장, 파일 저장, 공유를 실행합니다. 저장 중에는 화면을 유지합니다.",
     "음악 찾기" to "외부 무료 음악 사이트를 앱 안에서 열어 배경음악을 찾는 화면입니다. 즐겨찾기 추가/삭제와 첫 페이지 지정을 저장하며, 다운로드한 파일은 음악 설정의 내 음악 파일 선택으로 가져옵니다.",
     "외부 호출 주소" to "iOS와 같은 주소를 Android에서도 받습니다. Ai hanclip://aishot, 파일 hanclip://files, 달력 hanclip://calendar, 사진 hanclip://photo, 검색 hanclip://search, 첫 화면 hanclip://open 흐름을 빠르게 엽니다.",
     "샘플 음악" to "HanClip에 포함된 샘플 음악은 앱 기능 검증과 사용자의 영상 배경음악을 위해 제공됩니다."
@@ -809,7 +809,7 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
                     color = HomeText
                 )
                 Text(
-                    text = "기본 사진첩이나 다른 앱에서 공유한 파일을 바로 영화로 엽니다.",
+                    text = "기본 사진첩이나 다른 앱에서 공유한 파일을 바로 완성본으로 엽니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -833,7 +833,7 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
 private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPalette) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "영화 시작",
+            text = "완성본 시작",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = palette.text
@@ -975,7 +975,7 @@ private fun SavedProjectSection(
         ) {
             Column {
                 Text(
-                    text = "저장된 영화",
+                    text = "저장된 완성본",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = HomeText
@@ -1030,7 +1030,7 @@ private fun SavedProjectSection(
                 onEditExportedMovieMemo = onEditExportedMovieMemo
             )
             SavedProjectCategoryHeader(
-                title = "일반 영화",
+                title = "일반 완성본",
                 count = standardSummaries.size,
                 icon = Icons.Outlined.Movie
             )
@@ -1422,7 +1422,7 @@ private fun EmptySavedProjectRow() {
             Column(Modifier.weight(1f)) {
                 Text("최근 항목 없음", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "사진과 영상을 골라 HanClip 영화를 만들면 여기에 표시됩니다.",
+                    "사진과 영상을 골라 HanClip 완성본을 만들면 여기에 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText
                 )

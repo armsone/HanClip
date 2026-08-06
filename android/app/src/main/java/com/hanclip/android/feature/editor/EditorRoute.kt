@@ -1229,9 +1229,9 @@ private fun PresetStatusPill(text: String, active: Boolean, palette: HanClipPale
 
 private fun presetStatusDescription(preset: MoviePreset): String {
     return when (preset) {
-        MoviePreset.NewMovie -> "Android 기본 사진첩에서 사진/영상을 한 번에 골라 영화로 만듭니다."
+        MoviePreset.NewMovie -> "Android 기본 사진첩에서 사진/영상을 한 번에 골라 완성본으로 만듭니다."
         MoviePreset.AiShot -> "스윙 순간을 자동 촬영하고 바로 클립으로 편집합니다."
-        MoviePreset.Travel -> "여행 사진과 영상을 순서대로 엮어 짧은 영화로 만듭니다."
+        MoviePreset.Travel -> "여행 사진과 영상을 순서대로 엮어 짧은 완성본으로 만듭니다."
         MoviePreset.Golf -> "타격점을 중심으로 골프 클립과 HanClip 로고를 자동 구성합니다."
     }
 }
