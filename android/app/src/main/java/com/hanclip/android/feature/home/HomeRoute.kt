@@ -1746,13 +1746,10 @@ private fun savedMovieDetailText(
     val fileSize = summary.byteCount
         .takeIf { it > 0L }
         ?.let { Formatter.formatFileSize(context, it) }
-    val baseText = if (fileSize != null) {
-        "${summary.clipCount}개 · $fileSize"
-    } else {
-        "${summary.clipCount}개 · ${movieDurationText(summary.totalDurationSeconds)}"
-    }
     val parts = buildList {
-        add(baseText)
+        add("${summary.clipCount}개")
+        add(movieDurationText(summary.totalDurationSeconds))
+        fileSize?.let { add(it) }
         summary.outputAspectRatio?.let { add(it.title) }
         summary.outputQualityPreset?.let { add(it.detail) }
         add(OutputQualityPreset.ExportFormatTitle)
