@@ -382,6 +382,24 @@ private fun CalendarMonthGrid(
         for (day in 1..visibleMonth.lengthOfMonth()) add(visibleMonth.atDay(day))
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (selectedDates.size == 1) "선택한 날짜 1일" else "선택한 날짜 ${selectedDates.size}일",
+                color = palette.text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "날짜를 탭해 추가 선택",
+                color = palette.subText,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             listOf("일", "월", "화", "수", "목", "금", "토").forEach { label ->
                 Text(
