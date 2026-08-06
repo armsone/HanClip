@@ -1619,15 +1619,23 @@ private fun ExportedMovieThumbnail(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-        } ?: Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            listOf(Color(0xFF0F8F61), Color(0xFFE45D42), Color(0xFF3D6F88)).forEach { color ->
-                Box(
-                    modifier = Modifier
-                        .size(width = 25.dp, height = 42.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(color)
-                )
-            }
+        } ?: Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Movie,
+                contentDescription = null,
+                tint = HomePrimary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                "HanClip",
+                color = HomePrimary,
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
+            )
         }
     }
 }
