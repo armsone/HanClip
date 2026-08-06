@@ -81,13 +81,13 @@ fun PhotoDurationSheet(
             ) {
                 Column {
                     Text(
-                        "사진 시간",
+                        "개별 사진 시간",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = palette.text
                     )
                     Text(
-                        "사진 한 장이 영화에 보이는 길이를 정합니다.",
+                        "이 사진 한 장이 영화에 보이는 길이를 정합니다.",
                         color = palette.subText
                     )
                 }
@@ -140,7 +140,7 @@ fun PhotoDurationSheet(
                     contentColor = Color.White
                 )
             ) {
-                Text("적용")
+                Text("이 사진에 %.1f초 적용".format(duration))
             }
             Spacer(Modifier.height(8.dp))
         }

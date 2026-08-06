@@ -316,7 +316,7 @@ class EditorViewModel : ViewModel() {
                     }
                 },
                 alertMessage = if (changedCount > 0) {
-                    "기본 길이 %.1f초를 클립 ${changedCount}개에 적용했습니다."
+                    "사진/영상 클립 ${changedCount}개를 %.1f초 길이로 맞췄습니다."
                         .format(state.defaultDurationSeconds)
                 } else {
                     "적용할 클립이 없습니다."
