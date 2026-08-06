@@ -2468,6 +2468,11 @@ private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String 
     val source = clip.sourceDurationSeconds ?: clip.durationSeconds
     return if (clip.isVideoSegmentParent) {
         "원본 ${formatClipSeconds(source)} · 자동 컷 ${childSegmentCount}개"
+    } else if (clip.isVideoSegmentChild) {
+        val impactText = clip.audioPeakTimeSeconds
+            ?.let { "타격 ${formatClipSeconds(it)} · " }
+            .orEmpty()
+        "${impactText}클립 ${formatClipSeconds(clip.durationSeconds)} / 원본 ${formatClipSeconds(source)}"
     } else if (clip.mediaKind == ClipMediaKind.Video) {
         "클립 ${formatClipSeconds(clip.durationSeconds)} / 원본 ${formatClipSeconds(source)}"
     } else if (clip.mediaKind == ClipMediaKind.LivePhoto) {
