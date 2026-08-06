@@ -174,11 +174,11 @@ fun EditorRoute(
         if (grants.values.any { it }) {
             isCalendarPickerVisible = true
         } else {
-            viewModel.showAlert("기본 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. Android 설정에서 HanClip 권한을 허용하거나, 파일 버튼으로 직접 선택해 주세요.")
+            viewModel.showAlert("Android 기본 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. Android 설정에서 HanClip 권한을 허용하거나, 파일 버튼으로 직접 선택해 주세요.")
         }
     }
 
-    fun openCalendarPicker(title: String = "날짜별") {
+    fun openCalendarPicker(title: String = "사진첩 날짜별") {
         mediaPickerTitle = title
         val missingPermissions = calendarMediaPermissions()
             .filter { permission ->
@@ -199,7 +199,7 @@ fun EditorRoute(
         when (initialImportAction) {
             EditorImportAction.Photo -> {
                 onInitialImportActionConsumed()
-                openCalendarPicker("기본 사진첩")
+                openCalendarPicker("사진첩 전체")
             }
             EditorImportAction.Calendar -> {
                 onInitialImportActionConsumed()
@@ -289,11 +289,11 @@ fun EditorRoute(
             item {
                 ImportActionRow(
                     palette = palette,
-                    onPickMedia = { openCalendarPicker("기본 사진첩") },
+                    onPickMedia = { openCalendarPicker("사진첩 전체") },
                     onPickFiles = {
                         galleryPicker.launch(mediaFileIntent())
                     },
-                    onPickCalendar = { openCalendarPicker("날짜별") },
+                    onPickCalendar = { openCalendarPicker("사진첩 날짜별") },
                     onPickVideos = { openCalendarPicker("영상만") },
                     onAiCut = {
                         viewModel.prepareAiCutImport()
@@ -357,11 +357,11 @@ fun EditorRoute(
                     EmptyClipPanel(
                         preset = state.preset,
                         palette = palette,
-                        onPickMedia = { openCalendarPicker("기본 사진첩") },
+                        onPickMedia = { openCalendarPicker("사진첩 전체") },
                         onPickFiles = {
                             galleryPicker.launch(mediaFileIntent())
                         },
-                        onPickCalendar = { openCalendarPicker("날짜별") },
+                        onPickCalendar = { openCalendarPicker("사진첩 날짜별") },
                         onPickVideos = { openCalendarPicker("영상만") }
                     )
                 }
@@ -1197,7 +1197,7 @@ private fun ImportActionRow(
         ) {
             Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            ActionButtonText("기본 사진첩에서 선택")
+            ActionButtonText("사진첩 전체에서 선택")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -1227,7 +1227,7 @@ private fun ImportActionRow(
             ) {
                 Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                ActionButtonText("날짜별")
+                ActionButtonText("날짜별 보기")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1325,7 +1325,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("기본 사진첩")
+                    ActionButtonText("사진첩 전체")
                 }
                 Button(
                     modifier = Modifier.weight(1f).height(50.dp),
@@ -1352,7 +1352,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("날짜별")
+                    ActionButtonText("날짜별 보기")
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f).height(50.dp),

@@ -60,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hanclip.android.core.media.MediaImportReader
 import com.hanclip.android.core.model.ClipMediaKind
@@ -75,7 +76,7 @@ import java.util.Locale
 
 @Composable
 fun CalendarMediaPickerSheet(
-    title: String = "날짜별",
+    title: String = "사진첩 날짜별",
     palette: HanClipPalette,
     onDismiss: () -> Unit,
     onImport: (List<Uri>) -> Unit
@@ -83,7 +84,7 @@ fun CalendarMediaPickerSheet(
     val context = LocalContext.current
     val pickerMode = remember(title) {
         when (title) {
-            "기본 사진첩" -> MediaPickerSheetMode.Recent
+            "사진첩 전체" -> MediaPickerSheetMode.Recent
             "영상만" -> MediaPickerSheetMode.Videos
             else -> MediaPickerSheetMode.Calendar
         }
@@ -332,12 +333,14 @@ private fun CalendarSheetHeader(
             Text(title, color = palette.text, fontWeight = FontWeight.Bold)
             Text(
                 if (mode == MediaPickerSheetMode.Recent || mode == MediaPickerSheetMode.Videos) {
-                    "${visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN))} ${sortOrder.label}"
+                    "Android 기본 사진첩 · ${visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN))} ${sortOrder.label}"
                 } else {
-                    visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN))
+                    "Android 기본 사진첩 · ${visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN))}"
                 },
                 color = palette.subText,
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
         IconButton(onClick = onPrevious) {
@@ -576,7 +579,7 @@ private fun MediaSelectionSummary(
             )
             Text(
                 text = if (selectedUris.isEmpty()) {
-                    "기본 사진첩"
+                    "Android 기본 사진첩"
                 } else {
                     listOfNotNull(
                         photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
