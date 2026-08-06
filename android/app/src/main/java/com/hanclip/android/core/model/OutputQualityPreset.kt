@@ -12,11 +12,11 @@ enum class OutputQualityPreset(
         get() = "$title $detail"
 
     val chipTitle: String
-        get() = "$title · 프레임 $detail"
+        get() = "$title $detail"
 
     companion object {
         const val ExportFormatTitle = "MP4"
-        const val CodecTitle = "H.264 · AAC"
+        const val CodecTitle = "H.264 영상 · AAC 음성"
         const val ExportFormatDetail = "$ExportFormatTitle · $CodecTitle"
     }
 }
