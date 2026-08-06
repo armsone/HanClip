@@ -429,17 +429,25 @@ private fun PreviewSummaryPanel(
                     modifier = Modifier.weight(1f)
                 )
                 SummaryStatusChip(
-                    label = when {
-                        !summary.detailStatusKnown -> "정보 확인"
-                        summary.hasWatermark -> "자막 적용"
-                        else -> "자막 없음"
-                    },
+                    label = previewWatermarkStatusText(summary),
                     active = summary.hasWatermark,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
             }
         }
+    }
+}
+
+private fun previewWatermarkStatusText(summary: PreviewMovieSummary): String {
+    if (!summary.detailStatusKnown) return "정보 확인"
+    val hasText = summary.watermarkSettings.shouldRenderText
+    val hasLogo = summary.watermarkSettings.logoEnabled
+    return when {
+        hasText && hasLogo -> "자막/로고 적용"
+        hasText -> "자막 적용"
+        hasLogo -> "HanClip 로고"
+        else -> "자막/로고 없음"
     }
 }
 
