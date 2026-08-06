@@ -5,8 +5,8 @@ enum class OutputQualityPreset(
     val detail: String,
     val frameRate: Int
 ) {
-    Standard("표준", "30fps", 30),
-    Smooth("부드럽게", "60fps", 60);
+    Standard("표준", "30fps · 용량 균형", 30),
+    Smooth("부드럽게", "60fps · 움직임 선명", 60);
 
     val displayTitle: String
         get() = "$title $detail"
