@@ -279,8 +279,8 @@ fun CalendarMediaPickerSheet(
             containerColor = palette.panel,
             titleContentColor = palette.text,
             textContentColor = palette.subText,
-            title = { Text("선택한 미디어로 클립 만들기") },
-            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택 번호 순서대로 HanClip 완성본에 넣을까요?") }
+            title = { Text("기본 사진첩 선택 완료") },
+            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택한 번호순으로 HanClip 완성본에 넣을까요?") }
         )
     }
 }
@@ -646,7 +646,7 @@ private fun MediaSelectionSummary(
                 text = if (selectedUris.isEmpty()) {
                     "사진이나 영상을 선택해 주세요."
                 } else {
-                    "선택 ${selectedUris.size}개 · 번호순"
+                    "선택 ${selectedUris.size}개 · 완성본 순서"
                 },
                 color = if (selectedUris.isEmpty()) palette.subText else palette.primary,
                 fontWeight = FontWeight.Bold,
