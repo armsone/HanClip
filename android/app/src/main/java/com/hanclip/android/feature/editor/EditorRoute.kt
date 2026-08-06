@@ -1898,23 +1898,30 @@ private fun ProjectControls(
                     )
                 )
             }
-            AssistChip(
-                onClick = {},
-                leadingIcon = { Icon(Icons.Outlined.MovieCreation, contentDescription = null) },
-                label = {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.MovieCreation,
+                        contentDescription = null,
+                        tint = palette.subText,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Text(
                         OutputQualityPreset.ExportFormatDetail,
-                        fontWeight = FontWeight.SemiBold
+                        color = palette.subText,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelLarge
                     )
-                },
-                enabled = false,
-                colors = AssistChipDefaults.assistChipColors(
-                    disabledContainerColor = palette.panel,
-                    disabledLabelColor = palette.subText,
-                    disabledLeadingIconContentColor = palette.subText
-                ),
-                border = BorderStroke(1.dp, palette.border)
-            )
+                }
+            }
         }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
