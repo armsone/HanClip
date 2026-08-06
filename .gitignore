@@ -42,3 +42,5 @@ playground.xcworkspace
 *.xcuserstate
 *.xcscmblueprint
 .deriveddata
+android/HanClip-android-debug-tested.apk
+android/HanClip-android-finished-debug.apk
