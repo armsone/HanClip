@@ -181,7 +181,8 @@ fun VideoTrimSheet(
                     if (startSeconds + durationSeconds > sourceDuration) {
                         startSeconds = max(0.0, sourceDuration - durationSeconds)
                     }
-                }
+                },
+                palette = palette
             )
 
             Row(
@@ -388,22 +389,23 @@ private fun TrimPrecisionControls(
     durationSeconds: Double,
     sourceDuration: Double,
     onStartChange: (Double) -> Unit,
-    onDurationChange: (Double) -> Unit
+    onDurationChange: (Double) -> Unit,
+    palette: HanClipPalette
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFF7FAF8),
-        border = BorderStroke(1.dp, TrimBorder)
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("정밀 조절", color = TrimText, fontWeight = FontWeight.Bold)
+            Text("정밀 조절", color = palette.text, fontWeight = FontWeight.Bold)
             Text(
                 "자주 쓰는 클립 길이",
-                color = TrimSubText,
+                color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold
             )
@@ -413,6 +415,7 @@ private fun TrimPrecisionControls(
                         seconds = seconds,
                         selected = abs(durationSeconds - seconds) < 0.05,
                         enabled = seconds <= sourceDuration,
+                        palette = palette,
                         modifier = Modifier.weight(1f),
                         onClick = { onDurationChange(seconds) }
                     )
@@ -424,6 +427,7 @@ private fun TrimPrecisionControls(
                         seconds = seconds,
                         selected = abs(durationSeconds - seconds) < 0.05,
                         enabled = seconds <= sourceDuration,
+                        palette = palette,
                         modifier = Modifier.weight(1f),
                         onClick = { onDurationChange(seconds) }
                     )
@@ -434,6 +438,7 @@ private fun TrimPrecisionControls(
                     text = "시작 -0.1초",
                     icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
                     enabled = startSeconds > 0.0,
+                    palette = palette,
                     modifier = Modifier.weight(1f),
                     onClick = { onStartChange(startSeconds - 0.1) }
                 )
@@ -441,6 +446,7 @@ private fun TrimPrecisionControls(
                     text = "시작 +0.1초",
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                     enabled = startSeconds < sourceDuration - durationSeconds,
+                    palette = palette,
                     modifier = Modifier.weight(1f),
                     onClick = { onStartChange(startSeconds + 0.1) }
                 )
@@ -450,6 +456,7 @@ private fun TrimPrecisionControls(
                     text = "길이 -0.1초",
                     icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
                     enabled = durationSeconds > 0.5,
+                    palette = palette,
                     modifier = Modifier.weight(1f),
                     onClick = { onDurationChange(durationSeconds - 0.1) }
                 )
@@ -457,6 +464,7 @@ private fun TrimPrecisionControls(
                     text = "길이 +0.1초",
                     icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                     enabled = durationSeconds < sourceDuration,
+                    palette = palette,
                     modifier = Modifier.weight(1f),
                     onClick = { onDurationChange(durationSeconds + 0.1) }
                 )
@@ -470,6 +478,7 @@ private fun TrimDurationPresetButton(
     seconds: Double,
     selected: Boolean,
     enabled: Boolean,
+    palette: HanClipPalette,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -477,12 +486,12 @@ private fun TrimDurationPresetButton(
         modifier = modifier.height(36.dp),
         enabled = enabled,
         onClick = onClick,
-        border = BorderStroke(1.dp, if (selected) TrimPrimary else TrimBorder),
+        border = BorderStroke(1.dp, if (selected) palette.primary else palette.border),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (selected) TrimPrimary.copy(alpha = 0.12f) else Color.White,
-            contentColor = if (selected) TrimPrimary else TrimText,
-            disabledContainerColor = Color(0xFFEAF0EC),
-            disabledContentColor = TrimSubText.copy(alpha = 0.55f)
+            containerColor = if (selected) palette.primary.copy(alpha = 0.12f) else palette.panel,
+            contentColor = if (selected) palette.primary else palette.text,
+            disabledContainerColor = palette.chip,
+            disabledContentColor = palette.subText.copy(alpha = 0.55f)
         )
     ) {
         Text("%.1f초".format(seconds), fontWeight = FontWeight.Bold)
@@ -494,6 +503,7 @@ private fun TrimAdjustButton(
     text: String,
     icon: @Composable () -> Unit,
     enabled: Boolean,
+    palette: HanClipPalette,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -501,12 +511,12 @@ private fun TrimAdjustButton(
         modifier = modifier.height(38.dp),
         enabled = enabled,
         onClick = onClick,
-        border = BorderStroke(1.dp, TrimBorder),
+        border = BorderStroke(1.dp, palette.border),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = Color.White,
-            contentColor = TrimText,
-            disabledContainerColor = Color(0xFFEAF0EC),
-            disabledContentColor = TrimSubText.copy(alpha = 0.55f)
+            containerColor = palette.panel,
+            contentColor = palette.text,
+            disabledContainerColor = palette.chip,
+            disabledContentColor = palette.subText.copy(alpha = 0.55f)
         )
     ) {
         icon()

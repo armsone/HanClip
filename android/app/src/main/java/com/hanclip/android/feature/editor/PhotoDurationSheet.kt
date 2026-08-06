@@ -105,6 +105,11 @@ fun PhotoDurationSheet(
                 color = palette.primary,
                 fontWeight = FontWeight.Bold
             )
+            Text(
+                text = "적용하면 이 사진 한 장만 %.1f초로 바뀝니다.".format(duration),
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.subText
+            )
             Slider(
                 value = duration,
                 onValueChange = { duration = it.coerceIn(0.5f, 30f) },
@@ -170,7 +175,7 @@ fun PhotoDurationSheet(
                     contentColor = Color.White
                 )
             ) {
-                Text("이 사진에 %.1f초 적용".format(duration))
+                Text("사진 시간 %.1f초 적용".format(duration))
             }
             Spacer(Modifier.height(8.dp))
         }
