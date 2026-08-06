@@ -657,13 +657,13 @@ private fun SaveOptionsSheet(
                 ) {
                     Column {
                         Text(
-                            text = "저장 위치 선택",
+                            text = "완성본 저장 위치",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = palette.text
                         )
                         Text(
-                            text = "폰에서 바로 보려면 기본 사진첩 저장을 추천합니다.",
+                            text = "폰에서 바로 보려면 기본 사진첩에 저장하세요.",
                             color = palette.subText
                         )
                     }
@@ -672,18 +672,18 @@ private fun SaveOptionsSheet(
                     }
                 }
                 SaveDestinationCard(
-                    title = "기본 사진첩에 저장",
+                    title = "기본 사진첩 저장",
                     badge = "추천",
-                    body = "Android 기본 사진첩의 Movies/HanClip 폴더에서 바로 볼 수 있습니다.",
+                    body = "Android 기본 사진첩의 Movies/HanClip에서 바로 볼 수 있습니다.",
                     icon = Icons.Outlined.Download,
                     palette = palette,
                     primary = true,
                     onClick = onSaveToGallery
                 )
                 SaveDestinationCard(
-                    title = "파일로 저장",
+                    title = "파일 저장",
                     badge = "대안",
-                    body = "파일 앱에서 원하는 폴더와 이름을 직접 선택합니다.",
+                    body = "파일 앱에서 폴더와 이름을 직접 선택합니다.",
                     icon = Icons.Outlined.FolderOpen,
                     palette = palette,
                     primary = false,
