@@ -251,7 +251,7 @@ class EditorViewModel : ViewModel() {
                     error.message?.takeIf { it.isNotBlank() }
                         ?: "선택한 구간에서 영상을 만들 수 없습니다. 클립 시간을 다시 조절해 주세요."
                 } else {
-                    "영화를 만들지 못했습니다. $exportLabel 설정으로 실패했습니다. 파일 접근 권한과 클립 구간을 확인해 주세요."
+                    "영화를 만들지 못했습니다. $exportLabel 설정을 확인하고 클립 시간이나 파일 접근 권한을 조정한 뒤 다시 영화 만들기를 눌러 주세요."
                 }
                 _uiState.update {
                     it.copy(
