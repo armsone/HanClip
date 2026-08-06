@@ -238,7 +238,7 @@ fun CalendarMediaPickerSheet(
                 ) {
                     Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     Text(
-                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "선택 순서대로 ${selectedUris.size}개",
+                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "${selectedUris.size}개 클립 만들기",
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -279,8 +279,8 @@ fun CalendarMediaPickerSheet(
             containerColor = palette.panel,
             titleContentColor = palette.text,
             textContentColor = palette.subText,
-            title = { Text("많은 미디어 가져오기") },
-            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택 번호 순서대로 HanClip 클립을 만들까요?") }
+            title = { Text("선택한 미디어로 클립 만들기") },
+            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택 번호 순서대로 HanClip 완성본에 넣을까요?") }
         )
     }
 }
