@@ -167,7 +167,7 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · $pendingMovieFileName 파일을 Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다. 이제 공유 버튼은 저장된 영상을 사용합니다."
+                message = "기본 사진첩 저장 완료 · Movies/HanClip에서 확인할 수 있습니다. 공유는 저장된 영상을 사용합니다."
             }.onFailure {
                 message = "Android 기본 사진첩에 저장하지 못했습니다. 파일로 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
@@ -196,7 +196,7 @@ fun PreviewRoute(
             }.onSuccess {
                 preferredShareUri = targetUri
                 onSavedMovie(targetUri)
-                message = "파일 저장 완료 · 선택한 위치에 MP4 영상으로 저장했습니다. 이제 공유 버튼은 저장된 파일을 사용합니다."
+                message = "파일 저장 완료 · 선택한 위치의 MP4 파일로 공유합니다."
             }.onFailure {
                 message = "파일로 저장하지 못했습니다. 저장 위치 권한을 확인해 주세요."
             }
@@ -616,7 +616,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("저장하기")
+            Text("완성본 저장")
         }
     }
 }
@@ -662,7 +662,7 @@ private fun SaveOptionsSheet(
                             color = palette.text
                         )
                         Text(
-                            text = "완성된 영화를 어디에 둘지 선택합니다.",
+                            text = "완성본을 기본 사진첩이나 원하는 파일 위치에 저장합니다.",
                             color = palette.subText
                         )
                     }
@@ -977,12 +977,12 @@ private fun SavingMovieDialog(palette: HanClipPalette) {
                     trackColor = palette.chip
                 )
                 Text(
-                    text = "영화를 저장하는 중...",
+                    text = "완성본을 저장하는 중...",
                     color = palette.text,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "MP4 영상을 Android 기본 사진첩 또는 선택한 파일 위치에 저장하고 있습니다.",
+                    text = "MP4 영상을 기본 사진첩 또는 선택한 파일 위치에 저장하고 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall
                 )
