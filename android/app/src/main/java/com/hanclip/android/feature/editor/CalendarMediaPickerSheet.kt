@@ -487,29 +487,84 @@ private fun CalendarMediaStrip(
                 }
             }
         }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier.height(
-                if (mode == MediaPickerSheetMode.Recent || mode == MediaPickerSheetMode.Videos) {
-                    374.dp
-                } else {
-                    118.dp
+        val gridHeight = if (mode == MediaPickerSheetMode.Recent || mode == MediaPickerSheetMode.Videos) {
+            374.dp
+        } else {
+            118.dp
+        }
+        if (items.isEmpty()) {
+            EmptyMediaStrip(
+                mode = mode,
+                palette = palette,
+                modifier = Modifier.height(gridHeight)
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier.height(gridHeight),
+                contentPadding = PaddingValues(bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(items, key = { it.uri.toString() }) { item ->
+                    CalendarMediaThumb(
+                        palette = palette,
+                        item = item,
+                        selectedOrder = selectedUris.indexOf(item.uri)
+                            .takeIf { it >= 0 }
+                            ?.plus(1),
+                        onClick = { onToggle(item.uri) }
+                    )
                 }
-            ),
-            contentPadding = PaddingValues(bottom = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(items, key = { it.uri.toString() }) { item ->
-                CalendarMediaThumb(
-                    palette = palette,
-                    item = item,
-                    selectedOrder = selectedUris.indexOf(item.uri)
-                        .takeIf { it >= 0 }
-                        ?.plus(1),
-                    onClick = { onToggle(item.uri) }
-                )
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptyMediaStrip(
+    mode: MediaPickerSheetMode,
+    palette: HanClipPalette,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = if (mode == MediaPickerSheetMode.Videos) {
+                    Icons.Outlined.MovieCreation
+                } else {
+                    Icons.Outlined.Photo
+                },
+                contentDescription = null,
+                tint = palette.primary,
+                modifier = Modifier.size(30.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = if (mode == MediaPickerSheetMode.Videos) {
+                    "이 달에는 영상이 없습니다."
+                } else {
+                    "이 달에는 사진이나 영상이 없습니다."
+                },
+                color = palette.text,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "상단 화살표로 다른 달을 확인하세요.",
+                color = palette.subText,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

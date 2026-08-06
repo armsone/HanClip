@@ -1042,6 +1042,7 @@ private fun AiShotMovieCard(
     onTogglePin: () -> Unit,
     onEditMemo: () -> Unit
 ) {
+    val context = LocalContext.current
     Surface(
         modifier = modifier
             .height(96.dp)
@@ -1081,7 +1082,7 @@ private fun AiShotMovieCard(
                     }
                 }
                 Text(
-                    "${summary.clipCount}개 · ${"%.1f".format(summary.totalDurationSeconds)}초",
+                    savedMovieDetailText(context, summary),
                     color = HomeSubText,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
@@ -1645,11 +1646,18 @@ private fun savedMovieDetailText(
     val fileSize = summary.byteCount
         .takeIf { it > 0L }
         ?.let { Formatter.formatFileSize(context, it) }
-    return if (fileSize != null) {
+    val baseText = if (fileSize != null) {
         "${summary.clipCount}개 · $fileSize"
     } else {
         "${summary.clipCount}개 · ${movieDurationText(summary.totalDurationSeconds)}"
     }
+    val parts = buildList {
+        add(baseText)
+        summary.outputAspectRatio?.let { add(it.title) }
+        if (summary.hasBackgroundMusic == true) add("음악")
+        if (summary.hasWatermark == true) add("자막")
+    }
+    return parts.joinToString(" · ")
 }
 
 private fun movieDurationText(durationSeconds: Double): String {
