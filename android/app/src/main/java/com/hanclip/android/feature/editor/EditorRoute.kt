@@ -1465,7 +1465,7 @@ private fun ReorderStrip(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "위/아래 버튼으로 영화에 이어질 순서를 조정합니다.",
+                        "왼쪽부터 영화에 이어집니다. 위/아래 버튼으로 앞뒤 순서를 조정합니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall
                     )
