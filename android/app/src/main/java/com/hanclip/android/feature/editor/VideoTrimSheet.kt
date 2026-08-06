@@ -250,7 +250,7 @@ private fun VideoImpactPanel(
                 Column {
                     Text("자동 타격점", color = palette.text, fontWeight = FontWeight.Bold)
                     Text(
-                        impactSummaryText(clip),
+                        "${impactSummaryText(clip)} · 선택한 길이는 유지합니다.",
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.subText
                     )
@@ -278,7 +278,7 @@ private fun VideoImpactPanel(
                     )
                 ) {
                     Icon(Icons.Outlined.SportsGolf, contentDescription = null)
-                    Text("타격점 맞춤")
+                    Text("타격점 중심 맞춤")
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -290,7 +290,7 @@ private fun VideoImpactPanel(
                     )
                 ) {
                     Icon(Icons.Outlined.Timelapse, contentDescription = null)
-                    Text("원본 전체")
+                    Text("원본 전체 사용")
                 }
             }
         }
