@@ -649,8 +649,8 @@ private fun CaptionStateSummary(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFF7FAF8),
-        border = BorderStroke(1.dp, SheetBorder)
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
     ) {
         FlowRow(
             modifier = Modifier.padding(12.dp),
@@ -699,13 +699,13 @@ private fun CaptionStateChip(
 ) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = if (active) palette.primary.copy(alpha = 0.12f) else Color.White,
-        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.38f) else SheetBorder)
+        color = if (active) palette.primary.copy(alpha = 0.12f) else palette.panel,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.38f) else palette.border)
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-            color = if (active) palette.primary else SheetSubText,
+            color = if (active) palette.primary else palette.subText,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold
         )
