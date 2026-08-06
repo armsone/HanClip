@@ -1622,7 +1622,7 @@ private fun NewSavedMovieBadge() {
         border = BorderStroke(1.dp, Color(0xFFEB3B45).copy(alpha = 0.32f))
     ) {
         Text(
-            text = "방금 저장",
+            text = "방금 완성",
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
             color = Color(0xFFC8212C),
             fontWeight = FontWeight.Bold,
@@ -1795,7 +1795,7 @@ private fun savedMovieDetailText(
         add(movieDurationText(summary.totalDurationSeconds))
         fileSize?.let { add(it) }
         summary.outputAspectRatio?.let { add(it.title) }
-        summary.outputQualityPreset?.let { add(it.detail) }
+        summary.outputQualityPreset?.let { add(it.chipTitle) }
         add(OutputQualityPreset.ExportFormatTitle)
         if (summary.hasBackgroundMusic == true) add("음악")
         overlayDetailParts(summary).forEach(::add)
