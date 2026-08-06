@@ -870,7 +870,7 @@ private fun SummaryPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SummaryReadinessPill(
-                    text = if (clipCount > 0) "영화 만들기 준비됨" else "사진/영상을 선택하세요",
+                    text = if (clipCount > 0) "완성본 만들기 준비됨" else "사진/영상을 선택하세요",
                     active = clipCount > 0,
                     palette = palette,
                     modifier = Modifier.weight(1.35f)
@@ -1015,18 +1015,18 @@ private fun ExportConfirmationDialog(
                 )
             ) {
                 Icon(Icons.Outlined.MovieCreation, contentDescription = null)
-                Text("제작 시작")
+                Text("완성본 만들기")
             }
         },
         shape = RoundedCornerShape(8.dp),
         containerColor = palette.panel,
         titleContentColor = palette.text,
         textContentColor = palette.subText,
-        title = { Text("영화를 만들까요?") },
+        title = { Text("완성본을 만들까요?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "아래 설정으로 HanClip 영화를 만듭니다. 완성 후 시사회에서 기본 사진첩 저장, 파일 저장, 공유를 실행할 수 있습니다.",
+                    "아래 설정으로 HanClip 완성본을 만듭니다. 완성 후 시사회에서 기본 사진첩 저장, 파일 저장, 공유를 실행할 수 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
                 )
