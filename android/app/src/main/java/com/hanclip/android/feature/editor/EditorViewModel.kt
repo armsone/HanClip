@@ -273,14 +273,18 @@ class EditorViewModel : ViewModel() {
     }
 
     fun setDefaultDuration(context: Context, seconds: Double) {
-        EditorPreferenceStore.saveDefaultDurationSeconds(context.applicationContext, seconds)
+        val safeSeconds = seconds.coerceIn(0.5, 30.0)
+        EditorPreferenceStore.saveDefaultDurationSeconds(context.applicationContext, safeSeconds)
         _uiState.update {
-            it.copy(defaultDurationSeconds = seconds.coerceIn(0.5, 30.0))
+            it.copy(
+                defaultDurationSeconds = safeSeconds
+            )
         }
     }
 
     fun applyDefaultDurationToAll() {
         _uiState.update { state ->
+            val changedCount = state.renderableClips.size
             state.copy(
                 clips = state.clips.map { clip ->
                     if (clip.mediaKind == ClipMediaKind.Video) {
@@ -302,7 +306,14 @@ class EditorViewModel : ViewModel() {
                             trimStartSeconds = 0.0
                         )
                     }
-                }
+                },
+                alertMessage = if (changedCount > 0) {
+                    "기본 길이 %.1f초를 클립 ${changedCount}개에 적용했습니다."
+                        .format(state.defaultDurationSeconds)
+                } else {
+                    "적용할 클립이 없습니다."
+                },
+                undoDeleteMessage = null
             )
         }
     }
@@ -538,6 +549,7 @@ class EditorViewModel : ViewModel() {
 
     fun selectFullRangeForAllVideoClips() {
         _uiState.update { state ->
+            val videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video }
             state.copy(
                 clips = state.clips.map { clip ->
                     if (clip.mediaKind == ClipMediaKind.Video) {
@@ -556,7 +568,13 @@ class EditorViewModel : ViewModel() {
                         )
                     }
                 },
-                defaultVideoSegmentMode = VideoSegmentMode.Single
+                defaultVideoSegmentMode = VideoSegmentMode.Single,
+                alertMessage = if (videoCount > 0) {
+                    "영상 ${videoCount}개의 원본 전체 구간을 선택했습니다."
+                } else {
+                    "원본 전체로 선택할 영상이 없습니다."
+                },
+                undoDeleteMessage = null
             )
         }
     }

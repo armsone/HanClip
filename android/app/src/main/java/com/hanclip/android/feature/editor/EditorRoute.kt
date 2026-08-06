@@ -405,6 +405,7 @@ fun EditorRoute(
                 item {
                     GlobalTimePanel(
                         defaultDuration = state.defaultDurationSeconds,
+                        hasVideoClips = state.renderableClips.any { it.mediaKind == ClipMediaKind.Video },
                         palette = palette,
                         onSetDuration = { seconds -> viewModel.setDefaultDuration(context, seconds) },
                         onApplyAll = viewModel::applyDefaultDurationToAll,
@@ -1735,13 +1736,13 @@ private fun ClipRow(
                             }
                             ClipControlPill(
                                 palette = palette,
-                                text = "0.5",
+                                text = "-0.5초",
                                 icon = { Icon(Icons.Outlined.Remove, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onDecreaseDuration
                             )
                             ClipControlPill(
                                 palette = palette,
-                                text = "0.5",
+                                text = "+0.5초",
                                 icon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onIncreaseDuration
                             )
@@ -2113,6 +2114,7 @@ private fun ClipThumbnail(
 @Composable
 private fun GlobalTimePanel(
     defaultDuration: Double,
+    hasVideoClips: Boolean,
     palette: HanClipPalette,
     onSetDuration: (Double) -> Unit,
     onApplyAll: () -> Unit,
@@ -2186,18 +2188,21 @@ private fun GlobalTimePanel(
                     contentColor = Color.White
                 )
             ) {
-                Text("전체 적용")
+                Text("모든 클립에 %.1f초 적용".format(defaultDuration))
             }
             OutlinedButton(
                 onClick = onSelectFullRange,
+                enabled = hasVideoClips,
                 modifier = Modifier.fillMaxWidth(),
                 border = BorderStroke(1.dp, palette.border),
                 colors = ButtonDefaults.outlinedButtonColors(
                     containerColor = palette.panel,
-                    contentColor = palette.text
+                    contentColor = palette.text,
+                    disabledContainerColor = palette.chip,
+                    disabledContentColor = palette.subText
                 )
             ) {
-                Text("영상 원본 전체 선택")
+                Text("영상은 원본 전체로 맞추기")
             }
         }
     }
