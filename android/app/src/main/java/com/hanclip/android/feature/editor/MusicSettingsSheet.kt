@@ -52,6 +52,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.hanclip.android.core.model.BackgroundMusicSample
 import com.hanclip.android.core.theme.HanClipPalette
+import kotlin.math.abs
 
 private val MusicPrimary = Color(0xFF0B7A4E)
 private val MusicText = Color(0xFF14221A)
@@ -168,6 +169,8 @@ fun MusicSettingsSheet(
                 value = musicVolume,
                 enabled = currentTitle != null,
                 palette = palette,
+                resetLabel = "기본 35%",
+                resetValue = 0.35,
                 onValueChange = onMusicVolumeChange
             )
 
@@ -177,6 +180,8 @@ fun MusicSettingsSheet(
                 value = originalAudioVolume,
                 enabled = true,
                 palette = palette,
+                resetLabel = "원본 100%",
+                resetValue = 1.0,
                 onValueChange = onOriginalAudioVolumeChange
             )
 
@@ -378,6 +383,8 @@ private fun MusicVolumePanel(
     value: Double,
     enabled: Boolean,
     palette: HanClipPalette,
+    resetLabel: String,
+    resetValue: Double,
     onValueChange: (Double) -> Unit
 ) {
     Surface(
@@ -418,6 +425,18 @@ private fun MusicVolumePanel(
                 valueRange = 0f..1f,
                 steps = 19
             )
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onValueChange(resetValue) },
+                enabled = enabled && abs(value - resetValue) > 0.01,
+                border = BorderStroke(1.dp, palette.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = palette.text
+                )
+            ) {
+                Text(resetLabel)
+            }
         }
     }
 }
