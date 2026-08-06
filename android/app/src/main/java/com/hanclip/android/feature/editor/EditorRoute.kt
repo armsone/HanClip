@@ -154,6 +154,7 @@ fun EditorRoute(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
+            result.data.persistPickedUriPermissions(context)
             viewModel.addPickedMedia(context, result.data.extractPickedUris())
         }
     }
@@ -161,6 +162,7 @@ fun EditorRoute(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
+            result.data.persistPickedUriPermissions(context)
             viewModel.setBackgroundMusic(context, result.data?.data)
         }
     }
@@ -667,10 +669,11 @@ private fun calendarMediaPermissions(): List<String> {
 }
 
 private fun backgroundMusicIntent(): Intent {
-    return Intent(Intent.ACTION_GET_CONTENT).apply {
+    return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
         type = "audio/*"
         addCategory(Intent.CATEGORY_OPENABLE)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
     }
 }
 
@@ -691,6 +694,30 @@ private fun Intent?.extractPickedUris(): List<Uri> {
     clipData?.forEachUri { selected += it }
     data?.let { selected += it }
     return selected.distinct()
+}
+
+private fun Intent?.persistPickedUriPermissions(context: Context) {
+    if (this == null) return
+    val canRead = flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0
+    val canWrite = flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
+    extractPickedUris().forEach { uri ->
+        if (canRead) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+        }
+        if (canWrite) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+        }
+    }
 }
 
 private fun ClipData.forEachUri(block: (Uri) -> Unit) {
