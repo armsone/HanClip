@@ -110,6 +110,14 @@ fun PhotoDurationSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.subText
             )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                PhotoDurationInfoPill("이 사진만 적용", palette, active = true)
+                PhotoDurationInfoPill("전체 리듬 유지", palette, active = false)
+                PhotoDurationInfoPill("현재 %.1f초".format(clip.durationSeconds), palette, active = false)
+            }
             Slider(
                 value = duration,
                 onValueChange = { duration = it.coerceIn(0.5f, 30f) },
@@ -179,6 +187,27 @@ fun PhotoDurationSheet(
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun PhotoDurationInfoPill(
+    text: String,
+    palette: HanClipPalette,
+    active: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.chip else palette.panel,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.38f) else palette.border)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            color = if (active) palette.primary else palette.subText,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
