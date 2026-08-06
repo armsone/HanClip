@@ -268,6 +268,12 @@ private fun VideoImpactPanel(
                 startSeconds = startSeconds,
                 durationSeconds = durationSeconds
             )
+            Text(
+                text = impactSelectionGuideText(impactIncluded, durationSeconds),
+                color = palette.subText,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     modifier = Modifier.weight(1f),
@@ -380,6 +386,18 @@ private fun impactSummaryText(clip: ClipItem): String {
         primary != null && peakCount > 1 -> "주요 ${formatSeconds(primary)} · 후보 ${peakCount}개"
         primary != null -> "주요 ${formatSeconds(primary)}"
         else -> "피크가 없으면 영상 중앙을 기준으로 맞춥니다."
+    }
+}
+
+private fun impactSelectionGuideText(
+    impactIncluded: Boolean?,
+    durationSeconds: Double
+): String {
+    val lengthText = "선택 길이 ${formatSeconds(durationSeconds)}"
+    return when (impactIncluded) {
+        true -> "$lengthText 유지 · 타격점이 완성본 구간 안에 있습니다."
+        false -> "$lengthText 유지 · 타격점 중심 맞춤을 누르면 같은 길이로 다시 맞춥니다."
+        null -> "$lengthText 유지 · 타격점 정보가 없으면 영상 중앙 기준으로 맞춥니다."
     }
 }
 
