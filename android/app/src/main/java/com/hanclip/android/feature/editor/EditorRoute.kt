@@ -2938,11 +2938,14 @@ private fun BottomMakeSummaryChips(
         BottomMakeSummaryPill(formatSummaryDuration(totalSeconds), palette, active = true)
         BottomMakeSummaryPill("번호순 연결", palette, active = true)
         if (videoCount > 0) {
-            BottomMakeSummaryPill("영상 자동 컷 준비", palette, active = true)
+            BottomMakeSummaryPill("타격점 자동 컷", palette, active = true)
         }
         BottomMakeSummaryPill(qualityTitle, palette, active = true)
+        BottomMakeSummaryPill(OutputQualityPreset.ExportFormatTitle, palette, active = true)
         BottomMakeSummaryPill(overlayStatusText(hasTextOverlay, hasLogoOverlay), palette, active = hasTextOverlay || hasLogoOverlay)
         BottomMakeSummaryPill(if (hasMusic) "음악 켬" else "음악 없음", palette, active = hasMusic)
+        BottomMakeSummaryPill("시사회 확인", palette, active = true)
+        BottomMakeSummaryPill("HanClip 앨범 저장", palette, active = true)
     }
 }
 
