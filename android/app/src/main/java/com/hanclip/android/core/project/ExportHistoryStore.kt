@@ -241,6 +241,8 @@ private fun List<ExportedMovieSummary>.enforceHomeLimits(): List<ExportedMovieSu
     while (limitedItems.count { it.title == ExportHistoryAiShotTitle } > ExportHistoryMaxAiShotItems) {
         val oldestAiShot = limitedItems
             .filter { it.title == ExportHistoryAiShotTitle }
+            .filterNot { it.isPinned }
+            .ifEmpty { limitedItems.filter { it.title == ExportHistoryAiShotTitle } }
             .minByOrNull { it.updatedAtMillis }
             ?: break
         limitedItems.remove(oldestAiShot)
