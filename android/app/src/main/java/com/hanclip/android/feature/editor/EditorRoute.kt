@@ -2122,7 +2122,7 @@ private fun ClipRow(
                             if (clip.mediaKind == ClipMediaKind.Video && !clip.isVideoSegmentChild) {
                                 ClipControlPill(
                                     palette = palette,
-                                    text = if (clip.videoSegmentMode == VideoSegmentMode.Multiple) "다중" else "단일",
+                                    text = if (clip.videoSegmentMode == VideoSegmentMode.Multiple) "자동 컷" else "단일 컷",
                                     active = clip.videoSegmentMode == VideoSegmentMode.Multiple,
                                     icon = { Icon(Icons.Outlined.DragIndicator, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                     onClick = onToggleSegmentMode
