@@ -3,6 +3,7 @@ package com.hanclip.android.core.project
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.hanclip.android.core.model.OutputAspectRatio
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -15,7 +16,10 @@ data class ExportedMovieSummary(
     val updatedAtMillis: Long,
     val isPinned: Boolean = false,
     val memo: String = "",
-    val byteCount: Long = 0L
+    val byteCount: Long = 0L,
+    val outputAspectRatio: OutputAspectRatio? = null,
+    val hasBackgroundMusic: Boolean? = null,
+    val hasWatermark: Boolean? = null
 )
 
 enum class ExportedMoviePinResult {
@@ -39,6 +43,9 @@ object ExportHistoryStore {
         title: String,
         clipCount: Int,
         totalDurationSeconds: Double,
+        outputAspectRatio: OutputAspectRatio? = null,
+        hasBackgroundMusic: Boolean? = null,
+        hasWatermark: Boolean? = null,
         replaceUri: Uri? = null
     ) {
         if (clipCount <= 0 || totalDurationSeconds <= 0.0) return
@@ -60,7 +67,10 @@ object ExportHistoryStore {
                 updatedAtMillis = System.currentTimeMillis(),
                 isPinned = previousSummary?.isPinned ?: false,
                 memo = previousSummary?.memo.orEmpty(),
-                byteCount = outputUri.byteCount(context)
+                byteCount = outputUri.byteCount(context),
+                outputAspectRatio = outputAspectRatio ?: previousSummary?.outputAspectRatio,
+                hasBackgroundMusic = hasBackgroundMusic ?: previousSummary?.hasBackgroundMusic,
+                hasWatermark = hasWatermark ?: previousSummary?.hasWatermark
             )
         )
         save(context, items.enforceHomeLimits())
@@ -82,7 +92,12 @@ object ExportHistoryStore {
                     updatedAtMillis = item.optLong("updatedAtMillis", 0L),
                     isPinned = item.optBoolean("isPinned", false),
                     memo = item.optString("memo", ""),
-                    byteCount = item.optLong("byteCount", 0L)
+                    byteCount = item.optLong("byteCount", 0L),
+                    outputAspectRatio = item.optString("outputAspectRatio", "")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { raw -> enumValueOrNull<OutputAspectRatio>(raw) },
+                    hasBackgroundMusic = item.optionalBoolean("hasBackgroundMusic"),
+                    hasWatermark = item.optionalBoolean("hasWatermark")
                 )
             }
                 .filter { it.clipCount > 0 && it.totalDurationSeconds > 0.0 }
@@ -150,6 +165,9 @@ object ExportHistoryStore {
                     .put("isPinned", summary.isPinned)
                     .put("memo", summary.memo)
                     .put("byteCount", summary.byteCount)
+                    .put("outputAspectRatio", summary.outputAspectRatio?.name.orEmpty())
+                    .putNullable("hasBackgroundMusic", summary.hasBackgroundMusic)
+                    .putNullable("hasWatermark", summary.hasWatermark)
             )
         }
         context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
@@ -232,4 +250,24 @@ private fun ExportedMovieSummary.isReadableFrom(context: Context): Boolean {
 
 private fun ExportedMovieSummary.uri(): Uri {
     return runCatching { Uri.parse(uriString) }.getOrNull() ?: Uri.EMPTY
+}
+
+private inline fun <reified T : Enum<T>> enumValueOrNull(value: String): T? {
+    return enumValues<T>().firstOrNull { it.name == value }
+}
+
+private fun JSONObject.optionalBoolean(key: String): Boolean? {
+    return if (has(key) && !isNull(key)) {
+        optBoolean(key)
+    } else {
+        null
+    }
+}
+
+private fun JSONObject.putNullable(key: String, value: Boolean?): JSONObject {
+    return if (value == null) {
+        put(key, JSONObject.NULL)
+    } else {
+        put(key, value)
+    }
 }

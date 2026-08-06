@@ -66,6 +66,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.hanclip.android.core.media.VideoSaveShare
 import com.hanclip.android.core.model.OutputAspectRatio
 import com.hanclip.android.core.model.WatermarkSettings
+import com.hanclip.android.core.project.ExportedMovieSummary
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeStore
 import androidx.core.content.ContextCompat
@@ -85,13 +86,33 @@ data class PreviewMovieSummary(
     val totalDurationSeconds: Double,
     val outputAspectRatio: OutputAspectRatio?,
     val hasBackgroundMusic: Boolean,
-    val watermarkSettings: WatermarkSettings
-)
+    val watermarkSettings: WatermarkSettings,
+    val hasWatermark: Boolean = watermarkSettings.shouldRender,
+    val detailStatusKnown: Boolean = true
+) {
+    companion object {
+        fun fromHistory(summary: ExportedMovieSummary): PreviewMovieSummary {
+            val hasMusic = summary.hasBackgroundMusic
+            val hasWatermark = summary.hasWatermark
+            return PreviewMovieSummary(
+                presetTitle = summary.title,
+                clipCount = summary.clipCount,
+                totalDurationSeconds = summary.totalDurationSeconds,
+                outputAspectRatio = summary.outputAspectRatio,
+                hasBackgroundMusic = hasMusic ?: false,
+                watermarkSettings = WatermarkSettings(),
+                hasWatermark = hasWatermark ?: false,
+                detailStatusKnown = hasMusic != null && hasWatermark != null
+            )
+        }
+    }
+}
 
 @Composable
 fun PreviewRoute(
     exportedVideoUri: Uri?,
     movieSummary: PreviewMovieSummary,
+    canReturnToEditor: Boolean = true,
     onEdit: () -> Unit,
     onDone: () -> Unit,
     onSavedMovie: (Uri) -> Unit
@@ -217,6 +238,7 @@ fun PreviewRoute(
         item {
             PreviewActionRow(
                 palette = palette,
+                canReturnToEditor = canReturnToEditor,
                 onEdit = onEdit,
                 onShare = {
                     if (exportedVideoUri == null) {
@@ -376,14 +398,22 @@ private fun PreviewSummaryPanel(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SummaryStatusChip(
-                    label = if (summary.hasBackgroundMusic) "음악 적용" else "음악 없음",
+                    label = when {
+                        !summary.detailStatusKnown -> "저장 이력"
+                        summary.hasBackgroundMusic -> "음악 적용"
+                        else -> "음악 없음"
+                    },
                     active = summary.hasBackgroundMusic,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
                 SummaryStatusChip(
-                    label = if (summary.watermarkSettings.shouldRender) "자막 적용" else "자막 없음",
-                    active = summary.watermarkSettings.shouldRender,
+                    label = when {
+                        !summary.detailStatusKnown -> "정보 확인"
+                        summary.hasWatermark -> "자막 적용"
+                        else -> "자막 없음"
+                    },
+                    active = summary.hasWatermark,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
@@ -474,6 +504,7 @@ private fun formatPreviewDuration(seconds: Double): String {
 @Composable
 private fun PreviewActionRow(
     palette: HanClipPalette,
+    canReturnToEditor: Boolean,
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onRelease: () -> Unit
@@ -495,8 +526,11 @@ private fun PreviewActionRow(
                 contentColor = palette.text
             )
         ) {
-            Icon(Icons.Outlined.Edit, contentDescription = null)
-            Text("다시 편집")
+            Icon(
+                if (canReturnToEditor) Icons.Outlined.Edit else Icons.Outlined.Home,
+                contentDescription = null
+            )
+            Text(if (canReturnToEditor) "다시 편집" else "목록으로")
         }
         Surface(
             modifier = Modifier.size(52.dp),

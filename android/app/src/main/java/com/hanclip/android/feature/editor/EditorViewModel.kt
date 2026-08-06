@@ -215,7 +215,11 @@ class EditorViewModel : ViewModel() {
                     outputUri = outputUri,
                     title = state.preset.title,
                     clipCount = clips.size,
-                    totalDurationSeconds = clips.sumOf { it.durationSeconds }
+                    totalDurationSeconds = clips.sumOf { it.durationSeconds },
+                    outputAspectRatio = state.outputAspectRatio,
+                    hasBackgroundMusic = state.backgroundMusicUri != null ||
+                        state.backgroundMusicSampleId != null,
+                    hasWatermark = state.watermarkSettings.shouldRender
                 )
                 _uiState.update {
                     it.copy(
@@ -387,6 +391,11 @@ class EditorViewModel : ViewModel() {
             title = existingSummary?.title ?: state.preset.title,
             clipCount = clipCount,
             totalDurationSeconds = totalDurationSeconds,
+            outputAspectRatio = state.outputAspectRatio ?: existingSummary?.outputAspectRatio,
+            hasBackgroundMusic = existingSummary?.hasBackgroundMusic ?: (
+                state.backgroundMusicUri != null || state.backgroundMusicSampleId != null
+            ),
+            hasWatermark = existingSummary?.hasWatermark ?: state.watermarkSettings.shouldRender,
             replaceUri = state.exportedVideoUri
         )
         _uiState.update {

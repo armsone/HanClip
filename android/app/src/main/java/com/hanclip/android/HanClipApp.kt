@@ -56,6 +56,7 @@ fun HanClipApp(
     var pendingSharedCount by remember { mutableStateOf(sharedMediaUris.size) }
     var pendingEditorImportAction by remember { mutableStateOf<EditorImportAction?>(null) }
     var exportedMovieSummaries by remember { mutableStateOf<List<ExportedMovieSummary>>(emptyList()) }
+    var previewHistorySummary by remember { mutableStateOf<ExportedMovieSummary?>(null) }
     var hasDraftProject by remember { mutableStateOf(false) }
 
     LaunchedEffect(sharedMediaUris) {
@@ -187,6 +188,7 @@ fun HanClipApp(
                 sharedInboxCount = pendingSharedCount,
                 sleepPreventionMode = sleepPreventionMode,
                 onStartPreset = { preset ->
+                    previewHistorySummary = null
                     DraftProjectStore.clear(context)
                     editorViewModel.startNewPreset(context, preset)
                     hasDraftProject = false
@@ -197,6 +199,7 @@ fun HanClipApp(
                     }
                 },
                 onOpenProject = {
+                    previewHistorySummary = null
                     val draft = DraftProjectStore.load(context)
                     if (draft != null) {
                         editorViewModel.openDraft(context)
@@ -206,6 +209,7 @@ fun HanClipApp(
                     }
                 },
                 onOpenExportedMovie = { summary ->
+                    previewHistorySummary = summary
                     editorViewModel.openExportedMovie(Uri.parse(summary.uriString))
                     navController.navigate(HanClipDestination.Preview.route)
                 },
@@ -244,7 +248,10 @@ fun HanClipApp(
                     entry.arguments?.getString(HanClipDestination.Editor.presetArgument)
                 ),
                 onBackHome = { navController.popBackStack() },
-                onPreview = { navController.navigate(HanClipDestination.Preview.route) },
+                onPreview = {
+                    previewHistorySummary = null
+                    navController.navigate(HanClipDestination.Preview.route)
+                },
                 onOpenBrowser = { navController.navigate(HanClipDestination.Browser.route) },
                 sleepPreventionMode = sleepPreventionMode,
                 onSleepPreventionModeChange = { mode ->
@@ -259,7 +266,9 @@ fun HanClipApp(
         composable(HanClipDestination.Preview.route) {
             PreviewRoute(
                 exportedVideoUri = editorState.exportedVideoUri,
-                movieSummary = PreviewMovieSummary(
+                movieSummary = previewHistorySummary?.let { summary ->
+                    PreviewMovieSummary.fromHistory(summary)
+                } ?: PreviewMovieSummary(
                     presetTitle = editorState.preset.title,
                     clipCount = editorState.renderableClips.size,
                     totalDurationSeconds = editorState.totalDurationSeconds,
@@ -268,11 +277,25 @@ fun HanClipApp(
                         editorState.backgroundMusicSampleId != null,
                     watermarkSettings = editorState.watermarkSettings
                 ),
-                onEdit = { navController.popBackStack() },
-                onDone = { navController.popBackStack(HanClipDestination.Home.route, false) },
+                canReturnToEditor = previewHistorySummary == null,
+                onEdit = {
+                    if (previewHistorySummary == null) {
+                        navController.popBackStack()
+                    } else {
+                        previewHistorySummary = null
+                        navController.popBackStack(HanClipDestination.Home.route, false)
+                    }
+                },
+                onDone = {
+                    previewHistorySummary = null
+                    navController.popBackStack(HanClipDestination.Home.route, false)
+                },
                 onSavedMovie = { uri ->
                     editorViewModel.recordSavedMovie(context, uri)
                     exportedMovieSummaries = ExportHistoryStore.list(context)
+                    previewHistorySummary = exportedMovieSummaries.firstOrNull {
+                        it.uriString == uri.toString()
+                    }
                 }
             )
         }

@@ -9,7 +9,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
@@ -287,22 +286,10 @@ fun EditorRoute(
                         galleryPicker.launch(mediaFileIntent())
                     },
                     onPickCalendar = { openCalendarPicker("날짜별") },
-                    onPickVideos = {
-                        galleryPicker.launch(
-                            defaultGalleryIntent(
-                                context = context,
-                                collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                            )
-                        )
-                    },
+                    onPickVideos = { openCalendarPicker("영상만") },
                     onAiCut = {
                         viewModel.prepareAiCutImport()
-                        galleryPicker.launch(
-                            defaultGalleryIntent(
-                                context = context,
-                                collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                            )
-                        )
+                        openCalendarPicker("영상만")
                     }
                 )
             }
@@ -365,14 +352,7 @@ fun EditorRoute(
                             galleryPicker.launch(mediaFileIntent())
                         },
                         onPickCalendar = { openCalendarPicker("날짜별") },
-                        onPickVideos = {
-                            galleryPicker.launch(
-                                defaultGalleryIntent(
-                                    context = context,
-                                    collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                                )
-                            )
-                        }
+                        onPickVideos = { openCalendarPicker("영상만") }
                     )
                 }
             }
@@ -697,54 +677,6 @@ private fun mediaFileIntent(): Intent {
         addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
     }
 }
-
-private fun defaultGalleryIntent(context: Context, collectionUri: Uri): Intent {
-    val mimeType = if (collectionUri == MediaStore.Video.Media.EXTERNAL_CONTENT_URI) {
-        "video/*"
-    } else {
-        "image/*"
-    }
-    val samsungPickIntent = Intent(Intent.ACTION_PICK, collectionUri).apply {
-        type = mimeType
-        setPackage(SamsungGalleryPackage)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-    }
-    if (samsungPickIntent.resolveActivity(context.packageManager) != null) {
-        return samsungPickIntent
-    }
-
-    val baseIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
-        type = mimeType
-        addCategory(Intent.CATEGORY_OPENABLE)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-    }
-    val samsungGalleryIntent = Intent(baseIntent).setPackage(SamsungGalleryPackage)
-    return if (samsungGalleryIntent.resolveActivity(context.packageManager) != null) {
-        samsungGalleryIntent
-    } else {
-        baseIntent
-    }
-}
-
-private fun combinedGalleryIntent(context: Context): Intent {
-    val baseIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
-        type = "*/*"
-        addCategory(Intent.CATEGORY_OPENABLE)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
-    }
-    val samsungGalleryIntent = Intent(baseIntent).setPackage(SamsungGalleryPackage)
-    return if (samsungGalleryIntent.resolveActivity(context.packageManager) != null) {
-        samsungGalleryIntent
-    } else {
-        baseIntent
-    }
-}
-
-private const val SamsungGalleryPackage = "com.sec.android.gallery3d"
 
 private fun Intent?.extractPickedUris(): List<Uri> {
     if (this == null) return emptyList()

@@ -82,7 +82,11 @@ fun CalendarMediaPickerSheet(
 ) {
     val context = LocalContext.current
     val pickerMode = remember(title) {
-        if (title == "기본 사진첩") MediaPickerSheetMode.Recent else MediaPickerSheetMode.Calendar
+        when (title) {
+            "기본 사진첩" -> MediaPickerSheetMode.Recent
+            "영상만" -> MediaPickerSheetMode.Videos
+            else -> MediaPickerSheetMode.Calendar
+        }
     }
     var visibleMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
@@ -97,10 +101,12 @@ fun CalendarMediaPickerSheet(
         itemsByDate[selectedDate].orEmpty().sortedBySortOrder(sortOrder)
     }
     val visibleItems = remember(pickerMode, monthItems, selectedItems, sortOrder) {
-        if (pickerMode == MediaPickerSheetMode.Recent) {
-            monthItems.sortedBySortOrder(sortOrder)
-        } else {
-            selectedItems
+        when (pickerMode) {
+            MediaPickerSheetMode.Recent -> monthItems.sortedBySortOrder(sortOrder)
+            MediaPickerSheetMode.Videos -> monthItems
+                .filter { it.kind == ClipMediaKind.Video }
+                .sortedBySortOrder(sortOrder)
+            MediaPickerSheetMode.Calendar -> selectedItems
         }
     }
 
@@ -122,13 +128,15 @@ fun CalendarMediaPickerSheet(
                 palette = palette,
                 visibleMonth = visibleMonth,
                 onPrevious = {
-                    visibleMonth = visibleMonth.minusMonths(1)
-                    selectedDate = visibleMonth.atDay(1)
+                    val newMonth = visibleMonth.minusMonths(1)
+                    visibleMonth = newMonth
+                    selectedDate = newMonth.atDay(1)
                     selectedUris = emptyList()
                 },
                 onNext = {
-                    visibleMonth = visibleMonth.plusMonths(1)
-                    selectedDate = visibleMonth.atDay(1)
+                    val newMonth = visibleMonth.plusMonths(1)
+                    visibleMonth = newMonth
+                    selectedDate = newMonth.atDay(1)
                     selectedUris = emptyList()
                 },
                 onDismiss = onDismiss
@@ -254,6 +262,7 @@ private const val BulkImportConfirmationThreshold = 10
 
 private enum class MediaPickerSheetMode {
     Recent,
+    Videos,
     Calendar
 }
 
@@ -288,7 +297,11 @@ private fun CalendarSheetHeader(
             color = palette.primary
         ) {
             Icon(
-                if (mode == MediaPickerSheetMode.Recent) Icons.Outlined.Photo else Icons.Outlined.CalendarMonth,
+                when (mode) {
+                    MediaPickerSheetMode.Recent -> Icons.Outlined.Photo
+                    MediaPickerSheetMode.Videos -> Icons.Outlined.MovieCreation
+                    MediaPickerSheetMode.Calendar -> Icons.Outlined.CalendarMonth
+                },
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.padding(8.dp)
@@ -297,7 +310,7 @@ private fun CalendarSheetHeader(
         Column(Modifier.weight(1f)) {
             Text(title, color = palette.text, fontWeight = FontWeight.Bold)
             Text(
-                if (mode == MediaPickerSheetMode.Recent) {
+                if (mode == MediaPickerSheetMode.Recent || mode == MediaPickerSheetMode.Videos) {
                     "${visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN))} ${sortOrder.label}"
                 } else {
                     visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN))
@@ -476,7 +489,13 @@ private fun CalendarMediaStrip(
         }
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
-            modifier = Modifier.height(if (mode == MediaPickerSheetMode.Recent) 374.dp else 118.dp),
+            modifier = Modifier.height(
+                if (mode == MediaPickerSheetMode.Recent || mode == MediaPickerSheetMode.Videos) {
+                    374.dp
+                } else {
+                    118.dp
+                }
+            ),
             contentPadding = PaddingValues(bottom = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -509,6 +528,13 @@ private fun mediaStripTitle(
             "${visibleMonth.monthValue}월에는 사진이나 영상이 없습니다."
         } else {
             mediaCountText("이번 달", photoCount, videoCount)
+        }
+    }
+    if (mode == MediaPickerSheetMode.Videos) {
+        return if (count == 0) {
+            "${visibleMonth.monthValue}월에는 영상이 없습니다."
+        } else {
+            "이번 달 영상 ${videoCount}개"
         }
     }
     return if (count == 0) {
