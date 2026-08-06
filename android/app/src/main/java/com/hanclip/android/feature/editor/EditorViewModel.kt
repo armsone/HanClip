@@ -1317,15 +1317,15 @@ class EditorViewModel : ViewModel() {
             add("완성본 클립 ${renderableCount}개")
         }
         val status = when {
-            failedCount > 0 -> "가져오기 완료 · 선택 ${selectedCount}개 중 ${imported.size}개 성공"
-            else -> "가져오기 완료 · 사진/영상 ${imported.size}개"
+            failedCount > 0 -> "가져오기 완료 · 선택 번호순 ${selectedCount}개 중 ${imported.size}개 성공"
+            else -> "가져오기 완료 · 선택 번호순 사진/영상 ${imported.size}개"
         }
         val notes = buildList {
             if (replacedSamples) {
                 add("기본 샘플을 선택한 사진/영상 클립으로 교체했습니다.")
             }
             if (autoSegmentCount > 0) {
-                add("타격점 기준 자동 컷 ${autoSegmentCount}개를 준비했습니다.")
+                add("스윙 타격점 기준 자동 컷 ${autoSegmentCount}개를 준비했습니다.")
             }
             if (hiddenSimilarPhotoCount > 0) {
                 add("비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 정리했습니다.")
