@@ -105,7 +105,7 @@ fun TextOverlaySheet(
                         fontWeight = FontWeight.Bold,
                         color = palette.text
                     )
-                    Text("텍스트, 글자 크기, 위치를 정합니다.", color = palette.subText)
+                    Text("영상 위 문구와 HanClip 로고를 정합니다.", color = palette.subText)
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
@@ -581,9 +581,9 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                 shape = RoundedCornerShape(50),
                 color = Color.White.copy(alpha = 0.14f)
             ) {}
-            if (settings.isEnabled) {
+            if (settings.shouldRenderText) {
                 Text(
-                    text = settings.text.ifBlank { "자막 미리보기" },
+                    text = settings.text,
                     modifier = Modifier.align(previewAlignment(settings.position)),
                     color = parseHexColor(settings.textColorHex),
                     fontFamily = fontFamilyForName(settings.fontName),
@@ -609,6 +609,22 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                     style = MaterialTheme.typography.labelLarge
                 )
             }
+            if (!settings.shouldRender) {
+                Surface(
+                    modifier = Modifier.align(Alignment.Center),
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.28f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+                ) {
+                    Text(
+                        text = "자막/로고 꺼짐",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
         }
     }
 }
@@ -631,8 +647,8 @@ private fun CaptionStateSummary(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             CaptionStateChip(
-                text = if (settings.isEnabled) "자막 켬" else "자막 꺼짐",
-                active = settings.isEnabled,
+                text = if (settings.shouldRenderText) "자막 켬" else "자막 꺼짐",
+                active = settings.shouldRenderText,
                 palette = palette
             )
             CaptionStateChip(
@@ -642,7 +658,22 @@ private fun CaptionStateSummary(
             )
             CaptionStateChip(
                 text = fontDisplayName(settings.fontName),
-                active = settings.isEnabled,
+                active = settings.shouldRenderText,
+                palette = palette
+            )
+            CaptionStateChip(
+                text = settings.fontSize.title,
+                active = settings.shouldRenderText,
+                palette = palette
+            )
+            CaptionStateChip(
+                text = "자막 ${watermarkPositionShortTitle(settings.position)}",
+                active = settings.shouldRenderText,
+                palette = palette
+            )
+            CaptionStateChip(
+                text = "로고 ${watermarkPositionShortTitle(settings.copyrightPosition)}",
+                active = settings.logoEnabled,
                 palette = palette
             )
         }
@@ -683,10 +714,32 @@ private fun previewTextShadow(settings: WatermarkSettings): Shadow? {
 
 private fun applyButtonText(settings: WatermarkSettings): String {
     return when {
-        settings.isEnabled && settings.logoEnabled -> "자막과 HanClip 로고 적용"
-        settings.isEnabled -> "자막 적용"
+        settings.shouldRenderText && settings.logoEnabled -> "자막과 HanClip 로고 적용"
+        settings.shouldRenderText -> "자막 적용"
         settings.logoEnabled -> "HanClip 로고 적용"
         else -> "자막/로고 끄기 적용"
+    }
+}
+
+private fun watermarkPositionShortTitle(position: WatermarkPosition): String {
+    val vertical = when (position.gridRow) {
+        0 -> "상단"
+        1 -> "상단"
+        2 -> "중앙"
+        3 -> "하단"
+        else -> "하단"
+    }
+    val horizontal = when (position.gridColumn) {
+        0 -> "왼쪽"
+        1 -> "왼쪽"
+        2 -> "가운데"
+        3 -> "오른쪽"
+        else -> "오른쪽"
+    }
+    return if (vertical == "중앙" && horizontal == "가운데") {
+        "중앙"
+    } else {
+        "$vertical $horizontal"
     }
 }
 
