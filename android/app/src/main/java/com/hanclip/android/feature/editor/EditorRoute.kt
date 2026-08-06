@@ -2724,7 +2724,7 @@ private fun BottomMakeBar(
                 color = palette.subText,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Button(
