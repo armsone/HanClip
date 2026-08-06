@@ -596,7 +596,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
             }
             if (settings.logoEnabled) {
                 Text(
-                    text = "HanClip",
+                    text = "▶  HanClip",
                     modifier = Modifier
                         .align(previewAlignment(settings.copyrightPosition))
                         .shadow(
