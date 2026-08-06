@@ -3327,7 +3327,12 @@ struct EditorView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(HanClipTheme.panelStroke.opacity(0.68), lineWidth: 1)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            openAiShot()
+        }
         .accessibilityLabel("AiShot 영화 없음")
+        .accessibilityHint("한 번 누르면 AiShot을 시작합니다.")
     }
 
     private func emptyProjectPlaceholder(isAiShot: Bool) -> some View {
@@ -3397,8 +3402,22 @@ struct EditorView: View {
                 radius: 10,
                 y: 5
             )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .onTapGesture {
+                if isAiShot {
+                    openAiShot()
+                } else {
+                    model.openMoviePreset(.newMovie)
+                }
+            }
             .padding(.horizontal, 16)
+            .accessibilityAddTraits(.isButton)
             .accessibilityLabel(isAiShot ? "AiShot 영화 없음" : "일반 영화 없음")
+            .accessibilityHint(
+                isAiShot
+                    ? "한 번 누르면 AiShot을 시작합니다."
+                    : "한 번 누르면 새 영화를 시작합니다."
+            )
     }
 
     private func savedProjectRow(
@@ -9516,10 +9535,7 @@ private struct BackgroundMusicSettingsSheet: View {
                     "음악 파일 불러오기",
                     systemImage: "folder",
                     isPrimary: false,
-                    action: {
-                        isOpeningMusicPicker = true
-                        onPickMusic()
-                    }
+                    action: pickMusicFile
                 )
 
                 if settings.hasMusicFile && !isBundledSampleSelected {
@@ -9540,6 +9556,11 @@ private struct BackgroundMusicSettingsSheet: View {
                     .minimumScaleFactor(0.74)
             }
         }
+    }
+
+    private func pickMusicFile() {
+        isOpeningMusicPicker = true
+        onPickMusic()
     }
 
     private var isBundledSampleSelected: Bool {
@@ -9584,6 +9605,8 @@ private struct BackgroundMusicSettingsSheet: View {
                 .frame(height: 42)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .foregroundStyle(isPrimary ? .white : HanClipTheme.primary)
         .background(
             isPrimary
@@ -9957,6 +9980,9 @@ private struct OnlineMusicBrowserView: View {
     @State private var stopLoadingTrigger = 0
     @State private var reloadTrigger = 0
     @State private var closePopupTrigger = 0
+    @State private var pauseAndRetainTrigger = 0
+    @State private var cancelDownloadTrigger = 0
+    @State private var downloadProgress: Double?
     @State private var downloadStatusText = "음악을 가져오는 중"
     @State private var showFavoriteEditor = false
     @State private var showFavoritePanel = false
@@ -9982,7 +10008,10 @@ private struct OnlineMusicBrowserView: View {
                         stopLoadingTrigger: $stopLoadingTrigger,
                         reloadTrigger: $reloadTrigger,
                         closePopupTrigger: $closePopupTrigger,
+                        pauseAndRetainTrigger: $pauseAndRetainTrigger,
+                        cancelDownloadTrigger: $cancelDownloadTrigger,
                         isDownloading: $isDownloading,
+                        downloadProgress: $downloadProgress,
                         downloadStatusText: $downloadStatusText,
                         detectedVideo: detectedVideoBinding,
                         downloadDetectedVideoTrigger:
@@ -10038,9 +10067,18 @@ private struct OnlineMusicBrowserView: View {
             }
             .onAppear {
                 ensureDefaultFavorites()
-                let initialURL = firstFavoriteMusicSiteURL
-                currentURLText = initialURL.absoluteString
-                addressText = initialURL.absoluteString
+                if let retainedURLText =
+                    OnlineMusicBrowserSessionStore.shared.retainedURLText {
+                    currentURLText = retainedURLText
+                    addressText = retainedURLText
+                } else {
+                    let initialURL = firstFavoriteMusicSiteURL
+                    currentURLText = initialURL.absoluteString
+                    addressText = initialURL.absoluteString
+                }
+            }
+            .onDisappear {
+                pauseAndRetainTrigger += 1
             }
         }
     }
@@ -10187,6 +10225,7 @@ private struct OnlineMusicBrowserView: View {
                 if isPopupOpen {
                     closePopupTrigger += 1
                 } else {
+                    pauseAndRetainTrigger += 1
                     dismiss()
                 }
             }
@@ -10262,6 +10301,7 @@ private struct OnlineMusicBrowserView: View {
                     if isPopupOpen {
                         closePopupTrigger += 1
                     } else {
+                        pauseAndRetainTrigger += 1
                         dismiss()
                     }
                 case .second:
@@ -10278,6 +10318,7 @@ private struct OnlineMusicBrowserView: View {
         if canGoBack {
             goBackTrigger += 1
         } else {
+            pauseAndRetainTrigger += 1
             dismiss()
         }
     }
@@ -10509,26 +10550,54 @@ private struct OnlineMusicBrowserView: View {
     }
 
     private var downloadStatusOverlay: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .tint(HanClipTheme.primary)
-            Text(downloadStatusText)
-                .font(.system(size: 13, weight: .bold))
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Text(downloadStatusText)
+                    .font(.system(size: 13, weight: .bold))
+                    .lineLimit(1)
+
+                Spacer(minLength: 10)
+
+                Button {
+                    cancelDownloadTrigger += 1
+                } label: {
+                    Label("취소", systemImage: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .black))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(HanClipTheme.primary)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(HanClipTheme.secondary.opacity(0.12))
+
+                    Capsule()
+                        .fill(HanClipTheme.primary)
+                        .frame(
+                            width: proxy.size.width
+                                * CGFloat(downloadProgress ?? 0.18)
+                        )
+                }
+            }
+            .frame(height: 4)
         }
         .foregroundStyle(HanClipTheme.text)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
             HanClipTheme.panelFill,
-            in: Capsule()
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(
                     HanClipTheme.secondary.opacity(0.16),
                     lineWidth: 1
                 )
         }
+        .padding(.horizontal, 12)
         .padding(.top, 12)
     }
 
@@ -10860,6 +10929,71 @@ private struct OnlineMusicFavoritesEditorView: View {
     }
 }
 
+@MainActor
+private final class OnlineMusicBrowserSessionStore {
+    static let shared = OnlineMusicBrowserSessionStore()
+
+    private var retainedWebView: WKWebView?
+    private var retainedAt: Date?
+    private var resetTask: Task<Void, Never>?
+    private(set) var retainedURLText: String?
+    private let retentionInterval: TimeInterval = 10
+
+    func retain(_ webView: WKWebView, urlText: String) {
+        pausePlayback(in: webView)
+        retainedWebView = webView
+        retainedAt = Date()
+        retainedURLText = urlText
+        resetTask?.cancel()
+        resetTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            await MainActor.run {
+                self?.clearIfExpired()
+            }
+        }
+    }
+
+    func takeValidWebView() -> WKWebView? {
+        guard let retainedAt,
+              Date().timeIntervalSince(retainedAt) <= retentionInterval,
+              let retainedWebView
+        else {
+            clear()
+            return nil
+        }
+        resetTask?.cancel()
+        self.retainedWebView = nil
+        self.retainedAt = nil
+        return retainedWebView
+    }
+
+    func pausePlayback(in webView: WKWebView) {
+        webView.evaluateJavaScript(
+            """
+            document.querySelectorAll('video,audio').forEach((media) => {
+              try { media.pause(); } catch (error) {}
+            });
+            """
+        )
+    }
+
+    private func clearIfExpired() {
+        guard let retainedAt,
+              Date().timeIntervalSince(retainedAt) > retentionInterval
+        else { return }
+        clear()
+    }
+
+    private func clear() {
+        retainedWebView?.stopLoading()
+        retainedWebView = nil
+        retainedAt = nil
+        retainedURLText = nil
+        resetTask?.cancel()
+        resetTask = nil
+    }
+}
+
 private struct OnlineMusicWebView: UIViewRepresentable {
     let url: URL
     @Binding var currentURLText: String
@@ -10872,7 +11006,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
     @Binding var stopLoadingTrigger: Int
     @Binding var reloadTrigger: Int
     @Binding var closePopupTrigger: Int
+    @Binding var pauseAndRetainTrigger: Int
+    @Binding var cancelDownloadTrigger: Int
     @Binding var isDownloading: Bool
+    @Binding var downloadProgress: Double?
     @Binding var downloadStatusText: String
     @Binding var detectedVideo: BrowserDetectedVideo?
     @Binding var downloadDetectedVideoTrigger: Int
@@ -10890,7 +11027,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             stopLoadingTrigger: $stopLoadingTrigger,
             reloadTrigger: $reloadTrigger,
             closePopupTrigger: $closePopupTrigger,
+            pauseAndRetainTrigger: $pauseAndRetainTrigger,
+            cancelDownloadTrigger: $cancelDownloadTrigger,
             isDownloading: $isDownloading,
+            downloadProgress: $downloadProgress,
             downloadStatusText: $downloadStatusText,
             detectedVideo: $detectedVideo,
             downloadDetectedVideoTrigger: $downloadDetectedVideoTrigger,
@@ -10914,12 +11054,26 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 forMainFrameOnly: false
             )
         )
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView: WKWebView
+        if let retainedWebView =
+            OnlineMusicBrowserSessionStore.shared.takeValidWebView() {
+            webView = retainedWebView
+            webView.configuration.userContentController.add(
+                context.coordinator,
+                name: Coordinator.videoMessageName
+            )
+        } else {
+            webView = WKWebView(frame: .zero, configuration: configuration)
+        }
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         context.coordinator.observeProgress(in: webView)
-        webView.load(URLRequest(url: url))
+        if webView.url == nil {
+            webView.load(URLRequest(url: url))
+        } else {
+            context.coordinator.updateCurrentURL(from: webView)
+        }
         return webView
     }
 
@@ -10927,6 +11081,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         _ uiView: WKWebView,
         coordinator: Coordinator
     ) {
+        OnlineMusicBrowserSessionStore.shared.retain(
+            uiView,
+            urlText: coordinator.currentURLSnapshot
+        )
         uiView.configuration.userContentController.removeScriptMessageHandler(
             forName: Coordinator.videoMessageName
         )
@@ -10947,7 +11105,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             stopLoadingTrigger: $stopLoadingTrigger,
             reloadTrigger: $reloadTrigger,
             closePopupTrigger: $closePopupTrigger,
+            pauseAndRetainTrigger: $pauseAndRetainTrigger,
+            cancelDownloadTrigger: $cancelDownloadTrigger,
             isDownloading: $isDownloading,
+            downloadProgress: $downloadProgress,
             downloadStatusText: $downloadStatusText,
             detectedVideo: $detectedVideo,
             downloadDetectedVideoTrigger: $downloadDetectedVideoTrigger
@@ -10995,20 +11156,30 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         @Binding private var stopLoadingTrigger: Int
         @Binding private var reloadTrigger: Int
         @Binding private var closePopupTrigger: Int
+        @Binding private var pauseAndRetainTrigger: Int
+        @Binding private var cancelDownloadTrigger: Int
         @Binding private var isDownloading: Bool
+        @Binding private var downloadProgress: Double?
         @Binding private var downloadStatusText: String
         @Binding private var detectedVideo: BrowserDetectedVideo?
         @Binding private var downloadDetectedVideoTrigger: Int
         private let onDownloaded: (URL, BrowserDownloadKind) -> Void
         private var destinationURL: URL?
+        private var activeDownload: WKDownload?
         private var activeDownloadKind = BrowserDownloadKind.audio
         private var handledGoBackTrigger = 0
         private var handledStopLoadingTrigger = 0
         private var handledReloadTrigger = 0
         private var handledClosePopupTrigger = 0
+        private var handledPauseAndRetainTrigger = 0
+        private var handledCancelDownloadTrigger = 0
         private var handledDownloadDetectedVideoTrigger = 0
         private var popupReturnURL: URL?
         private var progressObservation: NSKeyValueObservation?
+
+        var currentURLSnapshot: String {
+            currentURLText
+        }
 
         init(
             currentURLText: Binding<String>,
@@ -11021,7 +11192,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             stopLoadingTrigger: Binding<Int>,
             reloadTrigger: Binding<Int>,
             closePopupTrigger: Binding<Int>,
+            pauseAndRetainTrigger: Binding<Int>,
+            cancelDownloadTrigger: Binding<Int>,
             isDownloading: Binding<Bool>,
+            downloadProgress: Binding<Double?>,
             downloadStatusText: Binding<String>,
             detectedVideo: Binding<BrowserDetectedVideo?>,
             downloadDetectedVideoTrigger: Binding<Int>,
@@ -11037,7 +11211,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             _stopLoadingTrigger = stopLoadingTrigger
             _reloadTrigger = reloadTrigger
             _closePopupTrigger = closePopupTrigger
+            _pauseAndRetainTrigger = pauseAndRetainTrigger
+            _cancelDownloadTrigger = cancelDownloadTrigger
             _isDownloading = isDownloading
+            _downloadProgress = downloadProgress
             _downloadStatusText = downloadStatusText
             _detectedVideo = detectedVideo
             _downloadDetectedVideoTrigger = downloadDetectedVideoTrigger
@@ -11055,7 +11232,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             stopLoadingTrigger: Binding<Int>,
             reloadTrigger: Binding<Int>,
             closePopupTrigger: Binding<Int>,
+            pauseAndRetainTrigger: Binding<Int>,
+            cancelDownloadTrigger: Binding<Int>,
             isDownloading: Binding<Bool>,
+            downloadProgress: Binding<Double?>,
             downloadStatusText: Binding<String>,
             detectedVideo: Binding<BrowserDetectedVideo?>,
             downloadDetectedVideoTrigger: Binding<Int>
@@ -11070,7 +11250,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             _stopLoadingTrigger = stopLoadingTrigger
             _reloadTrigger = reloadTrigger
             _closePopupTrigger = closePopupTrigger
+            _pauseAndRetainTrigger = pauseAndRetainTrigger
+            _cancelDownloadTrigger = cancelDownloadTrigger
             _isDownloading = isDownloading
+            _downloadProgress = downloadProgress
             _downloadStatusText = downloadStatusText
             _detectedVideo = detectedVideo
             _downloadDetectedVideoTrigger = downloadDetectedVideoTrigger
@@ -11113,6 +11296,17 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 handledClosePopupTrigger = closePopupTrigger
                 closePopup(in: webView)
             }
+            if pauseAndRetainTrigger != handledPauseAndRetainTrigger {
+                handledPauseAndRetainTrigger = pauseAndRetainTrigger
+                OnlineMusicBrowserSessionStore.shared.retain(
+                    webView,
+                    urlText: currentURLText
+                )
+            }
+            if cancelDownloadTrigger != handledCancelDownloadTrigger {
+                handledCancelDownloadTrigger = cancelDownloadTrigger
+                cancelActiveDownload()
+            }
             if downloadDetectedVideoTrigger
                 != handledDownloadDetectedVideoTrigger {
                 handledDownloadDetectedVideoTrigger =
@@ -11120,12 +11314,14 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 if let url = detectedVideo?.downloadableURL {
                     activeDownloadKind = .video
                     isDownloading = true
+                    downloadProgress = nil
                     downloadStatusText = "영상을 가져오는 중"
                     Task { @MainActor [weak self, weak webView] in
                         guard let self, let webView else { return }
                         let download = await webView.startDownload(
                             using: URLRequest(url: url)
                         )
+                        self.activeDownload = download
                         download.delegate = self
                     }
                 }
@@ -11224,6 +11420,8 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         ) {
             downloadStatusText = "다운로드 감지됨"
             isDownloading = true
+            downloadProgress = nil
+            activeDownload = download
             download.delegate = self
         }
 
@@ -11234,6 +11432,8 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         ) {
             downloadStatusText = "다운로드 감지됨"
             isDownloading = true
+            downloadProgress = nil
+            activeDownload = download
             download.delegate = self
         }
 
@@ -11256,6 +11456,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                     activeDownloadKind = kind
                     downloadStatusText = "음악 다운로드 감지됨"
                     isDownloading = true
+                    downloadProgress = nil
                     decisionHandler(.download)
                     return
                 }
@@ -11289,6 +11490,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 activeDownloadKind = kind
                 downloadStatusText = "음악 다운로드 감지됨"
                 isDownloading = true
+                downloadProgress = nil
                 decisionHandler(.download)
             } else {
                 decisionHandler(.allow)
@@ -11302,6 +11504,8 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             completionHandler: @escaping (URL?) -> Void
         ) {
             isDownloading = true
+            activeDownload = download
+            downloadProgress = nil
             if let mimeType = response.mimeType?.lowercased(),
                let kind = Self.supportedDownloadKind(for: mimeType) {
                 activeDownloadKind = kind
@@ -11334,9 +11538,12 @@ private struct OnlineMusicWebView: UIViewRepresentable {
 
         func downloadDidFinish(_ download: WKDownload) {
             isDownloading = false
+            downloadProgress = 1
             downloadStatusText = "음악을 가져오는 중"
             guard let destinationURL else { return }
             onDownloaded(destinationURL, activeDownloadKind)
+            self.destinationURL = nil
+            activeDownload = nil
         }
 
         func download(
@@ -11345,14 +11552,35 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             resumeData: Data?
         ) {
             isDownloading = false
+            downloadProgress = nil
             downloadStatusText = "다운로드 실패"
+            destinationURL = nil
+            activeDownload = nil
         }
 
-        private func updateCurrentURL(from webView: WKWebView) {
+        func updateCurrentURL(from webView: WKWebView) {
             if let url = webView.url {
                 currentURLText = url.absoluteString
             }
             canGoBack = webView.canGoBack
+        }
+
+        private func cancelActiveDownload() {
+            guard let activeDownload else {
+                isDownloading = false
+                downloadProgress = nil
+                downloadStatusText = "다운로드 취소됨"
+                return
+            }
+            activeDownload.cancel { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.isDownloading = false
+                    self?.downloadProgress = nil
+                    self?.downloadStatusText = "다운로드 취소됨"
+                    self?.destinationURL = nil
+                    self?.activeDownload = nil
+                }
+            }
         }
 
         private static func isSupportedAudioMimeType(_ mimeType: String) -> Bool {
@@ -13944,7 +14172,7 @@ private struct CalendarMediaPickerView: View {
 
             Button("오늘") {
                 withAnimation(.snappy) {
-                    moveToToday()
+                    handleTodayButtonTap()
                 }
             }
             .foregroundStyle(HanClipTheme.primary)
@@ -14436,6 +14664,7 @@ private struct CalendarMediaPickerView: View {
         let normalizedDate = calendar.startOfDay(for: date)
         let isSelected = selectedDates.contains(normalizedDate)
         let hasMedia = (mediaCountsByDate[normalizedDate] ?? 0) > 0
+        let isToday = calendar.isDateInToday(date)
         let holidayName = holidayName(for: normalizedDate)
 
         return Button {
@@ -14451,14 +14680,19 @@ private struct CalendarMediaPickerView: View {
         } label: {
             VStack(spacing: 0) {
                 ZStack {
-                    if hasMedia {
+                    if hasMedia || isToday {
                         Circle()
                             .fill(
-                                HanClipTheme.secondary.opacity(
-                                    isSelected ? 0.28 : 0.18
+                                dayCircleFill(
+                                    isSelected: isSelected,
+                                    isToday: isToday,
+                                    hasMedia: hasMedia
                                 )
                             )
-                            .frame(width: 24, height: 24)
+                            .frame(
+                                width: isToday ? 28 : 24,
+                                height: isToday ? 28 : 24
+                            )
                     }
 
                     Text("\(calendar.component(.day, from: date))")
@@ -14573,16 +14807,33 @@ private struct CalendarMediaPickerView: View {
     }
 
     private func dateTextColor(for date: Date) -> Color {
+        if calendar.isDateInToday(date) {
+            return HanClipTheme.onSecondary
+        }
         if isSunday(date) || isKoreanHoliday(date) {
             return restDayColor
-        }
-        if calendar.isDateInToday(date) {
-            return HanClipTheme.primary
         }
         if isSaturday(date) {
             return saturdayColor
         }
         return HanClipTheme.text
+    }
+
+    private func dayCircleFill(
+        isSelected: Bool,
+        isToday: Bool,
+        hasMedia: Bool
+    ) -> Color {
+        if isSelected {
+            return HanClipTheme.secondary.opacity(0.34)
+        }
+        if isToday {
+            return HanClipTheme.primary.opacity(0.78)
+        }
+        if hasMedia {
+            return HanClipTheme.secondary.opacity(0.18)
+        }
+        return Color.clear
     }
 
     private func weekdayColor(_ weekday: String) -> Color {
@@ -14633,6 +14884,25 @@ private struct CalendarMediaPickerView: View {
             from: calendar.dateComponents([.year, .month], from: Date())
         ) ?? Date()
         visibleMonth = todayMonth
+    }
+
+    private func handleTodayButtonTap() {
+        let today = calendar.startOfDay(for: Date())
+        let todayMonth = calendar.date(
+            from: calendar.dateComponents([.year, .month], from: today)
+        ) ?? today
+
+        guard calendar.isDate(
+            visibleMonth,
+            equalTo: todayMonth,
+            toGranularity: .month
+        ) else {
+            visibleMonth = todayMonth
+            return
+        }
+
+        guard (mediaCountsByDate[today] ?? 0) > 0 else { return }
+        selectedDates.insert(today)
     }
 
     private func handleTodayDoubleTap() {
