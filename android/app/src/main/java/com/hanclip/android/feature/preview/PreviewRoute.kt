@@ -169,7 +169,7 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "기본 사진첩 저장 완료 · 기본 사진첩 > Movies/HanClip에서 확인할 수 있습니다."
+                message = "저장 완료 · 기본 사진첩의 Movies/HanClip에서 확인하세요."
             }.onFailure {
                 message = "Android 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
@@ -198,7 +198,7 @@ fun PreviewRoute(
             }.onSuccess {
                 preferredShareUri = targetUri
                 onSavedMovie(targetUri)
-                message = "파일 저장 완료 · 공유는 선택한 MP4 파일을 사용합니다."
+                message = "파일 저장 완료 · 방금 선택한 MP4로 공유할 수 있습니다."
             }.onFailure {
                 message = "파일 저장에 실패했습니다. 저장 위치 권한을 확인해 주세요."
             }

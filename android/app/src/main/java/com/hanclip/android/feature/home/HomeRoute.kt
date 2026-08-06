@@ -990,7 +990,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "앱 목록입니다. 기본 사진첩 저장본은 Movies/HanClip에서 확인",
+                    text = "앱 목록 · 기본 사진첩 저장본은 Movies/HanClip",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1430,7 +1430,7 @@ private fun EmptySavedProjectRow() {
             Column(Modifier.weight(1f)) {
                 Text("최근 항목 없음", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "사진과 영상을 골라 완성본을 만들면 HanClip 목록에 표시됩니다.",
+                    "사진과 영상을 골라 완성본을 만들면 여기에 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText
                 )
