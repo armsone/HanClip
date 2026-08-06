@@ -614,7 +614,7 @@ private fun AiShotBottomPanel(
                         contentColor = Color(0xFF0B7A4E)
                     )
                 ) {
-                    Text("편집으로", fontWeight = FontWeight.Bold)
+                    Text("클립 편집으로", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -803,7 +803,7 @@ private fun RecordingProgress(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("클립 저장 중", color = Color.White, fontWeight = FontWeight.Bold)
+            Text("AiShot 클립 저장 중", color = Color.White, fontWeight = FontWeight.Bold)
             Text("${remainingSeconds.coerceAtLeast(0L)}초", color = Color.White.copy(alpha = 0.86f))
         }
         Box(
