@@ -191,7 +191,7 @@ class EditorViewModel : ViewModel() {
                     clips.firstOrNull()?.sourceHeight ?: 1920
                 )
             val exportLabel =
-                "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${state.outputQualityPreset.detail}"
+                "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${state.outputQualityPreset.detail} · ${OutputQualityPreset.ExportFormatTitle}"
             _uiState.update {
                 it.copy(
                     isExporting = true,

@@ -10,4 +10,10 @@ enum class OutputQualityPreset(
 
     val displayTitle: String
         get() = "$title $detail"
+
+    companion object {
+        const val ExportFormatTitle = "MP4"
+        const val CodecTitle = "H.264 · AAC"
+        const val ExportFormatDetail = "$ExportFormatTitle · $CodecTitle"
+    }
 }

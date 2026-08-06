@@ -941,6 +941,11 @@ private fun PresetStatusPanel(
                     active = selectedQuality != OutputQualityPreset.Standard,
                     palette = palette
                 )
+                PresetStatusPill(
+                    text = OutputQualityPreset.ExportFormatDetail,
+                    active = false,
+                    palette = palette
+                )
             }
         }
     }
@@ -1542,6 +1547,23 @@ private fun ProjectControls(
                     )
                 )
             }
+            AssistChip(
+                onClick = {},
+                leadingIcon = { Icon(Icons.Outlined.MovieCreation, contentDescription = null) },
+                label = {
+                    Text(
+                        OutputQualityPreset.ExportFormatDetail,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                enabled = false,
+                colors = AssistChipDefaults.assistChipColors(
+                    disabledContainerColor = palette.panel,
+                    disabledLabelColor = palette.subText,
+                    disabledLeadingIconContentColor = palette.subText
+                ),
+                border = BorderStroke(1.dp, palette.border)
+            )
         }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),

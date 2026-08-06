@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.hanclip.android.R
 import com.hanclip.android.core.model.MoviePreset
+import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMovieSummary
 import com.hanclip.android.core.settings.SleepPreventionMode
@@ -1655,6 +1656,7 @@ private fun savedMovieDetailText(
         add(baseText)
         summary.outputAspectRatio?.let { add(it.title) }
         summary.outputQualityPreset?.let { add(it.detail) }
+        add(OutputQualityPreset.ExportFormatTitle)
         if (summary.hasBackgroundMusic == true) add("음악")
         if (summary.hasWatermark == true) add("자막")
     }

@@ -395,9 +395,20 @@ private fun PreviewSummaryPanel(
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 SummaryInfoCell(
                     label = "품질",
                     value = summary.outputQualityPreset.displayTitle,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryInfoCell(
+                    label = "형식",
+                    value = OutputQualityPreset.ExportFormatDetail,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
