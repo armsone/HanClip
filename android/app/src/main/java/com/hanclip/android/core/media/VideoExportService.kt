@@ -257,7 +257,7 @@ class Media3TransformerExportService(
             if (watermark.logoEnabled) {
                 add(
                     textOverlay(
-                        text = "▶  HanClip",
+                        text = "▶ HanClip",
                         colorHex = watermark.effectiveLogoColorHex,
                         shadowColorHex = watermark.logoShadowColorHex,
                         shadowOpacity = watermark.logoShadowOpacity,

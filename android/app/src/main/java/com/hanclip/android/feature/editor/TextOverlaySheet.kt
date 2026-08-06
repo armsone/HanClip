@@ -1,6 +1,7 @@
 package com.hanclip.android.feature.editor
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,11 +50,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hanclip.android.R
 import com.hanclip.android.core.model.CopyrightIconColorMode
 import com.hanclip.android.core.model.WatermarkFontSize
 import com.hanclip.android.core.model.WatermarkLineSpacing
@@ -613,8 +617,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                 )
             }
             if (settings.logoEnabled) {
-                Text(
-                    text = "▶  HanClip",
+                HanClipLogoPreview(
                     modifier = Modifier
                         .align(previewAlignment(settings.copyrightPosition))
                         .shadow(
@@ -622,9 +625,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                             ambientColor = parseHexColor(settings.logoShadowColorHex),
                             spotColor = parseHexColor(settings.logoShadowColorHex)
                         ),
-                    color = parseHexColor(settings.effectiveLogoColorHex),
-                    fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.labelLarge
+                    color = parseHexColor(settings.effectiveLogoColorHex)
                 )
             }
             if (!settings.shouldRender) {
@@ -644,6 +645,31 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun HanClipLogoPreview(
+    modifier: Modifier = Modifier,
+    color: Color
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Image(
+            painter = painterResource(R.drawable.logo_mark),
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            colorFilter = ColorFilter.tint(color)
+        )
+        Text(
+            text = "HanClip",
+            color = color,
+            fontWeight = FontWeight.Black,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
 
