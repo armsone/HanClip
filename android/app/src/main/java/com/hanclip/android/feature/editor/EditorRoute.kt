@@ -1639,7 +1639,7 @@ private fun ReorderTile(
                 )
             }
             Text(
-                text = "${index + 1}/$totalCount  ${clipTitle(clip)}",
+                text = "${index + 1}/$totalCount  ${clipTitle(clip, null)}",
                 color = palette.text,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -2184,7 +2184,7 @@ private fun ClipRow(
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        text = clipTitle(clip),
+                        text = clipTitle(clip, position),
                         fontWeight = FontWeight.SemiBold,
                         color = palette.text,
                         maxLines = 1,
@@ -2391,7 +2391,7 @@ private fun ClipPreviewDialog(
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = clipTitle(clip),
+                                text = clipTitle(clip, null),
                                 color = palette.text,
                                 fontWeight = FontWeight.Bold
                             )
@@ -2576,9 +2576,11 @@ private fun clipFallbackBrush(clip: ClipItem, palette: HanClipPalette): Brush {
     )
 }
 
-private fun clipTitle(clip: ClipItem): String {
+private fun clipTitle(clip: ClipItem, position: Int?): String {
     if (clip.isVideoSegmentParent) return "원본 영상 보관"
-    if (clip.isVideoSegmentChild) return "완성본 자동 컷"
+    if (clip.isVideoSegmentChild) {
+        return position?.let { "완성본 자동 컷 ${it}번" } ?: "완성본 자동 컷"
+    }
     if (clip.isSimilarPhotoGroupMember) return "완성본 제외 사진"
     if (clip.similarPhotoGroupCount > 1) return "대표 사진"
     return when (clip.mediaKind) {
@@ -2609,7 +2611,7 @@ private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String 
 private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
         clip.isVideoSegmentParent -> "원본은 보관하고 타격점 기준 자동 컷만 완성본에 넣습니다"
-        clip.isVideoSegmentChild -> "완성본에 들어갈 타격점 중심 구간"
+        clip.isVideoSegmentChild -> "타격점 중심 구간 · 완성본 번호순 포함"
         clip.isSimilarPhotoGroupMember -> "완성본 제외 중 · 대표 사진만 사용"
         clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 대표 컷"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
