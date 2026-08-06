@@ -617,20 +617,20 @@ private fun PreviewActionRow(
             )
             Text(if (canReturnToEditor) "다시 편집" else "목록으로")
         }
-        Surface(
-            modifier = Modifier.size(52.dp),
-            shape = RoundedCornerShape(50),
-            color = palette.chip,
+        OutlinedButton(
+            onClick = onShare,
+            modifier = Modifier
+                .weight(0.86f)
+                .height(48.dp),
             border = BorderStroke(1.dp, palette.border),
-            onClick = onShare
+            shape = RoundedCornerShape(50),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = palette.chip,
+                contentColor = palette.text
+            )
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Outlined.IosShare,
-                    contentDescription = "공유하기",
-                    tint = palette.text
-                )
-            }
+            Icon(Icons.Outlined.IosShare, contentDescription = null)
+            Text("공유")
         }
         Button(
             onClick = onRelease,
