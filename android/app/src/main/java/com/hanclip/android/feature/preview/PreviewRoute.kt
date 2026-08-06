@@ -644,7 +644,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("완성본 저장")
+            Text("저장하기")
         }
     }
 }
@@ -699,7 +699,7 @@ private fun SaveOptionsSheet(
                     }
                 }
                 SaveDestinationCard(
-                    title = "기본 사진첩 저장",
+                    title = "기본 사진첩에 저장",
                     badge = "추천",
                     body = "폰 기본 사진첩에서 바로 보입니다. 저장 위치: Movies/HanClip",
                     icon = Icons.Outlined.Photo,
@@ -708,7 +708,7 @@ private fun SaveOptionsSheet(
                     onClick = onSaveToGallery
                 )
                 SaveDestinationCard(
-                    title = "파일 저장",
+                    title = "파일로 저장",
                     badge = "대안",
                     body = "파일 앱에서 폴더와 이름을 직접 선택합니다.",
                     icon = Icons.Outlined.FolderOpen,
