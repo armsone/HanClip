@@ -1007,7 +1007,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "폰 기본 사진첩의 HanClip 앨범에 저장한 MP4와 이어서 편집할 작업을 확인합니다",
+                    text = "HanClip 앨범 MP4, 방금 만든 완성본, 이어서 편집할 작업을 확인합니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 2,
@@ -1381,6 +1381,7 @@ private fun DraftProjectRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         DraftInfoPill("자동 저장")
+                        DraftInfoPill("다시 편집 가능")
                         DraftInfoPill(homeProjectDateText(summary.savedAtMillis))
                         DraftInfoPill("${summary.clipCount}개 클립")
                         DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
@@ -1424,7 +1425,7 @@ private fun DraftInfoPill(text: String) {
 }
 
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "${homeProjectDateText(summary.savedAtMillis)} 저장 · 사진/영상, 순서, 자막, 음악 설정 보관 · ${summary.outputText}"
+    return "${homeProjectDateText(summary.savedAtMillis)} 저장 · 완성본 만들기 전 상태 보관 · 사진/영상, 순서, 자막, 음악 · ${summary.outputText}"
 }
 
 @Composable
