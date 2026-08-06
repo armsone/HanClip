@@ -456,7 +456,7 @@ fun EditorRoute(
             WorkProgressOverlay(
                 palette = palette,
                 message = state.progressMessage.ifBlank {
-                    if (state.isExporting) "영화를 만드는 중..." else "미디어를 불러오는 중..."
+                    if (state.isExporting) "완성본을 만드는 중..." else "미디어를 불러오는 중..."
                 },
                 onCancel = if (state.isExporting) viewModel::cancelExport else null
             )
@@ -1756,7 +1756,7 @@ private fun WorkProgressOverlay(
                             contentColor = Color(0xFFE45D42)
                         )
                     ) {
-                        Text("제작 취소", fontWeight = FontWeight.Bold)
+                        Text("만들기 취소", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1769,8 +1769,8 @@ private fun progressTitle(message: String, isExporting: Boolean): String {
     val percent = Regex("""\d+%""").find(cleanMessage)?.value
     val importStep = Regex("""\d+/\d+""").find(cleanMessage)?.value
     return when {
-        isExporting && percent != null -> "영화 만드는 중 $percent"
-        isExporting -> "영화를 만드는 중"
+        isExporting && percent != null -> "완성본 만드는 중 $percent"
+        isExporting -> "완성본을 만드는 중"
         importStep != null -> "미디어 불러오는 중 $importStep"
         cleanMessage.contains("불러오는 중") -> "미디어를 불러오는 중"
         cleanMessage.isNotBlank() -> cleanMessage.substringBefore(" · ").substringBefore("...")
@@ -1783,7 +1783,7 @@ private fun progressDetail(message: String, isExporting: Boolean): String {
     return when {
         isExporting -> cleanMessage
             .substringAfter(" · ", missingDelimiterValue = cleanMessage)
-            .removePrefix("영화를 만드는 중...")
+            .removePrefix("완성본을 만드는 중...")
             .trim()
         cleanMessage.contains("불러오는 중") -> cleanMessage
         else -> ""

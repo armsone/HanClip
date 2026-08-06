@@ -207,7 +207,7 @@ class EditorViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     isExporting = true,
-                    progressMessage = "영화를 만드는 중... $exportLabel",
+                    progressMessage = "완성본을 만드는 중... $exportLabel",
                     alertMessage = null
                 )
             }
@@ -234,7 +234,7 @@ class EditorViewModel : ViewModel() {
                         "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${quality.chipTitle} · ${OutputQualityPreset.ExportFormatDetail}"
                     _uiState.update {
                         it.copy(
-                            progressMessage = "영화를 만드는 중... ${(progress * 100).toInt()}% · $attemptLabel"
+                            progressMessage = "완성본을 만드는 중... ${(progress * 100).toInt()}% · $attemptLabel"
                         )
                     }
                 }
@@ -309,7 +309,7 @@ class EditorViewModel : ViewModel() {
                 it.copy(
                     isExporting = false,
                     progressMessage = "",
-                    alertMessage = "영화 만들기를 취소했습니다. 클립과 설정은 그대로 유지됩니다."
+                    alertMessage = "완성본 만들기를 취소했습니다. 클립과 설정은 그대로 유지됩니다."
                 )
             }
         }
@@ -1348,12 +1348,12 @@ class EditorViewModel : ViewModel() {
     private fun exportFailureMessage(error: Throwable, exportLabel: String): String {
         return when {
             error is CancellationException ->
-                "영화 만들기를 취소했습니다. 클립과 설정은 그대로 남아 있어 다시 제작할 수 있습니다."
+                "완성본 만들기를 취소했습니다. 클립과 설정은 그대로 남아 있어 다시 만들 수 있습니다."
             error is IllegalStateException || error is IllegalArgumentException ->
                 error.message?.takeIf { it.isNotBlank() }
-                    ?: "선택한 구간에서 영상을 만들 수 없습니다. 클립 시간을 다시 조절한 뒤 영화 만들기를 눌러 주세요."
+                    ?: "선택한 구간에서 영상을 만들 수 없습니다. 클립 시간을 다시 조절한 뒤 완성본 만들기를 눌러 주세요."
             else ->
-                "영화를 만들지 못했습니다. 클립 시간과 파일 접근 권한을 확인한 뒤 영화 만들기를 다시 눌러 주세요. 현재 설정: $exportLabel"
+                "완성본을 만들지 못했습니다. 클립 시간과 파일 접근 권한을 확인한 뒤 완성본 만들기를 다시 눌러 주세요. 현재 설정: $exportLabel"
         }
     }
 
