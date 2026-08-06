@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -617,6 +619,7 @@ private fun CalendarMediaStrip(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MediaSelectionSummary(
     palette: HanClipPalette,
@@ -637,10 +640,9 @@ private fun MediaSelectionSummary(
         color = if (selectedUris.isEmpty()) palette.panel else palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             Text(
                 text = if (selectedUris.isEmpty()) {
@@ -652,22 +654,51 @@ private fun MediaSelectionSummary(
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.bodySmall
             )
-            Text(
-                text = if (selectedUris.isEmpty()) {
-                    "Android 기본 사진첩"
-                } else {
-                    listOfNotNull(
-                        photoCount.takeIf { it > 0 }?.let { "사진 ${it}개" },
-                        videoCount.takeIf { it > 0 }?.let { "영상 ${it}개" },
-                        selectedVideoDurationMillis.takeIf { it > 0L }?.let { "원본 ${formatDurationBadge(it)}" },
-                        selectedUris.size.takeIf { it > 1 }?.let { "1-${it} 순서" }
-                    ).joinToString(" · ")
-                },
-                color = palette.subText,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (selectedUris.isEmpty()) {
+                MediaSelectionSummaryPill("Android 기본 사진첩", palette, active = false)
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    photoCount.takeIf { it > 0 }?.let {
+                        MediaSelectionSummaryPill("사진 ${it}개", palette, active = true)
+                    }
+                    videoCount.takeIf { it > 0 }?.let {
+                        MediaSelectionSummaryPill("영상 ${it}개", palette, active = true)
+                    }
+                    selectedVideoDurationMillis.takeIf { it > 0L }?.let {
+                        MediaSelectionSummaryPill("원본 ${formatDurationBadge(it)}", palette, active = true)
+                    }
+                    selectedUris.size.takeIf { it > 1 }?.let {
+                        MediaSelectionSummaryPill("1-${it} 번호순", palette, active = true)
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun MediaSelectionSummaryPill(
+    text: String,
+    palette: HanClipPalette,
+    active: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.panel else palette.chip,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.42f) else palette.border)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            color = if (active) palette.text else palette.subText,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
