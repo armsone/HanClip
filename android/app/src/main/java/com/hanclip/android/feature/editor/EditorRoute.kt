@@ -935,7 +935,7 @@ private fun ExportConfirmationDialog(
     onConfirm: () -> Unit
 ) {
     val renderableClipCount = state.renderableClips.size
-    val aspectRatioText = state.outputAspectRatio?.title ?: "원본 비율"
+    val aspectRatioText = state.outputAspectRatio?.let(::outputRatioChipText) ?: "원본 비율 자동"
     val musicText = when {
         state.backgroundMusicUri != null || state.backgroundMusicSampleId != null ->
             state.backgroundMusicTitle ?: "음악 적용"
@@ -987,7 +987,8 @@ private fun ExportConfirmationDialog(
                 )
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
                 ExportConfirmationLine("화면", aspectRatioText, palette)
-                ExportConfirmationLine("품질", state.outputQualityPreset.displayTitle, palette)
+                ExportConfirmationLine("품질", "${state.outputQualityPreset.displayTitle} ${state.outputQualityPreset.detail}", palette)
+                ExportConfirmationLine("형식", OutputQualityPreset.ExportFormatDetail, palette)
                 ExportConfirmationLine("음악", musicText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
             }
