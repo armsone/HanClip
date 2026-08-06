@@ -1250,8 +1250,8 @@ class EditorViewModel : ViewModel() {
             add("사용 클립 ${renderableCount}개")
         }
         val status = when {
-            failedCount > 0 -> "선택한 ${selectedCount}개 중 ${imported.size}개를 가져왔습니다."
-            else -> "미디어 ${imported.size}개를 가져왔습니다."
+            failedCount > 0 -> "가져오기 완료 · 선택 ${selectedCount}개 중 ${imported.size}개 성공"
+            else -> "가져오기 완료 · 미디어 ${imported.size}개"
         }
         val notes = buildList {
             if (autoSegmentCount > 0) {
@@ -1266,7 +1266,7 @@ class EditorViewModel : ViewModel() {
         }
         return buildString {
             append(status)
-            append(" ")
+            append(" · ")
             append(parts.joinToString(" · "))
             if (notes.isNotEmpty()) {
                 append(" ")
