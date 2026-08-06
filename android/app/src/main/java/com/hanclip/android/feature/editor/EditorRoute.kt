@@ -1559,13 +1559,13 @@ private fun ReorderStrip(
             ) {
                 Column {
                     Text(
-                        "순서 변경",
+                        "완성본 순서 변경",
                         color = palette.text,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "왼쪽부터 완성본에 이어집니다. 위/아래 버튼으로 앞뒤 순서를 조정합니다.",
+                        "왼쪽 1번부터 MP4 완성본에 이어집니다. 위/아래 버튼으로 번호순을 조정합니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -1577,7 +1577,7 @@ private fun ReorderStrip(
                         contentColor = Color.White
                     )
                 ) {
-                    Text("순서 적용")
+                    Text("번호순 적용")
                 }
             }
             LazyRow(
@@ -1643,7 +1643,7 @@ private fun ReorderTile(
                 )
             }
             Text(
-                text = "${index + 1}/$totalCount  ${clipTitle(clip, null)}",
+                text = "완성본 ${index + 1}/$totalCount  ${clipTitle(clip, null)}",
                 color = palette.text,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
