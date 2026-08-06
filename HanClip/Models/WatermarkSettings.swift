@@ -255,7 +255,7 @@ struct WatermarkSettings: Codable {
     static let defaultCopyrightPosition = WatermarkPosition.bottomTrailing
     static let defaultCopyrightTextColor = "#007644"
     static let defaultCopyrightShadowColor = "#29AB87"
-    static let defaultCopyrightShadowOpacity = 0.2
+    static let defaultCopyrightShadowOpacity = 0.5
     static let defaultCopyrightIconColorMode = CopyrightIconColorMode.original
     static let defaultCopyrightIconColor = "#007644"
     static let defaultCustomCopyrightIconPath = ""
@@ -264,6 +264,11 @@ struct WatermarkSettings: Codable {
     static let greenGolfShadowColor = "#10B85A"
     static let greenGolfShadowOpacity = 0.5
     static let greenGolfFontSize = WatermarkFontSize.extraLarge
+    static let travelPreferredFontIDs = ["gowun_batang", "maruburi"]
+    static let travelTextColor = "#FFF3D6"
+    static let travelShadowColor = "#3F6F63"
+    static let travelShadowOpacity = 0.5
+    static let travelFontSize = WatermarkFontSize.large
 
     var isEnabled: Bool
     var logoEnabled: Bool
@@ -478,7 +483,7 @@ struct WatermarkSettings: Codable {
             ?? defaultPosition
         let rawCopyrightPosition = defaults.string(
             forKey: copyrightPositionStorageKey
-        ) ?? rawPosition
+        ) ?? defaultCopyrightPosition.rawValue
         let copyrightPosition = WatermarkPosition(rawValue: rawCopyrightPosition)
             ?? defaultCopyrightPosition
         let rawPlatform = defaults.string(forKey: platformStorageKey)
@@ -613,6 +618,25 @@ struct WatermarkSettings: Codable {
         settings.shadowOpacity = greenGolfShadowOpacity
         settings.shadowColorHex = greenGolfShadowColor
         settings.fontSize = greenGolfFontSize
+        settings.lineSpacing = .normal
+        settings.lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
+        return settings
+    }
+
+    static func travelPreset(text: String) -> WatermarkSettings {
+        var settings = projectDefault()
+        let availableFontIDs = Set(FontRegistry.availableFonts.map(\.id))
+
+        settings.isEnabled = true
+        settings.text = text
+        settings.fontName = travelPreferredFontIDs.first {
+            availableFontIDs.contains($0)
+        } ?? defaultFontName
+        settings.textColorHex = travelTextColor
+        settings.shadowEnabled = true
+        settings.shadowOpacity = travelShadowOpacity
+        settings.shadowColorHex = travelShadowColor
+        settings.fontSize = travelFontSize
         settings.lineSpacing = .normal
         settings.lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
         return settings

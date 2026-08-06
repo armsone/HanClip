@@ -50,6 +50,9 @@ enum AudioAnalysisService {
             reader.startReading()
 
             var energy = Array(repeating: 0.0, count: bucketCount)
+            var peaks = Array(repeating: 0.0, count: bucketCount)
+            var crossings = Array(repeating: 0, count: bucketCount)
+            var sampleTotals = Array(repeating: 0, count: bucketCount)
             var counts = Array(repeating: 0, count: bucketCount)
 
             while let sample = output.copyNextSampleBuffer() {
@@ -74,9 +77,18 @@ enum AudioAnalysisService {
                 let values = UnsafeRawPointer(pointer)
                     .assumingMemoryBound(to: Int16.self)
                 var sum = 0.0
+                var peak = 0.0
+                var crossingCount = 0
+                var previousSign = 0
                 for index in 0..<sampleCount {
                     let value = Double(values[index]) / Double(Int16.max)
+                    let sign = value >= 0 ? 1 : -1
                     sum += value * value
+                    peak = max(peak, abs(value))
+                    if index > 0, sign != previousSign {
+                        crossingCount += 1
+                    }
+                    previousSign = sign
                 }
                 let rms = sqrt(sum / Double(max(1, sampleCount)))
                 let time = CMSampleBufferGetPresentationTimeStamp(sample)
@@ -86,11 +98,32 @@ enum AudioAnalysisService {
                     max(0, Int(time / duration * Double(bucketCount)))
                 )
                 energy[bucket] += rms
+                peaks[bucket] = max(peaks[bucket], peak)
+                crossings[bucket] += crossingCount
+                sampleTotals[bucket] += sampleCount
                 counts[bucket] += 1
             }
 
-            var values = zip(energy, counts).map {
-                $1 > 0 ? $0 / Double($1) : 0
+            let metrics = (0..<bucketCount).map { index in
+                AudioImpactMetrics(
+                    rms: counts[index] > 0
+                        ? energy[index] / Double(counts[index])
+                        : 0,
+                    peak: peaks[index],
+                    crossingRate: sampleTotals[index] > 0
+                        ? Double(crossings[index])
+                            / Double(sampleTotals[index])
+                        : 0
+                )
+            }
+
+            var values = metrics.map(\.impactScore)
+            let impactFrames = metrics.enumerated().map { index, metrics in
+                AudioImpactFrame(
+                    time: (Double(index) + 0.5) / Double(bucketCount)
+                        * duration,
+                    metrics: metrics
+                )
             }
             let maximum = max(values.max() ?? 0, 0.000_1)
             values = values.map { max(0.04, min(1, $0 / maximum)) }
@@ -128,6 +161,18 @@ enum AudioAnalysisService {
 
             for candidate in strongestEnergyCandidates(values: values) {
                 candidates.append(candidate)
+            }
+            let classifiedPeaks = AudioImpactClassifier.rankedImpactTimes(
+                frames: impactFrames,
+                duration: duration,
+                limit: 12
+            )
+            for peak in classifiedPeaks {
+                let index = min(
+                    bucketCount - 1,
+                    max(0, Int(peak / duration * Double(bucketCount)))
+                )
+                candidates.append((index, 2.0 + values[index]))
             }
 
             let bucketsPerSecond = Double(bucketCount) / max(duration, 0.1)

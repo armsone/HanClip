@@ -291,6 +291,55 @@ enum VideoSegmentMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum PhotoSimilarityFingerprint {
+    static func make(from image: UIImage) -> [UInt8] {
+        let dimension = 8
+        let size = CGSize(width: dimension, height: dimension)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+
+        let rendered = UIGraphicsImageRenderer(
+            size: size,
+            format: format
+        ).image { _ in
+            UIColor.black.setFill()
+            UIRectFill(CGRect(origin: .zero, size: size))
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+
+        guard let cgImage = rendered.cgImage,
+              let dataProvider = cgImage.dataProvider,
+              let data = dataProvider.data
+        else { return [] }
+
+        let bytes = CFDataGetBytePtr(data)
+        let bytesPerPixel = 4
+        let pixelCount = dimension * dimension
+        var luminance: [UInt8] = []
+        luminance.reserveCapacity(pixelCount)
+
+        for index in 0..<pixelCount {
+            let offset = index * bytesPerPixel
+            let red = Double(bytes?[offset] ?? 0)
+            let green = Double(bytes?[offset + 1] ?? 0)
+            let blue = Double(bytes?[offset + 2] ?? 0)
+            luminance.append(UInt8((red * 0.299 + green * 0.587 + blue * 0.114).rounded()))
+        }
+
+        return luminance
+    }
+
+    static func distance(_ lhs: [UInt8], _ rhs: [UInt8]) -> Double {
+        guard lhs.count == rhs.count, !lhs.isEmpty else { return .infinity }
+
+        let total = zip(lhs, rhs).reduce(0.0) { partial, values in
+            partial + abs(Double(values.0) - Double(values.1))
+        }
+        return total / Double(lhs.count)
+    }
+}
+
 struct ClipItem: Identifiable {
     let id: UUID
     let source: ClipSource
@@ -309,6 +358,12 @@ struct ClipItem: Identifiable {
     var videoSegmentMode: VideoSegmentMode
     var isVideoSegmentParent: Bool
     var videoSegmentParentID: UUID?
+    var photoSimilarityFingerprint: [UInt8]
+    var similarPhotoGroupID: UUID?
+    var similarPhotoGroupIndex: Int
+    var similarPhotoGroupCount: Int
+    var isSimilarPhotoGroupRepresentative: Bool
+    var sourceCreatedAt: Date?
     let sourcePixelSize: CGSize
 
     var sourceAspectRatio: CGFloat {
@@ -333,6 +388,12 @@ struct ClipItem: Identifiable {
         videoSegmentMode: VideoSegmentMode = .single,
         isVideoSegmentParent: Bool = false,
         videoSegmentParentID: UUID? = nil,
+        photoSimilarityFingerprint: [UInt8]? = nil,
+        similarPhotoGroupID: UUID? = nil,
+        similarPhotoGroupIndex: Int = 0,
+        similarPhotoGroupCount: Int = 1,
+        isSimilarPhotoGroupRepresentative: Bool = true,
+        sourceCreatedAt: Date? = nil,
         sourcePixelSize: CGSize? = nil
     ) {
         self.id = id
@@ -356,6 +417,13 @@ struct ClipItem: Identifiable {
         self.videoSegmentMode = videoSegmentMode
         self.isVideoSegmentParent = isVideoSegmentParent
         self.videoSegmentParentID = videoSegmentParentID
+        self.photoSimilarityFingerprint = photoSimilarityFingerprint
+            ?? PhotoSimilarityFingerprint.make(from: thumbnail)
+        self.similarPhotoGroupID = similarPhotoGroupID
+        self.similarPhotoGroupIndex = similarPhotoGroupIndex
+        self.similarPhotoGroupCount = max(1, similarPhotoGroupCount)
+        self.isSimilarPhotoGroupRepresentative = isSimilarPhotoGroupRepresentative
+        self.sourceCreatedAt = sourceCreatedAt
         self.sourcePixelSize = sourcePixelSize ?? thumbnail.size
     }
 
@@ -371,8 +439,28 @@ struct ClipItem: Identifiable {
         videoSegmentParentID != nil
     }
 
+    var isSimilarPhotoGroupMember: Bool {
+        similarPhotoGroupID != nil
+    }
+
+    var isSimilarPhotoGroupParent: Bool {
+        similarPhotoGroupID != nil
+            && similarPhotoGroupCount > 1
+            && similarPhotoGroupIndex == 0
+    }
+
+    var isSimilarPhotoGroupChild: Bool {
+        similarPhotoGroupID != nil
+            && similarPhotoGroupCount > 1
+            && similarPhotoGroupIndex > 0
+    }
+
+    var isHiddenSimilarPhotoGroupMember: Bool {
+        similarPhotoGroupID != nil && !isSimilarPhotoGroupRepresentative
+    }
+
     var isRenderableClip: Bool {
-        !isVideoSegmentParent
+        !isVideoSegmentParent && !isHiddenSimilarPhotoGroupMember
     }
 
     func replacingSource(_ source: ClipSource) -> ClipItem {
@@ -394,6 +482,12 @@ struct ClipItem: Identifiable {
             videoSegmentMode: videoSegmentMode,
             isVideoSegmentParent: isVideoSegmentParent,
             videoSegmentParentID: videoSegmentParentID,
+            photoSimilarityFingerprint: photoSimilarityFingerprint,
+            similarPhotoGroupID: similarPhotoGroupID,
+            similarPhotoGroupIndex: similarPhotoGroupIndex,
+            similarPhotoGroupCount: similarPhotoGroupCount,
+            isSimilarPhotoGroupRepresentative: isSimilarPhotoGroupRepresentative,
+            sourceCreatedAt: sourceCreatedAt,
             sourcePixelSize: sourcePixelSize
         )
     }

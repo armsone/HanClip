@@ -27,10 +27,35 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HanClipBuildTimestamp</key>
+	<string>2026.08.06 15:57</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>HanClip 브라우저 즐겨찾기</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.intosharp.hanclip.browser-favorites</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>hanclipfavorites</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.hanclip.browser-favorites+json</string>
+			</dict>
+		</dict>
+	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>티샷과 박수 소리에 반응해 자동촬영 클립을 만들기 위해 카메라 접근이 필요합니다.</string>
+	<string>티샷과 박수 소리에 반응해 AiShot 클립을 만들기 위해 카메라 접근이 필요합니다.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>티샷과 박수 소리를 감지해 자동촬영 시점을 찾기 위해 마이크 접근이 필요합니다.</string>
+	<string>티샷과 박수 소리를 감지해 AiShot 촬영 시점을 찾기 위해 마이크 접근이 필요합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>완성된 영화를 사진 앱으로 개봉하기 위해 접근이 필요합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -54,12 +79,12 @@
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>
-			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>camera.fill</string>
+			<key>UIApplicationShortcutItemIconFile</key>
+			<string>AiShotIcon</string>
 			<key>UIApplicationShortcutItemTitle</key>
-			<string>자동촬영</string>
+			<string>AiShot</string>
 			<key>UIApplicationShortcutItemType</key>
-			<string>com.intosharp.hanclip.auto-capture</string>
+			<string>com.intosharp.hanclip.aishot</string>
 		</dict>
 		<dict>
 			<key>UIApplicationShortcutItemIconSymbolName</key>

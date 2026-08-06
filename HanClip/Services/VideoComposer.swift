@@ -438,10 +438,6 @@ final class VideoComposer {
         var overlayImages: [CIImage] = []
         let copyrightPosition = settings.copyrightPosition
         let inset = 20 * scale
-        let stackedWatermarks =
-            settings.logoEnabled
-            && settings.shouldRenderText
-            && settings.position == copyrightPosition
 
         let copyrightWatermark = settings.logoEnabled
             ? CIImage(
@@ -475,73 +471,30 @@ final class VideoComposer {
             )
         }
 
-        if stackedWatermarks,
-           let textWatermark,
-           let copyrightWatermark {
-            let gap = 4 * scale
-            var textOrigin = Self.watermarkOrigin(
-                watermarkSize: textWatermark.extent.size,
-                renderSize: renderSize,
-                position: settings.position,
-                inset: inset
-            )
-            let minimumTextY =
-                inset + copyrightWatermark.extent.height + gap
-            if textOrigin.y < minimumTextY {
-                let maximumTextY =
-                    renderSize.height - textWatermark.extent.height - inset
-                textOrigin.y = min(minimumTextY, maximumTextY)
-            }
-            let copyrightOrigin = Self.copyrightOriginBelowText(
-                copyrightSize: copyrightWatermark.extent.size,
-                textOrigin: textOrigin,
-                textSize: textWatermark.extent.size,
-                renderSize: renderSize,
-                inset: inset,
-                gap: gap
-            )
+        if let textWatermark {
             overlayImages.append(
                 textWatermark.transformed(
-                    by: CGAffineTransform(
-                        translationX: textOrigin.x,
-                        y: textOrigin.y
+                    by: Self.watermarkTransform(
+                        watermarkSize: textWatermark.extent.size,
+                        renderSize: renderSize,
+                        position: settings.position,
+                        inset: inset
                     )
                 )
             )
+        }
+
+        if let copyrightWatermark {
             overlayImages.append(
                 copyrightWatermark.transformed(
-                    by: CGAffineTransform(
-                        translationX: copyrightOrigin.x,
-                        y: copyrightOrigin.y
+                    by: Self.watermarkTransform(
+                        watermarkSize: copyrightWatermark.extent.size,
+                        renderSize: renderSize,
+                        position: copyrightPosition,
+                        inset: inset
                     )
                 )
             )
-        } else {
-            if let copyrightWatermark {
-                overlayImages.append(
-                    copyrightWatermark.transformed(
-                        by: Self.watermarkTransform(
-                            watermarkSize: copyrightWatermark.extent.size,
-                            renderSize: renderSize,
-                            position: copyrightPosition,
-                            inset: inset
-                        )
-                    )
-                )
-            }
-
-            if let textWatermark {
-                overlayImages.append(
-                    textWatermark.transformed(
-                        by: Self.watermarkTransform(
-                            watermarkSize: textWatermark.extent.size,
-                            renderSize: renderSize,
-                            position: settings.position,
-                            inset: inset
-                        )
-                    )
-                )
-            }
         }
 
         guard !overlayImages.isEmpty else {
@@ -975,23 +928,6 @@ final class VideoComposer {
         let y = inset + availableHeight
             * CGFloat(1 - position.verticalFractionFromTop)
 
-        return CGPoint(x: x, y: y)
-    }
-
-    private static func copyrightOriginBelowText(
-        copyrightSize: CGSize,
-        textOrigin: CGPoint,
-        textSize: CGSize,
-        renderSize: CGSize,
-        inset: CGFloat,
-        gap: CGFloat
-    ) -> CGPoint {
-        let maxX = max(inset, renderSize.width - copyrightSize.width - inset)
-        let preferredX = textOrigin.x + (textSize.width - copyrightSize.width) / 2
-        let x = min(max(preferredX, inset), maxX)
-
-        let preferredY = textOrigin.y - copyrightSize.height - gap
-        let y = max(preferredY, inset)
         return CGPoint(x: x, y: y)
     }
 

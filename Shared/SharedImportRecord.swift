@@ -5,6 +5,7 @@ struct SharedImportRecord: Codable, Identifiable {
         case image
         case video
         case livePhoto
+        case browserFavorites
     }
 
     let id: UUID
@@ -25,5 +26,18 @@ struct SharedImportRecord: Codable, Identifiable {
         self.primaryFilename = primaryFilename
         self.secondaryFilename = secondaryFilename
         self.originalFilename = originalFilename
+    }
+}
+
+struct BrowserFavoritesArchive: Codable {
+    static let typeIdentifier = "com.intosharp.hanclip.browser-favorites"
+    static let filenameExtension = "hanclipfavorites"
+
+    let version: Int
+    let favorites: [String]
+
+    init(favorites: [String]) {
+        version = 1
+        self.favorites = favorites
     }
 }

@@ -3,7 +3,7 @@ import UIKit
 
 enum ProjectKind: String, Codable {
     case standard
-    case autoCapture
+    case aiShot
 }
 
 struct SavedProjectSummary: Identifiable, Equatable {
@@ -34,7 +34,8 @@ struct LoadedProject {
 }
 
 enum ProjectStore {
-    private static let maximumProjectCount = 10
+    static let maximumProjectCount = 10
+    static let maximumAiShotProjectCount = 2
     private static let maximumPinnedProjectCount = 5
     private static let metadataFilename = "project.json"
 
@@ -63,6 +64,28 @@ enum ProjectStore {
     }
 
     @discardableResult
+    static func removeExcessAiShotProjects() throws -> [UUID] {
+        var aiShotProjects = listProjects()
+            .filter { $0.kind == .aiShot }
+        var removedIDs: [UUID] = []
+
+        while aiShotProjects.count > maximumAiShotProjectCount {
+            guard let oldest = aiShotProjects.min(by: {
+                if $0.createdAt != $1.createdAt {
+                    return $0.createdAt < $1.createdAt
+                }
+                return $0.updatedAt < $1.updatedAt
+            }) else { break }
+
+            try delete(id: oldest.id)
+            removedIDs.append(oldest.id)
+            aiShotProjects.removeAll { $0.id == oldest.id }
+        }
+
+        return removedIDs
+    }
+
+    @discardableResult
     static func save(
         clips: [ClipItem],
         defaultDuration: Double,
@@ -72,7 +95,8 @@ enum ProjectStore {
         textOverlaySettings: WatermarkSettings,
         backgroundMusicSettings: BackgroundMusicSettings,
         activeProjectID: UUID?,
-        kind: ProjectKind = .standard
+        kind: ProjectKind = .standard,
+        projectKindOverride: ProjectKind? = nil
     ) throws -> UUID {
         let root = try projectsRoot()
         let existing = activeProjectID.flatMap {
@@ -126,6 +150,14 @@ enum ProjectStore {
                         videoSegmentMode: clip.videoSegmentMode.rawValue,
                         isVideoSegmentParent: clip.isVideoSegmentParent,
                         videoSegmentParentID: clip.videoSegmentParentID,
+                        photoSimilarityFingerprint: clip
+                            .photoSimilarityFingerprint,
+                        similarPhotoGroupID: clip.similarPhotoGroupID,
+                        similarPhotoGroupIndex: clip.similarPhotoGroupIndex,
+                        similarPhotoGroupCount: clip.similarPhotoGroupCount,
+                        isSimilarPhotoGroupRepresentative: clip
+                            .isSimilarPhotoGroupRepresentative,
+                        sourceCreatedAt: clip.sourceCreatedAt,
                         sourceWidth: clip.sourcePixelSize.width,
                         sourceHeight: clip.sourcePixelSize.height
                     )
@@ -163,7 +195,7 @@ enum ProjectStore {
                 id: projectID,
                 createdAt: existing?.createdAt ?? Date(),
                 updatedAt: Date(),
-                kind: existing?.kind ?? kind,
+                kind: projectKindOverride ?? existing?.kind ?? kind,
                 isPinned: existing?.isPinned ?? false,
                 memo: existing?.memo,
                 defaultDuration: defaultDuration,
@@ -184,7 +216,9 @@ enum ProjectStore {
                 try FileManager.default.removeItem(at: destination)
             }
             try FileManager.default.moveItem(at: staging, to: destination)
-            try enforceMaximumCount()
+            if !clips.isEmpty {
+                try enforceMaximumCount()
+            }
             return projectID
         } catch {
             try? FileManager.default.removeItem(at: staging)
@@ -296,6 +330,14 @@ enum ProjectStore {
                     .map(VideoSegmentMode.init(storedValue:)) ?? .single,
                 isVideoSegmentParent: storedClip.isVideoSegmentParent ?? false,
                 videoSegmentParentID: storedClip.videoSegmentParentID,
+                photoSimilarityFingerprint: storedClip
+                    .photoSimilarityFingerprint,
+                similarPhotoGroupID: storedClip.similarPhotoGroupID,
+                similarPhotoGroupIndex: storedClip.similarPhotoGroupIndex ?? 0,
+                similarPhotoGroupCount: storedClip.similarPhotoGroupCount ?? 1,
+                isSimilarPhotoGroupRepresentative: storedClip
+                    .isSimilarPhotoGroupRepresentative ?? true,
+                sourceCreatedAt: storedClip.sourceCreatedAt,
                 sourcePixelSize: CGSize(
                     width: storedClip.sourceWidth,
                     height: storedClip.sourceHeight
@@ -322,7 +364,7 @@ enum ProjectStore {
             backgroundMusicSettings: restoreBackgroundMusic(
                 stored.backgroundMusicSettings,
                 in: directory,
-                fallback: stored.kind == .autoCapture ? .empty : .projectDefault
+                fallback: stored.kind == .aiShot ? .empty : .projectDefault
             )
         )
     }
@@ -417,7 +459,9 @@ enum ProjectStore {
     }
 
     private static func enforceMaximumCount() throws {
+        try removeExcessAiShotProjects()
         var projects = listProjects()
+
         while projects.count > maximumProjectCount {
             guard let candidate = projects
                 .filter({ !$0.isPinned })
@@ -696,15 +740,29 @@ private struct StoredProject: Codable {
             updatedAt: updatedAt,
             kind: kind ?? .standard,
             isPinned: isPinned,
-            clipCount: clips.filter { $0.isVideoSegmentParent != true }.count,
+            clipCount: clips
+                .filter {
+                    $0.isVideoSegmentParent != true
+                        && $0.isSimilarPhotoGroupRepresentative != false
+                }
+                .count,
             totalDuration: clips
-                .filter { $0.isVideoSegmentParent != true }
+                .filter {
+                    $0.isVideoSegmentParent != true
+                        && $0.isSimilarPhotoGroupRepresentative != false
+                }
                 .reduce(0) { $0 + $1.duration },
             thumbnailFilename: clips
-                .first { $0.isVideoSegmentParent != true }?
+                .first {
+                    $0.isVideoSegmentParent != true
+                        && $0.isSimilarPhotoGroupRepresentative != false
+                }?
                 .thumbnailFilename,
             thumbnailFilenames: clips
-                .filter { $0.isVideoSegmentParent != true }
+                .filter {
+                    $0.isVideoSegmentParent != true
+                        && $0.isSimilarPhotoGroupRepresentative != false
+                }
                 .dropFirst()
                 .prefix(8)
                 .map(\.thumbnailFilename),
@@ -733,6 +791,12 @@ private struct StoredClip: Codable {
     let videoSegmentMode: String?
     let isVideoSegmentParent: Bool?
     let videoSegmentParentID: UUID?
+    let photoSimilarityFingerprint: [UInt8]?
+    let similarPhotoGroupID: UUID?
+    let similarPhotoGroupIndex: Int?
+    let similarPhotoGroupCount: Int?
+    let isSimilarPhotoGroupRepresentative: Bool?
+    let sourceCreatedAt: Date?
     let sourceWidth: Double
     let sourceHeight: Double
 }

@@ -8,6 +8,7 @@ enum HanClipThemeMode: String, CaseIterable {
     case dark
     case blossomGlow
     case grayscalePlay
+    case pixelPop
 
     static let baseModes: [HanClipThemeMode] = [
         .automatic,
@@ -17,14 +18,15 @@ enum HanClipThemeMode: String, CaseIterable {
 
     static let customModes: [HanClipThemeMode] = [
         .blossomGlow,
-        .grayscalePlay
+        .grayscalePlay,
+        .pixelPop
     ]
 
     static let visibleModes: [HanClipThemeMode] = baseModes + customModes
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .light, .blossomGlow, .grayscalePlay:
+        case .light, .blossomGlow, .grayscalePlay, .pixelPop:
             return .light
         case .dark:
             return .dark
@@ -45,6 +47,8 @@ enum HanClipThemeMode: String, CaseIterable {
             return "Blossom Glow"
         case .grayscalePlay:
             return "Grayscale Play"
+        case .pixelPop:
+            return "Pixel Pop"
         }
     }
 }
@@ -93,6 +97,11 @@ enum HanClipTheme {
                 Color(uiColor: grayscalePrimary),
                 Color(uiColor: grayscaleSecondary)
             )
+        case .pixelPop:
+            return (
+                Color(uiColor: pixelPopPrimary),
+                Color(uiColor: pixelPopSecondary)
+            )
         }
     }
 
@@ -102,6 +111,8 @@ enum HanClipTheme {
             return blossomGlowPrimary
         case .grayscalePlay:
             return grayscalePrimary
+        case .pixelPop:
+            return pixelPopPrimary
         case .light:
             return readableComfortPrimary
         case .dark:
@@ -121,6 +132,8 @@ enum HanClipTheme {
             return blossomGlowSecondary
         case .grayscalePlay:
             return grayscaleSecondary
+        case .pixelPop:
+            return pixelPopSecondary
         case .light:
             return readableComfortSecondary
         case .dark:
@@ -314,6 +327,36 @@ enum HanClipTheme {
         blue: 20.0 / 255.0,
         alpha: 1
     )
+    private static let pixelPopPrimary = UIColor(
+        red: 38.0 / 255.0,
+        green: 82.0 / 255.0,
+        blue: 255.0 / 255.0,
+        alpha: 1
+    )
+    private static let pixelPopSecondary = UIColor(
+        red: 220.0 / 255.0,
+        green: 47.0 / 255.0,
+        blue: 101.0 / 255.0,
+        alpha: 1
+    )
+    private static let pixelPopBackground = UIColor(
+        red: 249.0 / 255.0,
+        green: 251.0 / 255.0,
+        blue: 255.0 / 255.0,
+        alpha: 1
+    )
+    private static let pixelPopBackgroundWithBlack = UIColor(
+        red: 232.0 / 255.0,
+        green: 239.0 / 255.0,
+        blue: 255.0 / 255.0,
+        alpha: 1
+    )
+    private static let pixelPopText = UIColor(
+        red: 15.0 / 255.0,
+        green: 22.0 / 255.0,
+        blue: 48.0 / 255.0,
+        alpha: 1
+    )
     static var background: Color {
         if selectedMode == .light {
             return Color(uiColor: readableComfortBackground)
@@ -326,6 +369,9 @@ enum HanClipTheme {
         }
         if selectedMode == .grayscalePlay {
             return Color(uiColor: grayscaleBackground)
+        }
+        if selectedMode == .pixelPop {
+            return Color(uiColor: pixelPopBackground)
         }
         return themedColor(light: .white, dark: darkBackground)
     }
@@ -342,6 +388,9 @@ enum HanClipTheme {
         }
         if selectedMode == .grayscalePlay {
             return Color(uiColor: grayscaleBackgroundWithBlack)
+        }
+        if selectedMode == .pixelPop {
+            return Color(uiColor: pixelPopBackgroundWithBlack)
         }
         return themedColor(light: lightBackgroundWithBlack, dark: darkBackgroundWithBlack)
     }
@@ -366,6 +415,9 @@ enum HanClipTheme {
         }
         if selectedMode == .grayscalePlay {
             return Color(uiColor: grayscaleText)
+        }
+        if selectedMode == .pixelPop {
+            return Color(uiColor: pixelPopText)
         }
         return themedColor(light: black90, dark: .white)
     }
@@ -411,6 +463,9 @@ enum HanClipTheme {
         if selectedMode == .grayscalePlay {
             return secondary.opacity(0.12)
         }
+        if selectedMode == .pixelPop {
+            return secondary.opacity(0.085)
+        }
         return secondary.opacity(selectedMode == .dark ? 0.14 : 0.08)
     }
 
@@ -425,6 +480,9 @@ enum HanClipTheme {
             return primary.opacity(0.20)
         }
         if selectedMode == .grayscalePlay {
+            return primary.opacity(0.24)
+        }
+        if selectedMode == .pixelPop {
             return primary.opacity(0.24)
         }
         return primary.opacity(selectedMode == .dark ? 0.26 : 0.18)
@@ -443,6 +501,9 @@ enum HanClipTheme {
         if selectedMode == .grayscalePlay {
             return secondary.opacity(0.18)
         }
+        if selectedMode == .pixelPop {
+            return secondary.opacity(0.15)
+        }
         return secondary.opacity(selectedMode == .dark ? 0.24 : 0.16)
     }
 
@@ -459,6 +520,9 @@ enum HanClipTheme {
         if selectedMode == .grayscalePlay {
             return secondary.opacity(0.075)
         }
+        if selectedMode == .pixelPop {
+            return primary.opacity(0.055)
+        }
         return secondary.opacity(selectedMode == .dark ? 0.11 : 0.045)
     }
 
@@ -474,6 +538,9 @@ enum HanClipTheme {
         }
         if selectedMode == .grayscalePlay {
             return primary.opacity(0.20)
+        }
+        if selectedMode == .pixelPop {
+            return primary.opacity(0.18)
         }
         return secondary.opacity(selectedMode == .dark ? 0.22 : 0.14)
     }
@@ -505,7 +572,7 @@ enum HanClipTheme {
 
     private static func themedColor(light: UIColor, dark: UIColor) -> Color {
         switch selectedMode {
-        case .light, .blossomGlow, .grayscalePlay:
+        case .light, .blossomGlow, .grayscalePlay, .pixelPop:
             return Color(uiColor: light)
         case .dark:
             return Color(uiColor: dark)
@@ -528,7 +595,7 @@ enum HanClipTheme {
 
 enum HanClipQuickAction: Equatable {
     case open
-    case autoCapture
+    case aiShot
     case photo
     case calendar
     case files
@@ -541,8 +608,8 @@ enum HanClipQuickAction: Equatable {
         switch actionName {
         case "open":
             self = .open
-        case "auto-capture":
-            self = .autoCapture
+        case "aishot":
+            self = .aiShot
         case "photo":
             self = .photo
         case "calendar":
@@ -558,8 +625,8 @@ enum HanClipQuickAction: Equatable {
 
     init?(shortcutItem: UIApplicationShortcutItem) {
         switch shortcutItem.type {
-        case "com.intosharp.hanclip.auto-capture":
-            self = .autoCapture
+        case "com.intosharp.hanclip.aishot":
+            self = .aiShot
         case "com.intosharp.hanclip.photo":
             self = .photo
         case "com.intosharp.hanclip.calendar":

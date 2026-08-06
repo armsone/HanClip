@@ -402,6 +402,11 @@ final class ShareViewController: UIViewController {
     }
 
     private static func mediaKind(for url: URL) -> SharedImportRecord.Kind {
+        if url.pathExtension.lowercased()
+            == BrowserFavoritesArchive.filenameExtension {
+            return .browserFavorites
+        }
+
         if let contentType = try? url.resourceValues(
             forKeys: [.contentTypeKey]
         ).contentType {
@@ -414,6 +419,9 @@ final class ShareViewController: UIViewController {
         }
 
         let ext = url.pathExtension.lowercased()
+        if ext == BrowserFavoritesArchive.filenameExtension {
+            return .browserFavorites
+        }
         if ["mov", "mp4", "m4v"].contains(ext) {
             return .video
         }
@@ -665,8 +673,16 @@ final class ShareViewController: UIViewController {
 
                 do {
                     let mediaKind = Self.mediaKind(for: sourceURL)
-                    let fallbackExtension =
-                        mediaKind == .video ? "mov" : "jpg"
+                    let fallbackExtension: String
+                    switch mediaKind {
+                    case .video:
+                        fallbackExtension = "mov"
+                    case .browserFavorites:
+                        fallbackExtension =
+                            BrowserFavoritesArchive.filenameExtension
+                    case .image, .livePhoto:
+                        fallbackExtension = "jpg"
+                    }
                     let filename = try self.copyFileToInbox(
                         sourceURL,
                         fallbackExtension: fallbackExtension
@@ -921,6 +937,8 @@ final class ShareViewController: UIViewController {
                 at: .zero,
                 actualTime: nil
             )).map(UIImage.init(cgImage:))
+        case .browserFavorites:
+            image = UIImage(systemName: "bookmark.square.fill")
         }
 
         guard let image else { return }

@@ -234,7 +234,7 @@ struct VideoTrimEditor: View {
             }
             Button("취소", role: .cancel) {}
         } message: {
-            Text("삭제한 미디어는 현재 영화의 클립 목록에서 제거됩니다.")
+            Text("삭제한 미디어는 현재 영화의 클립목록에서 제거됩니다.")
         }
     }
 

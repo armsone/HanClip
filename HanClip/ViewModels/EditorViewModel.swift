@@ -20,12 +20,12 @@ private struct ProjectEditSignature: Equatable {
 
 enum MoviePreset {
     case newMovie
-    case autoCapture
+    case aiShot
     case travel
     case golf
 }
 
-private struct ClipEditSignature: Equatable {
+    private struct ClipEditSignature: Equatable {
     let id: UUID
     let source: String
     let duration: Double
@@ -41,6 +41,11 @@ private struct ClipEditSignature: Equatable {
     let videoSegmentMode: VideoSegmentMode
     let isVideoSegmentParent: Bool
     let videoSegmentParentID: UUID?
+    let similarPhotoGroupID: UUID?
+    let similarPhotoGroupIndex: Int
+    let similarPhotoGroupCount: Int
+    let isSimilarPhotoGroupRepresentative: Bool
+    let sourceCreatedAt: Date?
     let sourcePixelSize: CGSize
 }
 
@@ -93,6 +98,15 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var pendingSharedItemCount = 0
     @Published private(set) var pendingSharedThumbnails: [UIImage] = []
     @Published private(set) var newlySavedProjectID: UUID?
+    @Published private var expandedSimilarPhotoGroupIDs: Set<UUID> = []
+
+    var isActiveAiShotProject: Bool {
+        guard let activeProjectID else { return false }
+        return savedProjects.first {
+            $0.id == activeProjectID
+        }?.kind == .aiShot
+    }
+
     @Published private(set) var initialCalendarMonth = Calendar.current
         .date(
             from: Calendar.current.dateComponents(
@@ -109,6 +123,7 @@ final class EditorViewModel: ObservableObject {
     private var openedProjectSignature: ProjectEditSignature?
 
     init() {
+        _ = try? ProjectStore.removeExcessAiShotProjects()
         reloadProjects()
         refreshPendingSharedItems()
     }
@@ -186,7 +201,76 @@ final class EditorViewModel: ObservableObject {
     }
 
     func shouldDisplayClip(_ clip: ClipItem) -> Bool {
-        !clip.isVideoSegmentChild || isActiveVideoSegmentChild(clip)
+        if clip.isSimilarPhotoGroupChild {
+            guard let groupID = clip.similarPhotoGroupID,
+                  let parent = clips.first(where: {
+                      $0.similarPhotoGroupID == groupID
+                          && $0.isSimilarPhotoGroupParent
+                  })
+            else { return false }
+            return parent.videoSegmentMode == .multiple
+        }
+        return !clip.isVideoSegmentChild || isActiveVideoSegmentChild(clip)
+    }
+
+    func isSimilarPhotoGroupExpanded(for clip: ClipItem) -> Bool {
+        if clip.isSimilarPhotoGroupParent {
+            return clip.videoSegmentMode == .multiple
+        }
+        guard let groupID = clip.similarPhotoGroupID,
+              let parent = clips.first(where: {
+                  $0.similarPhotoGroupID == groupID
+                      && $0.isSimilarPhotoGroupParent
+              })
+        else { return false }
+        return parent.videoSegmentMode == .multiple
+    }
+
+    func toggleSimilarPhotoGroup(for id: UUID) {
+        guard let index = clips.firstIndex(where: { $0.id == id }),
+              clips[index].isSimilarPhotoGroupParent
+        else { return }
+
+        clips[index].videoSegmentMode = clips[index].videoSegmentMode == .single
+            ? .multiple
+            : .single
+    }
+
+    func setSimilarPhotoGroupMode(id: UUID, mode: VideoSegmentMode) {
+        guard let index = clips.firstIndex(where: { $0.id == id }),
+              clips[index].isSimilarPhotoGroupParent
+        else { return }
+
+        clips[index].videoSegmentMode = mode
+        if mode == .single, let groupID = clips[index].similarPhotoGroupID {
+            for groupIndex in clips.indices where
+                clips[groupIndex].similarPhotoGroupID == groupID {
+                clips[groupIndex].isSimilarPhotoGroupRepresentative =
+                    clips[groupIndex].isSimilarPhotoGroupParent
+            }
+            rebalanceSimilarPhotoGroup(groupID)
+        }
+    }
+
+    func includeSimilarPhoto(id: UUID) {
+        setSimilarPhotoIncluded(id: id, isIncluded: true)
+    }
+
+    func setSimilarPhotoIncluded(id: UUID, isIncluded: Bool) {
+        guard let index = clips.firstIndex(where: { $0.id == id }),
+              let groupID = clips[index].similarPhotoGroupID
+        else { return }
+
+        if !isIncluded {
+            let includedCount = clips.filter {
+                $0.similarPhotoGroupID == groupID
+                    && $0.isSimilarPhotoGroupRepresentative
+            }.count
+            guard includedCount > 1 else { return }
+        }
+
+        clips[index].isSimilarPhotoGroupRepresentative = isIncluded
+        rebalanceSimilarPhotoGroup(groupID)
     }
 
     func childSegmentCount(for parentID: UUID) -> Int {
@@ -196,6 +280,19 @@ final class EditorViewModel: ObservableObject {
     func childSegmentDuration(for parentID: UUID) -> Double {
         clips
             .filter { $0.videoSegmentParentID == parentID }
+            .reduce(0) { $0 + $1.duration }
+    }
+
+    func similarPhotoGroupDuration(for id: UUID) -> Double {
+        guard let groupID = clips.first(where: { $0.id == id })?
+            .similarPhotoGroupID
+        else { return 0 }
+
+        return clips
+            .filter {
+                $0.similarPhotoGroupID == groupID
+                    && $0.isSimilarPhotoGroupRepresentative
+            }
             .reduce(0) { $0 + $1.duration }
     }
 
@@ -313,10 +410,10 @@ final class EditorViewModel: ObservableObject {
     }
 
     @discardableResult
-    func openAutoCapture() -> Bool {
+    func openAiShot() -> Bool {
         if !isProjectOpen {
             beginNewProject()
-            applyMoviePreset(.autoCapture)
+            applyMoviePreset(.aiShot)
         }
 
         guard activeProjectID == nil, clips.isEmpty else { return true }
@@ -331,7 +428,7 @@ final class EditorViewModel: ObservableObject {
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
                 activeProjectID: nil,
-                kind: .autoCapture
+                kind: .aiShot
             )
             activeProjectID = savedID
             newlySavedProjectID = savedID
@@ -356,21 +453,20 @@ final class EditorViewModel: ObservableObject {
             defaultVideoSegmentMode = .single
             overlay.isEnabled = false
             musicTrackID = nil
-        case .autoCapture:
+        case .aiShot:
             defaultDuration = 4
             defaultVideoSegmentMode = .multiple
-            overlay = .greenGolfPreset(text: Self.golfCaptionText())
+            overlay = .greenGolfPreset(text: Self.movieDateCaptionText())
             musicTrackID = nil
         case .golf:
             defaultDuration = 4
             defaultVideoSegmentMode = .multiple
-            overlay = .greenGolfPreset(text: Self.golfCaptionText())
+            overlay = .greenGolfPreset(text: Self.movieDateCaptionText())
             musicTrackID = "golf-lets-go"
         case .travel:
             defaultDuration = 1.5
             defaultVideoSegmentMode = .multiple
-            overlay.isEnabled = true
-            overlay.text = "여행"
+            overlay = .travelPreset(text: Self.movieDateCaptionText())
             musicTrackID = "travel-joy"
         }
 
@@ -382,7 +478,7 @@ final class EditorViewModel: ObservableObject {
         } ?? .empty
     }
 
-    private static func golfCaptionText(for date: Date = Date()) -> String {
+    private static func movieDateCaptionText(for date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ko_KR")
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -494,6 +590,7 @@ final class EditorViewModel: ObservableObject {
             clips.append(adjusted)
             return adjusted.id
         }
+        applySimilarPhotoGrouping(to: newClipIDs)
         if defaultVideoSegmentMode == .multiple {
             newClipIDs.forEach { id in
                 setVideoSegmentMode(id: id, mode: .multiple)
@@ -502,8 +599,168 @@ final class EditorViewModel: ObservableObject {
         refreshLivePhotoDurations()
     }
 
-    func addAutoCapturedVideo(url: URL, triggerTime: Double) {
+    private func applySimilarPhotoGrouping(to ids: [UUID]) {
+        let newIDSet = Set(ids)
+        let newIndices = clips.indices.filter { newIDSet.contains(clips[$0].id) }
+        guard newIndices.count > 1 else { return }
+
+        for index in newIndices {
+            clips[index].similarPhotoGroupID = nil
+            clips[index].similarPhotoGroupIndex = 0
+            clips[index].similarPhotoGroupCount = 1
+            clips[index].isSimilarPhotoGroupRepresentative = true
+        }
+
+        var currentGroup: [Int] = []
+        func commitCurrentGroup() {
+            guard currentGroup.count > 1 else { return }
+            let groupID = UUID()
+            let representativeIndex = currentGroup.max {
+                photoRepresentativeScore(for: clips[$0])
+                    < photoRepresentativeScore(for: clips[$1])
+            }
+            var orderedGroup = currentGroup
+            if let representativeIndex,
+               let representativeOffset = orderedGroup.firstIndex(
+                of: representativeIndex
+               ) {
+                orderedGroup.remove(at: representativeOffset)
+                orderedGroup.insert(representativeIndex, at: 0)
+            }
+
+            let groupRange = currentGroup[0]...currentGroup[currentGroup.count - 1]
+            let groupClips = orderedGroup.map { clips[$0] }
+            clips.replaceSubrange(groupRange, with: groupClips)
+
+            for offset in 0..<groupClips.count {
+                let clipIndex = groupRange.lowerBound + offset
+                clips[clipIndex].similarPhotoGroupID = groupID
+                clips[clipIndex].similarPhotoGroupIndex = offset
+                clips[clipIndex].similarPhotoGroupCount = groupClips.count
+                clips[clipIndex].isSimilarPhotoGroupRepresentative =
+                    offset == 0
+                clips[clipIndex].videoSegmentMode = .single
+            }
+        }
+
+        for index in newIndices {
+            guard canGroupAsSimilarPhoto(clips[index]) else {
+                commitCurrentGroup()
+                currentGroup = []
+                continue
+            }
+
+            guard let previousIndex = currentGroup.last,
+                  areSimilarPhotos(clips[previousIndex], clips[index])
+            else {
+                commitCurrentGroup()
+                currentGroup = [index]
+                continue
+            }
+
+            currentGroup.append(index)
+        }
+        commitCurrentGroup()
+    }
+
+    private func canGroupAsSimilarPhoto(_ clip: ClipItem) -> Bool {
+        switch clip.mediaKind {
+        case .photo:
+            return true
+        case .livePhoto:
+            return true
+        case .video:
+            return false
+        }
+    }
+
+    private func areSimilarPhotos(
+        _ lhs: ClipItem,
+        _ rhs: ClipItem
+    ) -> Bool {
+        guard areContinuousPhotoMoments(lhs, rhs) else { return false }
+
+        let aspectDifference = abs(lhs.sourceAspectRatio - rhs.sourceAspectRatio)
+        guard aspectDifference <= 0.10 else { return false }
+
+        let distance = PhotoSimilarityFingerprint.distance(
+            lhs.photoSimilarityFingerprint,
+            rhs.photoSimilarityFingerprint
+        )
+        return distance <= 54
+    }
+
+    private func areContinuousPhotoMoments(
+        _ lhs: ClipItem,
+        _ rhs: ClipItem
+    ) -> Bool {
+        guard let lhsDate = lhs.sourceCreatedAt,
+              let rhsDate = rhs.sourceCreatedAt
+        else { return false }
+
+        return abs(lhsDate.timeIntervalSince(rhsDate)) <= 120
+    }
+
+    private func photoRepresentativeScore(for clip: ClipItem) -> Double {
+        let fingerprint = clip.photoSimilarityFingerprint.map(Double.init)
+        guard !fingerprint.isEmpty else { return 0 }
+
+        let average = fingerprint.reduce(0, +) / Double(fingerprint.count)
+        let exposureScore = max(0, 1 - abs(average - 138) / 138)
+        let contrast = sqrt(
+            fingerprint.reduce(0) { partial, value in
+                partial + pow(value - average, 2)
+            } / Double(fingerprint.count)
+        ) / 80
+        let detail = zip(fingerprint, fingerprint.dropFirst()).reduce(0.0) {
+            $0 + abs($1.0 - $1.1)
+        } / Double(max(1, fingerprint.count - 1)) / 55
+
+        return exposureScore * 0.42
+            + min(1, contrast) * 0.34
+            + min(1, detail) * 0.24
+    }
+
+    private func rebalanceSimilarPhotoGroup(_ groupID: UUID) {
+        let groupIndices = clips.indices.filter {
+            clips[$0].similarPhotoGroupID == groupID
+        }
+
+        guard groupIndices.count > 1 else {
+            for index in groupIndices {
+                clips[index].similarPhotoGroupID = nil
+                clips[index].similarPhotoGroupIndex = 0
+                clips[index].similarPhotoGroupCount = 1
+                clips[index].isSimilarPhotoGroupRepresentative = true
+            }
+            return
+        }
+
+        let includedIndices = groupIndices.filter {
+            clips[$0].isSimilarPhotoGroupRepresentative
+        }
+        let fallbackIncludedIndex = groupIndices.max {
+            photoRepresentativeScore(for: clips[$0])
+                < photoRepresentativeScore(for: clips[$1])
+        }
+        if includedIndices.isEmpty, let fallbackIncludedIndex {
+            clips[fallbackIncludedIndex].isSimilarPhotoGroupRepresentative = true
+        }
+        for (offset, index) in groupIndices.enumerated() {
+            clips[index].similarPhotoGroupIndex = offset
+            clips[index].similarPhotoGroupCount = groupIndices.count
+            if offset > 0 {
+                clips[index].videoSegmentMode = .single
+            }
+        }
+    }
+
+    func addAiShotVideo(url: URL, triggerTime: Double) {
         Task {
+            defer {
+                try? FileManager.default.removeItem(at: url)
+            }
+
             do {
                 let thumbnail = try await videoThumbnail(
                     for: url,
@@ -512,16 +769,15 @@ final class EditorViewModel: ObservableObject {
                 let sourceDuration = try await PhotoLibraryService
                     .videoDuration(at: url)
                 let analysis = try? await AudioAnalysisService.analyze(url: url)
-                let captureSideDuration = 5.0
                 let selectedDuration = min(
-                    captureSideDuration * 2,
+                    defaultDuration,
                     max(0.5, sourceDuration)
                 )
                 let trimStart = max(
                     0,
                     min(
                         sourceDuration - selectedDuration,
-                        triggerTime - captureSideDuration
+                        triggerTime - selectedDuration / 2
                     )
                 )
                 let stableSource = try WorkingClipSourceStore.persist(
@@ -547,14 +803,27 @@ final class EditorViewModel: ObservableObject {
                 }
                 clips.append(clip)
                 isProjectOpen = true
-                saveProjectSnapshotAfterAutoCapture()
+                saveProjectSnapshotAfterAiShot()
             } catch {
-                alertMessage = "자동촬영 클립을 추가할 수 없습니다."
+                alertMessage = "AiShot 클립을 추가할 수 없습니다."
             }
         }
     }
 
-    private func saveProjectSnapshotAfterAutoCapture() {
+    func discardEmptyAiShotProject() {
+        guard clips.isEmpty, let projectID = activeProjectID else { return }
+        let project = ProjectStore.listProjects().first { $0.id == projectID }
+        guard project?.kind == .aiShot else { return }
+
+        do {
+            try ProjectStore.delete(id: projectID)
+            reset()
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private func saveProjectSnapshotAfterAiShot() {
         guard !clips.isEmpty, !isExporting else { return }
 
         do {
@@ -671,8 +940,19 @@ final class EditorViewModel: ObservableObject {
     }
 
     func removeClip(id: UUID) {
+        let removedClip = clips.first { $0.id == id }
+        let similarPhotoGroupID = removedClip?.similarPhotoGroupID
+        let removesWholeSimilarGroup = removedClip?
+            .similarPhotoGroupIndex == 0
         clips.removeAll { clip in
-            clip.id == id || clip.videoSegmentParentID == id
+            clip.id == id
+                || clip.videoSegmentParentID == id
+                || (removesWholeSimilarGroup
+                    && similarPhotoGroupID != nil
+                    && clip.similarPhotoGroupID == similarPhotoGroupID)
+        }
+        if let similarPhotoGroupID {
+            rebalanceSimilarPhotoGroup(similarPhotoGroupID)
         }
     }
 
@@ -762,7 +1042,8 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
-                activeProjectID: activeProjectID
+                activeProjectID: activeProjectID,
+                projectKindOverride: .standard
             )
             newlySavedProjectID = savedID
             openedProjectSignature = nil
@@ -789,7 +1070,8 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
-                activeProjectID: activeProjectID
+                activeProjectID: activeProjectID,
+                projectKindOverride: .standard
             )
             activeProjectID = savedID
             newlySavedProjectID = savedID
@@ -909,7 +1191,7 @@ final class EditorViewModel: ObservableObject {
     private func updatePreviewProgress(_ progress: Double) {
         previewProgress = 0.10 + progress * 0.85
         if progress >= 0.86 {
-            progressMessage = "Rendering in progress"
+            progressMessage = "필름을 전달 하는 중"
         }
         let compositionItems = renderableClips
         guard !compositionItems.isEmpty else { return }
@@ -1005,6 +1287,11 @@ final class EditorViewModel: ObservableObject {
         savedProjects = ProjectStore.listProjects()
     }
 
+    func removeExcessAiShotProjects() {
+        _ = try? ProjectStore.removeExcessAiShotProjects()
+        reloadProjects()
+    }
+
     private func currentProjectSignature() -> ProjectEditSignature {
         ProjectEditSignature(
             clips: clips.map(clipSignature),
@@ -1034,6 +1321,12 @@ final class EditorViewModel: ObservableObject {
             videoSegmentMode: clip.videoSegmentMode,
             isVideoSegmentParent: clip.isVideoSegmentParent,
             videoSegmentParentID: clip.videoSegmentParentID,
+            similarPhotoGroupID: clip.similarPhotoGroupID,
+            similarPhotoGroupIndex: clip.similarPhotoGroupIndex,
+            similarPhotoGroupCount: clip.similarPhotoGroupCount,
+            isSimilarPhotoGroupRepresentative: clip
+                .isSimilarPhotoGroupRepresentative,
+            sourceCreatedAt: clip.sourceCreatedAt,
             sourcePixelSize: clip.sourcePixelSize
         )
     }
@@ -1102,6 +1395,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     func handlePendingSharedItemsOnActivation() {
+        importSharedBrowserFavoritesIfNeeded()
         refreshPendingSharedItems()
         guard pendingSharedItemCount > 0 else { return }
         guard isProjectOpen, !isExporting else { return }
@@ -1133,21 +1427,130 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    private func importSharedBrowserFavoritesIfNeeded() {
+        let pending = SharedInbox.consumePendingRecords()
+        let favoriteRecords = pending.filter {
+            $0.kind == .browserFavorites
+        }
+        let remainingRecords = pending.filter {
+            $0.kind != .browserFavorites
+        }
+        SharedInbox.append(remainingRecords)
+        guard !favoriteRecords.isEmpty else { return }
+
+        var importedURLs: [String] = []
+        for record in favoriteRecords {
+            guard let url = try? SharedInbox.fileURL(
+                named: record.primaryFilename
+            ), let data = try? Data(contentsOf: url),
+               let archive = try? JSONDecoder().decode(
+                BrowserFavoritesArchive.self,
+                from: data
+               )
+            else { continue }
+            importedURLs.append(contentsOf: archive.favorites)
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        let storageKey = "hanClipOnlineMusicFavorites"
+        let existing = UserDefaults.standard.string(forKey: storageKey) ?? ""
+        var merged: [String] = []
+        var indexByAddress: [String: Int] = [:]
+
+        for value in existing.split(separator: "\n").map(String.init) {
+            let trimmed = value.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            guard let key = browserFavoriteAddressKey(trimmed) else {
+                continue
+            }
+            if let index = indexByAddress[key] {
+                merged[index] = trimmed
+            } else {
+                indexByAddress[key] = merged.count
+                merged.append(trimmed)
+            }
+        }
+
+        var addedCount = 0
+        var replacedAddresses = Set<String>()
+        for value in importedURLs {
+            let trimmed = value.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            guard let key = browserFavoriteAddressKey(trimmed) else {
+                continue
+            }
+            if let index = indexByAddress[key] {
+                merged[index] = trimmed
+                replacedAddresses.insert(key)
+            } else {
+                indexByAddress[key] = merged.count
+                merged.append(trimmed)
+                addedCount += 1
+            }
+        }
+        UserDefaults.standard.set(
+            merged.joined(separator: "\n"),
+            forKey: storageKey
+        )
+        let replacedCount = replacedAddresses.count
+        if addedCount > 0, replacedCount > 0 {
+            alertMessage = "브라우저 즐겨찾기 \(addedCount)개를 추가하고 "
+                + "\(replacedCount)개를 덮어썼습니다."
+        } else if addedCount > 0 {
+            alertMessage = "브라우저 즐겨찾기 \(addedCount)개를 추가했습니다."
+        } else if replacedCount > 0 {
+            alertMessage = "브라우저 즐겨찾기 \(replacedCount)개를 덮어썼습니다."
+        } else {
+            alertMessage = "가져올 브라우저 즐겨찾기가 없습니다."
+        }
+    }
+
+    private func browserFavoriteAddressKey(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme,
+              let host = components.host
+        else { return trimmed.lowercased() }
+
+        components.scheme = scheme.lowercased()
+        components.host = host.lowercased()
+        components.fragment = nil
+        if components.path.isEmpty {
+            components.path = "/"
+        } else {
+            while components.path.count > 1,
+                  components.path.hasSuffix("/") {
+                components.path.removeLast()
+            }
+        }
+        if (components.scheme == "https" && components.port == 443)
+            || (components.scheme == "http" && components.port == 80) {
+            components.port = nil
+        }
+        return components.string ?? trimmed.lowercased()
+    }
+
     func deletePendingSharedItems() {
         SharedInbox.clearPendingImports()
         pendingSharedItemCount = 0
         pendingSharedThumbnails = []
     }
 
-    func queueOnlineMusicDownloadAsSharedItem(_ url: URL) -> Bool {
+    func queueBrowserDownloadAsSharedItem(
+        _ url: URL,
+        isVideo: Bool = false
+    ) -> Bool {
         do {
             let filename = try Self.copyFileToSharedInbox(
                 url,
-                fallbackExtension: "mp3"
+                fallbackExtension: isVideo ? "mp4" : "mp3"
             )
             SharedInbox.append([
                 SharedImportRecord(
-                    kind: .image,
+                    kind: isVideo ? .video : .image,
                     primaryFilename: filename,
                     originalFilename: url.lastPathComponent.isEmpty
                         ? filename
@@ -1158,7 +1561,7 @@ final class EditorViewModel: ObservableObject {
             return true
         } catch {
             alertMessage =
-                "온라인 음악 파일을 공유 대기 목록에 넣지 못했습니다. "
+                "브라우저에서 받은 파일을 대기 목록에 넣지 못했습니다. "
                 + error.localizedDescription
             return false
         }
@@ -1254,6 +1657,7 @@ final class EditorViewModel: ObservableObject {
                 .sorted(by: sharedAudioRecordSortOrder)
             let mediaRecords = records.filter {
                 !Self.isSharedAudioRecord($0)
+                    && $0.kind != .browserFavorites
             }
             var unresolvedLivePhotoCount = 0
             for (index, record) in mediaRecords.enumerated() {
@@ -1332,6 +1736,7 @@ final class EditorViewModel: ObservableObject {
                                     livePhotoMode: .motion,
                                     mediaKind: .livePhoto,
                                     sourceDuration: duration,
+                                    sourceCreatedAt: asset.creationDate,
                                     sourcePixelSize: CGSize(
                                         width: asset.pixelWidth,
                                         height: asset.pixelHeight
@@ -1350,6 +1755,8 @@ final class EditorViewModel: ObservableObject {
                                 )
                             )
                         }
+                    case .browserFavorites:
+                        continue
                     }
                 } catch {
                     continue
@@ -1946,6 +2353,7 @@ final class EditorViewModel: ObservableObject {
                 livePhotoMode: isLive ? .motion : .still,
                 mediaKind: isLive ? .livePhoto : .photo,
                 sourceDuration: isLive ? duration : nil,
+                sourceCreatedAt: asset.creationDate,
                 sourcePixelSize: CGSize(
                     width: asset.pixelWidth,
                     height: asset.pixelHeight
@@ -2010,6 +2418,8 @@ final class EditorViewModel: ObservableObject {
                         actualTime: nil
                     ) else { return nil }
                     return UIImage(cgImage: image)
+                case .browserFavorites:
+                    return UIImage(systemName: "bookmark.square.fill")
                 }
             }
         }
