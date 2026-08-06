@@ -833,7 +833,7 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
 private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPalette) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "완성본 시작",
+            text = "새 완성본 만들기",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = palette.text
