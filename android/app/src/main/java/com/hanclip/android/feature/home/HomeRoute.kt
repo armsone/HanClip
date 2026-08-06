@@ -536,7 +536,7 @@ private fun HomeHeader(
             ) {
                 HanClipBrandCapsule()
                 Text(
-                    text = "사진과 영상을 한 번에 골라 짧은 영화로",
+                    text = "내 사진과 영상을 한 번에 골라 골프 영화로",
                     style = MaterialTheme.typography.bodyLarge,
                     color = palette.subText
                 )
@@ -768,10 +768,10 @@ private fun ImportantInfoRow(
 }
 
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
-    "첫 화면" to "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다.",
+    "첫 화면" to "앱 실행 후 내 사진과 영상을 한 번에 골라 HanClip 영화를 시작하는 홈 화면입니다.",
     "고마운 분들" to "HanClip 제작과 테스트를 도와준 사용자와 골프 영상을 더 쉽게 만들고 싶은 사람들을 위한 감사 안내입니다.",
     "기능 안내" to "첫 화면의 설정 버튼에서 HanClip 기능 안내와 화면 꺼짐 방지 상태를 확인합니다.",
-    "영화 프리셋" to "새 영화, AiShot, 여행 영화, 골프 영화 중 원하는 흐름으로 영화 제작을 시작합니다.",
+    "영화 프리셋" to "새 영화, AiShot, 여행 영화, 골프 영화 중 원하는 흐름으로 사진과 영상을 골라 시작합니다.",
     "AiShot" to "필요한 순간을 자동으로 찾아 클립에 담는 카메라입니다. 감도, 샷 길이, 줌, 전면/후면 카메라 선택을 기억합니다.",
     "Ai 버전" to "현재 Ai 버전은 0.2.1입니다. 798 영상 보정 Ai 기준으로 소리의 피크와 이어지는 반응을 함께 참고합니다.",
     "클립 리스트" to "선택한 사진과 영상이 순서대로 표시됩니다. 썸네일, 시간, 단일/다중, +/- 조절 버튼으로 빠르게 편집합니다.",
