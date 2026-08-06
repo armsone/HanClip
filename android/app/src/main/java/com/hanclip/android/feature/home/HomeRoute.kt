@@ -211,7 +211,7 @@ fun HomeRoute(
                         contentColor = Color.White
                     )
                 ) {
-                    Text("제거")
+                    Text("목록에서 제거")
                 }
             },
             shape = RoundedCornerShape(8.dp),
@@ -219,7 +219,12 @@ fun HomeRoute(
             titleContentColor = HomeText,
             textContentColor = HomeSubText,
             title = { Text("목록에서 제거") },
-            text = { Text("HanClip 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 완성본 MP4는 삭제하지 않습니다.") }
+            text = {
+                Text(
+                    "${homeProjectDateText(summary.updatedAtMillis)} · ${savedMovieDetailText(summary)}\n\n" +
+                        "HanClip 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 완성본 MP4는 삭제하지 않습니다."
+                )
+            }
         )
     }
     memoCandidate?.let { summary ->
