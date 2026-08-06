@@ -349,7 +349,13 @@ class EditorViewModel : ViewModel() {
     }
 
     fun updateWatermark(settings: WatermarkSettings) {
-        _uiState.update { it.copy(watermarkSettings = settings) }
+        _uiState.update {
+            it.copy(
+                watermarkSettings = settings,
+                alertMessage = watermarkApplyMessage(settings),
+                undoDeleteMessage = null
+            )
+        }
     }
 
     fun setBackgroundMusic(context: Context, uri: Uri?) {
@@ -1170,6 +1176,40 @@ class EditorViewModel : ViewModel() {
             )
             MoviePreset.NewMovie -> WatermarkSettings(isEnabled = false)
         }
+    }
+
+    private fun watermarkApplyMessage(settings: WatermarkSettings): String {
+        if (!settings.shouldRender) {
+            return "자막과 HanClip 로고를 껐습니다."
+        }
+        val parts = buildList {
+            if (settings.shouldRenderText) {
+                add("자막 ${watermarkPositionTitle(settings.position)}")
+                add(settings.fontSize.title)
+            }
+            if (settings.logoEnabled) {
+                add("HanClip 로고 ${watermarkPositionTitle(settings.copyrightPosition)}")
+            }
+        }
+        return parts.joinToString(" · ", postfix = " 적용했습니다.")
+    }
+
+    private fun watermarkPositionTitle(position: WatermarkPosition): String {
+        val vertical = when (position.gridRow) {
+            0 -> "상단"
+            1 -> "상단 중간"
+            2 -> "중앙"
+            3 -> "하단 중간"
+            else -> "하단"
+        }
+        val horizontal = when (position.gridColumn) {
+            0 -> "왼쪽"
+            1 -> "왼쪽 중간"
+            2 -> "가운데"
+            3 -> "오른쪽 중간"
+            else -> "오른쪽"
+        }
+        return "$vertical $horizontal"
     }
 
     private fun expandImportedClipForPreset(
