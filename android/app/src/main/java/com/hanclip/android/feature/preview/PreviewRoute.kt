@@ -193,7 +193,7 @@ fun PreviewRoute(
     ) {
         item {
             Text(
-                text = "시사회",
+                text = "완성 시사회",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = palette.text

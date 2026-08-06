@@ -989,7 +989,7 @@ private fun ExportConfirmationDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "아래 설정으로 HanClip 영화를 만듭니다.",
+                    "아래 설정으로 HanClip 영화를 만듭니다. 완성 후 시사회에서 저장하거나 공유할 수 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
                 )
