@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -159,6 +161,8 @@ fun TextOverlaySheet(
             )
 
             CaptionPreview(draft)
+
+            CaptionStateSummary(draft, palette)
 
             SettingGroup(title = "스타일") {
                 CaptionStylePreset.entries.forEach { preset ->
@@ -478,13 +482,18 @@ fun TextOverlaySheet(
                     onApply(draft)
                     onDismiss()
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = palette.primary,
                     contentColor = Color.White
                 )
             ) {
-                Text("적용")
+                Text(
+                    applyButtonText(draft),
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
@@ -495,11 +504,58 @@ private fun CaptionPreview(settings: WatermarkSettings) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(94.dp),
+            .height(178.dp),
         shape = RoundedCornerShape(8.dp),
-        color = Color(0xFF163A2B)
+        color = Color(0xFF163A2B),
+        border = BorderStroke(1.dp, SheetBorder)
     ) {
-        Box(Modifier.padding(12.dp)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFFBFD8CE),
+                            Color(0xFF4C8D65),
+                            Color(0xFF18392A)
+                        )
+                    )
+                )
+                .padding(14.dp)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .height(26.dp),
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.24f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+            ) {
+                Text(
+                    text = "미리보기",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .width(84.dp)
+                    .height(10.dp),
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(alpha = 0.22f)
+            ) {}
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .width(118.dp)
+                    .height(10.dp),
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(alpha = 0.14f)
+            ) {}
+            if (settings.isEnabled) {
                 Text(
                     text = settings.text.ifBlank { "자막 미리보기" },
                     modifier = Modifier.align(previewAlignment(settings.position)),
@@ -511,6 +567,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                         shadow = previewTextShadow(settings)
                     )
                 )
+            }
             if (settings.logoEnabled) {
                 Text(
                     text = "HanClip",
@@ -530,6 +587,63 @@ private fun CaptionPreview(settings: WatermarkSettings) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CaptionStateSummary(
+    settings: WatermarkSettings,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFFF7FAF8),
+        border = BorderStroke(1.dp, SheetBorder)
+    ) {
+        FlowRow(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CaptionStateChip(
+                text = if (settings.isEnabled) "자막 켬" else "자막 꺼짐",
+                active = settings.isEnabled,
+                palette = palette
+            )
+            CaptionStateChip(
+                text = if (settings.logoEnabled) "로고 켬" else "로고 꺼짐",
+                active = settings.logoEnabled,
+                palette = palette
+            )
+            CaptionStateChip(
+                text = fontDisplayName(settings.fontName),
+                active = settings.isEnabled,
+                palette = palette
+            )
+        }
+    }
+}
+
+@Composable
+private fun CaptionStateChip(
+    text: String,
+    active: Boolean,
+    palette: HanClipPalette
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.primary.copy(alpha = 0.12f) else Color.White,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.38f) else SheetBorder)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+            color = if (active) palette.primary else SheetSubText,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
 private fun previewTextShadow(settings: WatermarkSettings): Shadow? {
     if (!settings.shadowEnabled || settings.shadowOpacity <= 0.0) return null
     return Shadow(
@@ -539,6 +653,15 @@ private fun previewTextShadow(settings: WatermarkSettings): Shadow? {
         offset = Offset(1.6f, 1.8f),
         blurRadius = 4f
     )
+}
+
+private fun applyButtonText(settings: WatermarkSettings): String {
+    return when {
+        settings.isEnabled && settings.logoEnabled -> "자막과 HanClip 로고 적용"
+        settings.isEnabled -> "자막 적용"
+        settings.logoEnabled -> "HanClip 로고 적용"
+        else -> "자막/로고 끄기 적용"
+    }
 }
 
 @Composable
