@@ -1772,7 +1772,7 @@ private fun ProjectControls(
                 FilterChip(
                     selected = selectedQuality == quality,
                     onClick = { onSelectQuality(quality) },
-                    label = { Text(quality.displayTitle) },
+                    label = { Text("${quality.displayTitle} ${quality.detail}") },
                     leadingIcon = {
                         Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     },
@@ -1824,7 +1824,7 @@ private fun ProjectControls(
                 FilterChip(
                     selected = selectedRatio == ratio,
                     onClick = { onSelectRatio(ratio) },
-                    label = { Text(ratio.title) },
+                    label = { Text(outputRatioChipText(ratio)) },
                     colors = clearFilterChipColors(palette),
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
@@ -1836,6 +1836,10 @@ private fun ProjectControls(
             }
         }
     }
+}
+
+private fun outputRatioChipText(ratio: OutputAspectRatio): String {
+    return "${ratio.title} ${ratio.width}x${ratio.height}"
 }
 
 private fun percentText(value: Double): String {
