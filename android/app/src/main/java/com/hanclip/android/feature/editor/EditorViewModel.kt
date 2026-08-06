@@ -504,18 +504,21 @@ class EditorViewModel : ViewModel() {
 
     fun updatePhotoDuration(id: String, durationSeconds: Double) {
         _uiState.update { state ->
+            val safeDuration = durationSeconds.coerceIn(0.5, 30.0)
             state.copy(
                 clips = state.clips.map { clip ->
                     if (clip.id == id && clip.mediaKind != ClipMediaKind.Video) {
                         clip.copy(
-                            durationSeconds = durationSeconds.coerceIn(0.5, 30.0),
-                            photoDurationSeconds = durationSeconds.coerceIn(0.5, 30.0),
+                            durationSeconds = safeDuration,
+                            photoDurationSeconds = safeDuration,
                             trimStartSeconds = 0.0
                         )
                     } else {
                         clip
                     }
-                }
+                },
+                alertMessage = "사진 시간을 %.1f초로 적용했습니다.".format(safeDuration),
+                undoDeleteMessage = null
             )
         }
     }

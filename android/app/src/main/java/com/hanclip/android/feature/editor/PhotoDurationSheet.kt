@@ -113,7 +113,7 @@ fun PhotoDurationSheet(
                     FilterChip(
                         selected = kotlin.math.abs(duration - seconds) < 0.05f,
                         onClick = { duration = seconds },
-                        label = { Text("%.1f".format(seconds), fontWeight = FontWeight.SemiBold) },
+                        label = { Text("%.1f초".format(seconds), fontWeight = FontWeight.SemiBold) },
                         colors = FilterChipDefaults.filterChipColors(
                             containerColor = Color.White,
                             labelColor = palette.text,
