@@ -842,7 +842,7 @@ class EditorViewModel : ViewModel() {
             } else {
                 state.copy(
                     clips = moveClipGroup(state.clips, index, -1),
-                    alertMessage = "클립 순서를 앞으로 이동했습니다."
+                    alertMessage = "클립을 한 칸 앞으로 이동했습니다."
                 )
             }
         }
@@ -856,7 +856,7 @@ class EditorViewModel : ViewModel() {
             } else {
                 state.copy(
                     clips = moveClipGroup(state.clips, index, 1),
-                    alertMessage = "클립 순서를 뒤로 이동했습니다."
+                    alertMessage = "클립을 한 칸 뒤로 이동했습니다."
                 )
             }
         }
