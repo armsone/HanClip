@@ -870,7 +870,7 @@ private fun SummaryPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SummaryReadinessPill(
-                    text = if (clipCount > 0) "완성본 만들기 준비됨" else "사진/영상을 선택하세요",
+                    text = if (clipCount > 0) "번호순 연결 준비됨" else "사진/영상을 선택하세요",
                     active = clipCount > 0,
                     palette = palette,
                     modifier = Modifier.weight(1.35f)
@@ -2932,6 +2932,7 @@ private fun BottomMakeSummaryChips(
     ) {
         BottomMakeSummaryPill(mediaCountSummary(photoCount, videoCount, clipCount), palette, active = true)
         BottomMakeSummaryPill(formatSummaryDuration(totalSeconds), palette, active = true)
+        BottomMakeSummaryPill("번호순 연결", palette, active = true)
         if (videoCount > 0) {
             BottomMakeSummaryPill("영상 자동 컷 준비", palette, active = true)
         }
