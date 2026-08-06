@@ -155,9 +155,9 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다. 이제 공유 버튼은 저장된 영상을 사용합니다."
+                message = "저장 완료 · $pendingMovieFileName 파일을 Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다. 이제 공유 버튼은 저장된 영상을 사용합니다."
             }.onFailure {
-                message = "Android 기본 사진첩에 저장하지 못했습니다. 파일로 저장을 선택해 다시 시도해 주세요."
+                message = "Android 기본 사진첩에 저장하지 못했습니다. 파일로 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
             isSavingVideo = false
         }
@@ -168,7 +168,7 @@ fun PreviewRoute(
         if (granted) {
             performGallerySave()
         } else {
-            message = "Android 기본 사진첩 저장 권한이 필요합니다."
+            message = "Android 기본 사진첩에 저장하려면 저장 권한이 필요합니다. 권한을 허용하거나 파일로 저장을 선택해 주세요."
         }
     }
     val createVideoDocumentLauncher = rememberLauncherForActivityResult(
@@ -659,7 +659,7 @@ private fun SaveOptionsSheet(
                     }
                 }
                 SaveDestinationCard(
-                    title = "기본 갤러리에 저장",
+                    title = "기본 사진첩에 저장",
                     badge = "추천",
                     body = "Android 기본 사진첩의 Movies/HanClip 폴더에서 바로 볼 수 있습니다.",
                     icon = Icons.Outlined.Download,
