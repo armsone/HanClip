@@ -907,7 +907,7 @@ class EditorViewModel : ViewModel() {
             } else {
                 state.copy(
                     clips = moveClipGroup(state.clips, index, -1),
-                    alertMessage = "클립을 한 칸 앞으로 이동했습니다."
+                    alertMessage = "MP4 완성본 번호순에서 클립을 한 칸 앞으로 이동했습니다. 현재 작업도 자동 저장됩니다."
                 )
             }
         }
@@ -921,7 +921,7 @@ class EditorViewModel : ViewModel() {
             } else {
                 state.copy(
                     clips = moveClipGroup(state.clips, index, 1),
-                    alertMessage = "클립을 한 칸 뒤로 이동했습니다."
+                    alertMessage = "MP4 완성본 번호순에서 클립을 한 칸 뒤로 이동했습니다. 현재 작업도 자동 저장됩니다."
                 )
             }
         }
