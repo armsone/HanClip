@@ -2753,11 +2753,11 @@ struct EditorView: View {
     private var appBuildText: String {
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.9.2"
-        let buildTimestamp = Bundle.main.object(
-            forInfoDictionaryKey: "HanClipBuildTimestamp"
-        ) as? String ?? "2026.08.06 15:57"
-        return "HanClip \(version)  \(buildTimestamp)"
+        ) as? String ?? "1.0.1"
+        let buildNumber = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "3.0.1"
+        return "HanClip \(version)  Build \(buildNumber)"
     }
 
     private var aiModelText: String {
