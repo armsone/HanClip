@@ -2397,10 +2397,8 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
         if (clip.mediaKind == ClipMediaKind.Video && !clip.isVideoSegmentParent) {
             add("시작 ${formatClipSeconds(clip.trimStartSeconds)}")
         }
-        if (clip.audioPeakTimesSeconds.isNotEmpty()) {
-            add("타격점 ${clip.audioPeakTimesSeconds.size}")
-        } else if (clip.audioPeakTimeSeconds != null) {
-            add("타격점 1")
+        impactChipText(clip)?.let {
+            add(it)
         }
         if (clip.isVideoSegmentParent && childSegmentCount > 0) {
             add("자동 ${childSegmentCount}컷")
@@ -2408,6 +2406,17 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
         if (clip.similarPhotoGroupCount > 1) {
             add("묶음 ${clip.similarPhotoGroupCount}")
         }
+    }
+}
+
+private fun impactChipText(clip: ClipItem): String? {
+    val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
+        ?: return null
+    val count = clip.audioPeakTimesSeconds.size.takeIf { it > 0 } ?: 1
+    return if (count > 1) {
+        "타격 ${formatClipSeconds(primary)} · 후보 ${count}"
+    } else {
+        "타격 ${formatClipSeconds(primary)}"
     }
 }
 
