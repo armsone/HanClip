@@ -84,6 +84,7 @@ fun CalendarMediaPickerSheet(
     val context = LocalContext.current
     val pickerMode = remember(title) {
         when (title) {
+            "기본 사진첩",
             "사진첩 전체" -> MediaPickerSheetMode.Recent
             "영상만" -> MediaPickerSheetMode.Videos
             else -> MediaPickerSheetMode.Calendar

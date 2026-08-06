@@ -159,7 +159,7 @@ fun EditorRoute(
             result.data.persistPickedUriPermissions(context)
             viewModel.addPickedMedia(context, result.data.extractPickedUris())
         } else {
-            viewModel.showAlert("미디어 선택을 취소했습니다. 사진첩 버튼으로 다시 선택할 수 있습니다.")
+            viewModel.showAlert("미디어 선택을 취소했습니다. 기본 사진첩이나 파일 선택으로 다시 가져올 수 있습니다.")
         }
     }
     val musicPicker = rememberLauncherForActivityResult(
@@ -180,9 +180,9 @@ fun EditorRoute(
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
             grants[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
         ) {
-            viewModel.showAlert("선택한 사진/영상만 허용되어 날짜별 전체 사진첩은 열 수 없습니다. Android 설정에서 사진과 영상 전체 접근을 허용하거나, 파일 버튼으로 선택한 항목을 직접 가져와 주세요.")
+            viewModel.showAlert("선택한 사진/영상만 허용되어 날짜별 전체 사진첩은 열 수 없습니다. Android 설정에서 사진과 영상 전체 접근을 허용하거나, 파일 선택으로 항목을 직접 가져와 주세요.")
         } else {
-            viewModel.showAlert("Android 기본 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. Android 설정에서 HanClip 권한을 허용하거나, 파일 버튼으로 직접 선택해 주세요.")
+            viewModel.showAlert("Android 기본 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. Android 설정에서 HanClip 권한을 허용하거나, 파일 선택으로 직접 가져와 주세요.")
         }
     }
 
@@ -207,7 +207,7 @@ fun EditorRoute(
         when (initialImportAction) {
             EditorImportAction.Photo -> {
                 onInitialImportActionConsumed()
-                openCalendarPicker("사진첩 전체")
+                openCalendarPicker("기본 사진첩")
             }
             EditorImportAction.Calendar -> {
                 onInitialImportActionConsumed()
@@ -299,7 +299,7 @@ fun EditorRoute(
             item {
                 ImportActionRow(
                     palette = palette,
-                    onPickMedia = { openCalendarPicker("사진첩 전체") },
+                    onPickMedia = { openCalendarPicker("기본 사진첩") },
                     onPickFiles = {
                         galleryPicker.launch(mediaFileIntent())
                     },
@@ -368,7 +368,7 @@ fun EditorRoute(
                     EmptyClipPanel(
                         preset = state.preset,
                         palette = palette,
-                        onPickMedia = { openCalendarPicker("사진첩 전체") },
+                        onPickMedia = { openCalendarPicker("기본 사진첩") },
                         onPickFiles = {
                             galleryPicker.launch(mediaFileIntent())
                         },
