@@ -363,7 +363,14 @@ class EditorViewModel : ViewModel() {
 
     fun selectAspectRatio(context: Context, ratio: OutputAspectRatio?) {
         EditorPreferenceStore.saveOutputAspectRatio(context.applicationContext, ratio)
-        _uiState.update { it.copy(outputAspectRatio = ratio) }
+        val ratioText = ratio?.let { "${it.title} ${it.width}x${it.height}" } ?: "원본 비율 자동"
+        _uiState.update {
+            it.copy(
+                outputAspectRatio = ratio,
+                alertMessage = "MP4 완성본 화면을 $ratioText 설정으로 바꿨습니다. 현재 작업도 자동 저장됩니다.",
+                undoDeleteMessage = null
+            )
+        }
     }
 
     fun selectOutputQualityPreset(context: Context, preset: OutputQualityPreset) {
@@ -371,7 +378,7 @@ class EditorViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 outputQualityPreset = preset,
-                alertMessage = "내보내기 품질을 ${preset.displayTitle}로 설정했습니다.",
+                alertMessage = "MP4 완성본 품질을 ${preset.displayTitle}로 설정했습니다. 현재 작업도 자동 저장됩니다.",
                 undoDeleteMessage = null
             )
         }
