@@ -190,6 +190,17 @@ fun TextOverlaySheet(
 
             CaptionStateSummary(draft, palette)
 
+            Button(
+                onClick = { draft = hanClipDefaultWatermark(draft) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE9F4EE),
+                    contentColor = SheetText
+                )
+            ) {
+                Text("HanClip 기본 스타일로 맞추기", fontWeight = FontWeight.Bold)
+            }
+
             SettingGroup(title = "스타일") {
                 CaptionStylePreset.entries.forEach { preset ->
                     FilterChip(
@@ -719,6 +730,29 @@ private fun applyButtonText(settings: WatermarkSettings): String {
         settings.logoEnabled -> "HanClip 로고 적용"
         else -> "자막/로고 끄기 적용"
     }
+}
+
+private fun hanClipDefaultWatermark(settings: WatermarkSettings): WatermarkSettings {
+    return settings.copy(
+        isEnabled = true,
+        logoEnabled = true,
+        text = settings.text.ifBlank { CaptionTextPreset.Swing.text() },
+        position = WatermarkPosition.TopLeading,
+        copyrightPosition = WatermarkPosition.BottomTrailing,
+        fontName = "pretendard_bold",
+        fontSize = WatermarkFontSize.Large,
+        textColorHex = "#FFFFFF",
+        shadowEnabled = true,
+        shadowOpacity = 0.45,
+        shadowColorHex = "#000000",
+        lineSpacing = WatermarkLineSpacing.Normal,
+        lineSpacingScale = WatermarkLineSpacing.DefaultScale,
+        logoColorHex = "#007644",
+        logoShadowColorHex = "#29AB87",
+        logoShadowOpacity = 0.5,
+        copyrightIconColorMode = CopyrightIconColorMode.Original,
+        copyrightIconColorHex = "#007644"
+    )
 }
 
 private fun watermarkPositionShortTitle(position: WatermarkPosition): String {
