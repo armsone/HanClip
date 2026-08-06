@@ -9603,17 +9603,19 @@ private struct BackgroundMusicSettingsSheet: View {
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity)
                 .frame(height: 42)
+                .contentShape(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .background(
+                    isPrimary
+                        ? HanClipTheme.primary
+                        : HanClipTheme.primary.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .foregroundStyle(isPrimary ? .white : HanClipTheme.primary)
-        .background(
-            isPrimary
-                ? HanClipTheme.primary
-                : HanClipTheme.primary.opacity(0.10),
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-        )
     }
 
     private func openPixabayMusic() {
