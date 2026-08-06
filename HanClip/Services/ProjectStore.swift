@@ -150,6 +150,7 @@ enum ProjectStore {
                         videoSegmentMode: clip.videoSegmentMode.rawValue,
                         isVideoSegmentParent: clip.isVideoSegmentParent,
                         videoSegmentParentID: clip.videoSegmentParentID,
+                        isVideoSegmentSelected: clip.isVideoSegmentSelected,
                         photoSimilarityFingerprint: clip
                             .photoSimilarityFingerprint,
                         similarPhotoGroupID: clip.similarPhotoGroupID,
@@ -330,6 +331,8 @@ enum ProjectStore {
                     .map(VideoSegmentMode.init(storedValue:)) ?? .single,
                 isVideoSegmentParent: storedClip.isVideoSegmentParent ?? false,
                 videoSegmentParentID: storedClip.videoSegmentParentID,
+                isVideoSegmentSelected: storedClip.isVideoSegmentSelected
+                    ?? true,
                 photoSimilarityFingerprint: storedClip
                     .photoSimilarityFingerprint,
                 similarPhotoGroupID: storedClip.similarPhotoGroupID,
@@ -743,24 +746,28 @@ private struct StoredProject: Codable {
             clipCount: clips
                 .filter {
                     $0.isVideoSegmentParent != true
+                        && $0.isVideoSegmentSelected != false
                         && $0.isSimilarPhotoGroupRepresentative != false
                 }
                 .count,
             totalDuration: clips
                 .filter {
                     $0.isVideoSegmentParent != true
+                        && $0.isVideoSegmentSelected != false
                         && $0.isSimilarPhotoGroupRepresentative != false
                 }
                 .reduce(0) { $0 + $1.duration },
             thumbnailFilename: clips
                 .first {
                     $0.isVideoSegmentParent != true
+                        && $0.isVideoSegmentSelected != false
                         && $0.isSimilarPhotoGroupRepresentative != false
                 }?
                 .thumbnailFilename,
             thumbnailFilenames: clips
                 .filter {
                     $0.isVideoSegmentParent != true
+                        && $0.isVideoSegmentSelected != false
                         && $0.isSimilarPhotoGroupRepresentative != false
                 }
                 .dropFirst()
@@ -791,6 +798,7 @@ private struct StoredClip: Codable {
     let videoSegmentMode: String?
     let isVideoSegmentParent: Bool?
     let videoSegmentParentID: UUID?
+    let isVideoSegmentSelected: Bool?
     let photoSimilarityFingerprint: [UInt8]?
     let similarPhotoGroupID: UUID?
     let similarPhotoGroupIndex: Int?

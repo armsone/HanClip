@@ -62,6 +62,7 @@ struct EditorView: View {
         let trimStart: Double
         let videoSegmentMode: VideoSegmentMode
         let isVideoSegmentParent: Bool
+        let isVideoSegmentSelected: Bool
     }
 
     @StateObject private var model = EditorViewModel()
@@ -3694,6 +3695,25 @@ struct EditorView: View {
             return
         }
 
+        if videoSegmentPreviewParentID != nil {
+            guard editableClips.count > 1 else { return }
+            let nextIndex = editableClips.index(after: index)
+            let nextClipID: UUID
+            if nextIndex < editableClips.endIndex {
+                nextClipID = editableClips[nextIndex].id
+            } else {
+                nextClipID = editableClips[
+                    editableClips.index(before: index)
+                ].id
+            }
+
+            withAnimation(.snappy) {
+                selectedClipID = nextClipID
+                model.setVideoSegmentIncluded(id: id, isIncluded: false)
+            }
+            return
+        }
+
         let nextIndex = editableClips.index(after: index)
         let nextClipID: UUID?
         if nextIndex < editableClips.endIndex {
@@ -3769,7 +3789,14 @@ struct EditorView: View {
                             accessibilityLabel: "클립 삭제",
                             cornerRadius: 0
                         ) {
-                            model.removeClip(id: clip.id)
+                            if clip.isVideoSegmentChild {
+                                model.setVideoSegmentIncluded(
+                                    id: clip.id,
+                                    isIncluded: false
+                                )
+                            } else {
+                                model.removeClip(id: clip.id)
+                            }
                         } content: {
                             VStack(spacing: 0) {
                                 ClipRow(
@@ -3777,7 +3804,9 @@ struct EditorView: View {
                                     clip: $clip,
                                     defaultDuration: model.defaultDuration,
                                     childSegmentCount: clip.isSimilarPhotoGroupParent
-                                        ? clip.similarPhotoGroupCount
+                                        ? model.similarPhotoGroupPreviewItems(
+                                            for: clip.id
+                                        ).filter(\.isIncluded).count
                                         : model.childSegmentCount(for: clip.id),
                                     childSegmentDuration: clip.isSimilarPhotoGroupParent
                                         ? model.similarPhotoGroupDuration(
@@ -3834,6 +3863,14 @@ struct EditorView: View {
                                             )
                                         }
                                     },
+                                    onSetVideoSegmentIncluded: { isIncluded in
+                                        withAnimation(.snappy) {
+                                            model.setVideoSegmentIncluded(
+                                                id: clip.id,
+                                                isIncluded: isIncluded
+                                            )
+                                        }
+                                    },
                                     onSetSimilarPhotoIncluded: { isIncluded in
                                         withAnimation(.snappy) {
                                             model.setSimilarPhotoIncluded(
@@ -3847,6 +3884,10 @@ struct EditorView: View {
                                         ? model.similarPhotoGroupPreviewItems(
                                             for: clip.id
                                         )
+                                        : clip.isVideoSegmentParent
+                                            ? model.videoSegmentPreviewItems(
+                                                for: clip.id
+                                            )
                                         : [],
                                     displayAsSimilarPhotoChild: false,
                                     onSelect: {
@@ -3892,67 +3933,82 @@ struct EditorView: View {
 
                                 if clip.isSimilarPhotoGroupParent
                                     && model.isSimilarPhotoGroupExpanded(for: clip) {
-                                    ClipRow(
-                                        position: nil,
-                                        clip: $clip,
-                                        defaultDuration: model.defaultDuration,
-                                        childSegmentCount: 0,
-                                        childSegmentDuration: 0,
-                                        canShowVideoSegmentSwitch: false,
-                                        isSimilarPhotoGroupExpanded: false,
-                                        onSelectVideoSegmentMode: { _ in },
-                                        onSelectSimilarPhotoGroupMode: { _ in },
-                                        onResetVideoSegments: {},
-                                        onSelectParentClipPreview: {
-                                            selectedClipID = clip.id
-                                        },
-                                        onToggleSimilarPhotoGroup: {},
-                                        onSetSimilarPhotoIncluded: { isIncluded in
-                                            withAnimation(.snappy) {
-                                                model.setSimilarPhotoIncluded(
-                                                    id: clip.id,
-                                                    isIncluded: isIncluded
-                                                )
-                                            }
-                                        },
-                                        similarPhotoGroupPreviewItems: [],
-                                        displayAsSimilarPhotoChild: true,
-                                        onSelect: {
-                                            isAutoAdvancingPreview = false
-                                            isLoopingPreviewAutoAdvance = false
-                                            videoSegmentPreviewParentID = nil
-                                            selectedClipID = clip.id
-                                        }
-                                    )
-                                    .padding(clipRowInsets(for: clip.id))
-                                    .background(
-                                        HanClipTheme.secondary.opacity(
-                                            themeMode == .dark ? 0.030 : 0.044
-                                        )
-                                    )
-                                    .background(alignment: .leading) {
-                                        Rectangle()
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [
-                                                        HanClipTheme.primary
-                                                            .opacity(0.026),
-                                                        HanClipTheme.secondary
-                                                            .opacity(0.010),
-                                                        Color.clear
-                                                    ],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
+                                    ForEach(
+                                        model.similarPhotoGroupClipIDs(
+                                            for: clip.id
+                                        ),
+                                        id: \.self
+                                    ) { childID in
+                                        if let childIndex = model.clips
+                                            .firstIndex(where: { $0.id == childID }) {
+                                            ClipRow(
+                                                position: clipPosition(for: childID),
+                                                clip: $model.clips[childIndex],
+                                                defaultDuration: model.defaultDuration,
+                                                childSegmentCount: 0,
+                                                childSegmentDuration: 0,
+                                                canShowVideoSegmentSwitch: false,
+                                                isSimilarPhotoGroupExpanded: false,
+                                                onSelectVideoSegmentMode: { _ in },
+                                                onSelectSimilarPhotoGroupMode: { _ in },
+                                                onResetVideoSegments: {},
+                                                onSelectParentClipPreview: {
+                                                    selectedClipID = childID
+                                                },
+                                                onToggleSimilarPhotoGroup: {},
+                                                onSetVideoSegmentIncluded: { _ in },
+                                                onSetSimilarPhotoIncluded: {
+                                                    isIncluded in
+                                                    withAnimation(.snappy) {
+                                                        model.setSimilarPhotoIncluded(
+                                                            id: childID,
+                                                            isIncluded: isIncluded
+                                                        )
+                                                    }
+                                                },
+                                                similarPhotoGroupPreviewItems: [],
+                                                displayAsSimilarPhotoChild: true,
+                                                onSelect: {
+                                                    isAutoAdvancingPreview = false
+                                                    isLoopingPreviewAutoAdvance = false
+                                                    videoSegmentPreviewParentID = nil
+                                                    selectedClipID = childID
+                                                }
+                                            )
+                                            .padding(clipRowInsets(for: childID))
+                                            .background(
+                                                HanClipTheme.secondary.opacity(
+                                                    themeMode == .dark ? 0.030 : 0.044
                                                 )
                                             )
-                                            .frame(width: 118)
-                                    }
-                                    .overlay(alignment: .bottom) {
-                                        Rectangle()
-                                            .fill(HanClipTheme.secondary.opacity(0.12))
-                                            .frame(height: 0.8)
-                                            .padding(.leading, 70)
-                                            .padding(.trailing, 14)
+                                            .background(alignment: .leading) {
+                                                Rectangle()
+                                                    .fill(
+                                                        LinearGradient(
+                                                            colors: [
+                                                                HanClipTheme.primary
+                                                                    .opacity(0.026),
+                                                                HanClipTheme.secondary
+                                                                    .opacity(0.010),
+                                                                Color.clear
+                                                            ],
+                                                            startPoint: .leading,
+                                                            endPoint: .trailing
+                                                        )
+                                                    )
+                                                    .frame(width: 118)
+                                            }
+                                            .overlay(alignment: .bottom) {
+                                                Rectangle()
+                                                    .fill(
+                                                        HanClipTheme.secondary
+                                                            .opacity(0.12)
+                                                    )
+                                                    .frame(height: 0.8)
+                                                    .padding(.leading, 70)
+                                                    .padding(.trailing, 14)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -4515,7 +4571,8 @@ struct EditorView: View {
             sourceDuration: clip.sourceDuration,
             trimStart: clip.trimStart,
             videoSegmentMode: clip.videoSegmentMode,
-            isVideoSegmentParent: clip.isVideoSegmentParent
+            isVideoSegmentParent: clip.isVideoSegmentParent,
+            isVideoSegmentSelected: clip.isVideoSegmentSelected
         )
     }
 
@@ -4554,6 +4611,8 @@ struct EditorView: View {
             model.clips[index].trimStart = stored.trimStart
             model.clips[index].videoSegmentMode = stored.videoSegmentMode
             model.clips[index].isVideoSegmentParent = stored.isVideoSegmentParent
+            model.clips[index].isVideoSegmentSelected =
+                stored.isVideoSegmentSelected
         }
     }
 
@@ -4812,7 +4871,7 @@ struct EditorView: View {
         for clip: ClipItem,
         size: CGSize
     ) -> some View {
-        if clip.isSimilarPhotoGroupParent {
+        if clip.isSimilarPhotoGroupParent || clip.isVideoSegmentParent {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(
@@ -4826,7 +4885,9 @@ struct EditorView: View {
                         )
                     )
 
-                let items = model.similarPhotoGroupPreviewItems(for: clip.id)
+                let items = clip.isSimilarPhotoGroupParent
+                    ? model.similarPhotoGroupPreviewItems(for: clip.id)
+                    : model.videoSegmentPreviewItems(for: clip.id)
                 let visibleItems = Array(items.prefix(3).enumerated())
                 ForEach(visibleItems, id: \.element.id) { offset, item in
                     let centerOffset = CGFloat(visibleItems.count - 1) / 2
@@ -4860,7 +4921,11 @@ struct EditorView: View {
                         .zIndex(Double(offset))
                 }
 
-                Image(systemName: "photo.on.rectangle.angled")
+                Image(
+                    systemName: clip.isSimilarPhotoGroupParent
+                        ? "photo.on.rectangle.angled"
+                        : "film.stack"
+                )
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(HanClipTheme.primary.opacity(0.58))
             }
@@ -4885,7 +4950,11 @@ struct EditorView: View {
 
     private func reorderMediaGroupCount(for clip: ClipItem) -> Int? {
         if clip.isSimilarPhotoGroupParent {
-            return clip.similarPhotoGroupCount
+            return max(
+                1,
+                model.similarPhotoGroupPreviewItems(for: clip.id)
+                    .filter(\.isIncluded).count
+            )
         }
         if clip.isVideoSegmentParent {
             return model.childSegmentCount(for: clip.id)
@@ -6135,16 +6204,16 @@ private struct ImportantInfoSheet: View {
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
         ("영화 설정", "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다."),
-        ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시됩니다."),
-        ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 자동은 Ai가 대표 1장을 사용하고, 수동은 묶음을 펼쳐 사용할 사진을 고릅니다."),
+        ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시되며, 아래에 들어 있는 자사진에서 실제 사용할 컷을 확인합니다."),
+        ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 자동은 Ai가 대표 1장을 사용하고, 수동은 묶음을 펼쳐 사용할 사진을 고릅니다."),
         ("자동 / 수동", "묶음사진에서 사용할 사진을 Ai가 고르게 할지, 사용자가 직접 고르게 할지 정하는 선택입니다."),
         ("사용 / 제외", "수동으로 펼친 자사진 행에서 해당 사진 또는 라이브포토를 영상에 넣을지 뺄지 정하는 상태 버튼입니다."),
         ("정지 / 동작", "라이브포토를 일반 사진처럼 정지 컷으로 쓸지, 짧은 동작으로 쓸지 정하는 선택입니다."),
-        ("순서변경 상태", "큰 단위의 순서를 바꾸는 화면입니다. 묶음사진은 안의 자사진을 흩어 놓지 않고 하나의 묶음 타일로 이동합니다."),
+        ("순서변경 상태", "큰 단위의 순서를 바꾸는 화면입니다. 묶음사진은 안의 자사진을 흩어 놓지 않고 하나의 묶음 타일로 이동하며, 숫자는 선택된 자사진 수를 뜻합니다."),
         ("세그먼트 컨트롤", "자동 / 수동, 정지 / 동작, 한컷 / 분할처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다."),
         ("한컷 / 분할", "영상 클립을 하나의 구간으로 쓸지, Ai가 찾은 피크 기준으로 여러 자클립으로 나눌지 정하는 선택입니다."),
         ("모클립", "다중 분할을 만들 때 원본 역할로 남는 부모 클립입니다."),
-        ("자클립", "모클립에서 Ai가 찾은 피크 기준으로 만들어진 하위 클립입니다."),
+        ("자클립", "모클립에서 Ai가 찾은 피크 기준으로 만들어진 하위 클립입니다. 삭제는 원본 삭제가 아니라 비선택으로 처리되며, 비선택된 자클립은 클립목록에서 다시 확인하고 선택할 수 있습니다."),
         ("자사진", "묶음사진 안에 들어 있는 실제 사진 또는 라이브포토입니다. 수동 모드에서 사용 또는 제외 상태를 고릅니다."),
         ("편집 영역 / 편집 모드", "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다."),
         ("웨이브 / 웨이브 인디케이터", "영상/Live Photo 편집에서 소리 파형을 보여주는 영역입니다."),

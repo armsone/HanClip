@@ -19,6 +19,7 @@ struct ClipRow: View {
     let onResetVideoSegments: () -> Void
     let onSelectParentClipPreview: () -> Void
     let onToggleSimilarPhotoGroup: () -> Void
+    let onSetVideoSegmentIncluded: (Bool) -> Void
     let onSetSimilarPhotoIncluded: (Bool) -> Void
     let similarPhotoGroupPreviewItems: [SimilarPhotoGroupPreviewItem]
     let displayAsSimilarPhotoChild: Bool
@@ -232,7 +233,27 @@ struct ClipRow: View {
                                 }
                                 .frame(width: 66, alignment: .trailing)
                             } else if clip.isVideoClip {
-                                VideoDurationStepper(clip: $clip)
+                                HStack(spacing: 8) {
+                                    if clip.isVideoSegmentChild {
+                                        SimilarPhotoExposureSegmentedControl(
+                                            isIncluded: Binding(
+                                                get: {
+                                                    clip.isVideoSegmentSelected
+                                                },
+                                                set: { isIncluded in
+                                                    onSetVideoSegmentIncluded(
+                                                        isIncluded
+                                                    )
+                                                }
+                                            ),
+                                            tint: HanClipTheme.secondary,
+                                            width: 92,
+                                            height: 26
+                                        )
+                                    }
+
+                                    VideoDurationStepper(clip: $clip)
+                                }
                             } else {
                                 HStack(spacing: 8) {
                                     if displaysAsSimilarPhotoChild {
@@ -274,8 +295,8 @@ struct ClipRow: View {
     private var thumbnailButton: some View {
         Button(action: onSelect) {
             Group {
-                if displaysAsSimilarPhotoParent {
-                    similarPhotoBundleThumbnail
+                if isParentSummaryRow {
+                    summaryBundleThumbnail
                 } else {
                     standardThumbnail
                 }
@@ -346,7 +367,7 @@ struct ClipRow: View {
             }
     }
 
-    private var similarPhotoBundleThumbnail: some View {
+    private var summaryBundleThumbnail: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(
@@ -367,7 +388,7 @@ struct ClipRow: View {
                         )
                 }
 
-            similarPhotoBundleContents
+            summaryBundleContents
 
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .trim(from: 0.50, to: 1)
@@ -379,7 +400,11 @@ struct ClipRow: View {
                 .rotationEffect(.degrees(180))
                 .offset(y: 2)
 
-            Image(systemName: "photo.on.rectangle.angled")
+            Image(
+                systemName: displaysAsSimilarPhotoParent
+                    ? "photo.on.rectangle.angled"
+                    : "film.stack"
+            )
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(HanClipTheme.primary.opacity(0.38))
                 .padding(5)
@@ -392,7 +417,7 @@ struct ClipRow: View {
         }
     }
 
-    private var similarPhotoBundleContents: some View {
+    private var summaryBundleContents: some View {
         let items = similarPhotoGroupPreviewItems.isEmpty
             ? [
                 SimilarPhotoGroupPreviewItem(
@@ -619,13 +644,25 @@ struct ClipRow: View {
     }
 
     private var positionText: String {
-        if isParentSummaryRow {
-            return "\(position ?? 0)"
+        if displaysAsSimilarPhotoParent || clip.isVideoSegmentParent {
+            return "•"
         }
         if displaysAsSimilarPhotoChild {
-            return ""
+            guard clip.isSimilarPhotoGroupRepresentative,
+                  let position
+            else { return "" }
+            return "\(position)"
         }
-        return "\(position ?? 0)"
+        if clip.isVideoSegmentChild {
+            guard clip.isVideoSegmentSelected,
+                  let position
+            else { return "" }
+            return "\(position)"
+        }
+        if let position {
+            return "\(position)"
+        }
+        return ""
     }
 
     private var positionAccessibilityLabel: String {
@@ -633,12 +670,22 @@ struct ClipRow: View {
             return "묶음사진"
         }
         if displaysAsSimilarPhotoChild {
-            return "자사진"
+            if clip.isSimilarPhotoGroupRepresentative, let position {
+                return "\(position)번째 자사진"
+            }
+            return "선택하지 않은 자사진"
         }
-        if clip.isVideoSegmentParent {
-            return "모클립"
+        if clip.isVideoSegmentChild {
+            if clip.isVideoSegmentSelected, let position {
+                return "\(position)번째 자클립"
+            }
+            return "선택하지 않은 자클립"
         }
-        return "\(position ?? 0)번째 클립"
+        if clip.isVideoSegmentParent { return "모클립" }
+        if let position {
+            return "\(position)번째 클립"
+        }
+        return "클립"
     }
 
     private var positionCell: some View {
@@ -790,7 +837,7 @@ struct ClipRow: View {
 
     private var summaryChildCount: Int {
         displaysAsSimilarPhotoParent
-            ? clip.similarPhotoGroupCount
+            ? selectedSimilarPhotoCount
             : childSegmentCount
     }
 

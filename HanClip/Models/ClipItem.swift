@@ -358,6 +358,7 @@ struct ClipItem: Identifiable {
     var videoSegmentMode: VideoSegmentMode
     var isVideoSegmentParent: Bool
     var videoSegmentParentID: UUID?
+    var isVideoSegmentSelected: Bool
     var photoSimilarityFingerprint: [UInt8]
     var similarPhotoGroupID: UUID?
     var similarPhotoGroupIndex: Int
@@ -388,6 +389,7 @@ struct ClipItem: Identifiable {
         videoSegmentMode: VideoSegmentMode = .single,
         isVideoSegmentParent: Bool = false,
         videoSegmentParentID: UUID? = nil,
+        isVideoSegmentSelected: Bool = true,
         photoSimilarityFingerprint: [UInt8]? = nil,
         similarPhotoGroupID: UUID? = nil,
         similarPhotoGroupIndex: Int = 0,
@@ -417,6 +419,7 @@ struct ClipItem: Identifiable {
         self.videoSegmentMode = videoSegmentMode
         self.isVideoSegmentParent = isVideoSegmentParent
         self.videoSegmentParentID = videoSegmentParentID
+        self.isVideoSegmentSelected = isVideoSegmentSelected
         self.photoSimilarityFingerprint = photoSimilarityFingerprint
             ?? PhotoSimilarityFingerprint.make(from: thumbnail)
         self.similarPhotoGroupID = similarPhotoGroupID
@@ -437,6 +440,10 @@ struct ClipItem: Identifiable {
 
     var isVideoSegmentChild: Bool {
         videoSegmentParentID != nil
+    }
+
+    var isHiddenVideoSegmentChild: Bool {
+        isVideoSegmentChild && !isVideoSegmentSelected
     }
 
     var isSimilarPhotoGroupMember: Bool {
@@ -460,7 +467,9 @@ struct ClipItem: Identifiable {
     }
 
     var isRenderableClip: Bool {
-        !isVideoSegmentParent && !isHiddenSimilarPhotoGroupMember
+        !isVideoSegmentParent
+            && !isHiddenVideoSegmentChild
+            && !isHiddenSimilarPhotoGroupMember
     }
 
     func replacingSource(_ source: ClipSource) -> ClipItem {
@@ -482,6 +491,7 @@ struct ClipItem: Identifiable {
             videoSegmentMode: videoSegmentMode,
             isVideoSegmentParent: isVideoSegmentParent,
             videoSegmentParentID: videoSegmentParentID,
+            isVideoSegmentSelected: isVideoSegmentSelected,
             photoSimilarityFingerprint: photoSimilarityFingerprint,
             similarPhotoGroupID: similarPhotoGroupID,
             similarPhotoGroupIndex: similarPhotoGroupIndex,

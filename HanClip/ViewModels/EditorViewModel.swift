@@ -41,6 +41,7 @@ enum MoviePreset {
     let videoSegmentMode: VideoSegmentMode
     let isVideoSegmentParent: Bool
     let videoSegmentParentID: UUID?
+    let isVideoSegmentSelected: Bool
     let similarPhotoGroupID: UUID?
     let similarPhotoGroupIndex: Int
     let similarPhotoGroupCount: Int
@@ -195,8 +196,7 @@ final class EditorViewModel: ObservableObject {
     var renderableClips: [ClipItem] {
         clips.filter { clip in
             guard clip.isRenderableClip else { return false }
-            guard clip.isVideoSegmentChild else { return true }
-            return isActiveVideoSegmentChild(clip)
+            return true
         }
     }
 
@@ -210,7 +210,14 @@ final class EditorViewModel: ObservableObject {
             else { return false }
             return parent.videoSegmentMode == .multiple
         }
-        return !clip.isVideoSegmentChild || isActiveVideoSegmentChild(clip)
+        if clip.isVideoSegmentChild {
+            guard let parentID = clip.videoSegmentParentID,
+                  let parent = clips.first(where: { $0.id == parentID })
+            else { return false }
+            return parent.isVideoSegmentParent
+                && parent.videoSegmentMode == .multiple
+        }
+        return true
     }
 
     func isSimilarPhotoGroupExpanded(for clip: ClipItem) -> Bool {
@@ -274,13 +281,48 @@ final class EditorViewModel: ObservableObject {
     }
 
     func childSegmentCount(for parentID: UUID) -> Int {
-        clips.filter { $0.videoSegmentParentID == parentID }.count
+        clips.filter {
+            $0.videoSegmentParentID == parentID
+                && $0.isVideoSegmentSelected
+        }.count
     }
 
     func childSegmentDuration(for parentID: UUID) -> Double {
         clips
-            .filter { $0.videoSegmentParentID == parentID }
+            .filter {
+                $0.videoSegmentParentID == parentID
+                    && $0.isVideoSegmentSelected
+            }
             .reduce(0) { $0 + $1.duration }
+    }
+
+    func videoSegmentPreviewItems(for parentID: UUID)
+        -> [SimilarPhotoGroupPreviewItem] {
+        clips
+            .filter { $0.videoSegmentParentID == parentID }
+            .map {
+                SimilarPhotoGroupPreviewItem(
+                    id: $0.id,
+                    thumbnail: $0.thumbnail,
+                    isIncluded: $0.isVideoSegmentSelected
+                )
+            }
+    }
+
+    func setVideoSegmentIncluded(id: UUID, isIncluded: Bool) {
+        guard let index = clips.firstIndex(where: { $0.id == id }),
+              let parentID = clips[index].videoSegmentParentID
+        else { return }
+
+        if !isIncluded {
+            let includedCount = clips.filter {
+                $0.videoSegmentParentID == parentID
+                    && $0.isVideoSegmentSelected
+            }.count
+            guard includedCount > 1 else { return }
+        }
+
+        clips[index].isVideoSegmentSelected = isIncluded
     }
 
     func similarPhotoGroupDuration(for id: UUID) -> Double {
@@ -315,6 +357,19 @@ final class EditorViewModel: ObservableObject {
                     isIncluded: $0.isSimilarPhotoGroupRepresentative
                 )
             }
+    }
+
+    func similarPhotoGroupClipIDs(for id: UUID) -> [UUID] {
+        guard let groupID = clips.first(where: { $0.id == id })?
+            .similarPhotoGroupID
+        else { return [] }
+
+        return clips
+            .filter { $0.similarPhotoGroupID == groupID }
+            .sorted {
+                $0.similarPhotoGroupIndex < $1.similarPhotoGroupIndex
+            }
+            .map(\.id)
     }
 
     func canUseMultipleVideoSegments(for id: UUID) -> Bool {
@@ -1334,6 +1389,7 @@ final class EditorViewModel: ObservableObject {
             videoSegmentMode: clip.videoSegmentMode,
             isVideoSegmentParent: clip.isVideoSegmentParent,
             videoSegmentParentID: clip.videoSegmentParentID,
+            isVideoSegmentSelected: clip.isVideoSegmentSelected,
             similarPhotoGroupID: clip.similarPhotoGroupID,
             similarPhotoGroupIndex: clip.similarPhotoGroupIndex,
             similarPhotoGroupCount: clip.similarPhotoGroupCount,
@@ -2137,6 +2193,7 @@ final class EditorViewModel: ObservableObject {
 
         return parent.isVideoSegmentParent
             && parent.videoSegmentMode == .multiple
+            && clip.isVideoSegmentSelected
     }
 
     private func splitVideoClip(
@@ -2176,6 +2233,7 @@ final class EditorViewModel: ObservableObject {
                 audioPeakTimes: peaks,
                 videoSegmentMode: .single,
                 videoSegmentParentID: sourceClip.id,
+                isVideoSegmentSelected: true,
                 sourcePixelSize: sourceClip.sourcePixelSize
             )
         }
