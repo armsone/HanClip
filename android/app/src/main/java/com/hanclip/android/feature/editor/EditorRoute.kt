@@ -1593,14 +1593,35 @@ private fun ImportStatusPanel(message: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFEAF5F0)
+        color = Color(0xFFEAF5F0),
+        border = BorderStroke(1.dp, Color(0xFFD4E8DD))
     ) {
-        Text(
-            text = message.ifBlank { "미디어를 불러오는 중..." },
+        Row(
             modifier = Modifier.padding(14.dp),
-            color = Color(0xFF1D4F38),
-            fontWeight = FontWeight.SemiBold
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.5.dp,
+                color = Color(0xFF1D7F55),
+                trackColor = Color(0xFFCDE5D8)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = message.ifBlank { "미디어를 불러오는 중..." },
+                    color = Color(0xFF1D4F38),
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "기본 사진첩과 파일에서 선택한 항목을 HanClip 클립으로 준비합니다.",
+                    color = Color(0xFF4F7B64),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 
