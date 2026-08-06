@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import com.hanclip.android.core.project.hanClipCompletionTitle
 import java.io.File
 import java.io.InputStream
 import java.text.SimpleDateFormat
@@ -95,6 +96,7 @@ object VideoSaveShare {
     fun newMovieFileName(label: String? = null): String {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.KOREAN).format(Date())
         val safeLabel = label
+            ?.let(::hanClipCompletionTitle)
             ?.trim()
             ?.replace(Regex("[^\\p{L}\\p{N}_-]+"), "-")
             ?.trim('-')
