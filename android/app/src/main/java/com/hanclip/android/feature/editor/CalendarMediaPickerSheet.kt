@@ -220,7 +220,10 @@ fun CalendarMediaPickerSheet(
                         disabledContentColor = palette.subText
                     )
                 ) {
-                    Text("가져오기 ${selectedUris.size}개", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "가져오기 ${selectedUris.size}개",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -503,7 +506,7 @@ private fun CalendarMediaStrip(
                         )
                     ) {
                         Text(
-                            if (selectedUris.size == items.size) "해제" else "전체 선택",
+                            if (selectedUris.size == items.size) "전체 해제" else "전체 ${items.size}개 선택",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
