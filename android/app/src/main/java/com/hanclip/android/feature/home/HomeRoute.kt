@@ -990,7 +990,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "앱 목록 · 기본 사진첩 저장본은 Movies/HanClip",
+                    text = "기본 사진첩에 저장한 HanClip MP4를 다시 확인합니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1573,7 +1573,7 @@ private fun SavedProjectRow(
                     )
                 } else if (isRecentlySaved) {
                     Text(
-                        "탭해서 시사회에서 확인",
+                        "방금 만든 완성본 · 탭해서 시사회 열기",
                         style = MaterialTheme.typography.bodySmall,
                         color = HomePrimary,
                         fontWeight = FontWeight.SemiBold,
@@ -1809,7 +1809,7 @@ private fun savedMovieDetailText(summary: ExportedMovieSummary): String {
         add(movieDurationText(summary.totalDurationSeconds))
         summary.outputAspectRatio?.let { add(it.title) }
         summary.outputQualityPreset?.let { add(it.chipTitle) }
-        add(OutputQualityPreset.ExportFormatTitle)
+        add("사진첩 MP4")
         if (summary.hasBackgroundMusic == true) add("음악")
         overlayDetailParts(summary).forEach(::add)
     }
