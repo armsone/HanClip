@@ -232,7 +232,9 @@ class EditorViewModel : ViewModel() {
                     outputQualityPreset = state.outputQualityPreset,
                     hasBackgroundMusic = state.backgroundMusicUri != null ||
                         state.backgroundMusicSampleId != null,
-                    hasWatermark = state.watermarkSettings.shouldRender
+                    hasWatermark = state.watermarkSettings.shouldRender,
+                    hasTextOverlay = state.watermarkSettings.shouldRenderText,
+                    hasLogoOverlay = state.watermarkSettings.logoEnabled
                 )
                 _uiState.update {
                     it.copy(

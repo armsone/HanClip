@@ -61,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -132,6 +133,7 @@ fun PreviewRoute(
     var showSaveOptions by remember { mutableStateOf(false) }
     var showFullscreenPreview by remember { mutableStateOf(false) }
     var isSavingVideo by remember { mutableStateOf(false) }
+    var pendingMovieFileName by remember { mutableStateOf(VideoSaveShare.newMovieFileName(movieSummary.presetTitle)) }
     val scope = rememberCoroutineScope()
     fun performGallerySave() {
         if (exportedVideoUri == null) {
@@ -145,7 +147,8 @@ fun PreviewRoute(
                     VideoSaveShare.saveToGallery(
                         context = context,
                         sourceUri = exportedVideoUri,
-                        label = movieSummary.presetTitle
+                        label = movieSummary.presetTitle,
+                        filename = pendingMovieFileName
                     )
                 }
             }.onSuccess { savedUri ->
@@ -264,6 +267,7 @@ fun PreviewRoute(
                     if (exportedVideoUri == null) {
                         message = "저장할 영상이 없습니다."
                     } else {
+                        pendingMovieFileName = VideoSaveShare.newMovieFileName(movieSummary.presetTitle)
                         showSaveOptions = true
                     }
                 }
@@ -305,6 +309,7 @@ fun PreviewRoute(
     if (showSaveOptions) {
         SaveOptionsSheet(
             palette = palette,
+            fileName = pendingMovieFileName,
             onDismiss = { showSaveOptions = false },
             onSaveToGallery = {
                 showSaveOptions = false
@@ -321,9 +326,7 @@ fun PreviewRoute(
             },
             onSaveToFile = {
                 showSaveOptions = false
-                createVideoDocumentLauncher.launch(
-                    VideoSaveShare.newMovieFileName(movieSummary.presetTitle)
-                )
+                createVideoDocumentLauncher.launch(pendingMovieFileName)
             }
         )
     }
@@ -605,6 +608,7 @@ private fun PreviewActionRow(
 @Composable
 private fun SaveOptionsSheet(
     palette: HanClipPalette,
+    fileName: String,
     onDismiss: () -> Unit,
     onSaveToGallery: () -> Unit,
     onSaveToFile: () -> Unit
@@ -666,6 +670,7 @@ private fun SaveOptionsSheet(
                     primary = false,
                     onClick = onSaveToFile
                 )
+                SaveFileNameNote(fileName = fileName, palette = palette)
                 SaveFormatNote(palette)
                 OutlinedButton(
                     onClick = onDismiss,
@@ -680,6 +685,38 @@ private fun SaveOptionsSheet(
                     Text("취소")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SaveFileNameNote(
+    fileName: String,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = "저장 파일명",
+                color = palette.subText,
+                style = MaterialTheme.typography.labelMedium
+            )
+            Text(
+                text = fileName,
+                color = palette.text,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

@@ -16,9 +16,13 @@ import java.util.Date
 import java.util.Locale
 
 object VideoSaveShare {
-    fun saveToGallery(context: Context, sourceUri: Uri, label: String? = null): Uri {
+    fun saveToGallery(
+        context: Context,
+        sourceUri: Uri,
+        label: String? = null,
+        filename: String = newMovieFileName(label)
+    ): Uri {
         val resolver = context.contentResolver
-        val filename = newMovieFileName(label)
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, filename)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
