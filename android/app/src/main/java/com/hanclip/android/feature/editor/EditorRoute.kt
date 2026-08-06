@@ -1470,7 +1470,7 @@ private fun AutoSegmentStatusPanel(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "원본 ${sourceCount}개에서 ${segmentCount}개 클립을 만들었습니다.",
+                    text = "원본 ${sourceCount}개에서 ${segmentCount}개 클립 · 평균 ${autoSegmentAverageDurationText(segmentCount, defaultDuration)}",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -1478,12 +1478,20 @@ private fun AutoSegmentStatusPanel(
                 )
             }
             Text(
-                text = "%.1f초".format(defaultDuration),
+                text = "기준 %.1f초".format(defaultDuration),
                 color = palette.primary,
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.labelLarge
             )
         }
+    }
+}
+
+private fun autoSegmentAverageDurationText(segmentCount: Int, defaultDuration: Double): String {
+    return if (segmentCount <= 0) {
+        "0.0초"
+    } else {
+        "%.1f초".format(defaultDuration)
     }
 }
 

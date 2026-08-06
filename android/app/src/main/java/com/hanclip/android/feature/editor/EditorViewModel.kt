@@ -663,7 +663,12 @@ class EditorViewModel : ViewModel() {
                 .toMutableList()
             mutable.removeAt(index)
             mutable.addAll(index, split)
-            state.copy(clips = mutable, alertMessage = null)
+            val segmentCount = split.count { it.isVideoSegmentChild }
+            state.copy(
+                clips = mutable,
+                alertMessage = "자동 타격점 후보 ${segmentCount}개를 기준으로 클립을 만들었습니다.",
+                undoDeleteMessage = null
+            )
         }
     }
 
@@ -706,7 +711,12 @@ class EditorViewModel : ViewModel() {
             }
             mutable.removeAt(parentIndex)
             mutable.addAll(parentIndex, split)
-            state.copy(clips = mutable, alertMessage = "자동 컷을 %.1f초 기준으로 다시 만들었습니다.".format(selectedDuration))
+            val segmentCount = split.count { it.isVideoSegmentChild }
+            state.copy(
+                clips = mutable,
+                alertMessage = "자동 컷 ${segmentCount}개를 %.1f초 기준으로 다시 만들었습니다.".format(selectedDuration),
+                undoDeleteMessage = null
+            )
         }
     }
 
