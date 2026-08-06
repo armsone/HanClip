@@ -203,7 +203,7 @@ class EditorViewModel : ViewModel() {
                     clips.firstOrNull()?.sourceHeight ?: 1920
                 )
             val exportLabel =
-                "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${state.outputQualityPreset.chipTitle} · ${OutputQualityPreset.ExportFormatDetail}"
+                "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${state.outputQualityPreset.chipTitle} · ${OutputQualityPreset.GallerySaveDetail}"
             _uiState.update {
                 it.copy(
                     isExporting = true,
@@ -231,7 +231,7 @@ class EditorViewModel : ViewModel() {
                     quality: OutputQualityPreset
                 ): Uri = exportService.export(request) { progress ->
                     val attemptLabel =
-                        "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${quality.chipTitle} · ${OutputQualityPreset.ExportFormatDetail}"
+                        "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${quality.chipTitle} · ${OutputQualityPreset.GallerySaveDetail}"
                     _uiState.update {
                         it.copy(
                             progressMessage = "완성본을 만드는 중... ${(progress * 100).toInt()}% · 완료 후 시사회로 이동 · $attemptLabel"

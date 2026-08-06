@@ -1844,7 +1844,7 @@ private fun WorkProgressOverlay(
                     text = if (onCancel == null) {
                         "잠시만 기다려 주세요."
                     } else {
-                        "완성 전까지 앱을 닫지 말고 화면을 유지해 주세요."
+                        "완성 후 시사회에서 확인하고 HanClip 앨범에 저장합니다. 앱을 닫지 말고 화면을 유지해 주세요."
                     },
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
