@@ -1658,9 +1658,11 @@ private fun WorkProgressOverlay(
 private fun progressTitle(message: String, isExporting: Boolean): String {
     val cleanMessage = message.trim()
     val percent = Regex("""\d+%""").find(cleanMessage)?.value
+    val importStep = Regex("""\d+/\d+""").find(cleanMessage)?.value
     return when {
         isExporting && percent != null -> "영화 만드는 중 $percent"
         isExporting -> "영화를 만드는 중"
+        importStep != null -> "미디어 불러오는 중 $importStep"
         cleanMessage.contains("불러오는 중") -> "미디어를 불러오는 중"
         cleanMessage.isNotBlank() -> cleanMessage.substringBefore(" · ").substringBefore("...")
         else -> "작업 중"
