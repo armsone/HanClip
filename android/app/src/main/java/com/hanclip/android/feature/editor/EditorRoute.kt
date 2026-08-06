@@ -2755,7 +2755,7 @@ private fun BottomMakeBar(
             )
             Button(
                 onClick = onMakeMovie,
-                enabled = !isExporting,
+                enabled = !isExporting && clipCount > 0,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -2768,7 +2768,13 @@ private fun BottomMakeBar(
             ) {
                 Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (isExporting) "만드는 중..." else "완성본 만들기")
+                Text(
+                    when {
+                        isExporting -> "만드는 중..."
+                        clipCount == 0 -> "사진/영상 선택 필요"
+                        else -> "완성본 만들기"
+                    }
+                )
             }
         }
     }
@@ -2784,12 +2790,15 @@ private fun bottomMakeSummary(
     hasLogoOverlay: Boolean,
     hasMusic: Boolean
 ): String {
+    if (clipCount == 0) {
+        return "완성본 구성 · 사진/영상을 선택하면 길이, 품질, 자막, 음악을 확인할 수 있습니다"
+    }
     val mediaSummary = mediaCountSummary(photoCount, videoCount, clipCount)
     val overlaySummary = listOfNotNull(
         overlayStatusText(hasTextOverlay, hasLogoOverlay).takeIf { it != "자막/로고 꺼짐" },
         "음악".takeIf { hasMusic }
     ).joinToString(" · ").ifBlank { "자막/로고 꺼짐" }
-    return "$mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle} · $overlaySummary"
+    return "완성본 구성 · $mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle} · $overlaySummary"
 }
 
 private fun overlayStatusText(hasTextOverlay: Boolean, hasLogoOverlay: Boolean): String {
