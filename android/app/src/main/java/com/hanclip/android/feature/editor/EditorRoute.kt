@@ -2308,9 +2308,13 @@ private fun ClipPreviewPlayer(
 
 private fun clipPreviewSubtitle(clip: ClipItem, childSegmentCount: Int): String {
     return if (clip.isVideoSegmentParent) {
-        "전체 ${formatClipSeconds(clip.sourceDurationSeconds ?: clip.durationSeconds)} · 자동 클립 ${childSegmentCount}개"
+        "원본 ${formatClipSeconds(clip.sourceDurationSeconds ?: clip.durationSeconds)} · 자동 컷 ${childSegmentCount}개"
+    } else if (clip.mediaKind == ClipMediaKind.Video) {
+        "구간 ${formatClipSeconds(clip.trimStartSeconds)} - ${formatClipSeconds(clip.trimEndSeconds)} · 클립 ${formatClipSeconds(clip.durationSeconds)}"
+    } else if (clip.mediaKind == ClipMediaKind.LivePhoto) {
+        "Live Photo ${formatClipSeconds(clip.durationSeconds)} · 영화에 이 길이로 들어갑니다"
     } else {
-        "${formatClipSeconds(clip.trimStartSeconds)} - ${formatClipSeconds(clip.trimEndSeconds)} · ${formatClipSeconds(clip.durationSeconds)}"
+        "사진 ${formatClipSeconds(clip.durationSeconds)} · 영화에 이 길이로 들어갑니다"
     }
 }
 
