@@ -615,7 +615,7 @@ private fun PreviewActionRow(
                 if (canReturnToEditor) Icons.Outlined.Edit else Icons.Outlined.Home,
                 contentDescription = null
             )
-            Text(if (canReturnToEditor) "다시 편집" else "목록으로")
+            Text(if (canReturnToEditor) "편집으로" else "완성본 목록")
         }
         OutlinedButton(
             onClick = onShare,
