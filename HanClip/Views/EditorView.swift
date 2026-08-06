@@ -3327,12 +3327,9 @@ struct EditorView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(HanClipTheme.panelStroke.opacity(0.68), lineWidth: 1)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture {
-            openAiShot()
-        }
-        .accessibilityLabel("AiShot 영화 없음")
-        .accessibilityHint("한 번 누르면 AiShot을 시작합니다.")
+        .opacity(0.05)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func emptyProjectPlaceholder(isAiShot: Bool) -> some View {
@@ -3402,22 +3399,10 @@ struct EditorView: View {
                 radius: 10,
                 y: 5
             )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .onTapGesture {
-                if isAiShot {
-                    openAiShot()
-                } else {
-                    model.openMoviePreset(.newMovie)
-                }
-            }
+            .opacity(0.05)
             .padding(.horizontal, 16)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(isAiShot ? "AiShot 영화 없음" : "일반 영화 없음")
-            .accessibilityHint(
-                isAiShot
-                    ? "한 번 누르면 AiShot을 시작합니다."
-                    : "한 번 누르면 새 영화를 시작합니다."
-            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private func savedProjectRow(
