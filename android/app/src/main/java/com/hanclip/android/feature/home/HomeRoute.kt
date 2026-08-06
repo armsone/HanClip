@@ -995,7 +995,7 @@ private fun SavedProjectSection(
                 },
                 label = {
                     Text(
-                        if (hasDraftProject) "작업 열기" else "새 작업",
+                        if (hasDraftProject) "편집 작업" else "새 편집",
                         fontWeight = FontWeight.SemiBold
                     )
                 },
@@ -1338,12 +1338,12 @@ private fun DraftProjectRow(
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    summary?.presetTitle ?: "자동 저장된 작업",
+                    summary?.let { "편집 중 · ${it.presetTitle}" } ?: "편집 중인 작업 없음",
                     fontWeight = FontWeight.SemiBold,
                     color = HomeText
                 )
                 Text(
-                    summary?.let { draftSummaryText(it) } ?: "이어서 편집하기",
+                    summary?.let { draftSummaryText(it) } ?: "사진/영상을 고르면 자동 저장됩니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1354,7 +1354,7 @@ private fun DraftProjectRow(
                         modifier = Modifier.padding(top = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        DraftInfoPill("자동 저장")
+                        DraftInfoPill("편집 중")
                         DraftInfoPill("${summary.clipCount}개 클립")
                         DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
                     }
@@ -1397,7 +1397,7 @@ private fun DraftInfoPill(text: String) {
 }
 
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "이어 편집 가능 · ${summary.outputText}"
+    return "자동 저장됨 · ${summary.outputText}"
 }
 
 @Composable
