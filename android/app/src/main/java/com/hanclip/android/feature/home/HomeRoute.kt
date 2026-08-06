@@ -219,7 +219,7 @@ fun HomeRoute(
             titleContentColor = HomeText,
             textContentColor = HomeSubText,
             title = { Text("목록에서 제거") },
-            text = { Text("저장된 완성본 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 원본 영상은 삭제하지 않습니다.") }
+            text = { Text("HanClip 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 완성본 MP4는 삭제하지 않습니다.") }
         )
     }
     memoCandidate?.let { summary ->
@@ -981,7 +981,7 @@ private fun SavedProjectSection(
                     color = HomeText
                 )
                 Text(
-                    text = "기본 사진첩 저장본은 Movies/HanClip에서 확인",
+                    text = "앱 목록입니다. 폰 갤러리 저장본은 Movies/HanClip에서 확인",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1421,7 +1421,7 @@ private fun EmptySavedProjectRow() {
             Column(Modifier.weight(1f)) {
                 Text("최근 항목 없음", fontWeight = FontWeight.SemiBold, color = HomeText)
                 Text(
-                    "사진과 영상을 골라 HanClip 완성본을 만들면 여기에 표시됩니다.",
+                    "사진과 영상을 골라 완성본을 만들면 HanClip 목록에 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText
                 )
