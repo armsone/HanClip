@@ -207,7 +207,7 @@ class EditorViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     isExporting = true,
-                    progressMessage = "완성본을 만드는 중... $exportLabel",
+                    progressMessage = "완성본을 만드는 중... 완료 후 시사회로 이동 · $exportLabel",
                     alertMessage = null
                 )
             }
@@ -234,7 +234,7 @@ class EditorViewModel : ViewModel() {
                         "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${quality.chipTitle} · ${OutputQualityPreset.ExportFormatDetail}"
                     _uiState.update {
                         it.copy(
-                            progressMessage = "완성본을 만드는 중... ${(progress * 100).toInt()}% · $attemptLabel"
+                            progressMessage = "완성본을 만드는 중... ${(progress * 100).toInt()}% · 완료 후 시사회로 이동 · $attemptLabel"
                         )
                     }
                 }
@@ -249,7 +249,7 @@ class EditorViewModel : ViewModel() {
                     actualOutputQualityPreset = OutputQualityPreset.Standard
                     _uiState.update {
                         it.copy(
-                            progressMessage = "60fps 제작이 불안정해 30fps 호환 모드로 다시 만드는 중..."
+                            progressMessage = "60fps 제작이 불안정해 30fps 호환 모드로 다시 만드는 중... 완료 후 시사회로 이동"
                         )
                     }
                     runExportAttempt(
