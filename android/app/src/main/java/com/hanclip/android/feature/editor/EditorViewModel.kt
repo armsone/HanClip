@@ -822,6 +822,10 @@ class EditorViewModel : ViewModel() {
         _uiState.update { state ->
             val target = state.clips.firstOrNull { it.id == id }
             val groupId = target?.similarPhotoGroupId ?: return@update state
+            lastUndoSnapshot = EditorUndoSnapshot(
+                state = state,
+                restoredMessage = "사진 포함을 되돌렸습니다."
+            )
             val detached = state.clips.map { clip ->
                 if (clip.id == id) {
                     clip.copy(
@@ -841,7 +845,8 @@ class EditorViewModel : ViewModel() {
                 expandedSimilarPhotoGroupIds = state.expandedSimilarPhotoGroupIds
                     .filter { expandedGroupId -> rebalanced.any { it.similarPhotoGroupId == expandedGroupId } }
                     .toSet(),
-                alertMessage = "선택한 사진을 영상에 함께 사용합니다."
+                alertMessage = "묶음 사진을 독립 클립으로 추가했습니다. 필요하면 되돌릴 수 있습니다.",
+                undoDeleteMessage = "방금 포함한 사진을 다시 묶음 상태로 되돌릴 수 있습니다."
             )
         }
     }

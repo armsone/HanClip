@@ -2431,7 +2431,8 @@ private fun clipFallbackBrush(clip: ClipItem, palette: HanClipPalette): Brush {
 private fun clipTitle(clip: ClipItem): String {
     if (clip.isVideoSegmentParent) return "원본 영상"
     if (clip.isVideoSegmentChild) return "자동 클립"
-    if (clip.isSimilarPhotoGroupMember) return "묶음 사진"
+    if (clip.isSimilarPhotoGroupMember) return "묶음 대기 사진"
+    if (clip.similarPhotoGroupCount > 1) return "대표 사진 클립"
     return when (clip.mediaKind) {
         ClipMediaKind.Video -> "영상 클립"
         ClipMediaKind.Photo -> "사진 클립"
@@ -2456,8 +2457,8 @@ private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
         clip.isVideoSegmentParent -> "스윙 피크 자동 분할 ${childSegmentCount}개"
         clip.isVideoSegmentChild -> "타격점 중심 구간"
-        clip.isSimilarPhotoGroupMember -> "대표 컷 뒤에 묶임 · 사용하면 영상에 포함"
-        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 대표 컷"
+        clip.isSimilarPhotoGroupMember -> "아직 영화에 미포함 · 사용하면 독립 클립으로 추가"
+        clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 영화에 들어가는 대표 컷"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "자동 타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
     }
@@ -2486,7 +2487,7 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
             add("자동 ${childSegmentCount}컷")
         }
         if (clip.similarPhotoGroupCount > 1) {
-            add("묶음 ${clip.similarPhotoGroupCount}")
+            add(if (clip.isSimilarPhotoGroupMember) "대기 묶음" else "대표 ${clip.similarPhotoGroupCount}장")
         }
     }
 }
