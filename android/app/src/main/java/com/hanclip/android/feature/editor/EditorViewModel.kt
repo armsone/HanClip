@@ -14,6 +14,7 @@ import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.model.WatermarkFontSize
 import com.hanclip.android.core.model.WatermarkLineSpacing
 import com.hanclip.android.core.model.WatermarkPosition
@@ -47,6 +48,7 @@ data class EditorUiState(
     val defaultDurationSeconds: Double = 3.0,
     val defaultVideoSegmentMode: VideoSegmentMode = VideoSegmentMode.Single,
     val outputAspectRatio: OutputAspectRatio? = null,
+    val outputQualityPreset: OutputQualityPreset = OutputQualityPreset.Standard,
     val watermarkSettings: WatermarkSettings = WatermarkSettings(),
     val isImportingMedia: Boolean = false,
     val importedMediaCount: Int = 0,
@@ -188,7 +190,8 @@ class EditorViewModel : ViewModel() {
                     clips.firstOrNull()?.sourceWidth ?: 1080,
                     clips.firstOrNull()?.sourceHeight ?: 1920
                 )
-            val exportLabel = "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second}"
+            val exportLabel =
+                "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${state.outputQualityPreset.detail}"
             _uiState.update {
                 it.copy(
                     isExporting = true,
@@ -202,6 +205,7 @@ class EditorViewModel : ViewModel() {
                         clips = clips,
                         renderWidth = renderSize.first,
                         renderHeight = renderSize.second,
+                        frameRate = state.outputQualityPreset.frameRate,
                         watermarkSettings = state.watermarkSettings,
                         backgroundMusicUri = state.backgroundMusicUri,
                         backgroundMusicVolume = state.backgroundMusicVolume,
@@ -222,6 +226,7 @@ class EditorViewModel : ViewModel() {
                     clipCount = clips.size,
                     totalDurationSeconds = clips.sumOf { it.durationSeconds },
                     outputAspectRatio = state.outputAspectRatio,
+                    outputQualityPreset = state.outputQualityPreset,
                     hasBackgroundMusic = state.backgroundMusicUri != null ||
                         state.backgroundMusicSampleId != null,
                     hasWatermark = state.watermarkSettings.shouldRender
@@ -323,6 +328,17 @@ class EditorViewModel : ViewModel() {
         _uiState.update { it.copy(outputAspectRatio = ratio) }
     }
 
+    fun selectOutputQualityPreset(context: Context, preset: OutputQualityPreset) {
+        EditorPreferenceStore.saveOutputQualityPreset(context.applicationContext, preset)
+        _uiState.update {
+            it.copy(
+                outputQualityPreset = preset,
+                alertMessage = "내보내기 품질을 ${preset.displayTitle}로 설정했습니다.",
+                undoDeleteMessage = null
+            )
+        }
+    }
+
     fun prepareAiCutImport() {
         _uiState.update {
             it.copy(
@@ -411,6 +427,7 @@ class EditorViewModel : ViewModel() {
             clipCount = clipCount,
             totalDurationSeconds = totalDurationSeconds,
             outputAspectRatio = state.outputAspectRatio ?: existingSummary?.outputAspectRatio,
+            outputQualityPreset = state.outputQualityPreset,
             hasBackgroundMusic = existingSummary?.hasBackgroundMusic ?: (
                 state.backgroundMusicUri != null || state.backgroundMusicSampleId != null
             ),
@@ -435,6 +452,7 @@ class EditorViewModel : ViewModel() {
                 defaultDurationSeconds = state.defaultDurationSeconds,
                 defaultVideoSegmentMode = state.defaultVideoSegmentMode,
                 outputAspectRatio = state.outputAspectRatio,
+                outputQualityPreset = state.outputQualityPreset,
                 watermarkSettings = state.watermarkSettings,
                 backgroundMusicUri = state.backgroundMusicUri,
                 backgroundMusicTitle = state.backgroundMusicTitle,
@@ -454,6 +472,7 @@ class EditorViewModel : ViewModel() {
                 defaultDurationSeconds = draft.defaultDurationSeconds,
                 defaultVideoSegmentMode = draft.defaultVideoSegmentMode,
                 outputAspectRatio = draft.outputAspectRatio,
+                outputQualityPreset = draft.outputQualityPreset,
                 watermarkSettings = draft.watermarkSettings,
                 backgroundMusicUri = draft.backgroundMusicUri,
                 backgroundMusicTitle = draft.backgroundMusicTitle,
@@ -1021,6 +1040,8 @@ class EditorViewModel : ViewModel() {
             EditorPreferenceStore.defaultDurationSeconds(it, presetDefaultDuration)
         } ?: presetDefaultDuration
         val outputAspectRatio = context?.let(EditorPreferenceStore::outputAspectRatio)
+        val outputQualityPreset = context?.let(EditorPreferenceStore::outputQualityPreset)
+            ?: OutputQualityPreset.Standard
         val sampleMusic = presetSampleMusic(preset)
         return EditorUiState(
             preset = preset,
@@ -1031,6 +1052,7 @@ class EditorViewModel : ViewModel() {
                 VideoSegmentMode.Multiple
             },
             outputAspectRatio = outputAspectRatio,
+            outputQualityPreset = outputQualityPreset,
             watermarkSettings = presetWatermark(preset),
             backgroundMusicUri = sampleMusic?.let { sampleBackgroundMusicUri(null, it) },
             backgroundMusicTitle = sampleMusic?.title,

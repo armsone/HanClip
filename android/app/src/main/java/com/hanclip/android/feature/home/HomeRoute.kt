@@ -1654,6 +1654,7 @@ private fun savedMovieDetailText(
     val parts = buildList {
         add(baseText)
         summary.outputAspectRatio?.let { add(it.title) }
+        summary.outputQualityPreset?.let { add(it.detail) }
         if (summary.hasBackgroundMusic == true) add("음악")
         if (summary.hasWatermark == true) add("자막")
     }

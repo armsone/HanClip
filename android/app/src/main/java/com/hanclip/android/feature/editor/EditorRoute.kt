@@ -114,6 +114,7 @@ import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.model.VideoSegmentMode
 import com.hanclip.android.core.settings.SleepPreventionMode
 import com.hanclip.android.core.theme.HanClipPalette
@@ -216,6 +217,7 @@ fun EditorRoute(
         state.defaultDurationSeconds,
         state.defaultVideoSegmentMode,
         state.outputAspectRatio,
+        state.outputQualityPreset,
         state.watermarkSettings,
         state.backgroundMusicUri,
         state.backgroundMusicTitle,
@@ -277,6 +279,7 @@ fun EditorRoute(
                     hasMusic = state.backgroundMusicUri != null,
                     musicTitle = state.backgroundMusicTitle,
                     selectedRatio = state.outputAspectRatio,
+                    selectedQuality = state.outputQualityPreset,
                     palette = palette
                 )
             }
@@ -303,6 +306,7 @@ fun EditorRoute(
             item {
                 ProjectControls(
                     selectedRatio = state.outputAspectRatio,
+                    selectedQuality = state.outputQualityPreset,
                     palette = palette,
                     hasTextOverlay = state.watermarkSettings.shouldRenderText,
                     hasMusic = state.backgroundMusicUri != null,
@@ -313,6 +317,7 @@ fun EditorRoute(
                     sleepPreventionMode = sleepPreventionMode,
                     hasClips = state.clips.isNotEmpty(),
                     onSelectRatio = { ratio -> viewModel.selectAspectRatio(context, ratio) },
+                    onSelectQuality = { quality -> viewModel.selectOutputQualityPreset(context, quality) },
                     onOpenTextOverlay = { isTextOverlaySheetVisible = true },
                     onOpenMusicSettings = { isMusicSettingsSheetVisible = true },
                     onToggleReorder = { isReorderMode = !isReorderMode },
@@ -860,6 +865,7 @@ private fun PresetStatusPanel(
     hasMusic: Boolean,
     musicTitle: String?,
     selectedRatio: OutputAspectRatio?,
+    selectedQuality: OutputQualityPreset,
     palette: HanClipPalette
 ) {
     Surface(
@@ -928,6 +934,11 @@ private fun PresetStatusPanel(
                 PresetStatusPill(
                     text = selectedRatio?.title ?: "원본 비율",
                     active = selectedRatio != null,
+                    palette = palette
+                )
+                PresetStatusPill(
+                    text = selectedQuality.displayTitle,
+                    active = selectedQuality != OutputQualityPreset.Standard,
                     palette = palette
                 )
             }
@@ -1428,6 +1439,7 @@ private fun WorkProgressOverlay(
 @Composable
 private fun ProjectControls(
     selectedRatio: OutputAspectRatio?,
+    selectedQuality: OutputQualityPreset,
     palette: HanClipPalette,
     hasTextOverlay: Boolean,
     hasMusic: Boolean,
@@ -1438,6 +1450,7 @@ private fun ProjectControls(
     sleepPreventionMode: SleepPreventionMode,
     hasClips: Boolean,
     onSelectRatio: (OutputAspectRatio?) -> Unit,
+    onSelectQuality: (OutputQualityPreset) -> Unit,
     onOpenTextOverlay: () -> Unit,
     onOpenMusicSettings: () -> Unit,
     onToggleReorder: () -> Unit,
@@ -1505,6 +1518,28 @@ private fun ProjectControls(
                         leadingIconContentColor = palette.secondary
                     ),
                     border = BorderStroke(1.dp, palette.border)
+                )
+            }
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutputQualityPreset.entries.forEach { quality ->
+                FilterChip(
+                    selected = selectedQuality == quality,
+                    onClick = { onSelectQuality(quality) },
+                    label = { Text(quality.displayTitle) },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.MovieCreation, contentDescription = null)
+                    },
+                    colors = clearFilterChipColors(palette),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = selectedQuality == quality,
+                        borderColor = palette.border,
+                        selectedBorderColor = palette.primary
+                    )
                 )
             }
         }

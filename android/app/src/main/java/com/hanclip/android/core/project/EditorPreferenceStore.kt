@@ -2,11 +2,13 @@ package com.hanclip.android.core.project
 
 import android.content.Context
 import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.OutputQualityPreset
 
 object EditorPreferenceStore {
     private const val PreferencesName = "hanclip_editor_preferences"
     private const val DefaultDurationKey = "default_duration_seconds"
     private const val AspectRatioKey = "output_aspect_ratio"
+    private const val QualityPresetKey = "output_quality_preset"
     private const val AutomaticAspectRatioValue = "automatic"
 
     fun defaultDurationSeconds(context: Context, fallback: Double): Double {
@@ -37,6 +39,21 @@ object EditorPreferenceStore {
         context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
             .edit()
             .putString(AspectRatioKey, ratio?.name ?: AutomaticAspectRatioValue)
+            .apply()
+    }
+
+    fun outputQualityPreset(context: Context): OutputQualityPreset {
+        val rawValue = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .getString(QualityPresetKey, null)
+            ?: return OutputQualityPreset.Standard
+        return runCatching { enumValueOf<OutputQualityPreset>(rawValue) }
+            .getOrDefault(OutputQualityPreset.Standard)
+    }
+
+    fun saveOutputQualityPreset(context: Context, preset: OutputQualityPreset) {
+        context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(QualityPresetKey, preset.name)
             .apply()
     }
 }

@@ -7,6 +7,7 @@ import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.LivePhotoMode
 import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.model.VideoSegmentMode
 import com.hanclip.android.core.model.CopyrightIconColorMode
 import com.hanclip.android.core.model.WatermarkFontSize
@@ -22,6 +23,7 @@ data class DraftProject(
     val defaultDurationSeconds: Double,
     val defaultVideoSegmentMode: VideoSegmentMode,
     val outputAspectRatio: OutputAspectRatio?,
+    val outputQualityPreset: OutputQualityPreset,
     val watermarkSettings: WatermarkSettings,
     val backgroundMusicUri: Uri?,
     val backgroundMusicTitle: String? = null,
@@ -70,6 +72,7 @@ private fun DraftProject.toJson(): JSONObject {
         .put("defaultDurationSeconds", defaultDurationSeconds)
         .put("defaultVideoSegmentMode", defaultVideoSegmentMode.name)
         .put("outputAspectRatio", outputAspectRatio?.name)
+        .put("outputQualityPreset", outputQualityPreset.name)
         .put("backgroundMusicUri", backgroundMusicUri?.toString())
         .put("backgroundMusicTitle", backgroundMusicTitle)
         .put("backgroundMusicSampleId", backgroundMusicSampleId)
@@ -96,6 +99,10 @@ private fun JSONObject.toDraftProject(): DraftProject {
         outputAspectRatio = optString("outputAspectRatio")
             .takeIf { it.isNotBlank() && it != "null" }
             ?.let { enumValueOrNull<OutputAspectRatio>(it) },
+        outputQualityPreset = enumValueOrDefault(
+            optString("outputQualityPreset"),
+            OutputQualityPreset.Standard
+        ),
         watermarkSettings = optJSONObject("watermarkSettings")?.toWatermarkSettings()
             ?: WatermarkSettings(),
         backgroundMusicUri = optString("backgroundMusicUri")

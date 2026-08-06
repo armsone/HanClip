@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.hanclip.android.core.media.VideoSaveShare
 import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.project.ExportedMovieSummary
 import com.hanclip.android.core.theme.HanClipPalette
@@ -85,6 +86,7 @@ data class PreviewMovieSummary(
     val clipCount: Int,
     val totalDurationSeconds: Double,
     val outputAspectRatio: OutputAspectRatio?,
+    val outputQualityPreset: OutputQualityPreset = OutputQualityPreset.Standard,
     val hasBackgroundMusic: Boolean,
     val watermarkSettings: WatermarkSettings,
     val hasWatermark: Boolean = watermarkSettings.shouldRender,
@@ -99,6 +101,7 @@ data class PreviewMovieSummary(
                 clipCount = summary.clipCount,
                 totalDurationSeconds = summary.totalDurationSeconds,
                 outputAspectRatio = summary.outputAspectRatio,
+                outputQualityPreset = summary.outputQualityPreset ?: OutputQualityPreset.Standard,
                 hasBackgroundMusic = hasMusic ?: false,
                 watermarkSettings = WatermarkSettings(),
                 hasWatermark = hasWatermark ?: false,
@@ -389,6 +392,12 @@ private fun PreviewSummaryPanel(
                 SummaryInfoCell(
                     label = "화면",
                     value = summary.outputAspectRatio?.title ?: "자동",
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryInfoCell(
+                    label = "품질",
+                    value = summary.outputQualityPreset.displayTitle,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )

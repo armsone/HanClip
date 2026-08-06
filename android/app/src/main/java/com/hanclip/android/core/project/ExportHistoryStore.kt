@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.hanclip.android.core.model.OutputAspectRatio
+import com.hanclip.android.core.model.OutputQualityPreset
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -18,6 +19,7 @@ data class ExportedMovieSummary(
     val memo: String = "",
     val byteCount: Long = 0L,
     val outputAspectRatio: OutputAspectRatio? = null,
+    val outputQualityPreset: OutputQualityPreset? = null,
     val hasBackgroundMusic: Boolean? = null,
     val hasWatermark: Boolean? = null
 )
@@ -44,6 +46,7 @@ object ExportHistoryStore {
         clipCount: Int,
         totalDurationSeconds: Double,
         outputAspectRatio: OutputAspectRatio? = null,
+        outputQualityPreset: OutputQualityPreset? = null,
         hasBackgroundMusic: Boolean? = null,
         hasWatermark: Boolean? = null,
         replaceUri: Uri? = null
@@ -69,6 +72,7 @@ object ExportHistoryStore {
                 memo = previousSummary?.memo.orEmpty(),
                 byteCount = outputUri.byteCount(context),
                 outputAspectRatio = outputAspectRatio ?: previousSummary?.outputAspectRatio,
+                outputQualityPreset = outputQualityPreset ?: previousSummary?.outputQualityPreset,
                 hasBackgroundMusic = hasBackgroundMusic ?: previousSummary?.hasBackgroundMusic,
                 hasWatermark = hasWatermark ?: previousSummary?.hasWatermark
             )
@@ -96,6 +100,9 @@ object ExportHistoryStore {
                     outputAspectRatio = item.optString("outputAspectRatio", "")
                         .takeIf { it.isNotBlank() }
                         ?.let { raw -> enumValueOrNull<OutputAspectRatio>(raw) },
+                    outputQualityPreset = item.optString("outputQualityPreset", "")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { raw -> enumValueOrNull<OutputQualityPreset>(raw) },
                     hasBackgroundMusic = item.optionalBoolean("hasBackgroundMusic"),
                     hasWatermark = item.optionalBoolean("hasWatermark")
                 )
@@ -166,6 +173,7 @@ object ExportHistoryStore {
                     .put("memo", summary.memo)
                     .put("byteCount", summary.byteCount)
                     .put("outputAspectRatio", summary.outputAspectRatio?.name.orEmpty())
+                    .put("outputQualityPreset", summary.outputQualityPreset?.name.orEmpty())
                     .putNullable("hasBackgroundMusic", summary.hasBackgroundMusic)
                     .putNullable("hasWatermark", summary.hasWatermark)
             )

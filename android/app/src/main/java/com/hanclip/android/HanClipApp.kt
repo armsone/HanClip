@@ -273,6 +273,7 @@ fun HanClipApp(
                     clipCount = editorState.renderableClips.size,
                     totalDurationSeconds = editorState.totalDurationSeconds,
                     outputAspectRatio = editorState.outputAspectRatio,
+                    outputQualityPreset = editorState.outputQualityPreset,
                     hasBackgroundMusic = editorState.backgroundMusicUri != null ||
                         editorState.backgroundMusicSampleId != null,
                     watermarkSettings = editorState.watermarkSettings
