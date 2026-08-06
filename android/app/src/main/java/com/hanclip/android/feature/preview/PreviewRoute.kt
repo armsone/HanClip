@@ -479,7 +479,7 @@ private fun PreviewSummaryPanel(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "저장은 Android 기본 사진첩의 HanClip 앨범에 남길 수 있습니다.",
+                        text = "Android 기본 사진첩의 HanClip 앨범에 저장한 뒤 바로 공유할 수 있습니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 2,
@@ -644,7 +644,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("사진첩 저장")
+            Text("사진첩에 저장")
         }
     }
 }
@@ -690,7 +690,7 @@ private fun SaveOptionsSheet(
                             color = palette.text
                         )
                         Text(
-                            text = "완성본은 기본 사진첩에 저장한 뒤 바로 공유할 수 있습니다.",
+                            text = "기본 사진첩의 HanClip 앨범에 저장하거나 MP4 파일로 보관합니다.",
                             color = palette.subText
                         )
                     }
@@ -701,7 +701,7 @@ private fun SaveOptionsSheet(
                 SaveDestinationCard(
                     title = "Android 기본 사진첩",
                     badge = "추천",
-                    body = "폰 기본 사진첩의 HanClip 앨범에서 바로 보입니다.",
+                    body = "폰 기본 사진첩의 HanClip 앨범에 남기고 바로 공유합니다.",
                     icon = Icons.Outlined.Photo,
                     palette = palette,
                     primary = true,
