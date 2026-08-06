@@ -644,7 +644,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("사진첩에 저장")
+            Text("HanClip 앨범")
         }
     }
 }
@@ -699,9 +699,9 @@ private fun SaveOptionsSheet(
                     }
                 }
                 SaveDestinationCard(
-                    title = "폰 기본 사진첩",
+                    title = "폰 기본 사진첩 · HanClip 앨범",
                     badge = "추천",
-                    body = "HanClip 앨범에 남기고 저장 후 바로 공유합니다.",
+                    body = "완성본 MP4를 기본 사진첩에 남기고 저장 후 바로 공유합니다.",
                     icon = Icons.Outlined.Photo,
                     palette = palette,
                     primary = true,
