@@ -147,7 +147,7 @@ fun PreviewRoute(
                 onSavedMovie(savedUri)
                 message = "저장 완료 · Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다."
             }.onFailure {
-                message = "갤러리에 저장하지 못했습니다. 파일로 저장을 선택해 다시 시도해 주세요."
+                message = "Android 기본 사진첩에 저장하지 못했습니다. 파일로 저장을 선택해 다시 시도해 주세요."
             }
             isSavingVideo = false
         }
@@ -158,7 +158,7 @@ fun PreviewRoute(
         if (granted) {
             performGallerySave()
         } else {
-            message = "갤러리 저장 권한이 필요합니다."
+            message = "Android 기본 사진첩 저장 권한이 필요합니다."
         }
     }
     val createVideoDocumentLauncher = rememberLauncherForActivityResult(
@@ -889,7 +889,7 @@ private fun SavingMovieDialog(palette: HanClipPalette) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "갤러리 또는 파일 저장이 끝날 때까지 기다려 주세요.",
+                    text = "MP4 영상을 Android 기본 사진첩 또는 선택한 파일 위치에 저장하고 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall
                 )
