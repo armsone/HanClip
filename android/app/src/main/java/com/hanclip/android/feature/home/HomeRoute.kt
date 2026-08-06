@@ -3,7 +3,6 @@ package com.hanclip.android.feature.home
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.text.format.Formatter
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -1095,7 +1094,6 @@ private fun AiShotMovieCard(
     onTogglePin: () -> Unit,
     onEditMemo: () -> Unit
 ) {
-    val context = LocalContext.current
     Surface(
         modifier = modifier
             .height(96.dp)
@@ -1141,7 +1139,7 @@ private fun AiShotMovieCard(
                     }
                 }
                 Text(
-                    savedMovieDetailText(context, summary),
+                    savedMovieDetailText(summary),
                     color = HomeSubText,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
@@ -1511,7 +1509,6 @@ private fun SavedProjectRow(
     onTogglePin: () -> Unit,
     onEditMemo: () -> Unit
 ) {
-    val context = LocalContext.current
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1550,7 +1547,7 @@ private fun SavedProjectRow(
                     }
                 }
                 Text(
-                    savedMovieDetailText(context, summary),
+                    savedMovieDetailText(summary),
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1785,20 +1782,13 @@ private fun homeProjectDateText(updatedAtMillis: Long): String {
     return SimpleDateFormat("M.d HH:mm", Locale.KOREAN).format(Date(updatedAtMillis))
 }
 
-private fun savedMovieDetailText(
-    context: android.content.Context,
-    summary: ExportedMovieSummary
-): String {
-    val fileSize = summary.byteCount
-        .takeIf { it > 0L }
-        ?.let { Formatter.formatFileSize(context, it) }
+private fun savedMovieDetailText(summary: ExportedMovieSummary): String {
     val parts = buildList {
         hanClipCompletionTitle(summary.title)
             .takeIf { it.isNotBlank() }
             ?.let(::add)
         add("${summary.clipCount}개")
         add(movieDurationText(summary.totalDurationSeconds))
-        fileSize?.let { add(it) }
         summary.outputAspectRatio?.let { add(it.title) }
         summary.outputQualityPreset?.let { add(it.chipTitle) }
         add(OutputQualityPreset.ExportFormatTitle)
@@ -1812,9 +1802,9 @@ private fun overlayDetailParts(summary: ExportedMovieSummary): List<String> {
     val hasText = summary.hasTextOverlay
     val hasLogo = summary.hasLogoOverlay
     return when {
-        hasText == true && hasLogo == true -> listOf("자막", "HanClip 로고")
+        hasText == true && hasLogo == true -> listOf("자막", "로고")
         hasText == true -> listOf("자막")
-        hasLogo == true -> listOf("HanClip 로고")
+        hasLogo == true -> listOf("로고")
         hasText == null && hasLogo == null && summary.hasWatermark == true -> listOf("자막/로고")
         else -> emptyList()
     }
