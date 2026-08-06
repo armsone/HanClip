@@ -202,24 +202,51 @@ class EditorViewModel : ViewModel() {
                     alertMessage = null
                 )
             }
+            var actualOutputQualityPreset = state.outputQualityPreset
+            var usedCompatibilityRetry = false
             runCatching {
-                Media3TransformerExportService(context.applicationContext).export(
-                    VideoExportRequest(
-                        clips = clips,
-                        renderWidth = renderSize.first,
-                        renderHeight = renderSize.second,
-                        frameRate = state.outputQualityPreset.frameRate,
-                        watermarkSettings = state.watermarkSettings,
-                        backgroundMusicUri = state.backgroundMusicUri,
-                        backgroundMusicVolume = state.backgroundMusicVolume,
-                        originalAudioVolume = state.originalAudioVolume
-                    )
-                ) { progress ->
+                val exportService = Media3TransformerExportService(context.applicationContext)
+                val exportRequest = VideoExportRequest(
+                    clips = clips,
+                    renderWidth = renderSize.first,
+                    renderHeight = renderSize.second,
+                    frameRate = state.outputQualityPreset.frameRate,
+                    watermarkSettings = state.watermarkSettings,
+                    backgroundMusicUri = state.backgroundMusicUri,
+                    backgroundMusicVolume = state.backgroundMusicVolume,
+                    originalAudioVolume = state.originalAudioVolume
+                )
+
+                suspend fun runExportAttempt(
+                    request: VideoExportRequest,
+                    quality: OutputQualityPreset
+                ): Uri = exportService.export(request) { progress ->
+                    val attemptLabel =
+                        "${clips.size}개 클립 · ${renderSize.first}x${renderSize.second} · ${quality.detail} · ${OutputQualityPreset.ExportFormatTitle}"
                     _uiState.update {
                         it.copy(
-                            progressMessage = "영화를 만드는 중... ${(progress * 100).toInt()}% · $exportLabel"
+                            progressMessage = "영화를 만드는 중... ${(progress * 100).toInt()}% · $attemptLabel"
                         )
                     }
+                }
+
+                try {
+                    runExportAttempt(exportRequest, state.outputQualityPreset)
+                } catch (error: Throwable) {
+                    if (error is CancellationException || state.outputQualityPreset.frameRate <= 30) {
+                        throw error
+                    }
+                    usedCompatibilityRetry = true
+                    actualOutputQualityPreset = OutputQualityPreset.Standard
+                    _uiState.update {
+                        it.copy(
+                            progressMessage = "60fps 제작이 불안정해 30fps 호환 모드로 다시 만드는 중..."
+                        )
+                    }
+                    runExportAttempt(
+                        exportRequest.copy(frameRate = OutputQualityPreset.Standard.frameRate),
+                        OutputQualityPreset.Standard
+                    )
                 }
             }.onSuccess { outputUri ->
                 ExportHistoryStore.add(
@@ -229,7 +256,7 @@ class EditorViewModel : ViewModel() {
                     clipCount = clips.size,
                     totalDurationSeconds = clips.sumOf { it.durationSeconds },
                     outputAspectRatio = state.outputAspectRatio,
-                    outputQualityPreset = state.outputQualityPreset,
+                    outputQualityPreset = actualOutputQualityPreset,
                     hasBackgroundMusic = state.backgroundMusicUri != null ||
                         state.backgroundMusicSampleId != null,
                     hasWatermark = state.watermarkSettings.shouldRender,
@@ -241,8 +268,13 @@ class EditorViewModel : ViewModel() {
                         isExporting = false,
                         exportedVideoUri = outputUri,
                         recentlySavedMovieUriString = outputUri.toString(),
+                        outputQualityPreset = actualOutputQualityPreset,
                         progressMessage = "",
-                        alertMessage = null
+                        alertMessage = if (usedCompatibilityRetry) {
+                            "60fps 제작이 불안정해 30fps 호환 모드로 완성했습니다."
+                        } else {
+                            null
+                        }
                     )
                 }
                 onExported()
