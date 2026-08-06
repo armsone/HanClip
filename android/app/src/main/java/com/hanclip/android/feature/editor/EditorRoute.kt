@@ -431,8 +431,12 @@ fun EditorRoute(
                 palette = palette,
                 isExporting = state.isExporting,
                 clipCount = state.renderableClips.size,
+                photoCount = state.renderableClips.count { it.mediaKind != ClipMediaKind.Video },
+                videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video },
                 totalSeconds = state.totalDurationSeconds,
                 qualityTitle = state.outputQualityPreset.displayTitle,
+                hasTextOverlay = state.watermarkSettings.shouldRender,
+                hasMusic = state.backgroundMusicUri != null || state.backgroundMusicSampleId != null,
                 onMakeMovie = { isExportConfirmationVisible = true }
             )
         }
@@ -2589,8 +2593,12 @@ private fun BottomMakeBar(
     palette: HanClipPalette,
     isExporting: Boolean,
     clipCount: Int,
+    photoCount: Int,
+    videoCount: Int,
     totalSeconds: Double,
     qualityTitle: String,
+    hasTextOverlay: Boolean,
+    hasMusic: Boolean,
     onMakeMovie: () -> Unit
 ) {
     Surface(
@@ -2606,7 +2614,15 @@ private fun BottomMakeBar(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "${clipCount}개 클립 · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle}",
+                text = bottomMakeSummary(
+                    clipCount = clipCount,
+                    photoCount = photoCount,
+                    videoCount = videoCount,
+                    totalSeconds = totalSeconds,
+                    qualityTitle = qualityTitle,
+                    hasTextOverlay = hasTextOverlay,
+                    hasMusic = hasMusic
+                ),
                 color = palette.subText,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.labelMedium,
@@ -2632,4 +2648,28 @@ private fun BottomMakeBar(
             }
         }
     }
+}
+
+private fun bottomMakeSummary(
+    clipCount: Int,
+    photoCount: Int,
+    videoCount: Int,
+    totalSeconds: Double,
+    qualityTitle: String,
+    hasTextOverlay: Boolean,
+    hasMusic: Boolean
+): String {
+    val mediaSummary = when {
+        photoCount > 0 && videoCount > 0 -> "사진 ${photoCount}장 · 영상 ${videoCount}개"
+        photoCount > 0 -> "사진 ${photoCount}장"
+        videoCount > 0 -> "영상 ${videoCount}개"
+        else -> "${clipCount}개 클립"
+    }
+    val overlaySummary = when {
+        hasTextOverlay && hasMusic -> "자막 · 음악"
+        hasTextOverlay -> "자막"
+        hasMusic -> "음악"
+        else -> "무자막"
+    }
+    return "$mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · $overlaySummary"
 }
