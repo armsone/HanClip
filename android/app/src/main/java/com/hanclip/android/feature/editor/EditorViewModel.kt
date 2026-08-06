@@ -288,19 +288,11 @@ class EditorViewModel : ViewModel() {
                 }
                 onExported()
             }.onFailure { error ->
-                val message = if (error is CancellationException) {
-                    "영화 만들기를 취소했습니다. 설정은 그대로 남아 있어 다시 제작할 수 있습니다."
-                } else if (error is IllegalStateException || error is IllegalArgumentException) {
-                    error.message?.takeIf { it.isNotBlank() }
-                        ?: "선택한 구간에서 영상을 만들 수 없습니다. 클립 시간을 다시 조절해 주세요."
-                } else {
-                    "영화를 만들지 못했습니다. $exportLabel 설정을 확인하고 클립 시간이나 파일 접근 권한을 조정한 뒤 다시 영화 만들기를 눌러 주세요."
-                }
                 _uiState.update {
                     it.copy(
                         isExporting = false,
                         progressMessage = "",
-                        alertMessage = message
+                        alertMessage = exportFailureMessage(error, exportLabel)
                     )
                 }
             }
@@ -1350,6 +1342,18 @@ class EditorViewModel : ViewModel() {
                 append(" ")
                 append(notes.joinToString(" "))
             }
+        }
+    }
+
+    private fun exportFailureMessage(error: Throwable, exportLabel: String): String {
+        return when {
+            error is CancellationException ->
+                "영화 만들기를 취소했습니다. 클립과 설정은 그대로 남아 있어 다시 제작할 수 있습니다."
+            error is IllegalStateException || error is IllegalArgumentException ->
+                error.message?.takeIf { it.isNotBlank() }
+                    ?: "선택한 구간에서 영상을 만들 수 없습니다. 클립 시간을 다시 조절한 뒤 영화 만들기를 눌러 주세요."
+            else ->
+                "영화를 만들지 못했습니다. 클립 시간과 파일 접근 권한을 확인한 뒤 영화 만들기를 다시 눌러 주세요. 현재 설정: $exportLabel"
         }
     }
 
