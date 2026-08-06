@@ -939,7 +939,11 @@ private fun ExportConfirmationDialog(
     onConfirm: () -> Unit
 ) {
     val renderableClipCount = state.renderableClips.size
-    val aspectRatioText = state.outputAspectRatio?.let(::outputRatioChipText) ?: "원본 비율 자동"
+    val photoCount = state.renderableClips.count { it.mediaKind != ClipMediaKind.Video }
+    val videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video }
+    val estimatedRenderSize = estimatedRenderSize(state)
+    val aspectRatioText = state.outputAspectRatio?.let(::outputRatioChipText)
+        ?: "자동 ${estimatedRenderSize.first}x${estimatedRenderSize.second}"
     val musicText = when {
         state.backgroundMusicUri != null || state.backgroundMusicSampleId != null ->
             state.backgroundMusicTitle ?: "음악 적용"
@@ -990,14 +994,33 @@ private fun ExportConfirmationDialog(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
+                ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
                 ExportConfirmationLine("화면", aspectRatioText, palette)
-                ExportConfirmationLine("품질", "${state.outputQualityPreset.displayTitle} ${state.outputQualityPreset.detail}", palette)
+                ExportConfirmationLine("품질", state.outputQualityPreset.displayTitle, palette)
                 ExportConfirmationLine("형식", OutputQualityPreset.ExportFormatDetail, palette)
                 ExportConfirmationLine("음악", musicText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
             }
         }
     )
+}
+
+private fun estimatedRenderSize(state: EditorUiState): Pair<Int, Int> {
+    state.outputAspectRatio?.let { return it.width to it.height }
+    val firstClip = state.renderableClips.firstOrNull()
+    return OutputAspectRatio.automaticSize(
+        sourceWidth = firstClip?.sourceWidth ?: 1080,
+        sourceHeight = firstClip?.sourceHeight ?: 1920
+    )
+}
+
+private fun mediaCountSummary(photoCount: Int, videoCount: Int, fallbackClipCount: Int): String {
+    return when {
+        photoCount > 0 && videoCount > 0 -> "사진 ${photoCount}장 · 영상 ${videoCount}개"
+        photoCount > 0 -> "사진 ${photoCount}장"
+        videoCount > 0 -> "영상 ${videoCount}개"
+        else -> "${fallbackClipCount}개 클립"
+    }
 }
 
 @Composable
@@ -2659,12 +2682,7 @@ private fun bottomMakeSummary(
     hasTextOverlay: Boolean,
     hasMusic: Boolean
 ): String {
-    val mediaSummary = when {
-        photoCount > 0 && videoCount > 0 -> "사진 ${photoCount}장 · 영상 ${videoCount}개"
-        photoCount > 0 -> "사진 ${photoCount}장"
-        videoCount > 0 -> "영상 ${videoCount}개"
-        else -> "${clipCount}개 클립"
-    }
+    val mediaSummary = mediaCountSummary(photoCount, videoCount, clipCount)
     val overlaySummary = when {
         hasTextOverlay && hasMusic -> "자막 · 음악"
         hasTextOverlay -> "자막"
