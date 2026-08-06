@@ -3771,85 +3771,52 @@ struct EditorView: View {
                         ) {
                             model.removeClip(id: clip.id)
                         } content: {
-                            ClipRow(
-                                position: clipPosition(for: clip.id),
-                                clip: $clip,
-                                defaultDuration: model.defaultDuration,
-                                childSegmentCount: clip.isSimilarPhotoGroupParent
-                                    ? clip.similarPhotoGroupCount
-                                    : model.childSegmentCount(for: clip.id),
-                                childSegmentDuration: clip.isSimilarPhotoGroupParent
-                                    ? model.similarPhotoGroupDuration(
-                                        for: clip.id
-                                    )
-                                    : model.childSegmentDuration(for: clip.id),
-                                canShowVideoSegmentSwitch: model
-                                    .canUseMultipleVideoSegments(for: clip.id),
-                                isSimilarPhotoGroupExpanded: model
-                                    .isSimilarPhotoGroupExpanded(for: clip),
-                                onSelectVideoSegmentMode: { mode in
-                                    withAnimation(.snappy) {
-                                        model.setVideoSegmentMode(
-                                            id: clip.id,
-                                            mode: mode
-                                        )
-                                    }
-                                },
-                                onSelectSimilarPhotoGroupMode: { mode in
-                                    withAnimation(.snappy) {
-                                        model.setSimilarPhotoGroupMode(
-                                            id: clip.id,
-                                            mode: mode
-                                        )
-                                    }
-                                },
-                                onResetVideoSegments: {
-                                    withAnimation(.snappy) {
-                                        pendingSegmentResetClipID = clip.id
-                                    }
-                                },
-                                onSelectParentClipPreview: {
-                                    if clip.isSimilarPhotoGroupParent {
-                                        isAutoAdvancingPreview = false
-                                        isLoopingPreviewAutoAdvance = false
-                                        videoSegmentPreviewParentID = nil
-                                        selectedClipID = clip.id
-                                        return
-                                    }
-                                    let childClips = model.renderableClips.filter {
-                                        $0.videoSegmentParentID == clip.id
-                                    }
-                                    guard let firstChildClip = childClips.first
-                                    else { return }
-                                    isAutoAdvancingPreview = false
-                                    isLoopingPreviewAutoAdvance = false
-                                    videoSegmentPreviewParentID = clip.id
-                                    selectedClipID = firstChildClip.id
-                                },
-                                onToggleSimilarPhotoGroup: {
-                                    withAnimation(.snappy) {
-                                        model.toggleSimilarPhotoGroup(
+                            VStack(spacing: 0) {
+                                ClipRow(
+                                    position: clipPosition(for: clip.id),
+                                    clip: $clip,
+                                    defaultDuration: model.defaultDuration,
+                                    childSegmentCount: clip.isSimilarPhotoGroupParent
+                                        ? clip.similarPhotoGroupCount
+                                        : model.childSegmentCount(for: clip.id),
+                                    childSegmentDuration: clip.isSimilarPhotoGroupParent
+                                        ? model.similarPhotoGroupDuration(
                                             for: clip.id
                                         )
-                                    }
-                                },
-                                onSetSimilarPhotoIncluded: { isIncluded in
-                                    withAnimation(.snappy) {
-                                        model.setSimilarPhotoIncluded(
-                                            id: clip.id,
-                                            isIncluded: isIncluded
-                                        )
-                                    }
-                                },
-                                onSelect: {
-                                    if clip.isSimilarPhotoGroupParent {
-                                        isAutoAdvancingPreview = false
-                                        isLoopingPreviewAutoAdvance = false
-                                        videoSegmentPreviewParentID = nil
-                                        selectedClipID = clip.id
-                                        return
-                                    }
-                                    if clip.isVideoSegmentParent {
+                                        : model.childSegmentDuration(for: clip.id),
+                                    canShowVideoSegmentSwitch: model
+                                        .canUseMultipleVideoSegments(for: clip.id),
+                                    isSimilarPhotoGroupExpanded: model
+                                        .isSimilarPhotoGroupExpanded(for: clip),
+                                    onSelectVideoSegmentMode: { mode in
+                                        withAnimation(.snappy) {
+                                            model.setVideoSegmentMode(
+                                                id: clip.id,
+                                                mode: mode
+                                            )
+                                        }
+                                    },
+                                    onSelectSimilarPhotoGroupMode: { mode in
+                                        withAnimation(.snappy) {
+                                            model.setSimilarPhotoGroupMode(
+                                                id: clip.id,
+                                                mode: mode
+                                            )
+                                        }
+                                    },
+                                    onResetVideoSegments: {
+                                        withAnimation(.snappy) {
+                                            pendingSegmentResetClipID = clip.id
+                                        }
+                                    },
+                                    onSelectParentClipPreview: {
+                                        if clip.isSimilarPhotoGroupParent {
+                                            isAutoAdvancingPreview = false
+                                            isLoopingPreviewAutoAdvance = false
+                                            videoSegmentPreviewParentID = nil
+                                            selectedClipID = clip.id
+                                            return
+                                        }
                                         let childClips = model.renderableClips.filter {
                                             $0.videoSegmentParentID == clip.id
                                         }
@@ -3857,30 +3824,138 @@ struct EditorView: View {
                                         else { return }
                                         isAutoAdvancingPreview = false
                                         isLoopingPreviewAutoAdvance = false
-                                        videoSegmentPreviewParentID = nil
+                                        videoSegmentPreviewParentID = clip.id
                                         selectedClipID = firstChildClip.id
-                                        return
+                                    },
+                                    onToggleSimilarPhotoGroup: {
+                                        withAnimation(.snappy) {
+                                            model.toggleSimilarPhotoGroup(
+                                                for: clip.id
+                                            )
+                                        }
+                                    },
+                                    onSetSimilarPhotoIncluded: { isIncluded in
+                                        withAnimation(.snappy) {
+                                            model.setSimilarPhotoIncluded(
+                                                id: clip.id,
+                                                isIncluded: isIncluded
+                                            )
+                                        }
+                                    },
+                                    similarPhotoGroupPreviewItems: clip
+                                        .isSimilarPhotoGroupParent
+                                        ? model.similarPhotoGroupPreviewItems(
+                                            for: clip.id
+                                        )
+                                        : [],
+                                    displayAsSimilarPhotoChild: false,
+                                    onSelect: {
+                                        if clip.isSimilarPhotoGroupParent {
+                                            isAutoAdvancingPreview = false
+                                            isLoopingPreviewAutoAdvance = false
+                                            videoSegmentPreviewParentID = nil
+                                            selectedClipID = clip.id
+                                            return
+                                        }
+                                        if clip.isVideoSegmentParent {
+                                            let childClips = model.renderableClips.filter {
+                                                $0.videoSegmentParentID == clip.id
+                                            }
+                                            guard let firstChildClip = childClips.first
+                                            else { return }
+                                            isAutoAdvancingPreview = false
+                                            isLoopingPreviewAutoAdvance = false
+                                            videoSegmentPreviewParentID = nil
+                                            selectedClipID = firstChildClip.id
+                                            return
+                                        }
+                                        isAutoAdvancingPreview = false
+                                        isLoopingPreviewAutoAdvance = false
+                                        videoSegmentPreviewParentID = nil
+                                        selectedClipID = clip.id
                                     }
-                                    isAutoAdvancingPreview = false
-                                    isLoopingPreviewAutoAdvance = false
-                                    videoSegmentPreviewParentID = nil
-                                    selectedClipID = clip.id
+                                )
+                                .padding(clipRowInsets(for: clip.id))
+                                .background(clipRowFill(for: clip))
+                                .background(alignment: .leading) {
+                                    clipRowRoleAccent(for: clip)
                                 }
-                            )
-                            .padding(clipRowInsets(for: clip.id))
-                            .background(clipRowFill(for: clip))
-                            .background(alignment: .leading) {
-                                clipRowRoleAccent(for: clip)
+                                .overlay(alignment: .top) {
+                                    clipRowTopDivider(for: clip)
+                                }
+                                .overlay(alignment: .bottom) {
+                                    clipRowBottomDivider(for: clip)
+                                }
+                                .accessibilityHint(
+                                    "눌러서 편집을 열고, 순서 변경 버튼에서 위치를 바꿉니다."
+                                )
+
+                                if clip.isSimilarPhotoGroupParent
+                                    && model.isSimilarPhotoGroupExpanded(for: clip) {
+                                    ClipRow(
+                                        position: nil,
+                                        clip: $clip,
+                                        defaultDuration: model.defaultDuration,
+                                        childSegmentCount: 0,
+                                        childSegmentDuration: 0,
+                                        canShowVideoSegmentSwitch: false,
+                                        isSimilarPhotoGroupExpanded: false,
+                                        onSelectVideoSegmentMode: { _ in },
+                                        onSelectSimilarPhotoGroupMode: { _ in },
+                                        onResetVideoSegments: {},
+                                        onSelectParentClipPreview: {
+                                            selectedClipID = clip.id
+                                        },
+                                        onToggleSimilarPhotoGroup: {},
+                                        onSetSimilarPhotoIncluded: { isIncluded in
+                                            withAnimation(.snappy) {
+                                                model.setSimilarPhotoIncluded(
+                                                    id: clip.id,
+                                                    isIncluded: isIncluded
+                                                )
+                                            }
+                                        },
+                                        similarPhotoGroupPreviewItems: [],
+                                        displayAsSimilarPhotoChild: true,
+                                        onSelect: {
+                                            isAutoAdvancingPreview = false
+                                            isLoopingPreviewAutoAdvance = false
+                                            videoSegmentPreviewParentID = nil
+                                            selectedClipID = clip.id
+                                        }
+                                    )
+                                    .padding(clipRowInsets(for: clip.id))
+                                    .background(
+                                        HanClipTheme.secondary.opacity(
+                                            themeMode == .dark ? 0.030 : 0.044
+                                        )
+                                    )
+                                    .background(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [
+                                                        HanClipTheme.primary
+                                                            .opacity(0.026),
+                                                        HanClipTheme.secondary
+                                                            .opacity(0.010),
+                                                        Color.clear
+                                                    ],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                )
+                                            )
+                                            .frame(width: 118)
+                                    }
+                                    .overlay(alignment: .bottom) {
+                                        Rectangle()
+                                            .fill(HanClipTheme.secondary.opacity(0.12))
+                                            .frame(height: 0.8)
+                                            .padding(.leading, 70)
+                                            .padding(.trailing, 14)
+                                    }
+                                }
                             }
-                            .overlay(alignment: .top) {
-                                clipRowTopDivider(for: clip)
-                            }
-                            .overlay(alignment: .bottom) {
-                                clipRowBottomDivider(for: clip)
-                            }
-                            .accessibilityHint(
-                                "눌러서 편집을 열고, 순서 변경 버튼에서 위치를 바꿉니다."
-                            )
                         }
                     }
                 }
@@ -3902,22 +3977,22 @@ struct EditorView: View {
     }
 
     private var summaryControlRowFill: Color {
-        HanClipTheme.secondary.opacity(themeMode == .dark ? 0.08 : 0.055)
+        HanClipTheme.secondary.opacity(themeMode == .dark ? 0.034 : 0.032)
     }
 
     private func clipRowFill(for clip: ClipItem) -> Color {
         if clip.isVideoSegmentParent || clip.isSimilarPhotoGroupParent {
             return HanClipTheme.secondary.opacity(
-                themeMode == .dark ? 0.13 : 0.18
+                themeMode == .dark ? 0.052 : 0.074
             )
         }
         if clip.isVideoSegmentChild || clip.isSimilarPhotoGroupChild {
             return HanClipTheme.secondary.opacity(
-                themeMode == .dark ? 0.070 : 0.090
+                themeMode == .dark ? 0.030 : 0.044
             )
         }
         return HanClipTheme.secondary.opacity(
-            themeMode == .dark ? 0.038 : 0.034
+            themeMode == .dark ? 0.020 : 0.022
         )
     }
 
@@ -3928,8 +4003,8 @@ struct EditorView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            HanClipTheme.primary.opacity(0.20),
-                            HanClipTheme.secondary.opacity(0.08),
+                            HanClipTheme.primary.opacity(0.052),
+                            HanClipTheme.secondary.opacity(0.018),
                             Color.clear
                         ],
                         startPoint: .leading,
@@ -3942,8 +4017,8 @@ struct EditorView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            HanClipTheme.primary.opacity(0.10),
-                            HanClipTheme.secondary.opacity(0.04),
+                            HanClipTheme.primary.opacity(0.026),
+                            HanClipTheme.secondary.opacity(0.010),
                             Color.clear
                         ],
                         startPoint: .leading,
@@ -3958,10 +4033,10 @@ struct EditorView: View {
         Rectangle()
             .fill(
                 clip.isVideoSegmentChild
-                    ? HanClipTheme.primary.opacity(0.15)
-                    : HanClipTheme.secondary.opacity(0.15)
+                    ? HanClipTheme.primary.opacity(0.08)
+                    : HanClipTheme.secondary.opacity(0.10)
             )
-            .frame(height: clip.isVideoSegmentChild ? 0.6 : 0.8)
+            .frame(height: clip.isVideoSegmentChild ? 0.5 : 0.7)
             .padding(.leading, clip.isVideoSegmentChild ? 70 : 14)
             .padding(.trailing, 14)
     }
@@ -3970,10 +4045,10 @@ struct EditorView: View {
         Rectangle()
             .fill(
                 clip.isVideoSegmentParent
-                    ? HanClipTheme.primary.opacity(0.28)
-                    : HanClipTheme.secondary.opacity(0.16)
+                    ? HanClipTheme.primary.opacity(0.13)
+                    : HanClipTheme.secondary.opacity(0.10)
             )
-            .frame(height: clip.isVideoSegmentParent ? 1.2 : 0.8)
+            .frame(height: clip.isVideoSegmentParent ? 0.9 : 0.7)
             .padding(.leading, clip.isVideoSegmentChild ? 70 : 14)
             .padding(.trailing, 14)
     }
@@ -4318,12 +4393,16 @@ struct EditorView: View {
                         }
                     ),
                     tint: HanClipTheme.secondary,
-                    width: 96,
+                    width: 98,
                     height: 24
                 )
-                .accessibilityLabel("모든 Live Photo 사용 방식")
-                .accessibilityValue(bulkLivePhotoMode.rawValue)
-                .accessibilityHint("모든 Live Photo 클립을 포토 또는 Live 모드로 전환합니다.")
+                .accessibilityLabel("모든 라이브포토 사용 방식")
+                .accessibilityValue(
+                    bulkLivePhotoMode == .still ? "정지" : "동작"
+                )
+                .accessibilityHint(
+                    "모든 라이브포토 클립을 정지 또는 동작으로 전환합니다."
+                )
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
@@ -4499,6 +4578,7 @@ struct EditorView: View {
                 Array(
                     model.clips
                         .filter { !$0.isVideoSegmentChild }
+                        .filter { !$0.isSimilarPhotoGroupChild }
                         .enumerated()
                 ),
                 id: \.element.id
@@ -4507,35 +4587,29 @@ struct EditorView: View {
                 clip in
                 GeometryReader { proxy in
                     ZStack {
-                        Image(uiImage: clip.thumbnail)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(
-                                width: proxy.size.width,
-                                height: proxy.size.height
-                            )
-                            .clipped()
+                        reorderMediaThumbnail(for: clip, size: proxy.size)
 
-                        if clip.isVideoSegmentParent {
+                        if clip.isVideoSegmentParent
+                            || clip.isSimilarPhotoGroupParent {
                             LinearGradient(
                                 colors: [
-                                    HanClipTheme.secondary.opacity(0.30),
-                                    HanClipTheme.primary.opacity(0.28),
-                                    Color.black.opacity(0.14)
+                                    HanClipTheme.secondary.opacity(0.16),
+                                    HanClipTheme.primary.opacity(0.08),
+                                    Color.black.opacity(0.08)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                             .blendMode(.multiply)
 
-                            HanClipTheme.secondary.opacity(0.18)
+                            HanClipTheme.secondary.opacity(0.08)
                         }
 
                         LinearGradient(
                             colors: [
-                                Color.black.opacity(0.34),
+                                Color.black.opacity(0.22),
                                 Color.clear,
-                                Color.black.opacity(0.40)
+                                Color.black.opacity(0.30)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -4556,7 +4630,7 @@ struct EditorView: View {
                             .foregroundStyle(.white)
                             .frame(width: 23, height: 23)
                             .background(
-                                HanClipTheme.primary.opacity(0.88),
+                                Color.black.opacity(0.36),
                                 in: Circle()
                             )
                             .overlay {
@@ -4566,11 +4640,6 @@ struct EditorView: View {
                                         lineWidth: 0.8
                                     )
                             }
-                            .shadow(
-                                color: Color.black.opacity(0.22),
-                                radius: 3,
-                                y: 1
-                            )
                             .padding(5)
                     }
                     .overlay(alignment: .topTrailing) {
@@ -4582,7 +4651,7 @@ struct EditorView: View {
                             .padding(.horizontal, 6)
                             .frame(height: 22)
                             .background(
-                                HanClipTheme.primary.opacity(0.84),
+                                Color.black.opacity(0.34),
                                 in: Capsule()
                             )
                             .overlay {
@@ -4592,16 +4661,11 @@ struct EditorView: View {
                                         lineWidth: 0.8
                                     )
                             }
-                            .shadow(
-                                color: Color.black.opacity(0.22),
-                                radius: 3,
-                                y: 1
-                            )
                             .multilineTextAlignment(.trailing)
                             .padding(5)
                     }
                     .overlay(alignment: .bottom) {
-                        Text(projectDurationText(clip.duration))
+                        Text(reorderMediaDurationText(for: clip))
                             .font(
                                 .system(
                                     size: 12,
@@ -4616,23 +4680,18 @@ struct EditorView: View {
                             .frame(height: 22)
                             .background(
                                 LinearGradient(
-                                    colors: [
-                                        Color.black.opacity(0.46),
-                                        Color.black.opacity(0.20)
-                                    ],
+                                            colors: [
+                                                Color.black.opacity(0.34),
+                                                Color.black.opacity(0.12)
+                                            ],
                                     startPoint: .bottom,
                                     endPoint: .top
                                 )
                             )
-                            .shadow(
-                                color: Color.black.opacity(0.26),
-                                radius: 2,
-                                y: 1
-                            )
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if clip.isVideoSegmentParent {
-                            Text("\(model.childSegmentCount(for: clip.id))")
+                        if let count = reorderMediaGroupCount(for: clip) {
+                            Text("\(count)")
                                 .font(
                                     .system(
                                         size: 15,
@@ -4645,7 +4704,7 @@ struct EditorView: View {
                                 .padding(.horizontal, 7)
                                 .frame(height: 24)
                                 .background(
-                                    HanClipTheme.primary.opacity(0.82),
+                                    Color.black.opacity(0.38),
                                     in: Capsule()
                                 )
                                 .overlay {
@@ -4655,24 +4714,19 @@ struct EditorView: View {
                                             lineWidth: 0.8
                                         )
                                 }
-                                .shadow(
-                                    color: Color.black.opacity(0.22),
-                                    radius: 3,
-                                    y: 1
-                                )
                                 .padding(5)
                         }
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(
-                                Color.white.opacity(0.40),
-                                lineWidth: 0.8
+                                Color.white.opacity(0.28),
+                                lineWidth: 0.7
                             )
                     }
                     .shadow(
-                        color: HanClipTheme.secondary.opacity(0.12),
-                        radius: 5,
+                        color: Color.black.opacity(0.08),
+                        radius: 4,
                         y: 2
                     )
                     .opacity(1)
@@ -4683,9 +4737,7 @@ struct EditorView: View {
                             object: clip.id.uuidString as NSString
                         )
                     } preview: {
-                        Image(uiImage: clip.thumbnail)
-                            .resizable()
-                            .scaledToFill()
+                        reorderMediaThumbnail(for: clip, size: CGSize(width: 72, height: 72))
                             .frame(width: 72, height: 72)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -4753,6 +4805,92 @@ struct EditorView: View {
         }
         .animation(.snappy, value: model.clips.map(\.id))
         .accessibilityLabel("순서변경 상태")
+    }
+
+    @ViewBuilder
+    private func reorderMediaThumbnail(
+        for clip: ClipItem,
+        size: CGSize
+    ) -> some View {
+        if clip.isSimilarPhotoGroupParent {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.62),
+                                HanClipTheme.secondary.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                let items = model.similarPhotoGroupPreviewItems(for: clip.id)
+                let visibleItems = Array(items.prefix(3).enumerated())
+                ForEach(visibleItems, id: \.element.id) { offset, item in
+                    let centerOffset = CGFloat(visibleItems.count - 1) / 2
+                    Image(uiImage: item.thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: size.width * 0.58,
+                            height: size.height * 0.58
+                        )
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: 8,
+                                style: .continuous
+                            )
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    item.isIncluded
+                                        ? HanClipTheme.primary.opacity(0.56)
+                                        : Color.white.opacity(0.52),
+                                    lineWidth: item.isIncluded ? 1.1 : 0.7
+                                )
+                        }
+                        .offset(
+                            x: (CGFloat(offset) - centerOffset) * 10,
+                            y: CGFloat(offset) * -3
+                        )
+                        .rotationEffect(.degrees(Double(offset - 1) * 3))
+                        .zIndex(Double(offset))
+                }
+
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.primary.opacity(0.58))
+            }
+            .frame(width: size.width, height: size.height)
+        } else {
+            Image(uiImage: clip.thumbnail)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size.width, height: size.height)
+                .clipped()
+        }
+    }
+
+    private func reorderMediaDurationText(for clip: ClipItem) -> String {
+        if clip.isSimilarPhotoGroupParent {
+            return projectDurationText(
+                model.similarPhotoGroupDuration(for: clip.id)
+            )
+        }
+        return projectDurationText(clip.duration)
+    }
+
+    private func reorderMediaGroupCount(for clip: ClipItem) -> Int? {
+        if clip.isSimilarPhotoGroupParent {
+            return clip.similarPhotoGroupCount
+        }
+        if clip.isVideoSegmentParent {
+            return model.childSegmentCount(for: clip.id)
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -4979,15 +5117,18 @@ struct EditorView: View {
     }
 
     private func reorderMediaTitle(for clip: ClipItem) -> String {
+        if clip.isSimilarPhotoGroupParent {
+            return "묶음"
+        }
         if clip.isVideoClip {
             return model.canUseMultipleVideoSegments(for: clip.id)
-                ? "클립+"
-                : "클립"
+                ? "분할"
+                : "영상"
         }
         if clip.isLivePhoto {
-            return "Live"
+            return "라이브"
         }
-        return "포토"
+        return "사진"
     }
 
     @ViewBuilder
@@ -5992,16 +6133,19 @@ private struct ImportantInfoSheet: View {
         ("영화 목록", "첫 화면에 저장된 영화들이 표시되는 영역입니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
-        ("외부 호출 주소", "Ai  hanclip://aishot\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
         ("영화 설정", "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다."),
-        ("클립목록", "선택한 Photo, Live, Clip이 순서대로 표시되는 목록입니다. 썸네일, 시간, 아이콘, 세그먼트 컨트롤, +/- 버튼이 있는 영역입니다."),
-        ("비슷한 사진 묶음", "연속으로 촬영된 사진과 Live Photo 중 비슷한 장면만 한 묶음으로 다루는 기능입니다. 기본으로는 Ai가 고른 대표 컷 한 장만 영상에 사용하고, 사용자가 묶음을 펼쳐 더 보여주고 싶은 사진이나 Live Photo를 사용으로 바꾸면 같은 묶음 안에서도 여러 장면을 영상에 넣을 수 있습니다."),
-        ("순서변경 상태", "썸네일을 한 줄에 여러 개 표시하고 드래그해서 클립 순서를 변경하는 상태입니다."),
-        ("세그먼트 컨트롤", "포토 / Live, 단일 / 다중처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다."),
-        ("단일 / 다중", "클립을 하나의 구간으로 쓸지, Ai가 찾은 피크 기준으로 여러 자클립으로 나눌지 정하는 클립 분할 모드입니다."),
+        ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시됩니다."),
+        ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 자동은 Ai가 대표 1장을 사용하고, 수동은 묶음을 펼쳐 사용할 사진을 고릅니다."),
+        ("자동 / 수동", "묶음사진에서 사용할 사진을 Ai가 고르게 할지, 사용자가 직접 고르게 할지 정하는 선택입니다."),
+        ("사용 / 제외", "수동으로 펼친 자사진 행에서 해당 사진 또는 라이브포토를 영상에 넣을지 뺄지 정하는 상태 버튼입니다."),
+        ("정지 / 동작", "라이브포토를 일반 사진처럼 정지 컷으로 쓸지, 짧은 동작으로 쓸지 정하는 선택입니다."),
+        ("순서변경 상태", "큰 단위의 순서를 바꾸는 화면입니다. 묶음사진은 안의 자사진을 흩어 놓지 않고 하나의 묶음 타일로 이동합니다."),
+        ("세그먼트 컨트롤", "자동 / 수동, 정지 / 동작, 한컷 / 분할처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다."),
+        ("한컷 / 분할", "영상 클립을 하나의 구간으로 쓸지, Ai가 찾은 피크 기준으로 여러 자클립으로 나눌지 정하는 선택입니다."),
         ("모클립", "다중 분할을 만들 때 원본 역할로 남는 부모 클립입니다."),
         ("자클립", "모클립에서 Ai가 찾은 피크 기준으로 만들어진 하위 클립입니다."),
+        ("자사진", "묶음사진 안에 들어 있는 실제 사진 또는 라이브포토입니다. 수동 모드에서 사용 또는 제외 상태를 고릅니다."),
         ("편집 영역 / 편집 모드", "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다."),
         ("웨이브 / 웨이브 인디케이터", "영상/Live Photo 편집에서 소리 파형을 보여주는 영역입니다."),
         ("선택바", "웨이브 인디케이터의 좌우 끝에 있는 드래그 바입니다."),
@@ -6014,6 +6158,7 @@ private struct ImportantInfoSheet: View {
         ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
         ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
         ("워터마크", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다."),
+        ("외부 호출 주소", "Ai  hanclip://aishot\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
         ("샘플 음악", """
         HanClip에 포함된 샘플 음악 \(BackgroundMusicSettings.sampleDisplayName)은 앱 기능 검증과 사용자의 일상 영상 배경음악을 위해 인공지능 생성 및 합성 방식으로 만든 샘플 음악입니다.
 
@@ -6343,6 +6488,8 @@ private struct ImportantInfoSheet: View {
             Text(sleepPreventionMode.detail)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(HanClipTheme.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -6879,7 +7026,7 @@ private struct ImportantInfoSheet: View {
         case "영화 화면": "film.fill"
         case "영화 설정": "slider.horizontal.3"
         case "클립목록": "list.bullet.rectangle.fill"
-        case "비슷한 사진 묶음": "rectangle.stack.badge.plus"
+        case "묶음사진": "rectangle.stack.badge.plus"
         case "순서변경 상태": "arrow.up.arrow.down"
         case "편집 영역 / 편집 모드": "slider.horizontal.below.rectangle"
         case "시사회": "play.rectangle.fill"
@@ -6891,9 +7038,13 @@ private struct ImportantInfoSheet: View {
         case "로고": "play.hexagon.fill"
         case "워터마크": "signature"
         case "세그먼트 컨트롤": "rectangle.split.2x1.fill"
-        case "단일 / 다중": "square.stack.3d.up.fill"
+        case "자동 / 수동": "sparkles"
+        case "사용 / 제외": "checkmark.circle.fill"
+        case "정지 / 동작": "livephoto"
+        case "한컷 / 분할": "square.stack.3d.up.fill"
         case "모클립": "rectangle.stack.fill"
         case "자클립": "rectangle.fill.on.rectangle.fill"
+        case "자사진": "photo.fill"
         case "웨이브 / 웨이브 인디케이터": "waveform"
         case "선택바": "arrow.left.and.right"
         case "자동 진행": "repeat"
@@ -9732,9 +9883,11 @@ private struct OnlineMusicBrowserView: View {
     @State private var canGoBack = false
     @State private var isPageLoading = false
     @State private var pageLoadProgress = 0.0
+    @State private var isPopupOpen = false
     @State private var goBackTrigger = 0
     @State private var stopLoadingTrigger = 0
     @State private var reloadTrigger = 0
+    @State private var closePopupTrigger = 0
     @State private var downloadStatusText = "음악을 가져오는 중"
     @State private var showFavoriteEditor = false
     @State private var showFavoritePanel = false
@@ -9755,9 +9908,11 @@ private struct OnlineMusicBrowserView: View {
                         canGoBack: $canGoBack,
                         isPageLoading: $isPageLoading,
                         pageLoadProgress: $pageLoadProgress,
+                        isPopupOpen: $isPopupOpen,
                         goBackTrigger: $goBackTrigger,
                         stopLoadingTrigger: $stopLoadingTrigger,
                         reloadTrigger: $reloadTrigger,
+                        closePopupTrigger: $closePopupTrigger,
                         isDownloading: $isDownloading,
                         downloadStatusText: $downloadStatusText,
                         detectedVideo: detectedVideoBinding,
@@ -9775,20 +9930,29 @@ private struct OnlineMusicBrowserView: View {
                 }
                 .overlay {
                     if showFavoritePanel {
-                        ZStack(alignment: .topTrailing) {
-                            Color.black.opacity(0.001)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    showFavoritePanel = false
-                                }
+                        GeometryReader { proxy in
+                            ZStack(alignment: .topTrailing) {
+                                Color.black.opacity(0.001)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        showFavoritePanel = false
+                                    }
 
-                            favoritePanel
-                                .padding(.top, 8)
-                                .padding(.trailing, 12)
+                                favoritePanel(
+                                    width: favoritePanelWidth(
+                                        availableWidth: proxy.size.width
+                                    ),
+                                    height: favoritePanelHeight(
+                                        availableHeight: proxy.size.height
+                                    )
+                                )
+                                .padding(.top, favoritePanelTopPadding)
+                                .padding(.horizontal, favoritePanelSidePadding)
                                 .transition(
                                     .move(edge: .top)
                                         .combined(with: .opacity)
                                 )
+                            }
                         }
                     }
                 }
@@ -9923,7 +10087,7 @@ private struct OnlineMusicBrowserView: View {
     }
 
     private var browserBackOrCloseButton: some View {
-        Image(systemName: canGoBack ? "chevron.left" : "xmark")
+        Image(systemName: isPopupOpen || !canGoBack ? "xmark" : "chevron.left")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(HanClipTheme.text.opacity(0.68))
             .frame(width: 32, height: 32)
@@ -9935,9 +10099,15 @@ private struct OnlineMusicBrowserView: View {
             .contentShape(Circle())
             .gesture(browserBackOrCloseGesture)
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(canGoBack ? "이전 페이지" : "브라우저 닫기")
+            .accessibilityLabel(
+                isPopupOpen
+                    ? "팝업 닫기"
+                    : canGoBack
+                        ? "이전 페이지"
+                        : "브라우저 닫기"
+            )
             .accessibilityHint(
-                canGoBack
+                canGoBack && !isPopupOpen
                     ? "길게 누르면 브라우저를 닫습니다"
                     : ""
             )
@@ -9945,7 +10115,11 @@ private struct OnlineMusicBrowserView: View {
                 handleBrowserBackOrCloseTap()
             }
             .accessibilityAction(named: "브라우저 닫기") {
-                dismiss()
+                if isPopupOpen {
+                    closePopupTrigger += 1
+                } else {
+                    dismiss()
+                }
             }
     }
 
@@ -10016,7 +10190,11 @@ private struct OnlineMusicBrowserView: View {
             .onEnded { value in
                 switch value {
                 case .first:
-                    dismiss()
+                    if isPopupOpen {
+                        closePopupTrigger += 1
+                    } else {
+                        dismiss()
+                    }
                 case .second:
                     handleBrowserBackOrCloseTap()
                 }
@@ -10024,6 +10202,10 @@ private struct OnlineMusicBrowserView: View {
     }
 
     private func handleBrowserBackOrCloseTap() {
+        if isPopupOpen {
+            closePopupTrigger += 1
+            return
+        }
         if canGoBack {
             goBackTrigger += 1
         } else {
@@ -10050,7 +10232,17 @@ private struct OnlineMusicBrowserView: View {
         }
     }
 
-    private var favoritePanel: some View {
+    private var favoritePanelTopPadding: CGFloat { 8 }
+    private var favoritePanelSidePadding: CGFloat { 12 }
+    private var favoritePanelBottomPadding: CGFloat { 12 }
+    private var favoritePanelHeaderHeight: CGFloat { 53 }
+    private var favoritePanelEmptyHeight: CGFloat { 112 }
+    private var favoritePanelRowHeight: CGFloat { 54 }
+
+    private func favoritePanel(
+        width: CGFloat,
+        height: CGFloat
+    ) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Label("즐겨찾기", systemImage: "bookmark.fill")
@@ -10081,18 +10273,36 @@ private struct OnlineMusicBrowserView: View {
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .padding(24)
             } else {
-                ScrollView {
+                ScrollView(
+                    .vertical,
+                    showsIndicators: shouldShowFavoriteScrollbar(
+                        availableHeight: height
+                    )
+                ) {
                     LazyVStack(spacing: 4) {
                         ForEach(favoriteMusicSites, id: \.self) { favorite in
                             favoritePanelRow(favorite)
                         }
                     }
-                    .padding(8)
+                    .padding(.vertical, 8)
+                    .padding(.leading, 8)
+                    .padding(
+                        .trailing,
+                        shouldShowFavoriteScrollbar(availableHeight: height)
+                            ? 14
+                            : 8
+                    )
                 }
+                .scrollIndicators(
+                    shouldShowFavoriteScrollbar(availableHeight: height)
+                        ? .visible
+                        : .hidden
+                )
+                .scrollIndicatorsFlash(trigger: showFavoritePanel)
                 .frame(maxHeight: .infinity)
             }
         }
-        .frame(width: 320, height: favoritePanelHeight)
+        .frame(width: width, height: height)
         .background(HanClipTheme.background)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
@@ -10102,9 +10312,28 @@ private struct OnlineMusicBrowserView: View {
         .shadow(color: Color.black.opacity(0.18), radius: 14, y: 6)
     }
 
-    private var favoritePanelHeight: CGFloat {
-        guard !favoriteMusicSites.isEmpty else { return 112 }
-        return min(384, 61 + CGFloat(favoriteMusicSites.count) * 54)
+    private func favoritePanelWidth(availableWidth: CGFloat) -> CGFloat {
+        max(260, availableWidth - favoritePanelSidePadding * 2)
+    }
+
+    private func favoritePanelHeight(availableHeight: CGFloat) -> CGFloat {
+        let maximumHeight = max(
+            favoritePanelEmptyHeight,
+            availableHeight - favoritePanelTopPadding - favoritePanelBottomPadding
+        )
+        return min(favoritePanelContentHeight, maximumHeight)
+    }
+
+    private var favoritePanelContentHeight: CGFloat {
+        guard !favoriteMusicSites.isEmpty else {
+            return favoritePanelEmptyHeight
+        }
+        return favoritePanelHeaderHeight
+            + CGFloat(favoriteMusicSites.count) * favoritePanelRowHeight
+    }
+
+    private func shouldShowFavoriteScrollbar(availableHeight: CGFloat) -> Bool {
+        favoritePanelContentHeight > availableHeight + 0.5
     }
 
     private func favoritePanelRow(_ favorite: String) -> some View {
@@ -10569,9 +10798,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
     @Binding var canGoBack: Bool
     @Binding var isPageLoading: Bool
     @Binding var pageLoadProgress: Double
+    @Binding var isPopupOpen: Bool
     @Binding var goBackTrigger: Int
     @Binding var stopLoadingTrigger: Int
     @Binding var reloadTrigger: Int
+    @Binding var closePopupTrigger: Int
     @Binding var isDownloading: Bool
     @Binding var downloadStatusText: String
     @Binding var detectedVideo: BrowserDetectedVideo?
@@ -10585,9 +10816,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             canGoBack: $canGoBack,
             isPageLoading: $isPageLoading,
             pageLoadProgress: $pageLoadProgress,
+            isPopupOpen: $isPopupOpen,
             goBackTrigger: $goBackTrigger,
             stopLoadingTrigger: $stopLoadingTrigger,
             reloadTrigger: $reloadTrigger,
+            closePopupTrigger: $closePopupTrigger,
             isDownloading: $isDownloading,
             downloadStatusText: $downloadStatusText,
             detectedVideo: $detectedVideo,
@@ -10600,6 +10833,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
         configuration.userContentController.add(
             context.coordinator,
             name: Coordinator.videoMessageName
@@ -10613,6 +10847,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         )
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         context.coordinator.observeProgress(in: webView)
         webView.load(URLRequest(url: url))
@@ -10626,6 +10861,8 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         uiView.configuration.userContentController.removeScriptMessageHandler(
             forName: Coordinator.videoMessageName
         )
+        uiView.uiDelegate = nil
+        uiView.navigationDelegate = nil
         coordinator.invalidateObservers()
     }
 
@@ -10636,9 +10873,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             canGoBack: $canGoBack,
             isPageLoading: $isPageLoading,
             pageLoadProgress: $pageLoadProgress,
+            isPopupOpen: $isPopupOpen,
             goBackTrigger: $goBackTrigger,
             stopLoadingTrigger: $stopLoadingTrigger,
             reloadTrigger: $reloadTrigger,
+            closePopupTrigger: $closePopupTrigger,
             isDownloading: $isDownloading,
             downloadStatusText: $downloadStatusText,
             detectedVideo: $detectedVideo,
@@ -10654,7 +10893,7 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKDownloadDelegate,
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate,
         WKScriptMessageHandler {
         static let videoMessageName = "hanclipVideo"
         static let videoDetectionScript = """
@@ -10682,9 +10921,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         @Binding private var canGoBack: Bool
         @Binding private var isPageLoading: Bool
         @Binding private var pageLoadProgress: Double
+        @Binding private var isPopupOpen: Bool
         @Binding private var goBackTrigger: Int
         @Binding private var stopLoadingTrigger: Int
         @Binding private var reloadTrigger: Int
+        @Binding private var closePopupTrigger: Int
         @Binding private var isDownloading: Bool
         @Binding private var downloadStatusText: String
         @Binding private var detectedVideo: BrowserDetectedVideo?
@@ -10695,7 +10936,9 @@ private struct OnlineMusicWebView: UIViewRepresentable {
         private var handledGoBackTrigger = 0
         private var handledStopLoadingTrigger = 0
         private var handledReloadTrigger = 0
+        private var handledClosePopupTrigger = 0
         private var handledDownloadDetectedVideoTrigger = 0
+        private var popupReturnURL: URL?
         private var progressObservation: NSKeyValueObservation?
 
         init(
@@ -10704,9 +10947,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             canGoBack: Binding<Bool>,
             isPageLoading: Binding<Bool>,
             pageLoadProgress: Binding<Double>,
+            isPopupOpen: Binding<Bool>,
             goBackTrigger: Binding<Int>,
             stopLoadingTrigger: Binding<Int>,
             reloadTrigger: Binding<Int>,
+            closePopupTrigger: Binding<Int>,
             isDownloading: Binding<Bool>,
             downloadStatusText: Binding<String>,
             detectedVideo: Binding<BrowserDetectedVideo?>,
@@ -10718,9 +10963,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             _canGoBack = canGoBack
             _isPageLoading = isPageLoading
             _pageLoadProgress = pageLoadProgress
+            _isPopupOpen = isPopupOpen
             _goBackTrigger = goBackTrigger
             _stopLoadingTrigger = stopLoadingTrigger
             _reloadTrigger = reloadTrigger
+            _closePopupTrigger = closePopupTrigger
             _isDownloading = isDownloading
             _downloadStatusText = downloadStatusText
             _detectedVideo = detectedVideo
@@ -10734,9 +10981,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             canGoBack: Binding<Bool>,
             isPageLoading: Binding<Bool>,
             pageLoadProgress: Binding<Double>,
+            isPopupOpen: Binding<Bool>,
             goBackTrigger: Binding<Int>,
             stopLoadingTrigger: Binding<Int>,
             reloadTrigger: Binding<Int>,
+            closePopupTrigger: Binding<Int>,
             isDownloading: Binding<Bool>,
             downloadStatusText: Binding<String>,
             detectedVideo: Binding<BrowserDetectedVideo?>,
@@ -10747,9 +10996,11 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             _canGoBack = canGoBack
             _isPageLoading = isPageLoading
             _pageLoadProgress = pageLoadProgress
+            _isPopupOpen = isPopupOpen
             _goBackTrigger = goBackTrigger
             _stopLoadingTrigger = stopLoadingTrigger
             _reloadTrigger = reloadTrigger
+            _closePopupTrigger = closePopupTrigger
             _isDownloading = isDownloading
             _downloadStatusText = downloadStatusText
             _detectedVideo = detectedVideo
@@ -10789,6 +11040,10 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 handledReloadTrigger = reloadTrigger
                 webView.reload()
             }
+            if closePopupTrigger != handledClosePopupTrigger {
+                handledClosePopupTrigger = closePopupTrigger
+                closePopup(in: webView)
+            }
             if downloadDetectedVideoTrigger
                 != handledDownloadDetectedVideoTrigger {
                 handledDownloadDetectedVideoTrigger =
@@ -10807,6 +11062,40 @@ private struct OnlineMusicWebView: UIViewRepresentable {
                 }
             }
             updateCurrentURL(from: webView)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            guard navigationAction.targetFrame == nil,
+                  let url = navigationAction.request.url
+            else { return nil }
+
+            if !isPopupOpen {
+                popupReturnURL = webView.url
+            }
+            isPopupOpen = true
+            currentURLText = url.absoluteString
+            webView.load(navigationAction.request)
+            return nil
+        }
+
+        func webViewDidClose(_ webView: WKWebView) {
+            closePopup(in: webView)
+        }
+
+        private func closePopup(in webView: WKWebView) {
+            guard isPopupOpen else { return }
+            isPopupOpen = false
+            if let popupReturnURL {
+                webView.load(URLRequest(url: popupReturnURL))
+                self.popupReturnURL = nil
+            } else if webView.canGoBack {
+                webView.goBack()
+            }
         }
 
         func userContentController(
@@ -11482,10 +11771,20 @@ private struct ClipReorderDropDelegate: DropDelegate {
     private func topLevelUnits() -> [[UUID]] {
         clips
             .filter { !$0.isVideoSegmentChild }
+            .filter { !$0.isSimilarPhotoGroupChild }
             .map { clip in
                 if clip.isVideoSegmentParent {
                     return [clip.id] + clips
                         .filter { $0.videoSegmentParentID == clip.id }
+                        .map(\.id)
+                }
+                if clip.isSimilarPhotoGroupParent,
+                   let groupID = clip.similarPhotoGroupID {
+                    return [clip.id] + clips
+                        .filter {
+                            $0.similarPhotoGroupID == groupID
+                                && $0.id != clip.id
+                        }
                         .map(\.id)
                 }
                 return [clip.id]

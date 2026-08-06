@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct SimilarPhotoGroupPreviewItem {
+    let id: UUID
+    let thumbnail: UIImage
+    let isIncluded: Bool
+}
+
 struct ClipRow: View {
     let position: Int?
     @Binding var clip: ClipItem
@@ -14,6 +20,8 @@ struct ClipRow: View {
     let onSelectParentClipPreview: () -> Void
     let onToggleSimilarPhotoGroup: () -> Void
     let onSetSimilarPhotoIncluded: (Bool) -> Void
+    let similarPhotoGroupPreviewItems: [SimilarPhotoGroupPreviewItem]
+    let displayAsSimilarPhotoChild: Bool
     let onSelect: () -> Void
 
     var body: some View {
@@ -21,98 +29,7 @@ struct ClipRow: View {
             positionCell
 
             HStack(alignment: .center, spacing: 12) {
-                Button(action: onSelect) {
-                    Image(uiImage: clip.thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                        .brightness(isParentSummaryRow ? 0.09 : 0)
-                        .saturation(isParentSummaryRow ? 1.12 : 1)
-                        .frame(
-                            width: isChildRow ? 52 : 58,
-                            height: isChildRow ? 50 : 54
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(
-                                    isChildRow
-                                        ? HanClipTheme.primary.opacity(0.24)
-                                        : Color.white.opacity(0.30),
-                                    lineWidth: isChildRow ? 1.2 : 0.8
-                                )
-                        }
-                        .overlay(alignment: .topTrailing) {
-                            if clip.isLivePhoto,
-                               !clip.isSimilarPhotoGroupMember {
-                                Image(systemName: "livephoto")
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(.white)
-                                    .padding(3)
-                                    .background(.black.opacity(0.65), in: Circle())
-                                    .padding(3)
-                            }
-                        }
-                        .overlay {
-                            if isParentSummaryRow {
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.24),
-                                        HanClipTheme.secondary.opacity(0.16),
-                                        HanClipTheme.primary.opacity(0.08)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .blendMode(.screen)
-                            }
-                        }
-                        .overlay {
-                            if isParentSummaryRow {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
-                            }
-                        }
-                        .overlay(alignment: .bottomTrailing) {
-                            if isParentSummaryRow {
-                                Text("\(summaryChildCount)")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .black,
-                                            design: .rounded
-                                        )
-                                    )
-                                    .monospacedDigit()
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 7)
-                                    .frame(height: 24)
-                                    .background(
-                                        HanClipTheme.primary.opacity(0.82),
-                                        in: Capsule()
-                                    )
-                                    .overlay {
-                                        Capsule()
-                                            .stroke(
-                                                Color.white.opacity(0.30),
-                                                lineWidth: 0.8
-                                            )
-                                    }
-                                    .padding(5)
-                                .shadow(
-                                    color: Color.black.opacity(0.22),
-                                    radius: 3,
-                                    y: 1
-                                )
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .offset(
-                    x: isChildRow ? 12 : 0
-                )
-                .buttonStyle(.plain)
-                .accessibilityLabel("편집 열기")
+                thumbnailButton
 
                 VStack(
                     alignment: .leading,
@@ -140,7 +57,7 @@ struct ClipRow: View {
                     HStack(alignment: .center, spacing: 8) {
                         if clip.isLivePhoto {
                             HStack(spacing: 7) {
-                                if clip.isSimilarPhotoGroupParent {
+                                if displaysAsSimilarPhotoParent {
                                     Button(action: onSelect) {
                                         Image(systemName: "photo.fill")
                                             .font(.system(size: 16, weight: .semibold))
@@ -148,8 +65,8 @@ struct ClipRow: View {
                                                 segmentMediaIconGradient
                                             )
                                             .shadow(
-                                                color: HanClipTheme.primary.opacity(0.18),
-                                                radius: 2,
+                                                color: HanClipTheme.primary.opacity(0.05),
+                                                radius: 1,
                                                 y: 1
                                             )
                                             .frame(
@@ -163,13 +80,13 @@ struct ClipRow: View {
                                     .buttonStyle(.plain)
                                     .accessibilityLabel("묶음사진 편집 열기")
 
-                                    VideoSegmentModeSegmentedControl(
+                                    SimilarPhotoGroupModeSegmentedControl(
                                         mode: videoSegmentModeBinding,
                                         tint: HanClipTheme.secondary,
-                                        width: 88,
+                                        width: 90,
                                         height: 26
                                     )
-                                } else if !clip.isSimilarPhotoGroupChild {
+                                } else if !displaysAsSimilarPhotoChild {
                                     Button(action: onSelect) {
                                         Image(systemName: "livephoto")
                                             .font(
@@ -196,31 +113,29 @@ struct ClipRow: View {
                                     LivePhotoModeSegmentedControl(
                                         mode: $clip.livePhotoMode,
                                         tint: HanClipTheme.secondary,
-                                        width: 96,
+                                        width: 98,
                                         height: 26
                                     )
                                     .onChange(of: clip.livePhotoMode) {
                                         _,
                                         selectedMode in
-                                        if selectedMode == .motion {
-                                            clip.duration = clip.sourceDuration
-                                                ?? clip.livePhotoDuration
-                                                ?? clip.duration
-                                        } else {
-                                            clip.photoDuration = defaultDuration
-                                            clip.duration = defaultDuration
-                                        }
+                                        applyLivePhotoMode(selectedMode)
                                     }
                                 } else {
                                     LivePhotoModeSegmentedControl(
                                         mode: $clip.livePhotoMode,
                                         tint: HanClipTheme.secondary,
-                                        width: 96,
+                                        width: 98,
                                         height: 26
                                     )
+                                    .onChange(of: clip.livePhotoMode) {
+                                        _,
+                                        selectedMode in
+                                        applyLivePhotoMode(selectedMode)
+                                    }
                                 }
                             }
-                            .offset(x: clip.isSimilarPhotoGroupChild ? 8 : 0)
+                            .offset(x: displaysAsSimilarPhotoChild ? 8 : 0)
 
                             editorAreaButton
                         } else {
@@ -266,19 +181,19 @@ struct ClipRow: View {
                                             )
                                         )
                                         .foregroundStyle(
-                                            clip.isSimilarPhotoGroupParent
+                                            displaysAsSimilarPhotoParent
                                                 ? segmentMediaIconGradient
                                                 : mutedMediaIconGradient
                                         )
                                         .shadow(
-                                            color: clip.isSimilarPhotoGroupParent
-                                                ? HanClipTheme.primary.opacity(0.18)
+                                            color: displaysAsSimilarPhotoParent
+                                                ? HanClipTheme.primary.opacity(0.05)
                                                 : Color.clear,
-                                            radius: 2,
+                                            radius: 1,
                                             y: 1
                                         )
                                         .frame(
-                                            width: clip.isSimilarPhotoGroupParent
+                                            width: displaysAsSimilarPhotoParent
                                                 ? 28
                                                 : 96,
                                             height: 24,
@@ -292,11 +207,11 @@ struct ClipRow: View {
                                     "사진 편집 열기"
                                 )
 
-                                if clip.isSimilarPhotoGroupParent {
-                                    VideoSegmentModeSegmentedControl(
+                                if displaysAsSimilarPhotoParent {
+                                    SimilarPhotoGroupModeSegmentedControl(
                                         mode: videoSegmentModeBinding,
                                         tint: HanClipTheme.secondary,
-                                        width: 88,
+                                        width: 90,
                                         height: 26
                                     )
                                 }
@@ -320,7 +235,7 @@ struct ClipRow: View {
                                 VideoDurationStepper(clip: $clip)
                             } else {
                                 HStack(spacing: 8) {
-                                    if clip.isSimilarPhotoGroupChild {
+                                    if displaysAsSimilarPhotoChild {
                                         SimilarPhotoExposureSegmentedControl(
                                             isIncluded: Binding(
                                                 get: {
@@ -333,7 +248,7 @@ struct ClipRow: View {
                                                 }
                                             ),
                                             tint: HanClipTheme.secondary,
-                                            width: 88,
+                                            width: 92,
                                             height: 26
                                         )
                                     }
@@ -356,6 +271,217 @@ struct ClipRow: View {
         .frame(minHeight: 58, alignment: .center)
     }
 
+    private var thumbnailButton: some View {
+        Button(action: onSelect) {
+            Group {
+                if displaysAsSimilarPhotoParent {
+                    similarPhotoBundleThumbnail
+                } else {
+                    standardThumbnail
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .offset(x: isChildRow ? 12 : 0)
+        .buttonStyle(.plain)
+        .accessibilityLabel("편집 열기")
+    }
+
+    private var standardThumbnail: some View {
+        Image(uiImage: clip.thumbnail)
+            .resizable()
+            .scaledToFill()
+            .brightness(isParentSummaryRow ? 0.09 : 0)
+            .saturation(isParentSummaryRow ? 1.12 : 1)
+            .frame(
+                width: isChildRow ? 52 : 58,
+                height: isChildRow ? 50 : 54
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(
+                        isChildRow
+                            ? HanClipTheme.primary.opacity(0.24)
+                            : Color.white.opacity(0.30),
+                        lineWidth: isChildRow ? 1.2 : 0.8
+                    )
+            }
+            .overlay(alignment: .topTrailing) {
+                if clip.isLivePhoto,
+                   !clip.isSimilarPhotoGroupMember {
+                    Image(systemName: "livephoto")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.white)
+                        .padding(3)
+                        .background(.black.opacity(0.65), in: Circle())
+                        .padding(3)
+                }
+            }
+            .overlay {
+                if isParentSummaryRow {
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.13),
+                            HanClipTheme.secondary.opacity(0.07),
+                            HanClipTheme.primary.opacity(0.025)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .blendMode(.screen)
+                }
+            }
+            .overlay {
+                if isParentSummaryRow {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.white.opacity(0.025))
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isParentSummaryRow {
+                    summaryCountBadge
+                }
+            }
+    }
+
+    private var similarPhotoBundleThumbnail: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.34),
+                            HanClipTheme.secondary.opacity(0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(
+                            HanClipTheme.secondary.opacity(0.14),
+                            lineWidth: 0.9
+                        )
+                }
+
+            similarPhotoBundleContents
+
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .trim(from: 0.50, to: 1)
+                .stroke(
+                    HanClipTheme.secondary.opacity(0.16),
+                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
+                )
+                .frame(width: 50, height: 43)
+                .rotationEffect(.degrees(180))
+                .offset(y: 2)
+
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(HanClipTheme.primary.opacity(0.38))
+                .padding(5)
+                .background(.ultraThinMaterial, in: Circle())
+                .offset(x: -19, y: -15)
+        }
+        .frame(width: 58, height: 54)
+        .overlay(alignment: .bottomTrailing) {
+            summaryCountBadge
+        }
+    }
+
+    private var similarPhotoBundleContents: some View {
+        let items = similarPhotoGroupPreviewItems.isEmpty
+            ? [
+                SimilarPhotoGroupPreviewItem(
+                    id: clip.id,
+                    thumbnail: clip.thumbnail,
+                    isIncluded: clip.isSimilarPhotoGroupRepresentative
+                )
+            ]
+            : similarPhotoGroupPreviewItems
+        let visibleItems = Array(items.prefix(3).enumerated())
+
+        return ZStack {
+            ForEach(visibleItems, id: \.element.id) { offset, item in
+                let centerOffset = CGFloat(visibleItems.count - 1) / 2
+                let xOffset = (CGFloat(offset) - centerOffset) * 9
+                let yOffset = CGFloat(offset) * -2
+                Image(uiImage: item.thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(
+                                item.isIncluded
+                                    ? HanClipTheme.primary.opacity(0.28)
+                                    : Color.white.opacity(0.32),
+                                lineWidth: item.isIncluded ? 0.9 : 0.6
+                            )
+                    }
+                    .overlay(alignment: .bottom) {
+                        if item.isIncluded {
+                            Text("사용")
+                                .font(.system(size: 7, weight: .black))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .frame(height: 11)
+                                .background(
+                                    HanClipTheme.primary.opacity(0.38),
+                                    in: Capsule()
+                                )
+                                .offset(y: 5)
+                        }
+                    }
+                    .shadow(
+                        color: Color.black.opacity(0.08),
+                        radius: 2,
+                        y: 1
+                    )
+                    .rotationEffect(.degrees(Double(offset - 1) * 4))
+                    .offset(x: xOffset, y: yOffset)
+                    .zIndex(Double(offset))
+            }
+        }
+        .frame(width: 50, height: 38)
+    }
+
+    private var summaryCountBadge: some View {
+        Text("\(summaryChildCount)")
+            .font(
+                .system(
+                    size: 15,
+                    weight: .black,
+                    design: .rounded
+                )
+            )
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .frame(height: 24)
+            .background(
+                HanClipTheme.primary.opacity(0.46),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(
+                        Color.white.opacity(0.18),
+                        lineWidth: 0.8
+                    )
+            }
+            .padding(5)
+            .shadow(
+                color: Color.black.opacity(0.08),
+                radius: 2,
+                y: 1
+            )
+    }
+
     private var parentClipPreviewButton: some View {
         ZStack {
             parentActionCircle
@@ -373,16 +499,16 @@ struct ClipRow: View {
             .foregroundStyle(
                 LinearGradient(
                     colors: [
-                        HanClipTheme.primary.opacity(0.90),
-                        HanClipTheme.secondary.opacity(0.78)
+                        HanClipTheme.primary.opacity(0.38),
+                        HanClipTheme.secondary.opacity(0.22)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
                 .shadow(
-                    color: HanClipTheme.primary.opacity(0.16),
-                    radius: 2,
+                    color: Color.clear,
+                    radius: 0,
                     y: 1
                 )
         }
@@ -405,10 +531,10 @@ struct ClipRow: View {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 16, weight: .bold))
                     .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(HanClipTheme.primary.opacity(0.90))
+                    .foregroundStyle(HanClipTheme.primary.opacity(0.38))
                     .shadow(
-                        color: HanClipTheme.primary.opacity(0.16),
-                        radius: 2,
+                        color: Color.clear,
+                        radius: 0,
                         y: 1
                     )
             }
@@ -431,8 +557,8 @@ struct ClipRow: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                HanClipTheme.background.opacity(0.82),
-                                HanClipTheme.secondary.opacity(0.16)
+                                HanClipTheme.background.opacity(0.70),
+                                HanClipTheme.secondary.opacity(0.032)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -442,8 +568,8 @@ struct ClipRow: View {
             .overlay {
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.48),
-                        Color.white.opacity(0.08)
+                        Color.white.opacity(0.16),
+                        Color.white.opacity(0.025)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -454,22 +580,22 @@ struct ClipRow: View {
             .overlay {
                 Circle()
                     .stroke(
-                        HanClipTheme.panelStroke,
-                        lineWidth: 1
+                        HanClipTheme.panelStroke.opacity(0.34),
+                        lineWidth: 0.8
                     )
             }
             .overlay(alignment: .topLeading) {
                 Circle()
-                    .fill(Color.white.opacity(0.62))
-                    .frame(width: 5.5, height: 5.5)
+                    .fill(Color.white.opacity(0.22))
+                    .frame(width: 4.5, height: 4.5)
                     .blur(radius: 1)
                     .offset(x: 7, y: 6)
                     .allowsHitTesting(false)
             }
             .shadow(
-                color: HanClipTheme.primary.opacity(0.13),
-                radius: 8,
-                y: 4
+                color: Color.black.opacity(0.035),
+                radius: 3,
+                y: 2
             )
             .frame(width: 30, height: 30)
     }
@@ -482,7 +608,7 @@ struct ClipRow: View {
                     : "rectangle.stack.badge.plus"
             )
             .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(HanClipTheme.secondary.opacity(0.90))
+            .foregroundStyle(HanClipTheme.secondaryText.opacity(0.70))
             .frame(width: 32, height: 30)
             .contentShape(Rectangle())
         }
@@ -494,19 +620,19 @@ struct ClipRow: View {
 
     private var positionText: String {
         if isParentSummaryRow {
-            return "·"
+            return "\(position ?? 0)"
         }
-        if clip.isSimilarPhotoGroupChild {
-            return "\(clip.similarPhotoGroupIndex)"
+        if displaysAsSimilarPhotoChild {
+            return ""
         }
         return "\(position ?? 0)"
     }
 
     private var positionAccessibilityLabel: String {
-        if clip.isSimilarPhotoGroupParent {
+        if displaysAsSimilarPhotoParent {
             return "묶음사진"
         }
-        if clip.isSimilarPhotoGroupChild {
+        if displaysAsSimilarPhotoChild {
             return "자사진"
         }
         if clip.isVideoSegmentParent {
@@ -519,18 +645,18 @@ struct ClipRow: View {
         Text(positionText)
             .font(
                 .system(
-                    size: isParentSummaryRow ? 21 : 10,
-                    weight: isParentSummaryRow ? .semibold : .regular,
+                    size: 10,
+                    weight: .regular,
                     design: .rounded
                 )
                 .monospacedDigit()
             )
             .foregroundStyle(
                 isParentSummaryRow
-                    ? HanClipTheme.primary.opacity(0.90)
+                    ? HanClipTheme.primary.opacity(0.62)
                     : isChildRow
-                        ? HanClipTheme.primary.opacity(0.82)
-                        : HanClipTheme.primary.opacity(0.86)
+                        ? HanClipTheme.primary.opacity(0.50)
+                        : HanClipTheme.primary.opacity(0.56)
             )
             .lineLimit(1)
             .minimumScaleFactor(0.72)
@@ -540,17 +666,17 @@ struct ClipRow: View {
                 if isChildRow {
                     ZStack {
                         Capsule()
-                            .fill(HanClipTheme.primary.opacity(0.075))
+                            .fill(HanClipTheme.primary.opacity(0.040))
                             .frame(width: 9, height: 58)
                             .offset(x: 20)
 
                         Capsule()
-                            .fill(HanClipTheme.primary.opacity(0.32))
+                            .fill(HanClipTheme.primary.opacity(0.16))
                             .frame(width: 2.5, height: 54)
                             .offset(x: 20)
 
                         Circle()
-                            .fill(HanClipTheme.primary.opacity(0.72))
+                            .fill(HanClipTheme.primary.opacity(0.38))
                             .frame(width: 5.5, height: 5.5)
                             .offset(x: 20)
                     }
@@ -569,10 +695,11 @@ struct ClipRow: View {
                 childSegmentCount
             )
         }
-        if clip.isSimilarPhotoGroupParent {
+        if displaysAsSimilarPhotoParent {
             return String(
-                format: "%@ / 전체 %@ / %d개",
-                durationText(clip.duration),
+                format: "%@ %d장 · %@ / 전체 %d개",
+                clip.videoSegmentMode == .single ? "자동" : "수동",
+                selectedSimilarPhotoCount,
                 durationText(childSegmentDuration),
                 clip.similarPhotoGroupCount
             )
@@ -613,6 +740,17 @@ struct ClipRow: View {
         return String(format: "%d:%04.1f", minutes, remainingSeconds)
     }
 
+    private func applyLivePhotoMode(_ selectedMode: LivePhotoMode) {
+        if selectedMode == .motion {
+            clip.duration = clip.sourceDuration
+                ?? clip.livePhotoDuration
+                ?? clip.duration
+        } else {
+            clip.photoDuration = defaultDuration
+            clip.duration = defaultDuration
+        }
+    }
+
     private var durationBinding: Binding<Double> {
         Binding(
             get: { clip.duration },
@@ -633,7 +771,7 @@ struct ClipRow: View {
             get: { clip.videoSegmentMode },
             set: { mode in
                 clip.videoSegmentMode = mode
-                if clip.isSimilarPhotoGroupParent {
+                if displaysAsSimilarPhotoParent {
                     onSelectSimilarPhotoGroupMode(mode)
                 } else {
                     onSelectVideoSegmentMode(mode)
@@ -643,21 +781,27 @@ struct ClipRow: View {
     }
 
     private var isParentSummaryRow: Bool {
-        clip.isVideoSegmentParent || clip.isSimilarPhotoGroupParent
+        clip.isVideoSegmentParent || displaysAsSimilarPhotoParent
     }
 
     private var isChildRow: Bool {
-        clip.isVideoSegmentChild || clip.isSimilarPhotoGroupChild
+        clip.isVideoSegmentChild || displaysAsSimilarPhotoChild
     }
 
     private var summaryChildCount: Int {
-        clip.isSimilarPhotoGroupParent
+        displaysAsSimilarPhotoParent
             ? clip.similarPhotoGroupCount
             : childSegmentCount
     }
 
+    private var selectedSimilarPhotoCount: Int {
+        guard displaysAsSimilarPhotoParent else { return 0 }
+        let count = similarPhotoGroupPreviewItems.filter(\.isIncluded).count
+        return max(count, 1)
+    }
+
     private func resetSummaryRow() {
-        if clip.isSimilarPhotoGroupParent {
+        if displaysAsSimilarPhotoParent {
             clip.videoSegmentMode = .single
             onSelectSimilarPhotoGroupMode(.single)
         } else {
@@ -682,6 +826,14 @@ struct ClipRow: View {
             .accessibilityHidden(true)
     }
 
+    private var displaysAsSimilarPhotoParent: Bool {
+        clip.isSimilarPhotoGroupParent && !displayAsSimilarPhotoChild
+    }
+
+    private var displaysAsSimilarPhotoChild: Bool {
+        displayAsSimilarPhotoChild || clip.isSimilarPhotoGroupChild
+    }
+
     private var videoMediaIcon: some View {
         Group {
             if clip.isVideoSegmentChild {
@@ -699,9 +851,9 @@ struct ClipRow: View {
         )
         .shadow(
             color: canShowVideoSegmentSwitch
-                ? HanClipTheme.primary.opacity(0.18)
+                ? HanClipTheme.primary.opacity(0.06)
                 : Color.clear,
-            radius: 2,
+            radius: 1,
             y: 1
         )
         .frame(
@@ -716,8 +868,8 @@ struct ClipRow: View {
     private var segmentMediaIconGradient: LinearGradient {
         LinearGradient(
             colors: [
-                HanClipTheme.primary.opacity(0.96),
-                HanClipTheme.secondary.opacity(0.86)
+                HanClipTheme.primary.opacity(0.38),
+                HanClipTheme.secondary.opacity(0.22)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -835,7 +987,7 @@ private struct VideoDurationStepper: View {
             }
 
             Rectangle()
-                .fill(Color.white.opacity(0.45))
+                .fill(HanClipTheme.secondaryText.opacity(0.20))
                 .frame(width: 1, height: 12)
 
             stepButton(
@@ -847,11 +999,11 @@ private struct VideoDurationStepper: View {
             }
         }
         .frame(width: 68, height: 20)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(HanClipTheme.panelFill.opacity(0.30), in: Capsule())
         .background(stepperChromeBackground, in: Capsule())
         .overlay {
             Capsule()
-                .stroke(HanClipTheme.panelStroke.opacity(0.82), lineWidth: 1)
+                .stroke(HanClipTheme.panelStroke.opacity(0.24), lineWidth: 0.8)
         }
         .accessibilityElement(children: .contain)
     }
@@ -866,7 +1018,7 @@ private struct VideoDurationStepper: View {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(
-                    HanClipTheme.primary.opacity(isEnabled ? 0.72 : 0.24)
+                    HanClipTheme.secondaryText.opacity(isEnabled ? 0.54 : 0.18)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -898,8 +1050,8 @@ private struct VideoDurationStepper: View {
     private var stepperChromeBackground: LinearGradient {
         LinearGradient(
             colors: [
-                HanClipTheme.background.opacity(0.80),
-                HanClipTheme.secondary.opacity(0.13)
+                HanClipTheme.background.opacity(0.44),
+                HanClipTheme.secondary.opacity(0.026)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -919,12 +1071,12 @@ struct LivePhotoModeSegmentedControl: View {
                 HStack(spacing: 0) {
                     segment(
                         mode: .still,
-                        title: "포토"
+                        title: "정지"
                     )
 
                     segment(
                         mode: .motion,
-                        title: "Live"
+                        title: "동작"
                     )
                 }
                 .padding(2)
@@ -946,9 +1098,13 @@ struct LivePhotoModeSegmentedControl: View {
         }
         .frame(width: width, height: height)
         .background(
-            tint.opacity(0.11),
+            tint.opacity(0.060),
             in: RoundedRectangle(cornerRadius: height / 2)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: height / 2)
+                .stroke(tint.opacity(0.18), lineWidth: 0.8)
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -963,13 +1119,15 @@ struct LivePhotoModeSegmentedControl: View {
                 .font(
                     .system(
                         size: height <= 24 ? 10 : 11,
-                        weight: .semibold
+                        weight: isSelected ? .bold : .semibold
                     )
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
-        .foregroundStyle(isSelected ? .white : HanClipTheme.secondaryText)
+        .foregroundStyle(
+            isSelected ? HanClipTheme.primaryText : HanClipTheme.secondaryText
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .background {
@@ -978,13 +1136,17 @@ struct LivePhotoModeSegmentedControl: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                tint,
-                                tint.opacity(0.86)
+                                HanClipTheme.background.opacity(0.72),
+                                tint.opacity(0.085)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
+                            .stroke(tint.opacity(0.24), lineWidth: 0.7)
+                    }
             }
         }
         .accessibilityLabel(title)
@@ -999,74 +1161,76 @@ struct SimilarPhotoExposureSegmentedControl: View {
     let height: CGFloat
 
     var body: some View {
-        GeometryReader { proxy in
-            HStack(spacing: 0) {
-                segment(
-                    isSelected: !isIncluded,
-                    title: "숨김"
-                )
-
-                segment(
-                    isSelected: isIncluded,
-                    title: "보기"
-                )
-            }
-            .padding(2)
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(RoundedRectangle(cornerRadius: height / 2))
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { value in
-                        if abs(value.translation.width) < 1 {
-                            isIncluded.toggle()
-                            return
-                        }
-                        isIncluded = value.location.x >= proxy.size.width / 2
-                    }
-            )
-        }
-        .frame(width: width, height: height)
-        .background(
-            tint.opacity(0.11),
-            in: RoundedRectangle(cornerRadius: height / 2)
-        )
-        .accessibilityElement(children: .contain)
-    }
-
-    private func segment(
-        isSelected: Bool,
-        title: String
-    ) -> some View {
-        HStack(spacing: 0) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-        }
-        .foregroundStyle(isSelected ? .white : HanClipTheme.secondaryText)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                tint,
-                                tint.opacity(0.86)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+        Button {
+            isIncluded.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            isIncluded
+                                ? tint.opacity(0.16)
+                                : HanClipTheme.panelFill.opacity(0.72)
                         )
+                        .overlay {
+                            Circle()
+                                .stroke(
+                                    isIncluded
+                                        ? tint.opacity(0.24)
+                                        : HanClipTheme.panelStroke.opacity(0.30),
+                                    lineWidth: 0.7
+                                )
+                        }
+
+                    Image(systemName: isIncluded ? "checkmark" : "minus")
+                        .font(.system(size: 7.5, weight: .black))
+                }
+                .frame(width: 14, height: 14)
+
+                Text(isIncluded ? "사용중" : "제외됨")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Image(systemName: "arrow.2.squarepath")
+                    .font(.system(size: 7.5, weight: .bold))
+                    .opacity(0.58)
+            }
+            .foregroundStyle(
+                isIncluded
+                    ? HanClipTheme.primaryText.opacity(0.92)
+                    : HanClipTheme.secondaryText.opacity(0.76)
+            )
+            .frame(width: width, height: height)
+            .background(
+                isIncluded
+                    ? tint.opacity(0.055)
+                    : HanClipTheme.panelFill.opacity(0.36),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .stroke(
+                        isIncluded
+                            ? tint.opacity(0.18)
+                            : HanClipTheme.panelStroke.opacity(0.30),
+                        lineWidth: 0.8
                     )
             }
+            .overlay(alignment: .topTrailing) {
+                Circle()
+                    .fill(HanClipTheme.background.opacity(0.92))
+                    .frame(width: 4, height: 4)
+                    .offset(x: -7, y: 5)
+            }
+            .contentShape(Capsule())
         }
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .buttonStyle(.plain)
+        .accessibilityLabel(isIncluded ? "자사진 사용" : "자사진 제외")
     }
 }
 
-struct VideoSegmentModeSegmentedControl: View {
+struct SimilarPhotoGroupModeSegmentedControl: View {
     @Binding var mode: VideoSegmentMode
     let tint: Color
     let width: CGFloat
@@ -1078,12 +1242,12 @@ struct VideoSegmentModeSegmentedControl: View {
                 HStack(spacing: 0) {
                     segment(
                         mode: .single,
-                        title: VideoSegmentMode.single.rawValue
+                        title: "자동"
                     )
 
                     segment(
                         mode: .multiple,
-                        title: VideoSegmentMode.multiple.rawValue
+                        title: "수동"
                     )
                 }
                 .padding(2)
@@ -1105,9 +1269,13 @@ struct VideoSegmentModeSegmentedControl: View {
         }
         .frame(width: width, height: height)
         .background(
-            tint.opacity(0.11),
+            tint.opacity(0.060),
             in: RoundedRectangle(cornerRadius: height / 2)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: height / 2)
+                .stroke(tint.opacity(0.18), lineWidth: 0.8)
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -1122,13 +1290,15 @@ struct VideoSegmentModeSegmentedControl: View {
                 .font(
                     .system(
                         size: height <= 24 ? 10 : 11,
-                        weight: .semibold
+                        weight: isSelected ? .bold : .semibold
                     )
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
-        .foregroundStyle(isSelected ? .white : HanClipTheme.secondaryText)
+        .foregroundStyle(
+            isSelected ? HanClipTheme.primaryText : HanClipTheme.secondaryText
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .background {
@@ -1137,13 +1307,112 @@ struct VideoSegmentModeSegmentedControl: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                tint,
-                                tint.opacity(0.86)
+                                HanClipTheme.background.opacity(0.72),
+                                tint.opacity(0.085)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
+                            .stroke(tint.opacity(0.24), lineWidth: 0.7)
+                    }
+            }
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+struct VideoSegmentModeSegmentedControl: View {
+    @Binding var mode: VideoSegmentMode
+    let tint: Color
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                HStack(spacing: 0) {
+                    segment(
+                        mode: .single,
+                        title: "한컷"
+                    )
+
+                    segment(
+                        mode: .multiple,
+                        title: "분할"
+                    )
+                }
+                .padding(2)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .contentShape(RoundedRectangle(cornerRadius: height / 2))
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0)
+                    .onEnded { value in
+                        if abs(value.translation.width) < 1 {
+                            mode = mode == .single ? .multiple : .single
+                            return
+                        }
+                        mode = value.location.x < proxy.size.width / 2
+                            ? .single
+                            : .multiple
+                    }
+            )
+        }
+        .frame(width: width, height: height)
+        .background(
+            tint.opacity(0.060),
+            in: RoundedRectangle(cornerRadius: height / 2)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: height / 2)
+                .stroke(tint.opacity(0.18), lineWidth: 0.8)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func segment(
+        mode segmentMode: VideoSegmentMode,
+        title: String
+    ) -> some View {
+        let isSelected = mode == segmentMode
+
+        return HStack(spacing: 0) {
+            Text(title)
+                .font(
+                    .system(
+                        size: height <= 24 ? 10 : 11,
+                        weight: isSelected ? .bold : .semibold
+                    )
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(
+            isSelected ? HanClipTheme.primaryText : HanClipTheme.secondaryText
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                HanClipTheme.background.opacity(0.72),
+                                tint.opacity(0.085)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: max(4, height / 2 - 2))
+                            .stroke(tint.opacity(0.24), lineWidth: 0.7)
+                    }
             }
         }
         .accessibilityLabel("클립 나누기 \(title)")
@@ -1173,7 +1442,7 @@ struct CompactDurationStepper: View {
             }
 
             Rectangle()
-                .fill(Color.white.opacity(0.45))
+                .fill(HanClipTheme.secondaryText.opacity(0.20))
                 .frame(width: 1, height: resolvedHeight * 0.55)
 
             stepButton(
@@ -1184,11 +1453,11 @@ struct CompactDurationStepper: View {
             }
         }
         .frame(width: controlWidth, height: resolvedHeight)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(HanClipTheme.panelFill.opacity(0.30), in: Capsule())
         .background(stepperChromeBackground, in: Capsule())
         .overlay {
             Capsule()
-                .stroke(HanClipTheme.panelStroke.opacity(0.82), lineWidth: 1)
+                .stroke(HanClipTheme.panelStroke.opacity(0.24), lineWidth: 0.8)
         }
         .accessibilityElement(children: .contain)
     }
@@ -1206,7 +1475,7 @@ struct CompactDurationStepper: View {
                         weight: .bold
                     )
                 )
-                .foregroundStyle(HanClipTheme.primary.opacity(0.72))
+                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.54))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .opacity(isEnabled ? 1 : 0.4)
@@ -1224,8 +1493,8 @@ struct CompactDurationStepper: View {
     private var stepperChromeBackground: LinearGradient {
         LinearGradient(
             colors: [
-                HanClipTheme.background.opacity(0.80),
-                HanClipTheme.secondary.opacity(0.13)
+                HanClipTheme.background.opacity(0.44),
+                HanClipTheme.secondary.opacity(0.026)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

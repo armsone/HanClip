@@ -296,6 +296,27 @@ final class EditorViewModel: ObservableObject {
             .reduce(0) { $0 + $1.duration }
     }
 
+    func similarPhotoGroupPreviewItems(
+        for id: UUID
+    ) -> [SimilarPhotoGroupPreviewItem] {
+        guard let groupID = clips.first(where: { $0.id == id })?
+            .similarPhotoGroupID
+        else { return [] }
+
+        return clips
+            .filter { $0.similarPhotoGroupID == groupID }
+            .sorted {
+                $0.similarPhotoGroupIndex < $1.similarPhotoGroupIndex
+            }
+            .map {
+                SimilarPhotoGroupPreviewItem(
+                    id: $0.id,
+                    thumbnail: $0.thumbnail,
+                    isIncluded: $0.isSimilarPhotoGroupRepresentative
+                )
+            }
+    }
+
     func canUseMultipleVideoSegments(for id: UUID) -> Bool {
         guard let clip = clips.first(where: { $0.id == id }),
               clip.mediaKind == .video,
@@ -416,31 +437,7 @@ final class EditorViewModel: ObservableObject {
             applyMoviePreset(.aiShot)
         }
 
-        guard activeProjectID == nil, clips.isEmpty else { return true }
-
-        do {
-            let savedID = try ProjectStore.save(
-                clips: [],
-                defaultDuration: defaultDuration,
-                defaultVideoSegmentMode: defaultVideoSegmentMode,
-                outputAspectRatio: outputAspectRatio,
-                automaticSourceSize: automaticSourceSize,
-                textOverlaySettings: textOverlaySettings,
-                backgroundMusicSettings: backgroundMusicSettings,
-                activeProjectID: nil,
-                kind: .aiShot
-            )
-            activeProjectID = savedID
-            newlySavedProjectID = savedID
-            openedProjectSignature = currentProjectSignature()
-            reloadProjects()
-            return true
-        } catch {
-            let message = error.localizedDescription
-            reset()
-            alertMessage = message
-            return false
-        }
+        return true
     }
 
     private func applyMoviePreset(_ preset: MoviePreset) {
@@ -640,6 +637,12 @@ final class EditorViewModel: ObservableObject {
                 clips[clipIndex].isSimilarPhotoGroupRepresentative =
                     offset == 0
                 clips[clipIndex].videoSegmentMode = .single
+                if clips[clipIndex].isLivePhoto {
+                    clips[clipIndex].livePhotoMode = .still
+                    clips[clipIndex].photoDuration = defaultDuration
+                    clips[clipIndex].duration = defaultDuration
+                    clips[clipIndex].trimStart = 0
+                }
             }
         }
 
@@ -681,13 +684,13 @@ final class EditorViewModel: ObservableObject {
         guard areContinuousPhotoMoments(lhs, rhs) else { return false }
 
         let aspectDifference = abs(lhs.sourceAspectRatio - rhs.sourceAspectRatio)
-        guard aspectDifference <= 0.10 else { return false }
+        guard aspectDifference <= 0.18 else { return false }
 
         let distance = PhotoSimilarityFingerprint.distance(
             lhs.photoSimilarityFingerprint,
             rhs.photoSimilarityFingerprint
         )
-        return distance <= 54
+        return distance <= 70
     }
 
     private func areContinuousPhotoMoments(
@@ -696,7 +699,7 @@ final class EditorViewModel: ObservableObject {
     ) -> Bool {
         guard let lhsDate = lhs.sourceCreatedAt,
               let rhsDate = rhs.sourceCreatedAt
-        else { return false }
+        else { return true }
 
         return abs(lhsDate.timeIntervalSince(rhsDate)) <= 120
     }
@@ -835,7 +838,8 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
-                activeProjectID: activeProjectID
+                activeProjectID: activeProjectID,
+                kind: .aiShot
             )
             activeProjectID = savedID
             newlySavedProjectID = savedID
@@ -1284,7 +1288,16 @@ final class EditorViewModel: ObservableObject {
     }
 
     func reloadProjects() {
-        savedProjects = ProjectStore.listProjects()
+        let projects = ProjectStore.listProjects()
+        let emptyAiShotIDs = projects
+            .filter { $0.kind == .aiShot && $0.clipCount == 0 }
+            .map(\.id)
+        for id in emptyAiShotIDs {
+            try? ProjectStore.delete(id: id)
+        }
+        savedProjects = emptyAiShotIDs.isEmpty
+            ? projects
+            : ProjectStore.listProjects()
     }
 
     func removeExcessAiShotProjects() {

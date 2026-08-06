@@ -132,6 +132,8 @@ struct AiShotCameraView: View {
     @State private var durationPresetNotice: AiShotDurationPreset?
     @State private var durationPresetNoticeTask: Task<Void, Never>?
     @State private var isZoomDialExpanded = false
+    @State private var zoomBarDragStartZoom: CGFloat?
+    @State private var zoomDialDismissTask: Task<Void, Never>?
 
     let projectID: UUID?
     let onComplete: (URL, Double) -> Void
@@ -202,7 +204,7 @@ struct AiShotCameraView: View {
                             x: proxy.size.width / 2,
                             y: previewBottom - 80
                         )
-                        .zIndex(1)
+                        .zIndex(3)
                 }
 
                 zoomControls(width: alignedControlWidth)
@@ -273,9 +275,11 @@ struct AiShotCameraView: View {
             camera.setDurationPreset(selectedDurationPreset)
         }
         .onChange(of: camera.cameraPosition) { _, _ in
+            cancelZoomDialAutoDismiss()
             isZoomDialExpanded = false
         }
         .onDisappear {
+            cancelZoomDialAutoDismiss()
             durationPresetNoticeTask?.cancel()
             camera.cancel()
         }
@@ -458,52 +462,128 @@ struct AiShotCameraView: View {
     }
 
     private func zoomControls(width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            ForEach(camera.lensZoomFactors, id: \.self) { factor in
-                lensZoomButton(factor)
+        ZStack {
+            HStack(spacing: 0) {
+                ForEach(camera.lensZoomFactors, id: \.self) { factor in
+                    lensZoomLabel(factor)
+                }
             }
-        }
-        .padding(.horizontal, 10)
-        .frame(width: width)
-        .frame(height: 46)
-        .background(.black.opacity(0.32), in: Capsule())
-        .overlay {
+            .padding(.horizontal, 10)
+            .frame(width: width)
+            .frame(height: 46)
+            .background(.black.opacity(0.32), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.white.opacity(0.10), lineWidth: 1)
+            }
+            .opacity(isZoomDialExpanded ? 0 : 1)
+            .scaleEffect(isZoomDialExpanded ? 0.94 : 1)
+            .offset(y: isZoomDialExpanded ? 10 : 0)
+            .animation(.easeInOut(duration: 0.16), value: isZoomDialExpanded)
+
             Capsule()
-                .stroke(.white.opacity(0.10), lineWidth: 1)
+                .fill(Color.black.opacity(0.001))
+                .frame(width: width, height: 56)
+                .contentShape(Capsule())
+                .highPriorityGesture(zoomBarGesture(width: width))
+                .opacity(
+                    camera.isTriggered || camera.isSwitchingCamera
+                        ? 0
+                        : 1
+                )
+                .allowsHitTesting(
+                    !camera.isTriggered && !camera.isSwitchingCamera
+                )
         }
-        .disabled(camera.isTriggered || camera.isSwitchingCamera)
+        .frame(width: width)
+        .frame(height: 56)
         .opacity(camera.isTriggered ? 0.55 : 1)
     }
 
-    private func lensZoomButton(_ factor: CGFloat) -> some View {
+    private func zoomBarGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if zoomBarDragStartZoom == nil {
+                    zoomBarDragStartZoom = camera.zoomFactor
+                    if abs(value.translation.width) < 1,
+                       abs(value.translation.height) < 1 {
+                        selectNearestZoomFactor(at: value.location.x, width: width)
+                    }
+                }
+                showZoomDial()
+                let start = zoomBarDragStartZoom ?? camera.zoomFactor
+                let minimum = camera.lensZoomFactors.first
+                    ?? camera.minimumZoomFactor
+                let maximum = camera.lensZoomFactors.last
+                    ?? camera.maximumZoomFactor
+                let octaveOffset = -value.translation.width / 92
+                let proposed = start * CGFloat(
+                    pow(2, Double(octaveOffset))
+                )
+                camera.setZoom(
+                    Double(min(maximum, max(minimum, proposed)))
+                )
+            }
+            .onEnded { value in
+                zoomBarDragStartZoom = nil
+                if abs(value.translation.width) < 1,
+                   abs(value.translation.height) < 1 {
+                    showZoomDial()
+                }
+                scheduleZoomDialAutoDismiss()
+            }
+    }
+
+    private func showZoomDial() {
+        cancelZoomDialAutoDismiss()
+        guard !isZoomDialExpanded else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            isZoomDialExpanded = true
+        }
+    }
+
+    private func scheduleZoomDialAutoDismiss() {
+        zoomDialDismissTask?.cancel()
+        zoomDialDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isZoomDialExpanded = false
+            }
+            zoomDialDismissTask = nil
+        }
+    }
+
+    private func cancelZoomDialAutoDismiss() {
+        zoomDialDismissTask?.cancel()
+        zoomDialDismissTask = nil
+    }
+
+    private func selectNearestZoomFactor(at x: CGFloat, width: CGFloat) {
+        let factors = camera.lensZoomFactors
+        guard !factors.isEmpty else { return }
+        let segmentWidth = width / CGFloat(factors.count)
+        let index = min(
+            factors.count - 1,
+            max(0, Int((x / max(segmentWidth, 1)).rounded(.down)))
+        )
+        camera.setZoom(Double(factors[index]))
+    }
+
+    private func lensZoomLabel(_ factor: CGFloat) -> some View {
         let activeFactor = activeLensZoomFactor
         let isSelected = abs(activeFactor - factor) < 0.02
         let displayedFactor = isSelected ? camera.zoomFactor : factor
 
-        return Button {
-            camera.setZoom(Double(factor))
-            if !isZoomDialExpanded {
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    isZoomDialExpanded = true
-                }
-            }
-        } label: {
-            Text(zoomFactorTitle(displayedFactor, isSelected: isSelected))
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(
-                    isSelected ? captureSelectionColor : .white
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .background(
-                    isSelected
-                        ? Color.white.opacity(0.14)
-                        : Color.clear,
-                    in: Circle()
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        return Text(zoomFactorTitle(displayedFactor, isSelected: isSelected))
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundStyle(isSelected ? captureSelectionColor : .white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(
+                isSelected ? Color.white.opacity(0.14) : Color.clear,
+                in: Circle()
+            )
         .accessibilityLabel(
             "\(zoomFactorTitle(displayedFactor, isSelected: true)) 확대"
         )
@@ -533,10 +613,11 @@ struct AiShotCameraView: View {
             onZoomChange: { zoom in
                 camera.setZoom(Double(zoom))
             },
+            onInteractionStart: {
+                cancelZoomDialAutoDismiss()
+            },
             onInteractionEnd: {
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    isZoomDialExpanded = false
-                }
+                scheduleZoomDialAutoDismiss()
             }
         )
         .frame(width: width, height: 268)
@@ -1509,10 +1590,10 @@ private struct AiShotPrecisionZoomDial: View {
     let maximumZoom: CGFloat
     let accentColor: Color
     let onZoomChange: (CGFloat) -> Void
+    let onInteractionStart: () -> Void
     let onInteractionEnd: () -> Void
 
     @State private var dragStartZoom: CGFloat?
-    @State private var dismissTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -1644,8 +1725,7 @@ private struct AiShotPrecisionZoomDial: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        dismissTask?.cancel()
-                        dismissTask = nil
+                        onInteractionStart()
                         let start = dragStartZoom ?? zoom
                         if dragStartZoom == nil {
                             dragStartZoom = start
@@ -1660,12 +1740,7 @@ private struct AiShotPrecisionZoomDial: View {
                     }
                     .onEnded { _ in
                         dragStartZoom = nil
-                        dismissTask?.cancel()
-                        dismissTask = Task { @MainActor in
-                            try? await Task.sleep(for: .seconds(1))
-                            guard !Task.isCancelled else { return }
-                            onInteractionEnd()
-                        }
+                        onInteractionEnd()
                     }
             )
             .accessibilityElement()
@@ -1677,10 +1752,6 @@ private struct AiShotPrecisionZoomDial: View {
             }
         }
         .clipped()
-        .onDisappear {
-            dismissTask?.cancel()
-            dismissTask = nil
-        }
     }
 
     private func focalLengthTitle(_ factor: CGFloat) -> String {
@@ -1777,6 +1848,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private static let captureRenderSize = CGSize(width: 1080, height: 1440)
     private static let visualAnalysisInterval: CFTimeInterval = 0.22
     private static let readyPromptSuppressionDuration: CFTimeInterval = 1.05
+    private static let defaultDisplayZoomFactor: CGFloat = 1
 
     private final class ExportSessionBox: @unchecked Sendable {
         let exporter: AVAssetExportSession
@@ -2051,7 +2123,6 @@ final class AiShotCameraController: NSObject, ObservableObject,
                 throw CameraConfigurationError.cameraUnavailable
             }
             configureFourByThreeFormat(for: videoDevice)
-            configureDefaultZoom(for: videoDevice)
             let input = try AVCaptureDeviceInput(device: videoDevice)
             guard session.canAddInput(input) else {
                 throw CameraConfigurationError.cannotAddInput
@@ -2087,6 +2158,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
             }
 
             session.commitConfiguration()
+            configureDefaultZoom(for: videoDevice)
             publishCameraState(for: videoDevice)
             isActive = true
             session.startRunning()
@@ -2177,7 +2249,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
 
     private func configureDefaultZoom(for device: AVCaptureDevice) {
         let multiplier = displayZoomMultiplier(for: device)
-        let rawZoom = 1 / multiplier
+        let rawZoom = Self.defaultDisplayZoomFactor / multiplier
         let zoom = min(
             device.maxAvailableVideoZoomFactor,
             max(device.minAvailableVideoZoomFactor, rawZoom)
@@ -2210,7 +2282,6 @@ final class AiShotCameraController: NSObject, ObservableObject,
         let previousInput = videoInput
         do {
             configureFourByThreeFormat(for: device)
-            configureDefaultZoom(for: device)
             let newInput = try AVCaptureDeviceInput(device: device)
             session.beginConfiguration()
             if let previousInput {
@@ -2227,6 +2298,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
 
             session.addInput(newInput)
             session.commitConfiguration()
+            configureDefaultZoom(for: device)
             videoInput = newInput
             activeCameraPosition = position
             publishCameraState(for: device)
