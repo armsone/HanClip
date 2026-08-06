@@ -100,7 +100,7 @@ fun TextOverlaySheet(
             ) {
                 Column {
                     Text(
-                        "자막",
+                        "자막/로고",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = palette.text

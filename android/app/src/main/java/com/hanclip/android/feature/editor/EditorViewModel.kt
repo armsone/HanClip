@@ -1162,7 +1162,7 @@ class EditorViewModel : ViewModel() {
             MoviePreset.AiShot,
             MoviePreset.Golf -> WatermarkSettings(
                 isEnabled = true,
-                logoEnabled = preset == MoviePreset.Golf,
+                logoEnabled = true,
                 text = dateText,
                 position = WatermarkPosition.BottomLeading,
                 fontName = "do_hyeon",
@@ -1196,7 +1196,11 @@ class EditorViewModel : ViewModel() {
                 logoShadowOpacity = 0.45,
                 copyrightPosition = WatermarkPosition.BottomTrailing
             )
-            MoviePreset.NewMovie -> WatermarkSettings(isEnabled = false)
+            MoviePreset.NewMovie -> WatermarkSettings(
+                isEnabled = false,
+                logoEnabled = true,
+                copyrightPosition = WatermarkPosition.BottomTrailing
+            )
         }
     }
 
