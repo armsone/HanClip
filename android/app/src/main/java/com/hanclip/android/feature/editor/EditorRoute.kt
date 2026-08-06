@@ -2313,8 +2313,12 @@ private fun ClipPreviewPlayer(
             }
             MediaItem.Builder()
                 .setUri(clip.sourceUri)
-                .setClipStartPositionMs((startSeconds * 1000).toLong().coerceAtLeast(0))
-                .setClipEndPositionMs((endSeconds * 1000).toLong().coerceAtLeast(500))
+                .setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionMs((startSeconds * 1000).toLong().coerceAtLeast(0))
+                        .setEndPositionMs((endSeconds * 1000).toLong().coerceAtLeast(500))
+                        .build()
+                )
                 .build()
         }
     }

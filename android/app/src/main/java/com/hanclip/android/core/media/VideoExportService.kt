@@ -204,9 +204,12 @@ class Media3TransformerExportService(
             val startMs = (clip.trimStartSeconds * 1000).toLong().coerceAtLeast(0)
             val endMs = ((clip.trimStartSeconds + clip.durationSeconds) * 1000).toLong()
                 .coerceAtLeast(startMs + 500)
-            builder
-                .setClipStartPositionMs(startMs)
-                .setClipEndPositionMs(endMs)
+            builder.setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(startMs)
+                    .setEndPositionMs(endMs)
+                    .build()
+            )
         } else {
             builder.setImageDurationMs((clip.durationSeconds * 1000).toLong().coerceAtLeast(500))
         }
