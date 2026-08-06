@@ -165,7 +165,7 @@ fun MusicSettingsSheet(
 
             MusicVolumePanel(
                 title = "배경음악",
-                subtitle = if (currentTitle == null) "음악을 선택하면 이 비율로 섞입니다." else currentTitle,
+                subtitle = if (currentTitle == null) "음악을 선택하면 타격음을 해치지 않게 낮게 섞습니다." else currentTitle,
                 value = musicVolume,
                 enabled = currentTitle != null,
                 palette = palette,
@@ -176,7 +176,7 @@ fun MusicSettingsSheet(
 
             MusicVolumePanel(
                 title = "원본 소리",
-                subtitle = "스윙 타격음과 현장 소리를 남기는 비율입니다.",
+                subtitle = "스윙 타격음과 현장 소리를 완성본에 남기는 비율입니다.",
                 value = originalAudioVolume,
                 enabled = true,
                 palette = palette,
@@ -328,9 +328,9 @@ private fun MusicMixSummaryPanel(
             }
             Text(
                 text = if (currentTitle == null) {
-                    "배경음악 없이 스윙 타격음과 원본 소리만 사용합니다."
+                    "배경음악 없이 스윙 타격음과 원본 현장 소리만 사용합니다."
                 } else {
-                    "${currentTitle}을 얹고 스윙 타격음/원본 소리는 남깁니다."
+                    "${currentTitle}을 낮게 얹고 스윙 타격음과 원본 현장 소리는 남깁니다."
                 },
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
