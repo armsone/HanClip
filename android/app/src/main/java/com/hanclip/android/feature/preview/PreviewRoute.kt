@@ -461,6 +461,32 @@ private fun PreviewSummaryPanel(
                     modifier = Modifier.weight(1f)
                 )
             }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = palette.chip,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Photo,
+                        contentDescription = null,
+                        tint = palette.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "저장은 기본 사진첩의 Movies/HanClip에 남길 수 있습니다.",
+                        color = palette.subText,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }

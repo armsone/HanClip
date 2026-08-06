@@ -1003,7 +1003,7 @@ private fun ExportConfirmationDialog(
                     contentColor = palette.text
                 )
             ) {
-                Text("다시 보기")
+                Text("설정 더 보기")
             }
         },
         confirmButton = {
