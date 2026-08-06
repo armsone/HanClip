@@ -278,7 +278,8 @@ fun EditorRoute(
                     preset = state.preset,
                     defaultDuration = state.defaultDurationSeconds,
                     segmentMode = state.defaultVideoSegmentMode,
-                    hasTextOverlay = state.watermarkSettings.shouldRender,
+                    hasTextOverlay = state.watermarkSettings.shouldRenderText,
+                    hasLogoOverlay = state.watermarkSettings.logoEnabled,
                     hasMusic = state.backgroundMusicUri != null,
                     musicTitle = state.backgroundMusicTitle,
                     selectedRatio = state.outputAspectRatio,
@@ -312,6 +313,7 @@ fun EditorRoute(
                     selectedQuality = state.outputQualityPreset,
                     palette = palette,
                     hasTextOverlay = state.watermarkSettings.shouldRenderText,
+                    hasLogoOverlay = state.watermarkSettings.logoEnabled,
                     hasMusic = state.backgroundMusicUri != null,
                     musicTitle = state.backgroundMusicTitle,
                     musicVolume = state.backgroundMusicVolume,
@@ -435,7 +437,8 @@ fun EditorRoute(
                 videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video },
                 totalSeconds = state.totalDurationSeconds,
                 qualityTitle = state.outputQualityPreset.displayTitle,
-                hasTextOverlay = state.watermarkSettings.shouldRender,
+                hasTextOverlay = state.watermarkSettings.shouldRenderText,
+                hasLogoOverlay = state.watermarkSettings.logoEnabled,
                 hasMusic = state.backgroundMusicUri != null || state.backgroundMusicSampleId != null,
                 onMakeMovie = { isExportConfirmationVisible = true }
             )
@@ -1058,6 +1061,7 @@ private fun PresetStatusPanel(
     defaultDuration: Double,
     segmentMode: VideoSegmentMode,
     hasTextOverlay: Boolean,
+    hasLogoOverlay: Boolean,
     hasMusic: Boolean,
     musicTitle: String?,
     selectedRatio: OutputAspectRatio?,
@@ -1118,8 +1122,8 @@ private fun PresetStatusPanel(
                     palette = palette
                 )
                 PresetStatusPill(
-                    text = if (hasTextOverlay) "자막/로고 켬" else "자막 꺼짐",
-                    active = hasTextOverlay,
+                    text = overlayStatusText(hasTextOverlay, hasLogoOverlay),
+                    active = hasTextOverlay || hasLogoOverlay,
                     palette = palette
                 )
                 PresetStatusPill(
@@ -1715,6 +1719,7 @@ private fun ProjectControls(
     selectedQuality: OutputQualityPreset,
     palette: HanClipPalette,
     hasTextOverlay: Boolean,
+    hasLogoOverlay: Boolean,
     hasMusic: Boolean,
     musicTitle: String?,
     musicVolume: Double,
@@ -1738,9 +1743,9 @@ private fun ProjectControls(
             AssistChip(
                 onClick = onOpenTextOverlay,
                 leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
-                label = { Text(if (hasTextOverlay) "자막 켬" else "자막", fontWeight = FontWeight.SemiBold) },
-                colors = clearAssistChipColors(active = hasTextOverlay, palette = palette),
-                border = BorderStroke(1.dp, if (hasTextOverlay) palette.primary else palette.border)
+                label = { Text(overlayStatusText(hasTextOverlay, hasLogoOverlay), fontWeight = FontWeight.SemiBold) },
+                colors = clearAssistChipColors(active = hasTextOverlay || hasLogoOverlay, palette = palette),
+                border = BorderStroke(1.dp, if (hasTextOverlay || hasLogoOverlay) palette.primary else palette.border)
             )
             AssistChip(
                 onClick = onOpenMusicSettings,
@@ -2627,6 +2632,7 @@ private fun BottomMakeBar(
     totalSeconds: Double,
     qualityTitle: String,
     hasTextOverlay: Boolean,
+    hasLogoOverlay: Boolean,
     hasMusic: Boolean,
     onMakeMovie: () -> Unit
 ) {
@@ -2650,6 +2656,7 @@ private fun BottomMakeBar(
                     totalSeconds = totalSeconds,
                     qualityTitle = qualityTitle,
                     hasTextOverlay = hasTextOverlay,
+                    hasLogoOverlay = hasLogoOverlay,
                     hasMusic = hasMusic
                 ),
                 color = palette.subText,
@@ -2686,14 +2693,22 @@ private fun bottomMakeSummary(
     totalSeconds: Double,
     qualityTitle: String,
     hasTextOverlay: Boolean,
+    hasLogoOverlay: Boolean,
     hasMusic: Boolean
 ): String {
     val mediaSummary = mediaCountSummary(photoCount, videoCount, clipCount)
-    val overlaySummary = when {
-        hasTextOverlay && hasMusic -> "자막 · 음악"
-        hasTextOverlay -> "자막"
-        hasMusic -> "음악"
-        else -> "무자막"
-    }
+    val overlaySummary = listOfNotNull(
+        overlayStatusText(hasTextOverlay, hasLogoOverlay).takeIf { it != "자막/로고 꺼짐" },
+        "음악".takeIf { hasMusic }
+    ).joinToString(" · ").ifBlank { "자막/로고 꺼짐" }
     return "$mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · $overlaySummary"
+}
+
+private fun overlayStatusText(hasTextOverlay: Boolean, hasLogoOverlay: Boolean): String {
+    return when {
+        hasTextOverlay && hasLogoOverlay -> "자막/로고 켬"
+        hasTextOverlay -> "자막 켬"
+        hasLogoOverlay -> "HanClip 로고"
+        else -> "자막/로고 꺼짐"
+    }
 }
