@@ -116,7 +116,7 @@ class EditorViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     isImportingMedia = true,
-                    progressMessage = "선택한 미디어 ${uris.size}개를 불러오는 중...",
+                    progressMessage = "선택한 사진/영상 ${uris.size}개를 클립으로 준비하는 중...",
                     alertMessage = null
                 )
             }
@@ -126,7 +126,7 @@ class EditorViewModel : ViewModel() {
             uris.forEachIndexed { index, uri ->
                 _uiState.update {
                     it.copy(
-                        progressMessage = "미디어 ${index + 1}/${uris.size}개를 불러오는 중..."
+                        progressMessage = "사진/영상 ${index + 1}/${uris.size}개를 준비하는 중..."
                     )
                 }
                 runCatching {
@@ -1318,7 +1318,7 @@ class EditorViewModel : ViewModel() {
         }
         val status = when {
             failedCount > 0 -> "가져오기 완료 · 선택 ${selectedCount}개 중 ${imported.size}개 성공"
-            else -> "가져오기 완료 · 미디어 ${imported.size}개"
+            else -> "가져오기 완료 · 사진/영상 ${imported.size}개"
         }
         val notes = buildList {
             if (replacedSamples) {

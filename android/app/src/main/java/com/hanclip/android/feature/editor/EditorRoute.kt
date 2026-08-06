@@ -456,7 +456,7 @@ fun EditorRoute(
             WorkProgressOverlay(
                 palette = palette,
                 message = state.progressMessage.ifBlank {
-                    if (state.isExporting) "완성본을 만드는 중..." else "미디어를 불러오는 중..."
+                    if (state.isExporting) "완성본을 만드는 중..." else "사진/영상을 클립으로 준비하는 중..."
                 },
                 onCancel = if (state.isExporting) viewModel::cancelExport else null
             )
@@ -1609,12 +1609,12 @@ private fun ImportStatusPanel(message: String) {
             )
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = message.ifBlank { "미디어를 불러오는 중..." },
+                    text = message.ifBlank { "사진/영상을 클립으로 준비하는 중..." },
                     color = Color(0xFF1D4F38),
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "기본 사진첩과 파일에서 선택한 항목을 HanClip 클립으로 준비합니다.",
+                    text = "사진첩과 파일에서 고른 항목을 완성본 클립으로 정리합니다.",
                     color = Color(0xFF4F7B64),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -1771,8 +1771,8 @@ private fun progressTitle(message: String, isExporting: Boolean): String {
     return when {
         isExporting && percent != null -> "완성본 만드는 중 $percent"
         isExporting -> "완성본을 만드는 중"
-        importStep != null -> "미디어 불러오는 중 $importStep"
-        cleanMessage.contains("불러오는 중") -> "미디어를 불러오는 중"
+        importStep != null -> "클립 준비 중 $importStep"
+        cleanMessage.contains("준비하는 중") || cleanMessage.contains("불러오는 중") -> "클립을 준비하는 중"
         cleanMessage.isNotBlank() -> cleanMessage.substringBefore(" · ").substringBefore("...")
         else -> "작업 중"
     }
