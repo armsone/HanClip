@@ -75,7 +75,7 @@ enum class CopyrightIconColorMode(val title: String) {
 data class WatermarkSettings(
     val isEnabled: Boolean = false,
     val logoEnabled: Boolean = false,
-    val text: String = "여기에 글을 넣으세요\nI Love you\n+82 10-0000-0000",
+    val text: String = "오늘의 스윙\nHanClip",
     val position: WatermarkPosition = WatermarkPosition.TopLeading,
     val fontName: String = "pretendard",
     val textColorHex: String = "#FFFFFF",

@@ -60,6 +60,9 @@ import com.hanclip.android.core.model.WatermarkLineSpacing
 import com.hanclip.android.core.model.WatermarkPosition
 import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.theme.HanClipPalette
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val SheetPrimary = Color(0xFF0B7A4E)
 private val SheetText = Color(0xFF14221A)
@@ -144,9 +147,32 @@ fun TextOverlaySheet(
                 )
             }
 
+            SettingGroup(title = "자막 문구") {
+                CaptionTextPreset.entries.forEach { preset ->
+                    val presetText = preset.text()
+                    FilterChip(
+                        selected = draft.text == presetText,
+                        onClick = {
+                            draft = draft.copy(
+                                isEnabled = presetText.isNotBlank(),
+                                text = presetText
+                            )
+                        },
+                        label = { Text(preset.title, fontWeight = FontWeight.SemiBold) },
+                        colors = sheetFilterChipColors(),
+                        border = sheetFilterChipBorder(draft.text == presetText)
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = draft.text,
-                onValueChange = { draft = draft.copy(text = it) },
+                onValueChange = {
+                    draft = draft.copy(
+                        isEnabled = it.isNotBlank(),
+                        text = it
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
                 label = { Text("자막 내용") },
@@ -877,6 +903,25 @@ private enum class CaptionStylePreset(
             settings.lineSpacing == lineSpacing &&
             kotlin.math.abs(settings.lineSpacingScale - lineSpacingScale) < 0.001 &&
             settings.fontSize == fontSize
+    }
+}
+
+private enum class CaptionTextPreset(val title: String) {
+    Today("오늘 날짜"),
+    Swing("오늘의 스윙"),
+    Round("라운드 기록"),
+    Empty("비우기");
+
+    fun text(): String {
+        val dateText = LocalDate.now().format(
+            DateTimeFormatter.ofPattern("yy.MM.dd(E)", Locale.KOREAN)
+        )
+        return when (this) {
+            Today -> dateText
+            Swing -> "오늘의 스윙\n$dateText"
+            Round -> "라운드 기록\n$dateText"
+            Empty -> ""
+        }
     }
 }
 
