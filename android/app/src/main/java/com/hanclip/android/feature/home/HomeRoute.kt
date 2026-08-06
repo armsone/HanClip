@@ -77,6 +77,7 @@ import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMovieSummary
+import com.hanclip.android.core.project.hanClipCompletionTitle
 import com.hanclip.android.core.settings.SleepPreventionMode
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeMode
@@ -1792,6 +1793,9 @@ private fun savedMovieDetailText(
         .takeIf { it > 0L }
         ?.let { Formatter.formatFileSize(context, it) }
     val parts = buildList {
+        hanClipCompletionTitle(summary.title)
+            .takeIf { it.isNotBlank() }
+            ?.let(::add)
         add("${summary.clipCount}개")
         add(movieDurationText(summary.totalDurationSeconds))
         fileSize?.let { add(it) }
