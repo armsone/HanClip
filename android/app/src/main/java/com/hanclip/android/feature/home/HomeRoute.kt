@@ -1363,12 +1363,12 @@ private fun DraftProjectRow(
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    summary?.let { "자동 저장된 편집 · ${it.presetTitle}" } ?: "편집 중인 작업 없음",
+                    summary?.let { "자동 저장된 HanClip 편집 · ${it.presetTitle}" } ?: "편집 중인 HanClip 작업 없음",
                     fontWeight = FontWeight.SemiBold,
                     color = HomeText
                 )
                 Text(
-                    summary?.let { draftSummaryText(it) } ?: "사진/영상을 고르면 자동 저장됩니다",
+                    summary?.let { draftSummaryText(it) } ?: "사진/영상을 고르면 HanClip 편집이 자동 저장됩니다",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
@@ -1391,7 +1391,7 @@ private fun DraftProjectRow(
                 border = BorderStroke(1.dp, HomeBorder)
             ) {
                 Text(
-                    text = "이어하기",
+                    text = "편집 이어가기",
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     color = HomePrimary,
                     fontWeight = FontWeight.Bold,
@@ -1422,7 +1422,7 @@ private fun DraftInfoPill(text: String) {
 }
 
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "사진/영상과 편집 설정을 보관 중 · ${summary.outputText}"
+    return "사진/영상, 순서, 자막, 음악 설정을 보관 중 · ${summary.outputText}"
 }
 
 @Composable
