@@ -1746,6 +1746,18 @@ private fun ClipRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        clipInfoChips(clip, childSegmentCount).forEach { info ->
+                            ClipInfoChip(
+                                palette = palette,
+                                text = info,
+                                active = clip.mediaKind == ClipMediaKind.Video
+                            )
+                        }
+                    }
                     if (clip.isSimilarPhotoGroupMember) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -2128,6 +2140,58 @@ private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
         clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 대표 컷"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "자동 타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
+    }
+}
+
+private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> {
+    val resolution = "${clip.sourceWidth}x${clip.sourceHeight}".takeIf {
+        clip.sourceWidth > 1 && clip.sourceHeight > 1
+    }
+    return buildList {
+        add(
+            when (clip.mediaKind) {
+                ClipMediaKind.Video -> "영상"
+                ClipMediaKind.Photo -> "사진"
+                ClipMediaKind.LivePhoto -> clip.livePhotoMode.title
+            }
+        )
+        resolution?.let { add(it) }
+        if (clip.mediaKind == ClipMediaKind.Video && !clip.isVideoSegmentParent) {
+            add("시작 ${formatClipSeconds(clip.trimStartSeconds)}")
+        }
+        if (clip.audioPeakTimesSeconds.isNotEmpty()) {
+            add("타격점 ${clip.audioPeakTimesSeconds.size}")
+        } else if (clip.audioPeakTimeSeconds != null) {
+            add("타격점 1")
+        }
+        if (clip.isVideoSegmentParent && childSegmentCount > 0) {
+            add("자동 ${childSegmentCount}컷")
+        }
+        if (clip.similarPhotoGroupCount > 1) {
+            add("묶음 ${clip.similarPhotoGroupCount}")
+        }
+    }
+}
+
+@Composable
+private fun ClipInfoChip(
+    palette: HanClipPalette,
+    text: String,
+    active: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.primary.copy(alpha = 0.08f) else palette.chip.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.22f) else palette.border)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            color = if (active) palette.primary else palette.subText,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
     }
 }
 
