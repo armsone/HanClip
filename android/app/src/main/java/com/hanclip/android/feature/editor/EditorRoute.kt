@@ -2749,6 +2749,7 @@ private fun GlobalTimePanel(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BottomMakeBar(
     modifier: Modifier,
@@ -2776,22 +2777,16 @@ private fun BottomMakeBar(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = bottomMakeSummary(
-                    clipCount = clipCount,
-                    photoCount = photoCount,
-                    videoCount = videoCount,
-                    totalSeconds = totalSeconds,
-                    qualityTitle = qualityTitle,
-                    hasTextOverlay = hasTextOverlay,
-                    hasLogoOverlay = hasLogoOverlay,
-                    hasMusic = hasMusic
-                ),
-                color = palette.subText,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+            BottomMakeSummaryChips(
+                clipCount = clipCount,
+                photoCount = photoCount,
+                videoCount = videoCount,
+                totalSeconds = totalSeconds,
+                qualityTitle = qualityTitle,
+                hasTextOverlay = hasTextOverlay,
+                hasLogoOverlay = hasLogoOverlay,
+                hasMusic = hasMusic,
+                palette = palette
             )
             Button(
                 onClick = onMakeMovie,
@@ -2820,7 +2815,9 @@ private fun BottomMakeBar(
     }
 }
 
-private fun bottomMakeSummary(
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun BottomMakeSummaryChips(
     clipCount: Int,
     photoCount: Int,
     videoCount: Int,
@@ -2828,17 +2825,53 @@ private fun bottomMakeSummary(
     qualityTitle: String,
     hasTextOverlay: Boolean,
     hasLogoOverlay: Boolean,
-    hasMusic: Boolean
-): String {
+    hasMusic: Boolean,
+    palette: HanClipPalette
+) {
     if (clipCount == 0) {
-        return "완성본 구성 · 사진/영상을 선택하면 길이, 품질, 자막, 음악을 확인할 수 있습니다"
+        Text(
+            text = "사진/영상을 선택하면 길이, 품질, 자막, 음악을 바로 확인할 수 있습니다",
+            color = palette.subText,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
     }
-    val mediaSummary = mediaCountSummary(photoCount, videoCount, clipCount)
-    val overlaySummary = listOfNotNull(
-        overlayStatusText(hasTextOverlay, hasLogoOverlay).takeIf { it != "자막/로고 꺼짐" },
-        "음악".takeIf { hasMusic }
-    ).joinToString(" · ").ifBlank { "자막/로고 꺼짐" }
-    return "완성본 구성 · 선택 순서대로 · $mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle} · $overlaySummary"
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        BottomMakeSummaryPill(mediaCountSummary(photoCount, videoCount, clipCount), palette, active = true)
+        BottomMakeSummaryPill(formatSummaryDuration(totalSeconds), palette, active = true)
+        BottomMakeSummaryPill(qualityTitle, palette, active = true)
+        BottomMakeSummaryPill(overlayStatusText(hasTextOverlay, hasLogoOverlay), palette, active = hasTextOverlay || hasLogoOverlay)
+        BottomMakeSummaryPill(if (hasMusic) "음악 켬" else "음악 없음", palette, active = hasMusic)
+    }
+}
+
+@Composable
+private fun BottomMakeSummaryPill(
+    text: String,
+    palette: HanClipPalette,
+    active: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.chip else palette.panel,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.42f) else palette.border)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            color = if (active) palette.text else palette.subText,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 private fun overlayStatusText(hasTextOverlay: Boolean, hasLogoOverlay: Boolean): String {
