@@ -2911,7 +2911,7 @@ private fun BottomMakeSummaryChips(
 ) {
     if (clipCount == 0) {
         Text(
-            text = "사진/영상을 선택하면 길이, 품질, 자막, 음악을 바로 확인할 수 있습니다",
+            text = "기본 사진첩에서 골프 사진/영상을 고르면 길이, 품질, 자막, 음악을 바로 확인합니다",
             color = palette.subText,
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelMedium,
@@ -2926,6 +2926,9 @@ private fun BottomMakeSummaryChips(
     ) {
         BottomMakeSummaryPill(mediaCountSummary(photoCount, videoCount, clipCount), palette, active = true)
         BottomMakeSummaryPill(formatSummaryDuration(totalSeconds), palette, active = true)
+        if (videoCount > 0) {
+            BottomMakeSummaryPill("영상 자동 컷 준비", palette, active = true)
+        }
         BottomMakeSummaryPill(qualityTitle, palette, active = true)
         BottomMakeSummaryPill(overlayStatusText(hasTextOverlay, hasLogoOverlay), palette, active = hasTextOverlay || hasLogoOverlay)
         BottomMakeSummaryPill(if (hasMusic) "음악 켬" else "음악 없음", palette, active = hasMusic)
