@@ -1721,7 +1721,7 @@ private fun WorkProgressOverlay(
                     text = if (onCancel == null) {
                         "잠시만 기다려 주세요."
                     } else {
-                        "완성 전까지 이 화면을 유지합니다."
+                        "완성 전까지 앱을 닫지 말고 화면을 유지해 주세요."
                     },
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
