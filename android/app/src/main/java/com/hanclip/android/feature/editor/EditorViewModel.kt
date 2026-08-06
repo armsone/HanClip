@@ -146,7 +146,7 @@ class EditorViewModel : ViewModel() {
                     it.copy(
                         isImportingMedia = false,
                         progressMessage = "",
-                        alertMessage = "선택한 미디어를 불러오지 못했습니다. Android 기본 사진첩 권한을 확인하거나 파일 선택으로 다시 가져와 주세요."
+                        alertMessage = "선택한 사진/영상을 클립으로 준비하지 못했습니다. Android 기본 사진첩 권한을 확인하거나 파일 선택으로 다시 가져와 주세요."
                     )
                 } else {
                     val failedCount = uris.size - imported.size
@@ -1322,7 +1322,7 @@ class EditorViewModel : ViewModel() {
         }
         val notes = buildList {
             if (replacedSamples) {
-                add("기본 샘플을 선택한 미디어로 교체했습니다.")
+                add("기본 샘플을 선택한 사진/영상 클립으로 교체했습니다.")
             }
             if (autoSegmentCount > 0) {
                 add("타격점 기준 자동 컷 ${autoSegmentCount}개를 만들었습니다.")
@@ -1331,7 +1331,7 @@ class EditorViewModel : ViewModel() {
                 add("비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 묶었습니다.")
             }
             if (failedCount > 0) {
-                add("${failedCount}개는 지원하지 않거나 읽을 수 없습니다. 필요하면 파일 선택으로 다시 가져와 주세요.")
+                add("${failedCount}개는 지원하지 않거나 읽을 수 없습니다. 필요하면 파일 선택으로 다시 준비해 주세요.")
             }
         }
         return buildString {
