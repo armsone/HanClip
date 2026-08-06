@@ -906,12 +906,23 @@ private fun PresetTile(
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = preset.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = palette.text
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = preset.title,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (preset == MoviePreset.Golf) {
+                        PresetRecommendationBadge(palette)
+                    }
+                }
                 Text(
                     text = preset.detail,
                     style = MaterialTheme.typography.bodySmall,
@@ -921,6 +932,24 @@ private fun PresetTile(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PresetRecommendationBadge(palette: HanClipPalette) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.26f))
+    ) {
+        Text(
+            text = "추천",
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+            color = palette.primary,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1
+        )
     }
 }
 
