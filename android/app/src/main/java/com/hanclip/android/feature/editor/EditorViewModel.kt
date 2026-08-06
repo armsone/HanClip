@@ -837,9 +837,12 @@ class EditorViewModel : ViewModel() {
         _uiState.update { state ->
             val index = state.clips.indexOfFirst { it.id == id }
             if (index <= 0) {
-                state
+                state.copy(alertMessage = "이미 첫 번째 클립입니다.")
             } else {
-                state.copy(clips = moveClipGroup(state.clips, index, -1))
+                state.copy(
+                    clips = moveClipGroup(state.clips, index, -1),
+                    alertMessage = "클립 순서를 앞으로 이동했습니다."
+                )
             }
         }
     }
@@ -848,9 +851,12 @@ class EditorViewModel : ViewModel() {
         _uiState.update { state ->
             val index = state.clips.indexOfFirst { it.id == id }
             if (index == -1 || index >= state.clips.lastIndex) {
-                state
+                state.copy(alertMessage = "이미 마지막 클립입니다.")
             } else {
-                state.copy(clips = moveClipGroup(state.clips, index, 1))
+                state.copy(
+                    clips = moveClipGroup(state.clips, index, 1),
+                    alertMessage = "클립 순서를 뒤로 이동했습니다."
+                )
             }
         }
     }

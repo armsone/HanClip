@@ -1339,7 +1339,10 @@ private fun ReorderStrip(
                     ReorderTile(
                         clip = clip,
                         index = index,
+                        totalCount = clips.size,
                         palette = palette,
+                        canMoveUp = index > 0,
+                        canMoveDown = index < clips.lastIndex,
                         onMoveUp = { onMoveUp(clip.id) },
                         onMoveDown = { onMoveDown(clip.id) },
                         onDelete = { onDelete(clip.id) }
@@ -1354,7 +1357,10 @@ private fun ReorderStrip(
 private fun ReorderTile(
     clip: ClipItem,
     index: Int,
+    totalCount: Int,
     palette: HanClipPalette,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onDelete: () -> Unit
@@ -1388,18 +1394,34 @@ private fun ReorderTile(
                 )
             }
             Text(
-                text = clipTitle(clip),
+                text = "${index + 1}/$totalCount  ${clipTitle(clip)}",
                 color = palette.text,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                IconButton(onClick = onMoveUp, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "앞으로", tint = palette.text)
+                IconButton(
+                    onClick = onMoveUp,
+                    enabled = canMoveUp,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.KeyboardArrowUp,
+                        contentDescription = "앞으로",
+                        tint = if (canMoveUp) palette.text else palette.subText.copy(alpha = 0.35f)
+                    )
                 }
-                IconButton(onClick = onMoveDown, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "뒤로", tint = palette.text)
+                IconButton(
+                    onClick = onMoveDown,
+                    enabled = canMoveDown,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = "뒤로",
+                        tint = if (canMoveDown) palette.text else palette.subText.copy(alpha = 0.35f)
+                    )
                 }
                 IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Outlined.Delete, contentDescription = "삭제", tint = palette.secondary)
