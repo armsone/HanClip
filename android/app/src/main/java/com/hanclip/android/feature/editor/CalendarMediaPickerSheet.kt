@@ -285,7 +285,7 @@ fun CalendarMediaPickerSheet(
             text = {
                 Text(
                     "${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. " +
-                        "표시된 번호순으로 배치하고, 영상은 스윙 타격점 기준 자동 컷을 준비합니다."
+                        "기본 사진첩에서 고른 번호순 그대로 배치하고, 영상은 스윙 타격점 기준 자동 컷을 준비합니다."
                 )
             }
         )
@@ -652,7 +652,7 @@ private fun MediaSelectionSummary(
         ) {
             Text(
                 text = if (selectedUris.isEmpty()) {
-                    "사진이나 영상을 고르면 HanClip 완성본 순서가 표시됩니다."
+                    "기본 사진첩에서 사진과 영상을 한 번에 고르면 HanClip 완성본 순서가 표시됩니다."
                 } else {
                     "선택 ${selectedUris.size}개 · 선택한 순서 그대로 완성본 배치"
                 },
@@ -671,6 +671,7 @@ private fun MediaSelectionSummary(
             }
             if (selectedUris.isEmpty()) {
                 MediaSelectionSummaryPill("Android 기본 사진첩", palette, active = false)
+                MediaSelectionSummaryPill("여러 사진/영상 한 번에 선택", palette, active = false)
             } else {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
