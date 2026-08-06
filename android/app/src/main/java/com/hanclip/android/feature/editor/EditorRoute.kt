@@ -2504,9 +2504,9 @@ private fun clipFallbackBrush(clip: ClipItem, palette: HanClipPalette): Brush {
 }
 
 private fun clipTitle(clip: ClipItem): String {
-    if (clip.isVideoSegmentParent) return "원본 영상"
-    if (clip.isVideoSegmentChild) return "자동 컷"
-    if (clip.isSimilarPhotoGroupMember) return "묶음 대기 사진"
+    if (clip.isVideoSegmentParent) return "원본 영상 보관"
+    if (clip.isVideoSegmentChild) return "완성본 자동 컷"
+    if (clip.isSimilarPhotoGroupMember) return "완성본 제외 사진"
     if (clip.similarPhotoGroupCount > 1) return "대표 사진"
     return when (clip.mediaKind) {
         ClipMediaKind.Video -> "영상"
@@ -2518,12 +2518,12 @@ private fun clipTitle(clip: ClipItem): String {
 private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String {
     val source = clip.sourceDurationSeconds ?: clip.durationSeconds
     return if (clip.isVideoSegmentParent) {
-        "원본 ${formatClipSeconds(source)} · 자동 컷 ${childSegmentCount}개"
+        "원본 ${formatClipSeconds(source)} · 완성본 자동 컷 ${childSegmentCount}개"
     } else if (clip.isVideoSegmentChild) {
         val impactText = clip.audioPeakTimeSeconds
             ?.let { "타격 ${formatClipSeconds(it)} · " }
             .orEmpty()
-        "${impactText}클립 ${formatClipSeconds(clip.durationSeconds)} / 원본 ${formatClipSeconds(source)}"
+        "${impactText}완성본 ${formatClipSeconds(clip.durationSeconds)} / 원본 ${formatClipSeconds(source)}"
     } else if (clip.mediaKind == ClipMediaKind.Video) {
         "클립 ${formatClipSeconds(clip.durationSeconds)} / 원본 ${formatClipSeconds(source)}"
     } else if (clip.mediaKind == ClipMediaKind.LivePhoto) {
@@ -2535,9 +2535,9 @@ private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String 
 
 private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
-        clip.isVideoSegmentParent -> "타격점 기준 자동 컷 ${childSegmentCount}개"
-        clip.isVideoSegmentChild -> "완성본에 들어갈 타격점 구간"
-        clip.isSimilarPhotoGroupMember -> "완성본 제외 중 · 사용하면 클립으로 추가"
+        clip.isVideoSegmentParent -> "원본은 보관하고 타격점 기준 자동 컷만 완성본에 넣습니다"
+        clip.isVideoSegmentChild -> "완성본에 들어갈 타격점 중심 구간"
+        clip.isSimilarPhotoGroupMember -> "완성본 제외 중 · 대표 사진만 사용"
         clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 대표 컷"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
@@ -2559,6 +2559,12 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
         resolution?.let { add(it) }
         if (clip.mediaKind == ClipMediaKind.Video && !clip.isVideoSegmentParent) {
             add("시작 ${formatClipSeconds(clip.trimStartSeconds)}")
+        }
+        if (clip.isVideoSegmentChild) {
+            add("완성본 포함")
+        }
+        if (clip.isVideoSegmentParent) {
+            add("원본 보관")
         }
         impactChipText(clip)?.let {
             add(it)
