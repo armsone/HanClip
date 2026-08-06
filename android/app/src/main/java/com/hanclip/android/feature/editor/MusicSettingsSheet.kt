@@ -128,7 +128,7 @@ fun MusicSettingsSheet(
                         color = palette.text
                     )
                     Text(
-                        currentTitle ?: "샘플 음악이나 내 파일을 고르고 타격음은 원본 소리로 남깁니다.",
+                        currentTitle ?: "배경음악은 낮게 얹고 스윙 타격음은 선명하게 남깁니다.",
                         color = palette.subText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -312,14 +312,14 @@ private fun MusicMixSummaryPanel(
             Text("소리 믹스", color = palette.text, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MusicMixChip(
-                    label = "배경음악",
+                    label = "배경음악 낮게",
                     value = if (currentTitle == null) "꺼짐" else percentText(musicVolume),
                     active = currentTitle != null,
                     palette = palette,
                     modifier = Modifier.weight(1f)
                 )
                 MusicMixChip(
-                    label = "원본 소리",
+                    label = "타격음/원본",
                     value = percentText(originalAudioVolume),
                     active = originalAudioVolume > 0.0,
                     palette = palette,
@@ -328,9 +328,9 @@ private fun MusicMixSummaryPanel(
             }
             Text(
                 text = if (currentTitle == null) {
-                    "배경음악 없이 스윙 타격음과 원본 현장 소리만 사용합니다."
+                    "배경음악 없이 스윙 타격음과 원본 현장 소리를 그대로 사용합니다."
                 } else {
-                    "${currentTitle}을 낮게 얹고 스윙 타격음과 원본 현장 소리는 남깁니다."
+                    "${currentTitle}은 낮게 얹고 스윙 타격음과 원본 현장 소리는 선명하게 남깁니다."
                 },
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
