@@ -60,6 +60,7 @@ data class EditorUiState(
     val recentlySavedMovieUriString: String? = null,
     val progressMessage: String = "",
     val alertMessage: String? = null,
+    val undoDeleteMessage: String? = null,
     val expandedSimilarPhotoGroupIds: Set<String> = emptySet()
 ) {
     val renderableClips: List<ClipItem>
@@ -82,6 +83,7 @@ class EditorViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
     private var exportJob: Job? = null
+    private var lastDeleteSnapshot: DeleteUndoSnapshot? = null
 
     fun openPreset(context: Context, preset: MoviePreset) {
         _uiState.update {
@@ -449,11 +451,11 @@ class EditorViewModel : ViewModel() {
     }
 
     fun clearAlert() {
-        _uiState.update { it.copy(alertMessage = null) }
+        _uiState.update { it.copy(alertMessage = null, undoDeleteMessage = null) }
     }
 
     fun showAlert(message: String) {
-        _uiState.update { it.copy(alertMessage = message) }
+        _uiState.update { it.copy(alertMessage = message, undoDeleteMessage = null) }
     }
 
     fun updatePhotoDuration(id: String, durationSeconds: Double) {
@@ -660,16 +662,44 @@ class EditorViewModel : ViewModel() {
     fun removeClip(id: String) {
         _uiState.update { state ->
             val removedClip = state.clips.firstOrNull { it.id == id }
-            val removedGroupId = removedClip?.similarPhotoGroupId
+                ?: return@update state
+            val removedGroupId = removedClip.similarPhotoGroupId
             val nextClips = state.clips.filterNot { clip ->
                 clip.id == id || clip.videoSegmentParentId == id
             }
             val rebalanced = removedGroupId?.let { rebalanceSimilarPhotoGroup(nextClips, it) } ?: nextClips
+            lastDeleteSnapshot = DeleteUndoSnapshot(
+                clips = state.clips,
+                importedMediaCount = state.importedMediaCount,
+                expandedSimilarPhotoGroupIds = state.expandedSimilarPhotoGroupIds
+            )
+            val removedCount = state.clips.size - rebalanced.size
             state.copy(
                 clips = rebalanced,
+                importedMediaCount = rebalanced.count { it.isRenderableClip },
                 expandedSimilarPhotoGroupIds = state.expandedSimilarPhotoGroupIds
                     .filter { groupId -> rebalanced.any { it.similarPhotoGroupId == groupId } }
-                    .toSet()
+                    .toSet(),
+                alertMessage = if (removedCount > 1) {
+                    "클립 ${removedCount}개를 삭제했습니다."
+                } else {
+                    "클립을 삭제했습니다."
+                },
+                undoDeleteMessage = "방금 삭제한 클립을 되돌릴 수 있습니다."
+            )
+        }
+    }
+
+    fun undoLastDelete() {
+        val snapshot = lastDeleteSnapshot ?: return
+        lastDeleteSnapshot = null
+        _uiState.update {
+            it.copy(
+                clips = snapshot.clips,
+                importedMediaCount = snapshot.importedMediaCount,
+                expandedSimilarPhotoGroupIds = snapshot.expandedSimilarPhotoGroupIds,
+                alertMessage = "삭제를 되돌렸습니다.",
+                undoDeleteMessage = null
             )
         }
     }
@@ -1224,3 +1254,9 @@ class EditorViewModel : ViewModel() {
         }
     }
 }
+
+private data class DeleteUndoSnapshot(
+    val clips: List<ClipItem>,
+    val importedMediaCount: Int,
+    val expandedSimilarPhotoGroupIds: Set<String>
+)

@@ -436,6 +436,22 @@ fun EditorRoute(
         state.alertMessage?.let { message ->
             AlertDialog(
                 onDismissRequest = viewModel::clearAlert,
+                dismissButton = if (state.undoDeleteMessage != null) {
+                    {
+                        OutlinedButton(
+                            onClick = viewModel::undoLastDelete,
+                            border = BorderStroke(1.dp, palette.border),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.panel,
+                                contentColor = palette.text
+                            )
+                        ) {
+                            Text("되돌리기")
+                        }
+                    }
+                } else {
+                    null
+                },
                 confirmButton = {
                     Button(
                         onClick = viewModel::clearAlert,
