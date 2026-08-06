@@ -155,18 +155,20 @@ class EditorViewModel : ViewModel() {
                     val hiddenSimilarPhotoCount = groupedImported.count { clip ->
                         clip.isSimilarPhotoGroupMember
                     }
+                    val importMessage = mediaImportSummaryMessage(
+                        selectedCount = uris.size,
+                        imported = imported,
+                        renderableCount = groupedImported.count { clip -> clip.isRenderableClip },
+                        failedCount = failedCount,
+                        hiddenSimilarPhotoCount = hiddenSimilarPhotoCount
+                    )
                     it.copy(
                         clips = if (shouldReplaceSamples) groupedImported else it.clips + groupedImported,
                         isImportingMedia = false,
                         importedMediaCount = it.importedMediaCount + groupedImported.count { clip -> clip.isRenderableClip },
                         progressMessage = "",
-                        alertMessage = if (failedCount > 0) {
-                            "선택한 ${uris.size}개 중 ${imported.size}개를 가져왔습니다. ${failedCount}개는 지원하지 않거나 읽을 수 없습니다."
-                        } else if (hiddenSimilarPhotoCount > 0) {
-                            "미디어 ${imported.size}개를 가져왔습니다. 비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 묶었습니다."
-                        } else {
-                            null
-                        }
+                        alertMessage = importMessage,
+                        undoDeleteMessage = null
                     )
                 }
             }
@@ -1210,6 +1212,43 @@ class EditorViewModel : ViewModel() {
             else -> "오른쪽"
         }
         return "$vertical $horizontal"
+    }
+
+    private fun mediaImportSummaryMessage(
+        selectedCount: Int,
+        imported: List<ClipItem>,
+        renderableCount: Int,
+        failedCount: Int,
+        hiddenSimilarPhotoCount: Int
+    ): String {
+        val photoCount = imported.count { it.mediaKind != ClipMediaKind.Video }
+        val videoCount = imported.count { it.mediaKind == ClipMediaKind.Video }
+        val parts = buildList {
+            if (photoCount > 0) add("사진 ${photoCount}개")
+            if (videoCount > 0) add("영상 ${videoCount}개")
+            add("사용 클립 ${renderableCount}개")
+        }
+        val status = when {
+            failedCount > 0 -> "선택한 ${selectedCount}개 중 ${imported.size}개를 가져왔습니다."
+            else -> "미디어 ${imported.size}개를 가져왔습니다."
+        }
+        val notes = buildList {
+            if (hiddenSimilarPhotoCount > 0) {
+                add("비슷한 사진 ${hiddenSimilarPhotoCount}개는 대표 컷 뒤에 묶었습니다.")
+            }
+            if (failedCount > 0) {
+                add("${failedCount}개는 지원하지 않거나 읽을 수 없습니다.")
+            }
+        }
+        return buildString {
+            append(status)
+            append(" ")
+            append(parts.joinToString(" · "))
+            if (notes.isNotEmpty()) {
+                append(" ")
+                append(notes.joinToString(" "))
+            }
+        }
     }
 
     private fun expandImportedClipForPreset(
