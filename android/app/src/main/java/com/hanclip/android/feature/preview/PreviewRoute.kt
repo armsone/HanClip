@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.VideoFile
@@ -168,7 +169,7 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "기본 사진첩 저장 완료 · Movies/HanClip에서 확인할 수 있습니다. 공유는 저장된 영상을 사용합니다."
+                message = "기본 사진첩 저장 완료 · 기본 사진첩 > Movies/HanClip에서 확인할 수 있습니다."
             }.onFailure {
                 message = "Android 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
@@ -663,7 +664,7 @@ private fun SaveOptionsSheet(
                             color = palette.text
                         )
                         Text(
-                            text = "폰에서 바로 보려면 기본 사진첩에 저장하세요.",
+                            text = "실사용 테스트와 공유는 기본 사진첩 저장이 가장 쉽습니다.",
                             color = palette.subText
                         )
                     }
@@ -674,8 +675,8 @@ private fun SaveOptionsSheet(
                 SaveDestinationCard(
                     title = "기본 사진첩 저장",
                     badge = "추천",
-                    body = "Android 기본 사진첩의 Movies/HanClip에서 바로 볼 수 있습니다.",
-                    icon = Icons.Outlined.Download,
+                    body = "폰 기본 사진첩에서 바로 보입니다. 저장 위치: Movies/HanClip",
+                    icon = Icons.Outlined.Photo,
                     palette = palette,
                     primary = true,
                     onClick = onSaveToGallery
