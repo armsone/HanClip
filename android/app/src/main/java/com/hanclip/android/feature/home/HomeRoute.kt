@@ -1309,6 +1309,15 @@ private fun DraftProjectRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (summary != null) {
+                    Row(
+                        modifier = Modifier.padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        DraftInfoPill("${summary.clipCount}개 클립")
+                        DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
+                    }
+                }
             }
             Surface(
                 shape = RoundedCornerShape(50),
@@ -1327,8 +1336,27 @@ private fun DraftProjectRow(
     }
 }
 
+@Composable
+private fun DraftInfoPill(text: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color.White,
+        border = BorderStroke(1.dp, HomeBorder)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            color = HomePrimary,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "${summary.clipCount}개 클립 · ${movieDurationText(summary.totalDurationSeconds)} · ${summary.outputText}"
+    return "마지막 편집 설정 · ${summary.outputText}"
 }
 
 @Composable
