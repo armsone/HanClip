@@ -240,7 +240,7 @@ fun CalendarMediaPickerSheet(
                 ) {
                     Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     Text(
-                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "선택 번호순 가져오기",
+                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "HanClip 완성본으로 가져오기",
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -639,6 +639,7 @@ private fun MediaSelectionSummary(
     val selectedVideoDurationMillis = selectedItems.sumOf { item ->
         item.durationMillis.takeIf { item.kind == ClipMediaKind.Video } ?: 0L
     }
+    val selectionEdgeText = remember(selectedItems) { selectionEdgeText(selectedItems) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -653,12 +654,21 @@ private fun MediaSelectionSummary(
                 text = if (selectedUris.isEmpty()) {
                     "사진이나 영상을 고르면 HanClip 완성본 순서가 표시됩니다."
                 } else {
-                    "선택 ${selectedUris.size}개 · 번호순으로 완성본 배치"
+                    "선택 ${selectedUris.size}개 · 선택한 순서 그대로 완성본 배치"
                 },
                 color = if (selectedUris.isEmpty()) palette.subText else palette.primary,
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.bodySmall
             )
+            selectionEdgeText?.let {
+                Text(
+                    text = it,
+                    color = palette.subText,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             if (selectedUris.isEmpty()) {
                 MediaSelectionSummaryPill("Android 기본 사진첩", palette, active = false)
             } else {
@@ -677,12 +687,25 @@ private fun MediaSelectionSummary(
                         MediaSelectionSummaryPill("원본 ${formatDurationBadge(it)}", palette, active = true)
                     }
                     selectedUris.size.takeIf { it > 1 }?.let {
-                        MediaSelectionSummaryPill("1-${it} 선택 순서 유지", palette, active = true)
+                        MediaSelectionSummaryPill("1-${it} 번호순 연결", palette, active = true)
                     }
                 }
             }
         }
     }
+}
+
+private fun selectionEdgeText(selectedItems: List<CalendarMediaItem>): String? {
+    if (selectedItems.size <= 1) return null
+    val first = selectedItems.first()
+    val last = selectedItems.last()
+    return "처음 ${first.selectionLabel()} → 마지막 ${last.selectionLabel()}"
+}
+
+private fun CalendarMediaItem.selectionLabel(): String {
+    val type = if (kind == ClipMediaKind.Video) "영상" else "사진"
+    val dateText = date.format(DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN))
+    return "$type · $dateText"
 }
 
 @Composable
