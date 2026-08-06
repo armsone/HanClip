@@ -84,13 +84,13 @@ fun PhotoDurationSheet(
             ) {
                 Column {
                     Text(
-                        "개별 사진 시간",
+                        "이 사진만 시간 조절",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = palette.text
                     )
                     Text(
-                        "이 사진 한 장이 완성본에 보이는 길이를 정합니다.",
+                        "전체 리듬은 유지하고 선택한 사진 한 장만 길이를 바꿉니다.",
                         color = palette.subText
                     )
                 }
@@ -106,7 +106,7 @@ fun PhotoDurationSheet(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "적용하면 이 사진 한 장만 %.1f초로 바뀝니다.".format(duration),
+                text = "완성본에서 이 사진만 %.1f초 동안 보입니다.".format(duration),
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.subText
             )
@@ -175,7 +175,7 @@ fun PhotoDurationSheet(
                     contentColor = Color.White
                 )
             ) {
-                Text("사진 시간 %.1f초 적용".format(duration))
+                Text("이 사진만 %.1f초 적용".format(duration))
             }
             Spacer(Modifier.height(8.dp))
         }

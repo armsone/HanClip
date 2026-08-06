@@ -560,7 +560,7 @@ class EditorViewModel : ViewModel() {
                         clip
                     }
                 },
-                alertMessage = "사진 시간을 %.1f초로 적용했습니다.".format(safeDuration),
+                alertMessage = "선택한 사진만 %.1f초로 적용했습니다.".format(safeDuration),
                 undoDeleteMessage = null
             )
         }
