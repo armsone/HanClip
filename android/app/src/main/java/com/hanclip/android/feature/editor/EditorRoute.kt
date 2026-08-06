@@ -265,6 +265,8 @@ fun EditorRoute(
             item {
                 SummaryPanel(
                     clipCount = state.renderableClips.size,
+                    photoCount = state.renderableClips.count { it.mediaKind != ClipMediaKind.Video },
+                    videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video },
                     totalSeconds = state.totalDurationSeconds,
                     defaultDuration = state.defaultDurationSeconds,
                     segmentMode = state.defaultVideoSegmentMode,
@@ -807,6 +809,8 @@ private fun EditorHeader(
 @Composable
 private fun SummaryPanel(
     clipCount: Int,
+    photoCount: Int,
+    videoCount: Int,
     totalSeconds: Double,
     defaultDuration: Double,
     segmentMode: VideoSegmentMode,
@@ -817,15 +821,43 @@ private fun SummaryPanel(
         shape = RoundedCornerShape(8.dp),
         color = palette.primary
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SummaryMetric("클립", "${clipCount}개", palette, Modifier.weight(1f))
-            SummaryMetric("전체", formatSummaryDuration(totalSeconds), palette, Modifier.weight(1f))
-            SummaryMetric("기본", "%.1f초".format(defaultDuration), palette, Modifier.weight(1f))
-            SummaryMetric("분할", segmentMode.title, palette, Modifier.weight(1f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SummaryMetric("클립", "${clipCount}개", palette, Modifier.weight(1f))
+                SummaryMetric("전체", formatSummaryDuration(totalSeconds), palette, Modifier.weight(1f))
+                SummaryMetric("기본", "%.1f초".format(defaultDuration), palette, Modifier.weight(1f))
+                SummaryMetric("분할", segmentMode.title, palette, Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SummaryReadinessPill(
+                    text = if (clipCount > 0) "영화 만들기 준비됨" else "사진/영상을 선택하세요",
+                    active = clipCount > 0,
+                    palette = palette,
+                    modifier = Modifier.weight(1.35f)
+                )
+                SummaryReadinessPill(
+                    text = "사진 ${photoCount}개",
+                    active = photoCount > 0,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryReadinessPill(
+                    text = "영상 ${videoCount}개",
+                    active = videoCount > 0,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
@@ -850,6 +882,31 @@ private fun SummaryMetric(
             style = MaterialTheme.typography.titleMedium,
             color = Color.White,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SummaryReadinessPill(
+    text: String,
+    active: Boolean,
+    palette: HanClipPalette,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = Color.White.copy(alpha = if (active) 0.20f else 0.10f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = if (active) 0.34f else 0.16f))
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            color = Color.White.copy(alpha = if (active) 0.96f else 0.72f),
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
