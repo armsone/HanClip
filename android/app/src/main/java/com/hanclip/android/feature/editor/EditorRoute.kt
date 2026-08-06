@@ -1259,7 +1259,7 @@ private fun PresetStatusPanel(
                     palette = palette
                 )
                 PresetStatusPill(
-                    text = selectedRatio?.title ?: "원본 비율",
+                    text = selectedRatio?.title ?: "자동 원본 비율",
                     active = selectedRatio != null,
                     palette = palette
                 )
@@ -1269,7 +1269,7 @@ private fun PresetStatusPanel(
                     palette = palette
                 )
                 PresetStatusPill(
-                    text = OutputQualityPreset.ExportFormatDetail,
+                    text = "HanClip ${OutputQualityPreset.ExportFormatDetail}",
                     active = false,
                     palette = palette
                 )
@@ -2011,7 +2011,7 @@ private fun ProjectControls(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        OutputQualityPreset.ExportFormatDetail,
+                        "HanClip ${OutputQualityPreset.ExportFormatDetail}",
                         color = palette.subText,
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.labelLarge
