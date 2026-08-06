@@ -662,7 +662,7 @@ private fun SaveOptionsSheet(
                             color = palette.text
                         )
                         Text(
-                            text = "완성본을 기본 사진첩이나 원하는 파일 위치에 저장합니다.",
+                            text = "폰에서 바로 보려면 기본 사진첩 저장을 추천합니다.",
                             color = palette.subText
                         )
                     }
@@ -681,7 +681,7 @@ private fun SaveOptionsSheet(
                 )
                 SaveDestinationCard(
                     title = "파일로 저장",
-                    badge = "직접 선택",
+                    badge = "대안",
                     body = "파일 앱에서 원하는 폴더와 이름을 직접 선택합니다.",
                     icon = Icons.Outlined.FolderOpen,
                     palette = palette,
