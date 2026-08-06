@@ -171,8 +171,12 @@ fun EditorRoute(
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.values.any { it }) {
+        if (context.hasFullGalleryAccess()) {
             isCalendarPickerVisible = true
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            grants[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
+        ) {
+            viewModel.showAlert("선택한 사진/영상만 허용되어 날짜별 전체 사진첩은 열 수 없습니다. Android 설정에서 사진과 영상 전체 접근을 허용하거나, 파일 버튼으로 선택한 항목을 직접 가져와 주세요.")
         } else {
             viewModel.showAlert("Android 기본 사진첩을 보려면 사진/영상 접근 권한이 필요합니다. Android 설정에서 HanClip 권한을 허용하거나, 파일 버튼으로 직접 선택해 주세요.")
         }
@@ -711,6 +715,15 @@ private fun calendarMediaPermissions(): List<String> {
             Manifest.permission.READ_MEDIA_VIDEO
         )
         else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+}
+
+private fun Context.hasFullGalleryAccess(): Boolean {
+    return when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        else -> ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
     }
 }
 
