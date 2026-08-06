@@ -139,7 +139,7 @@ fun TextOverlaySheet(
             ) {
                 Column {
                     Text("HanClip 로고", fontWeight = FontWeight.SemiBold, color = SheetText)
-                    Text("완성본에 HanClip 표시를 작게 넣습니다.", color = SheetSubText)
+                    Text("완성 MP4에 HanClip 표시를 작게 합성합니다.", color = SheetSubText)
                 }
                 Switch(
                     checked = draft.logoEnabled,
@@ -758,10 +758,10 @@ private fun previewTextShadow(settings: WatermarkSettings): Shadow? {
 
 private fun applyButtonText(settings: WatermarkSettings): String {
     return when {
-        settings.shouldRenderText && settings.logoEnabled -> "자막과 HanClip 로고 적용"
-        settings.shouldRenderText -> "자막 적용"
-        settings.logoEnabled -> "HanClip 로고 적용"
-        else -> "자막/로고 끄기 적용"
+        settings.shouldRenderText && settings.logoEnabled -> "MP4에 자막과 HanClip 로고 적용"
+        settings.shouldRenderText -> "MP4에 자막 적용"
+        settings.logoEnabled -> "MP4에 HanClip 로고 적용"
+        else -> "MP4 자막/로고 끄기 적용"
     }
 }
 
