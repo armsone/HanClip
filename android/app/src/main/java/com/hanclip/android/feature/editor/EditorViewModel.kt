@@ -435,7 +435,7 @@ class EditorViewModel : ViewModel() {
             clipCount = clipCount,
             totalDurationSeconds = totalDurationSeconds,
             outputAspectRatio = state.outputAspectRatio ?: existingSummary?.outputAspectRatio,
-            outputQualityPreset = state.outputQualityPreset,
+            outputQualityPreset = existingSummary?.outputQualityPreset ?: state.outputQualityPreset,
             hasBackgroundMusic = existingSummary?.hasBackgroundMusic ?: (
                 state.backgroundMusicUri != null || state.backgroundMusicSampleId != null
             ),
