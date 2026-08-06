@@ -886,9 +886,9 @@ class EditorViewModel : ViewModel() {
                 exportedVideoUri = null,
                 progressMessage = "",
                 alertMessage = if (previousState.clips.isNotEmpty()) {
-                    "현재 영화를 초기화했습니다. 필요하면 방금 작업을 되돌릴 수 있습니다."
+                    "현재 MP4 완성본 편집 작업을 초기화했습니다. 필요하면 방금 작업을 되돌릴 수 있습니다."
                 } else {
-                    "현재 영화를 초기화했습니다."
+                    "현재 MP4 완성본 편집 작업을 초기화했습니다."
                 },
                 undoDeleteMessage = if (previousState.clips.isNotEmpty()) {
                     "방금 초기화한 작업을 되돌릴 수 있습니다."

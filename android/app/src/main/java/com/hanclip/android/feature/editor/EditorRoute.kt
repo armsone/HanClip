@@ -534,8 +534,8 @@ fun EditorRoute(
                 containerColor = palette.panel,
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
-                title = { Text("현재 영화 초기화") },
-                text = { Text("가져온 클립과 편집 설정을 모두 비우고 처음부터 다시 시작할까요?") }
+                title = { Text("현재 완성본 초기화") },
+                text = { Text("가져온 클립과 편집 설정을 모두 비우고 처음부터 다시 시작할까요? 초기화 직후에는 되돌릴 수 있습니다.") }
             )
         }
         if (isExitConfirmationVisible) {
