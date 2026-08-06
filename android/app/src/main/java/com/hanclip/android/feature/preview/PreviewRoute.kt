@@ -134,6 +134,7 @@ fun PreviewRoute(
     var showFullscreenPreview by remember { mutableStateOf(false) }
     var isSavingVideo by remember { mutableStateOf(false) }
     var pendingMovieFileName by remember { mutableStateOf(VideoSaveShare.newMovieFileName(movieSummary.presetTitle)) }
+    var preferredShareUri by remember(exportedVideoUri) { mutableStateOf(exportedVideoUri) }
     val scope = rememberCoroutineScope()
     fun performGallerySave() {
         if (exportedVideoUri == null) {
@@ -152,8 +153,9 @@ fun PreviewRoute(
                     )
                 }
             }.onSuccess { savedUri ->
+                preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다."
+                message = "저장 완료 · Android 기본 사진첩의 Movies/HanClip 폴더에서 확인할 수 있습니다. 이제 공유 버튼은 저장된 영상을 사용합니다."
             }.onFailure {
                 message = "Android 기본 사진첩에 저장하지 못했습니다. 파일로 저장을 선택해 다시 시도해 주세요."
             }
@@ -180,8 +182,9 @@ fun PreviewRoute(
                     VideoSaveShare.copyToUri(context, exportedVideoUri, targetUri)
                 }
             }.onSuccess {
+                preferredShareUri = targetUri
                 onSavedMovie(targetUri)
-                message = "파일 저장 완료 · 선택한 위치에 MP4 영상으로 저장했습니다."
+                message = "파일 저장 완료 · 선택한 위치에 MP4 영상으로 저장했습니다. 이제 공유 버튼은 저장된 파일을 사용합니다."
             }.onFailure {
                 message = "파일로 저장하지 못했습니다. 저장 위치 권한을 확인해 주세요."
             }
@@ -253,11 +256,12 @@ fun PreviewRoute(
                 canReturnToEditor = canReturnToEditor,
                 onEdit = onEdit,
                 onShare = {
-                    if (exportedVideoUri == null) {
+                    val shareUri = preferredShareUri ?: exportedVideoUri
+                    if (shareUri == null) {
                         message = "공유할 영상이 없습니다."
                     } else {
                         runCatching {
-                            VideoSaveShare.shareVideo(context, exportedVideoUri)
+                            VideoSaveShare.shareVideo(context, shareUri)
                         }.onFailure {
                             message = "공유 화면을 열지 못했습니다. 먼저 갤러리나 파일로 저장한 뒤 공유해 주세요."
                         }
