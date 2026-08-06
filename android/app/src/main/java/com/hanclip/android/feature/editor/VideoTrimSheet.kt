@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.SportsGolf
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
@@ -166,6 +168,21 @@ fun VideoTrimSheet(
                 }
             )
 
+            TrimPrecisionControls(
+                startSeconds = startSeconds,
+                durationSeconds = durationSeconds,
+                sourceDuration = sourceDuration,
+                onStartChange = { next ->
+                    startSeconds = next.coerceIn(0.0, max(0.0, sourceDuration - durationSeconds))
+                },
+                onDurationChange = { next ->
+                    durationSeconds = next.coerceIn(0.5, sourceDuration)
+                    if (startSeconds + durationSeconds > sourceDuration) {
+                        startSeconds = max(0.0, sourceDuration - durationSeconds)
+                    }
+                }
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -177,6 +194,11 @@ fun VideoTrimSheet(
                         "${formatSeconds(startSeconds)} - ${formatSeconds(startSeconds + durationSeconds)}",
                         color = TrimText,
                         fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        impactInRangeText(clip, startSeconds, durationSeconds),
+                        color = TrimSubText,
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
                 Button(
@@ -334,6 +356,101 @@ private fun impactSummaryText(clip: ClipItem): String {
         primary != null && peakCount > 1 -> "주요 ${formatSeconds(primary)} · 후보 ${peakCount}개"
         primary != null -> "주요 ${formatSeconds(primary)}"
         else -> "피크가 없으면 영상 중앙을 기준으로 맞춥니다."
+    }
+}
+
+@Composable
+private fun TrimPrecisionControls(
+    startSeconds: Double,
+    durationSeconds: Double,
+    sourceDuration: Double,
+    onStartChange: (Double) -> Unit,
+    onDurationChange: (Double) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFFF7FAF8),
+        border = BorderStroke(1.dp, TrimBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("정밀 조절", color = TrimText, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TrimAdjustButton(
+                    text = "시작 -0.1초",
+                    icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
+                    enabled = startSeconds > 0.0,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onStartChange(startSeconds - 0.1) }
+                )
+                TrimAdjustButton(
+                    text = "시작 +0.1초",
+                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    enabled = startSeconds < sourceDuration - durationSeconds,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onStartChange(startSeconds + 0.1) }
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TrimAdjustButton(
+                    text = "길이 -0.1초",
+                    icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
+                    enabled = durationSeconds > 0.5,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onDurationChange(durationSeconds - 0.1) }
+                )
+                TrimAdjustButton(
+                    text = "길이 +0.1초",
+                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    enabled = durationSeconds < sourceDuration,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onDurationChange(durationSeconds + 0.1) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrimAdjustButton(
+    text: String,
+    icon: @Composable () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        modifier = modifier.height(38.dp),
+        enabled = enabled,
+        onClick = onClick,
+        border = BorderStroke(1.dp, TrimBorder),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color.White,
+            contentColor = TrimText,
+            disabledContainerColor = Color(0xFFEAF0EC),
+            disabledContentColor = TrimSubText.copy(alpha = 0.55f)
+        )
+    ) {
+        icon()
+        Text(text, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+private fun impactInRangeText(
+    clip: ClipItem,
+    startSeconds: Double,
+    durationSeconds: Double
+): String {
+    val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
+        ?: return "타격점 정보 없음"
+    val endSeconds = startSeconds + durationSeconds
+    return if (primary in startSeconds..endSeconds) {
+        "타격점 ${formatSeconds(primary)} 포함"
+    } else {
+        "타격점 ${formatSeconds(primary)} 구간 밖"
     }
 }
 
