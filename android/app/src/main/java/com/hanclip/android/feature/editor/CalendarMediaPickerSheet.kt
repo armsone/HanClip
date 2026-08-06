@@ -240,7 +240,7 @@ fun CalendarMediaPickerSheet(
                 ) {
                     Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     Text(
-                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "${selectedUris.size}개 클립 만들기",
+                        if (selectedUris.isEmpty()) "선택 후 가져오기" else "선택 번호순 가져오기",
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -274,15 +274,20 @@ fun CalendarMediaPickerSheet(
                     )
                 ) {
                     Icon(Icons.Outlined.MovieCreation, contentDescription = null)
-                    Text("클립 만들기")
+                    Text("HanClip에 넣기")
                 }
             },
             shape = RoundedCornerShape(8.dp),
             containerColor = palette.panel,
             titleContentColor = palette.text,
             textContentColor = palette.subText,
-            title = { Text("기본 사진첩 선택 완료") },
-            text = { Text("${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. 선택한 번호순으로 HanClip 완성본에 넣을까요?") }
+            title = { Text("HanClip 클립 순서 확인") },
+            text = {
+                Text(
+                    "${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. " +
+                        "표시된 번호순으로 배치하고, 영상은 스윙 타격점 기준 자동 컷을 준비합니다."
+                )
+            }
         )
     }
 }
@@ -646,9 +651,9 @@ private fun MediaSelectionSummary(
         ) {
             Text(
                 text = if (selectedUris.isEmpty()) {
-                    "사진이나 영상을 선택해 주세요."
+                    "사진이나 영상을 고르면 HanClip 완성본 순서가 표시됩니다."
                 } else {
-                    "선택 ${selectedUris.size}개 · 완성본 순서"
+                    "선택 ${selectedUris.size}개 · 번호순으로 완성본 배치"
                 },
                 color = if (selectedUris.isEmpty()) palette.subText else palette.primary,
                 fontWeight = FontWeight.Bold,
@@ -666,12 +671,13 @@ private fun MediaSelectionSummary(
                     }
                     videoCount.takeIf { it > 0 }?.let {
                         MediaSelectionSummaryPill("영상 ${it}개", palette, active = true)
+                        MediaSelectionSummaryPill("타격점 자동 컷", palette, active = true)
                     }
                     selectedVideoDurationMillis.takeIf { it > 0L }?.let {
                         MediaSelectionSummaryPill("원본 ${formatDurationBadge(it)}", palette, active = true)
                     }
                     selectedUris.size.takeIf { it > 1 }?.let {
-                        MediaSelectionSummaryPill("1-${it} 번호순", palette, active = true)
+                        MediaSelectionSummaryPill("1-${it} 선택 순서 유지", palette, active = true)
                     }
                 }
             }
@@ -741,7 +747,7 @@ private fun EmptyMediaStrip(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "상단 화살표로 다른 달을 보거나, 편집 화면의 파일 선택으로 직접 가져오세요.",
+                text = "상단 화살표로 다른 달을 보거나, 파일 선택으로 폰에 있는 항목을 직접 가져오세요.",
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center
