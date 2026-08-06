@@ -169,7 +169,7 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · 폰 기본 사진첩의 HanClip 앨범에서 확인하세요."
+                message = "저장 완료 · 폰 기본 사진첩의 HanClip 앨범에서 확인하고 바로 공유할 수 있습니다."
             }.onFailure {
                 message = "폰 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
@@ -198,7 +198,7 @@ fun PreviewRoute(
             }.onSuccess {
                 preferredShareUri = targetUri
                 onSavedMovie(targetUri)
-                message = "파일 저장 완료 · 방금 선택한 MP4로 공유할 수 있습니다."
+                message = "파일 저장 완료 · 방금 저장한 MP4를 바로 공유할 수 있습니다."
             }.onFailure {
                 message = "파일 저장에 실패했습니다. 저장 위치 권한을 확인해 주세요."
             }
@@ -479,7 +479,7 @@ private fun PreviewSummaryPanel(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Android 기본 사진첩의 HanClip 앨범에 저장한 뒤 바로 공유할 수 있습니다.",
+                        text = "폰 기본 사진첩의 HanClip 앨범에 저장하면 완성본 목록과 공유에서 바로 이어집니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 2,
@@ -630,7 +630,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.IosShare, contentDescription = null)
-            Text("MP4 공유")
+            Text("바로 공유")
         }
         Button(
             onClick = onRelease,
@@ -644,7 +644,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("HanClip 앨범")
+            Text("앨범 저장")
         }
     }
 }
