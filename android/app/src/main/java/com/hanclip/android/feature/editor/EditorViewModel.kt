@@ -584,7 +584,10 @@ class EditorViewModel : ViewModel() {
                             )
                         )
                     }
-                }
+                },
+                alertMessage = "선택한 영상 구간을 MP4 완성본에 %.1f초로 적용했습니다. 현재 작업도 자동 저장됩니다."
+                    .format(durationSeconds.coerceAtLeast(0.5)),
+                undoDeleteMessage = null
             )
         }
     }
