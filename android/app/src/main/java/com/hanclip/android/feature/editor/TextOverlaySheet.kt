@@ -198,7 +198,7 @@ fun TextOverlaySheet(
                     contentColor = SheetText
                 )
             ) {
-                Text("HanClip 기본 스타일로 맞추기", fontWeight = FontWeight.Bold)
+                Text("HanClip 골프 스타일로 맞추기", fontWeight = FontWeight.Bold)
             }
 
             SettingGroup(title = "스타일") {
@@ -960,7 +960,7 @@ private enum class CaptionStylePreset(
         lineSpacingScale = WatermarkLineSpacing.Tight.scale
     ),
     GreenGolf(
-        title = "그린골프",
+        title = "골프",
         fontName = "do_hyeon",
         textColorHex = "#FFFFFF",
         shadowColorHex = "#10B85A",
