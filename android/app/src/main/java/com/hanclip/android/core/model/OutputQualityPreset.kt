@@ -18,5 +18,6 @@ enum class OutputQualityPreset(
         const val ExportFormatTitle = "MP4"
         const val CodecTitle = "H.264 영상 · AAC 음성"
         const val ExportFormatDetail = "$ExportFormatTitle · $CodecTitle"
+        const val GallerySaveDetail = "$ExportFormatDetail · HanClip 앨범 저장"
     }
 }

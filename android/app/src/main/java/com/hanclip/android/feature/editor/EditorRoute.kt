@@ -1048,7 +1048,7 @@ private fun ExportConfirmationDialog(
                 }
                 ExportConfirmationLine("화면", aspectRatioText, palette)
                 ExportConfirmationLine("품질", state.outputQualityPreset.chipTitle, palette)
-                ExportConfirmationLine("파일", "${OutputQualityPreset.ExportFormatDetail} · HanClip 앨범 저장 가능", palette)
+                ExportConfirmationLine("파일", OutputQualityPreset.GallerySaveDetail, palette)
                 ExportConfirmationLine("음악", musicText, palette)
                 ExportConfirmationLine("오디오", audioMixText, palette)
                 ExportConfirmationLine("자막", captionText, palette)
@@ -1273,7 +1273,7 @@ private fun PresetStatusPanel(
                     palette = palette
                 )
                 PresetStatusPill(
-                    text = "HanClip ${OutputQualityPreset.ExportFormatDetail}",
+                    text = "HanClip ${OutputQualityPreset.GallerySaveDetail}",
                     active = false,
                     palette = palette
                 )
@@ -2017,7 +2017,7 @@ private fun ProjectControls(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        "HanClip ${OutputQualityPreset.ExportFormatDetail}",
+                        "HanClip ${OutputQualityPreset.GallerySaveDetail}",
                         color = palette.subText,
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.labelLarge
