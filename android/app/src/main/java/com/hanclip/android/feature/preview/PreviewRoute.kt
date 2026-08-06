@@ -1010,7 +1010,7 @@ private fun SavingMovieDialog(palette: HanClipPalette) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "MP4 영상을 폰 기본 사진첩의 HanClip 앨범 또는 선택한 파일 위치에 저장하고 있습니다.",
+                    text = "MP4 영상을 폰 기본 사진첩의 HanClip 앨범 또는 선택한 파일 위치에 저장하고 있습니다. 저장 후 바로 공유할 수 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall
                 )
