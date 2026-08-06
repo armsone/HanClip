@@ -213,7 +213,7 @@ fun VideoTrimSheet(
                         contentColor = Color.White
                     )
                 ) {
-                    Text("적용")
+                    Text("선택 구간 적용")
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -539,11 +539,11 @@ private fun impactRangeChipText(
     included: Boolean?
 ): String {
     val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
-        ?: return "타격점 없음"
+        ?: return "타격점 정보 없음"
     return if (included == true) {
         "타격점 포함 ${formatSeconds(primary)}"
     } else {
-        "구간 밖 ${formatSeconds(primary)}"
+        "타격점 밖 ${formatSeconds(primary)}"
     }
 }
 
@@ -553,12 +553,12 @@ private fun impactInRangeText(
     durationSeconds: Double
 ): String {
     val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
-        ?: return "타격점 정보 없음"
+        ?: return "타격점 정보 없음 · 선택한 구간만 사용"
     val endSeconds = startSeconds + durationSeconds
     return if (primary in startSeconds..endSeconds) {
-        "타격점 ${formatSeconds(primary)} 포함"
+        "타격점 ${formatSeconds(primary)} 포함 · 자동 컷에 적합"
     } else {
-        "타격점 ${formatSeconds(primary)} 구간 밖"
+        "타격점 ${formatSeconds(primary)} 구간 밖 · 타격점 맞춤으로 조정"
     }
 }
 
