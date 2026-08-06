@@ -342,6 +342,7 @@ fun TextOverlaySheet(
                         label = label,
                         colorHex = colorHex,
                         selected = draft.textColorHex == colorHex,
+                        palette = palette,
                         onClick = { draft = draft.copy(textColorHex = colorHex) }
                     )
                 }
@@ -360,6 +361,7 @@ fun TextOverlaySheet(
                             label = label,
                             colorHex = colorHex,
                             selected = draft.logoColorHex.equals(colorHex, ignoreCase = true),
+                            palette = palette,
                             onClick = { draft = draft.copy(logoColorHex = colorHex) }
                         )
                     }
@@ -390,6 +392,7 @@ fun TextOverlaySheet(
                                 label = label,
                                 colorHex = colorHex,
                                 selected = draft.copyrightIconColorHex.equals(colorHex, ignoreCase = true),
+                                palette = palette,
                                 onClick = { draft = draft.copy(copyrightIconColorHex = colorHex) }
                             )
                         }
@@ -408,6 +411,7 @@ fun TextOverlaySheet(
                             label = label,
                             colorHex = colorHex,
                             selected = draft.logoShadowColorHex.equals(colorHex, ignoreCase = true),
+                            palette = palette,
                             onClick = { draft = draft.copy(logoShadowColorHex = colorHex) }
                         )
                     }
@@ -468,6 +472,7 @@ fun TextOverlaySheet(
                             label = label,
                             colorHex = colorHex,
                             selected = draft.shadowColorHex.equals(colorHex, ignoreCase = true),
+                            palette = palette,
                             onClick = { draft = draft.copy(shadowColorHex = colorHex) }
                         )
                     }
@@ -501,6 +506,7 @@ fun TextOverlaySheet(
                 PositionPicker(
                     selected = draft.position,
                     markerText = "T",
+                    palette = palette,
                     onSelect = { draft = draft.copy(position = it) }
                 )
             }
@@ -510,6 +516,7 @@ fun TextOverlaySheet(
                 PositionPicker(
                     selected = draft.copyrightPosition,
                     markerText = "H",
+                    palette = palette,
                     onSelect = { draft = draft.copy(copyrightPosition = it) }
                 )
             }
@@ -782,6 +789,7 @@ private fun ColorSwatchChip(
     label: String,
     colorHex: String,
     selected: Boolean,
+    palette: HanClipPalette,
     onClick: () -> Unit
 ) {
     Surface(
@@ -789,8 +797,8 @@ private fun ColorSwatchChip(
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        color = if (selected) Color(0xFFE0F3EA) else Color.White,
-        border = BorderStroke(1.dp, if (selected) SheetPrimary else SheetBorder)
+        color = if (selected) palette.primary.copy(alpha = 0.12f) else palette.panel,
+        border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -803,7 +811,7 @@ private fun ColorSwatchChip(
                     .clip(RoundedCornerShape(4.dp))
                     .background(parseHexColor(colorHex))
             )
-            Text(label, fontWeight = FontWeight.SemiBold, color = SheetText)
+            Text(label, fontWeight = FontWeight.SemiBold, color = palette.text)
         }
     }
 }
@@ -812,12 +820,13 @@ private fun ColorSwatchChip(
 private fun PositionPicker(
     selected: WatermarkPosition,
     markerText: String,
+    palette: HanClipPalette,
     onSelect: (WatermarkPosition) -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFF7FAF8),
-        border = BorderStroke(1.dp, SheetBorder)
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
     ) {
         Column(
             modifier = Modifier.padding(8.dp),
@@ -835,13 +844,13 @@ private fun PositionPicker(
                                 .weight(1f)
                                 .height(34.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSelected) SheetPrimary else Color.White)
+                                .background(if (isSelected) palette.primary else palette.panel)
                                 .clickable { onSelect(position) },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 markerText,
-                                color = if (isSelected) Color.White else SheetSubText,
+                                color = if (isSelected) Color.White else palette.subText,
                                 fontWeight = FontWeight.Black
                             )
                         }
