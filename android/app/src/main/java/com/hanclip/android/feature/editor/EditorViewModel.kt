@@ -351,7 +351,7 @@ class EditorViewModel : ViewModel() {
                     }
                 },
                 alertMessage = if (changedCount > 0) {
-                    "사진/영상 클립 ${changedCount}개를 %.1f초 길이로 맞췄습니다."
+                    "완성본 클립 ${changedCount}개를 %.1f초 리듬으로 맞췄습니다."
                         .format(state.defaultDurationSeconds)
                 } else {
                     "적용할 클립이 없습니다."

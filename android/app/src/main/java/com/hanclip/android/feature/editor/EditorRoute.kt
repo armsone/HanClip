@@ -2672,9 +2672,9 @@ private fun GlobalTimePanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("클립 기본 시간", fontWeight = FontWeight.Bold, color = palette.text)
+                    Text("완성본 기본 리듬", fontWeight = FontWeight.Bold, color = palette.text)
                     Text(
-                        "사진 표시 시간과 영상 클립 길이를 같은 기준으로 맞춥니다.",
+                        "사진 표시 시간과 영상 자동 컷 길이를 한 번에 맞춥니다.",
                         style = MaterialTheme.typography.bodySmall,
                         color = palette.subText
                     )
@@ -2727,7 +2727,7 @@ private fun GlobalTimePanel(
             ) {
                 Icon(Icons.Outlined.AutoFixHigh, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("모든 클립 %.1f초 적용".format(defaultDuration))
+                Text("전체 클립 %.1f초로 맞추기".format(defaultDuration))
             }
             OutlinedButton(
                 onClick = onSelectFullRange,
@@ -2743,7 +2743,7 @@ private fun GlobalTimePanel(
             ) {
                 Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("영상은 원본 전체 길이로")
+                Text("영상 원본 전체 사용")
             }
         }
     }
