@@ -541,7 +541,7 @@ private fun HomeHeader(
             ) {
                 HanClipBrandCapsule()
                 Text(
-                    text = "골프 사진과 영상을 한 번에 골라 HanClip 완성본으로",
+                    text = "기본 사진첩의 골프 사진과 영상을 한 번에 골라 HanClip 완성본으로",
                     style = MaterialTheme.typography.bodyLarge,
                     color = palette.subText
                 )
@@ -845,14 +845,20 @@ private fun SharedInboxBanner(
 
 @Composable
 private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPalette) {
+    val orderedPresets = listOf(
+        MoviePreset.Golf,
+        MoviePreset.NewMovie,
+        MoviePreset.AiShot,
+        MoviePreset.Travel
+    )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "새 완성본 만들기",
+            text = "HanClip 완성본 만들기",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = palette.text
         )
-        MoviePreset.entries.chunked(2).forEach { rowPresets ->
+        orderedPresets.chunked(2).forEach { rowPresets ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowPresets.forEach { preset ->
                     PresetTile(
@@ -889,9 +895,14 @@ private fun PresetTile(
             .height(132.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = palette.panel),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        border = BorderStroke(1.dp, palette.border)
+        colors = CardDefaults.cardColors(
+            containerColor = if (preset == MoviePreset.Golf) palette.chip else palette.panel
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (preset == MoviePreset.Golf) 2.dp else 1.dp),
+        border = BorderStroke(
+            width = if (preset == MoviePreset.Golf) 1.5.dp else 1.dp,
+            color = if (preset == MoviePreset.Golf) palette.primary.copy(alpha = 0.42f) else palette.border
+        )
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -957,7 +968,7 @@ private fun PresetRecommendationBadge(palette: HanClipPalette) {
         border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.26f))
     ) {
         Text(
-            text = "추천",
+            text = "대표",
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
             color = palette.primary,
             fontWeight = FontWeight.Bold,
