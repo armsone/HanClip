@@ -170,7 +170,7 @@ fun PreviewRoute(
                 onSavedMovie(savedUri)
                 message = "기본 사진첩 저장 완료 · Movies/HanClip에서 확인할 수 있습니다. 공유는 저장된 영상을 사용합니다."
             }.onFailure {
-                message = "Android 기본 사진첩에 저장하지 못했습니다. 파일로 저장을 선택해 원하는 위치에 다시 저장해 주세요."
+                message = "Android 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
             isSavingVideo = false
         }
@@ -181,7 +181,7 @@ fun PreviewRoute(
         if (granted) {
             performGallerySave()
         } else {
-            message = "Android 기본 사진첩에 저장하려면 저장 권한이 필요합니다. 권한을 허용하거나 파일로 저장을 선택해 주세요."
+            message = "기본 사진첩 저장에는 저장 권한이 필요합니다. 권한을 허용하거나 파일 저장을 선택해 주세요."
         }
     }
     val createVideoDocumentLauncher = rememberLauncherForActivityResult(
@@ -197,9 +197,9 @@ fun PreviewRoute(
             }.onSuccess {
                 preferredShareUri = targetUri
                 onSavedMovie(targetUri)
-                message = "파일 저장 완료 · 선택한 위치의 MP4 파일로 공유합니다."
+                message = "파일 저장 완료 · 공유는 선택한 MP4 파일을 사용합니다."
             }.onFailure {
-                message = "파일로 저장하지 못했습니다. 저장 위치 권한을 확인해 주세요."
+                message = "파일 저장에 실패했습니다. 저장 위치 권한을 확인해 주세요."
             }
             isSavingVideo = false
         }
@@ -276,7 +276,7 @@ fun PreviewRoute(
                         runCatching {
                             VideoSaveShare.shareVideo(context, shareUri)
                         }.onFailure {
-                            message = "공유 화면을 열지 못했습니다. 먼저 기본 사진첩이나 파일로 저장한 뒤 공유해 주세요."
+                            message = "공유 화면을 열지 못했습니다. 먼저 기본 사진첩 저장이나 파일 저장을 완료한 뒤 공유해 주세요."
                         }
                     }
                 },
