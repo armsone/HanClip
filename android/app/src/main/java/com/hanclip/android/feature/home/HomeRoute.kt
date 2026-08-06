@@ -804,12 +804,12 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "공유파일 ${sharedInboxCount}개 대기",
+                    text = "공유 파일 ${sharedInboxCount}개 대기",
                     fontWeight = FontWeight.SemiBold,
                     color = HomeText
                 )
                 Text(
-                    text = "기본 사진첩이나 다른 앱에서 공유한 파일을 바로 완성본으로 엽니다.",
+                    text = "사진첩이나 다른 앱에서 보낸 파일을 바로 완성본으로 엽니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,

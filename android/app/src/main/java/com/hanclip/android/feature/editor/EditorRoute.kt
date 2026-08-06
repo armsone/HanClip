@@ -1358,9 +1358,9 @@ private fun EmptyClipPanel(
         ) {
             Text(
                 text = if (preset == MoviePreset.Golf || preset == MoviePreset.AiShot) {
-                    "골프 영상과 사진을 선택하세요"
+                    "기본 사진첩에서 골프 영상과 사진을 선택하세요"
                 } else {
-                    "사진과 영상을 선택하세요"
+                    "기본 사진첩에서 사진과 영상을 선택하세요"
                 },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
@@ -1386,7 +1386,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("기본 사진첩")
+                    ActionButtonText("사진첩")
                 }
                 Button(
                     modifier = Modifier.weight(1f).height(50.dp),
@@ -1398,7 +1398,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.MovieCreation, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("영상")
+                    ActionButtonText("영상만")
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
