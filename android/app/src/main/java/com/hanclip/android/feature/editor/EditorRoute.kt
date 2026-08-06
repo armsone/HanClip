@@ -2548,7 +2548,14 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
     val resolution = "${clip.sourceWidth}x${clip.sourceHeight}".takeIf {
         clip.sourceWidth > 1 && clip.sourceHeight > 1
     }
+    val source = clip.sourceDurationSeconds ?: clip.durationSeconds
     return buildList {
+        if (clip.isRenderableClip) {
+            add("완성 ${formatClipSeconds(clip.durationSeconds)}")
+        }
+        if (clip.mediaKind == ClipMediaKind.Video) {
+            add("원본 ${formatClipSeconds(source)}")
+        }
         add(
             when (clip.mediaKind) {
                 ClipMediaKind.Video -> "영상"
@@ -2565,6 +2572,9 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
         }
         if (clip.isVideoSegmentParent) {
             add("원본 보관")
+        }
+        if (clip.isSimilarPhotoGroupMember) {
+            add("완성본 제외")
         }
         impactChipText(clip)?.let {
             add(it)
