@@ -90,7 +90,7 @@ fun CalendarMediaPickerSheet(
         }
     }
     var visibleMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var selectedDates by remember { mutableStateOf(setOf(LocalDate.now())) }
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingBulkImportUris by remember { mutableStateOf<List<Uri>?>(null) }
     var sortOrder by remember { mutableStateOf(MediaSortOrder.NewestFirst) }
@@ -98,8 +98,10 @@ fun CalendarMediaPickerSheet(
         value = CalendarMediaRepository.loadMonth(context, visibleMonth)
     }
     val itemsByDate = remember(monthItems) { monthItems.groupBy { it.date } }
-    val selectedItems = remember(monthItems, selectedDate, sortOrder) {
-        itemsByDate[selectedDate].orEmpty().sortedBySortOrder(sortOrder)
+    val selectedItems = remember(monthItems, selectedDates, sortOrder) {
+        selectedDates
+            .flatMap { date -> itemsByDate[date].orEmpty() }
+            .sortedBySortOrder(sortOrder)
     }
     val visibleItems = remember(pickerMode, monthItems, selectedItems, sortOrder) {
         when (pickerMode) {
@@ -131,13 +133,13 @@ fun CalendarMediaPickerSheet(
                 onPrevious = {
                     val newMonth = visibleMonth.minusMonths(1)
                     visibleMonth = newMonth
-                    selectedDate = newMonth.atDay(1)
+                    selectedDates = setOf(newMonth.atDay(1))
                     selectedUris = emptyList()
                 },
                 onNext = {
                     val newMonth = visibleMonth.plusMonths(1)
                     visibleMonth = newMonth
-                    selectedDate = newMonth.atDay(1)
+                    selectedDates = setOf(newMonth.atDay(1))
                     selectedUris = emptyList()
                 },
                 onDismiss = onDismiss
@@ -146,10 +148,14 @@ fun CalendarMediaPickerSheet(
                 CalendarMonthGrid(
                     palette = palette,
                     visibleMonth = visibleMonth,
-                    selectedDate = selectedDate,
+                    selectedDates = selectedDates,
                     itemCountsByDate = itemsByDate.mapValues { it.value.size },
-                    onSelectDate = {
-                        selectedDate = it
+                    onToggleDate = { date ->
+                        selectedDates = if (date in selectedDates && selectedDates.size > 1) {
+                            selectedDates - date
+                        } else {
+                            selectedDates + date
+                        }
                         selectedUris = emptyList()
                     }
                 )
@@ -158,7 +164,7 @@ fun CalendarMediaPickerSheet(
                 palette = palette,
                 mode = pickerMode,
                 visibleMonth = visibleMonth,
-                selectedDate = selectedDate,
+                selectedDates = selectedDates,
                 items = visibleItems,
                 selectedUris = selectedUris,
                 sortOrder = sortOrder,
@@ -366,9 +372,9 @@ private fun CalendarSheetHeader(
 private fun CalendarMonthGrid(
     palette: HanClipPalette,
     visibleMonth: YearMonth,
-    selectedDate: LocalDate,
+    selectedDates: Set<LocalDate>,
     itemCountsByDate: Map<LocalDate, Int>,
-    onSelectDate: (LocalDate) -> Unit
+    onToggleDate: (LocalDate) -> Unit
 ) {
     val firstDayOffset = (visibleMonth.atDay(1).dayOfWeek.value % 7)
     val days = buildList {
@@ -401,9 +407,9 @@ private fun CalendarMonthGrid(
                     CalendarDayCell(
                         palette = palette,
                         date = date,
-                        selected = date == selectedDate,
+                        selected = date in selectedDates,
                         count = itemCountsByDate[date] ?: 0,
-                        onClick = { onSelectDate(date) }
+                        onClick = { onToggleDate(date) }
                     )
                 }
             }
@@ -458,7 +464,7 @@ private fun CalendarMediaStrip(
     palette: HanClipPalette,
     mode: MediaPickerSheetMode,
     visibleMonth: YearMonth,
-    selectedDate: LocalDate,
+    selectedDates: Set<LocalDate>,
     items: List<CalendarMediaItem>,
     selectedUris: List<Uri>,
     sortOrder: MediaSortOrder,
@@ -477,7 +483,7 @@ private fun CalendarMediaStrip(
                 text = mediaStripTitle(
                     mode = mode,
                     visibleMonth = visibleMonth,
-                    selectedDate = selectedDate,
+                    selectedDates = selectedDates,
                     items = items
                 ),
                 color = palette.subText,
@@ -657,7 +663,7 @@ private fun EmptyMediaStrip(
 private fun mediaStripTitle(
     mode: MediaPickerSheetMode,
     visibleMonth: YearMonth,
-    selectedDate: LocalDate,
+    selectedDates: Set<LocalDate>,
     items: List<CalendarMediaItem>
 ): String {
     val photoCount = items.count { it.kind != ClipMediaKind.Video }
@@ -677,10 +683,15 @@ private fun mediaStripTitle(
             "이번 달 영상 ${videoCount}개"
         }
     }
-    return if (count == 0) {
-        "이 날짜에는 사진이나 영상이 없습니다."
+    val selectedDateText = if (selectedDates.size == 1) {
+        "${selectedDates.first().dayOfMonth}일"
     } else {
-        mediaCountText("${selectedDate.dayOfMonth}일", photoCount, videoCount)
+        "선택 ${selectedDates.size}일"
+    }
+    return if (count == 0) {
+        "${selectedDateText}에는 사진이나 영상이 없습니다."
+    } else {
+        mediaCountText(selectedDateText, photoCount, videoCount)
     }
 }
 

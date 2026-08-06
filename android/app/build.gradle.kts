@@ -11,8 +11,8 @@ android {
         applicationId = "com.hanclip.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 198
-        versionName = "1.0.152"
+        versionCode = 199
+        versionName = "1.0.153"
     }
 
     buildFeatures {
