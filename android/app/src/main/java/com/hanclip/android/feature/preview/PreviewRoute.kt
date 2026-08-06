@@ -660,7 +660,8 @@ private fun SaveOptionsSheet(
                 }
                 SaveDestinationCard(
                     title = "기본 갤러리에 저장",
-                    body = "추천 · Android 기본 사진첩의 Movies/HanClip 폴더에서 바로 볼 수 있습니다.",
+                    badge = "추천",
+                    body = "Android 기본 사진첩의 Movies/HanClip 폴더에서 바로 볼 수 있습니다.",
                     icon = Icons.Outlined.Download,
                     palette = palette,
                     primary = true,
@@ -668,6 +669,7 @@ private fun SaveOptionsSheet(
                 )
                 SaveDestinationCard(
                     title = "파일로 저장",
+                    badge = "직접 선택",
                     body = "파일 앱에서 원하는 폴더와 이름을 직접 선택합니다.",
                     icon = Icons.Outlined.FolderOpen,
                     palette = palette,
@@ -770,6 +772,7 @@ private fun SaveFormatNote(palette: HanClipPalette) {
 @Composable
 private fun SaveDestinationCard(
     title: String,
+    badge: String,
     body: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     palette: HanClipPalette,
@@ -807,12 +810,36 @@ private fun SaveDestinationCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = title,
-                    color = if (primary) Color.White else palette.text,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        color = if (primary) Color.White else palette.text,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (primary) Color.White.copy(alpha = 0.18f) else palette.chip,
+                        border = BorderStroke(
+                            1.dp,
+                            if (primary) Color.White.copy(alpha = 0.24f) else palette.border
+                        )
+                    ) {
+                        Text(
+                            text = badge,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            color = if (primary) Color.White else palette.primary,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
                 Text(
                     text = body,
                     color = if (primary) Color.White.copy(alpha = 0.82f) else palette.subText,
