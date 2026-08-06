@@ -71,6 +71,7 @@ import com.hanclip.android.core.model.OutputAspectRatio
 import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.project.ExportedMovieSummary
+import com.hanclip.android.core.project.hanClipCompletionTitle
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeStore
 import androidx.core.content.ContextCompat
@@ -102,7 +103,7 @@ data class PreviewMovieSummary(
             val hasTextOverlay = summary.hasTextOverlay
             val hasLogoOverlay = summary.hasLogoOverlay
             return PreviewMovieSummary(
-                presetTitle = summary.title,
+                presetTitle = hanClipCompletionTitle(summary.title),
                 clipCount = summary.clipCount,
                 totalDurationSeconds = summary.totalDurationSeconds,
                 outputAspectRatio = summary.outputAspectRatio,
