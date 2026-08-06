@@ -1026,14 +1026,14 @@ private fun ExportConfirmationDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "아래 설정으로 HanClip 영화를 만듭니다. 완성 후 시사회에서 저장하거나 공유할 수 있습니다.",
+                    "아래 설정으로 HanClip 영화를 만듭니다. 완성 후 시사회에서 기본 사진첩 저장, 파일 저장, 공유를 실행할 수 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
                 )
                 ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
                 ExportConfirmationLine("구성", mediaCountSummary(photoCount, videoCount, renderableClipCount), palette)
                 if (autoSegmentCount > 0) {
-                    ExportConfirmationLine("자동 컷", "${autoSegmentCount}개 · 타격점 중심", palette)
+                    ExportConfirmationLine("자동 컷", "${autoSegmentCount}개 · 타격점 중심 자동 컷", palette)
                 }
                 ExportConfirmationLine("화면", aspectRatioText, palette)
                 ExportConfirmationLine("품질", state.outputQualityPreset.chipTitle, palette)
