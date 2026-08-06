@@ -57,6 +57,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.theme.HanClipPalette
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -400,6 +401,34 @@ private fun TrimPrecisionControls(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("정밀 조절", color = TrimText, fontWeight = FontWeight.Bold)
+            Text(
+                "자주 쓰는 클립 길이",
+                color = TrimSubText,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(2.0, 3.0).forEach { seconds ->
+                    TrimDurationPresetButton(
+                        seconds = seconds,
+                        selected = abs(durationSeconds - seconds) < 0.05,
+                        enabled = seconds <= sourceDuration,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onDurationChange(seconds) }
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(4.0, 6.0).forEach { seconds ->
+                    TrimDurationPresetButton(
+                        seconds = seconds,
+                        selected = abs(durationSeconds - seconds) < 0.05,
+                        enabled = seconds <= sourceDuration,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onDurationChange(seconds) }
+                    )
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TrimAdjustButton(
                     text = "시작 -0.1초",
@@ -433,6 +462,30 @@ private fun TrimPrecisionControls(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TrimDurationPresetButton(
+    seconds: Double,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        modifier = modifier.height(36.dp),
+        enabled = enabled,
+        onClick = onClick,
+        border = BorderStroke(1.dp, if (selected) TrimPrimary else TrimBorder),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (selected) TrimPrimary.copy(alpha = 0.12f) else Color.White,
+            contentColor = if (selected) TrimPrimary else TrimText,
+            disabledContainerColor = Color(0xFFEAF0EC),
+            disabledContentColor = TrimSubText.copy(alpha = 0.55f)
+        )
+    ) {
+        Text("%.1f초".format(seconds), fontWeight = FontWeight.Bold)
     }
 }
 
