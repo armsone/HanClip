@@ -97,6 +97,8 @@ data class PreviewMovieSummary(
         fun fromHistory(summary: ExportedMovieSummary): PreviewMovieSummary {
             val hasMusic = summary.hasBackgroundMusic
             val hasWatermark = summary.hasWatermark
+            val hasTextOverlay = summary.hasTextOverlay
+            val hasLogoOverlay = summary.hasLogoOverlay
             return PreviewMovieSummary(
                 presetTitle = summary.title,
                 clipCount = summary.clipCount,
@@ -104,9 +106,12 @@ data class PreviewMovieSummary(
                 outputAspectRatio = summary.outputAspectRatio,
                 outputQualityPreset = summary.outputQualityPreset ?: OutputQualityPreset.Standard,
                 hasBackgroundMusic = hasMusic ?: false,
-                watermarkSettings = WatermarkSettings(),
-                hasWatermark = hasWatermark ?: false,
-                detailStatusKnown = hasMusic != null && hasWatermark != null
+                watermarkSettings = WatermarkSettings(
+                    isEnabled = hasTextOverlay == true,
+                    logoEnabled = hasLogoOverlay == true
+                ),
+                hasWatermark = hasWatermark ?: (hasTextOverlay == true || hasLogoOverlay == true),
+                detailStatusKnown = hasMusic != null && hasTextOverlay != null && hasLogoOverlay != null
             )
         }
     }

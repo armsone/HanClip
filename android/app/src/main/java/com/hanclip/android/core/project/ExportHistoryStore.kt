@@ -21,7 +21,9 @@ data class ExportedMovieSummary(
     val outputAspectRatio: OutputAspectRatio? = null,
     val outputQualityPreset: OutputQualityPreset? = null,
     val hasBackgroundMusic: Boolean? = null,
-    val hasWatermark: Boolean? = null
+    val hasWatermark: Boolean? = null,
+    val hasTextOverlay: Boolean? = null,
+    val hasLogoOverlay: Boolean? = null
 )
 
 enum class ExportedMoviePinResult {
@@ -49,6 +51,8 @@ object ExportHistoryStore {
         outputQualityPreset: OutputQualityPreset? = null,
         hasBackgroundMusic: Boolean? = null,
         hasWatermark: Boolean? = null,
+        hasTextOverlay: Boolean? = null,
+        hasLogoOverlay: Boolean? = null,
         replaceUri: Uri? = null
     ) {
         if (clipCount <= 0 || totalDurationSeconds <= 0.0) return
@@ -74,7 +78,9 @@ object ExportHistoryStore {
                 outputAspectRatio = outputAspectRatio ?: previousSummary?.outputAspectRatio,
                 outputQualityPreset = outputQualityPreset ?: previousSummary?.outputQualityPreset,
                 hasBackgroundMusic = hasBackgroundMusic ?: previousSummary?.hasBackgroundMusic,
-                hasWatermark = hasWatermark ?: previousSummary?.hasWatermark
+                hasWatermark = hasWatermark ?: previousSummary?.hasWatermark,
+                hasTextOverlay = hasTextOverlay ?: previousSummary?.hasTextOverlay,
+                hasLogoOverlay = hasLogoOverlay ?: previousSummary?.hasLogoOverlay
             )
         )
         save(context, items.enforceHomeLimits())
@@ -104,7 +110,9 @@ object ExportHistoryStore {
                         .takeIf { it.isNotBlank() }
                         ?.let { raw -> enumValueOrNull<OutputQualityPreset>(raw) },
                     hasBackgroundMusic = item.optionalBoolean("hasBackgroundMusic"),
-                    hasWatermark = item.optionalBoolean("hasWatermark")
+                    hasWatermark = item.optionalBoolean("hasWatermark"),
+                    hasTextOverlay = item.optionalBoolean("hasTextOverlay"),
+                    hasLogoOverlay = item.optionalBoolean("hasLogoOverlay")
                 )
             }
                 .filter { it.clipCount > 0 && it.totalDurationSeconds > 0.0 }
@@ -176,6 +184,8 @@ object ExportHistoryStore {
                     .put("outputQualityPreset", summary.outputQualityPreset?.name.orEmpty())
                     .putNullable("hasBackgroundMusic", summary.hasBackgroundMusic)
                     .putNullable("hasWatermark", summary.hasWatermark)
+                    .putNullable("hasTextOverlay", summary.hasTextOverlay)
+                    .putNullable("hasLogoOverlay", summary.hasLogoOverlay)
             )
         }
         context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)

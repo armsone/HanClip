@@ -441,6 +441,8 @@ class EditorViewModel : ViewModel() {
                 state.backgroundMusicUri != null || state.backgroundMusicSampleId != null
             ),
             hasWatermark = existingSummary?.hasWatermark ?: state.watermarkSettings.shouldRender,
+            hasTextOverlay = existingSummary?.hasTextOverlay ?: state.watermarkSettings.shouldRenderText,
+            hasLogoOverlay = existingSummary?.hasLogoOverlay ?: state.watermarkSettings.logoEnabled,
             replaceUri = state.exportedVideoUri
         )
         _uiState.update {
