@@ -1,0 +1,14 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+*.apk
+/hanclip-*.png
+/hanclip-*.xml
+/window-*.xml
+/current-*.xml
+/final-current-*.xml
+/open-sheet-current.xml
