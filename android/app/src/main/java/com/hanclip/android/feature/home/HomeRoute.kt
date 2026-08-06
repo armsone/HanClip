@@ -944,12 +944,21 @@ private fun SavedProjectSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "저장된 영화",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = HomeText
-            )
+            Column {
+                Text(
+                    text = "저장된 영화",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = HomeText
+                )
+                Text(
+                    text = "기본 사진첩 저장본은 Movies/HanClip에서 확인",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = HomeSubText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             AssistChip(
                 onClick = onOpenProject,
                 leadingIcon = {
