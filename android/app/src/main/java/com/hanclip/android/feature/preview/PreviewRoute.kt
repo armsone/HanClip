@@ -275,7 +275,7 @@ fun PreviewRoute(
                         runCatching {
                             VideoSaveShare.shareVideo(context, shareUri)
                         }.onFailure {
-                            message = "공유 화면을 열지 못했습니다. 먼저 갤러리나 파일로 저장한 뒤 공유해 주세요."
+                            message = "공유 화면을 열지 못했습니다. 먼저 기본 사진첩이나 파일로 저장한 뒤 공유해 주세요."
                         }
                     }
                 },

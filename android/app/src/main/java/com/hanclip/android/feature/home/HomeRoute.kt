@@ -219,7 +219,7 @@ fun HomeRoute(
             titleContentColor = HomeText,
             textContentColor = HomeSubText,
             title = { Text("목록에서 제거") },
-            text = { Text("저장된 영화 목록에서만 제거합니다. 갤러리나 파일에 저장된 원본 영상은 삭제하지 않습니다.") }
+            text = { Text("저장된 영화 목록에서만 제거합니다. 기본 사진첩이나 파일에 저장된 원본 영상은 삭제하지 않습니다.") }
         )
     }
     memoCandidate?.let { summary ->
@@ -778,7 +778,7 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
     "단일 / 다중" to "영상을 하나의 구간으로 쓰거나, Ai가 찾은 타격점 후보 기준으로 여러 자클립으로 나눕니다.",
     "자막" to "영상 위에 문구, 폰트, 색상, 그림자, 위치를 설정하고 최종 MP4에 합성합니다.",
     "HanClip 로고" to "로고 워터마크의 표시 여부, 위치, 색상, 그림자 설정을 저장하고 최종 영상에 반영합니다.",
-    "시사회" to "영화 만들기 완료 후 전체 영상을 확인하고 갤러리 저장, 파일 저장, 공유를 실행합니다.",
+    "시사회" to "영화 만들기 완료 후 전체 영상을 확인하고 기본 사진첩 저장, 파일 저장, 공유를 실행합니다. 저장 중에는 화면을 유지합니다.",
     "브라우저" to "외부 무료 음악 사이트를 앱 안에서 열어 배경음악을 찾는 화면입니다. 즐겨찾기 추가/삭제와 첫 페이지 지정을 저장하며, 다운로드한 파일은 음악 설정의 파일 선택으로 가져옵니다.",
     "외부 호출 주소" to "iOS와 같은 주소를 Android에서도 받습니다. Ai hanclip://aishot, 파일 hanclip://files, 달력 hanclip://calendar, 사진 hanclip://photo, 검색 hanclip://search, 첫 화면 hanclip://open 흐름을 빠르게 엽니다.",
     "샘플 음악" to "HanClip에 포함된 샘플 음악은 앱 기능 검증과 사용자의 영상 배경음악을 위해 제공됩니다."
@@ -809,7 +809,7 @@ private fun SharedInboxBanner(sharedInboxCount: Int) {
                     color = HomeText
                 )
                 Text(
-                    text = "사진첩이나 갤러리에서 공유한 파일을 바로 영화로 엽니다.",
+                    text = "기본 사진첩이나 다른 앱에서 공유한 파일을 바로 영화로 엽니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
