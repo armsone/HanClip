@@ -155,6 +155,13 @@ fun MusicSettingsSheet(
                 )
             }
 
+            MusicMixSummaryPanel(
+                currentTitle = currentTitle,
+                musicVolume = musicVolume,
+                originalAudioVolume = originalAudioVolume,
+                palette = palette
+            )
+
             MusicVolumePanel(
                 title = "음악",
                 subtitle = if (currentTitle == null) "음악을 선택하면 이 비율로 섞입니다." else currentTitle,
@@ -281,6 +288,90 @@ private fun SelectedMusicPreviewRow(
 }
 
 @Composable
+private fun MusicMixSummaryPanel(
+    currentTitle: String?,
+    musicVolume: Double,
+    originalAudioVolume: Double,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("사운드 믹스", color = palette.text, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MusicMixChip(
+                    label = "음악",
+                    value = if (currentTitle == null) "꺼짐" else percentText(musicVolume),
+                    active = currentTitle != null,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+                MusicMixChip(
+                    label = "원본",
+                    value = percentText(originalAudioVolume),
+                    active = originalAudioVolume > 0.0,
+                    palette = palette,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Text(
+                text = if (currentTitle == null) {
+                    "배경음악 없이 원본 소리만 사용합니다."
+                } else {
+                    "${currentTitle}을 영상 소리와 함께 섞습니다."
+                },
+                color = palette.subText,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun MusicMixChip(
+    label: String,
+    value: String,
+    active: Boolean,
+    palette: HanClipPalette,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(7.dp),
+        color = if (active) Color.White else palette.panel,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.24f) else palette.border)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                label,
+                color = palette.subText,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelMedium
+            )
+            Text(
+                value,
+                color = if (active) palette.primary else palette.subText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+    }
+}
+
+@Composable
 private fun MusicVolumePanel(
     title: String,
     subtitle: String,
@@ -329,6 +420,10 @@ private fun MusicVolumePanel(
             )
         }
     }
+}
+
+private fun percentText(value: Double): String {
+    return "${(value.coerceIn(0.0, 1.0) * 100).toInt()}%"
 }
 
 @Composable
