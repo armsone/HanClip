@@ -58,6 +58,7 @@ fun HanClipApp(
     var pendingEditorImportAction by remember { mutableStateOf<EditorImportAction?>(null) }
     var exportedMovieSummaries by remember { mutableStateOf<List<ExportedMovieSummary>>(emptyList()) }
     var previewHistorySummary by remember { mutableStateOf<ExportedMovieSummary?>(null) }
+    var isPreviewSavingVideo by remember { mutableStateOf(false) }
     var hasDraftProject by remember { mutableStateOf(false) }
     val draftProjectSummary = remember(
         hasDraftProject,
@@ -201,7 +202,8 @@ fun HanClipApp(
 
     val shouldKeepScreenOnForWork = editorState.isExporting ||
         editorState.isImportingMedia ||
-        editorState.progressMessage.isNotBlank()
+        editorState.progressMessage.isNotBlank() ||
+        isPreviewSavingVideo
     val shouldKeepScreenOn = when (sleepPreventionMode) {
         SleepPreventionMode.AlwaysOn -> true
         SleepPreventionMode.AlwaysOff -> false
@@ -328,6 +330,9 @@ fun HanClipApp(
                 onDone = {
                     previewHistorySummary = null
                     navController.popBackStack(HanClipDestination.Home.route, false)
+                },
+                onSavingStateChanged = { isSavingVideo ->
+                    isPreviewSavingVideo = isSavingVideo
                 },
                 onSavedMovie = { uri ->
                     editorViewModel.recordSavedMovie(context, uri)

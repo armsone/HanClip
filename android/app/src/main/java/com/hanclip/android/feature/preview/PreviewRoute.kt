@@ -52,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -125,6 +126,7 @@ fun PreviewRoute(
     canReturnToEditor: Boolean = true,
     onEdit: () -> Unit,
     onDone: () -> Unit,
+    onSavingStateChanged: (Boolean) -> Unit = {},
     onSavedMovie: (Uri) -> Unit
 ) {
     val context = LocalContext.current
@@ -136,6 +138,16 @@ fun PreviewRoute(
     var pendingMovieFileName by remember { mutableStateOf(VideoSaveShare.newMovieFileName(movieSummary.presetTitle)) }
     var preferredShareUri by remember(exportedVideoUri) { mutableStateOf(exportedVideoUri) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(isSavingVideo) {
+        onSavingStateChanged(isSavingVideo)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            onSavingStateChanged(false)
+        }
+    }
+
     fun performGallerySave() {
         if (exportedVideoUri == null) {
             message = "저장할 영상이 없습니다."
