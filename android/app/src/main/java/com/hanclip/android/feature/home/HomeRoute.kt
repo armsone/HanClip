@@ -1339,7 +1339,7 @@ private fun DraftProjectRow(
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    summary?.presetTitle ?: "작업 중 영화",
+                    summary?.presetTitle ?: "자동 저장된 작업",
                     fontWeight = FontWeight.SemiBold,
                     color = HomeText
                 )
@@ -1355,6 +1355,7 @@ private fun DraftProjectRow(
                         modifier = Modifier.padding(top = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        DraftInfoPill("자동 저장")
                         DraftInfoPill("${summary.clipCount}개 클립")
                         DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
                     }
@@ -1397,7 +1398,7 @@ private fun DraftInfoPill(text: String) {
 }
 
 private fun draftSummaryText(summary: DraftProjectSummary): String {
-    return "마지막 편집 설정 · ${summary.outputText}"
+    return "이어 편집 가능 · ${summary.outputText}"
 }
 
 @Composable

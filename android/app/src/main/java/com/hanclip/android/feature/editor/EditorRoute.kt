@@ -571,7 +571,7 @@ fun EditorRoute(
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
                 title = { Text("편집을 닫을까요?") },
-                text = { Text("현재 작업은 자동 저장됩니다. 홈에서 `작업 열기`로 이어서 편집할 수 있습니다.") }
+                text = { Text("현재 작업은 자동 저장됩니다. 홈의 `작업 열기`에서 바로 이어 편집할 수 있습니다.") }
             )
         }
         if (isExportConfirmationVisible) {
