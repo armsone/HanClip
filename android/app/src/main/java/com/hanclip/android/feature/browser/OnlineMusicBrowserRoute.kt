@@ -123,13 +123,13 @@ fun OnlineMusicBrowserRoute(
                 }
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "브라우저",
+                        text = "음악 찾기",
                         color = palette.text,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleLarge
                     )
                     Text(
-                        text = "무료 음악 찾기",
+                        text = "다운로드 후 음악/원본 소리에서 내 음악 파일로 적용합니다",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -336,13 +336,13 @@ fun OnlineMusicBrowserRoute(
                                 )
                                 Toast.makeText(
                                     context,
-                                    "Downloads/HanClip 폴더에 저장을 시작했습니다.",
+                                    "Downloads/HanClip 폴더에 저장을 시작했습니다. 완료 후 음악/원본 소리에서 내 음악 파일 선택으로 적용하세요.",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }.onFailure {
                                 Toast.makeText(
                                     context,
-                                    "다운로드를 시작하지 못했습니다. 사이트에서 저장한 뒤 음악 설정의 파일 선택을 사용하세요.",
+                                    "다운로드를 시작하지 못했습니다. 사이트에서 저장한 뒤 음악/원본 소리의 내 음악 파일 선택을 사용하세요.",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
