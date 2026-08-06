@@ -1255,7 +1255,7 @@ private fun ImportActionRow(
         ) {
             Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            ActionButtonText("사진첩 전체에서 선택")
+            ActionButtonText("기본 사진첩에서 선택")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -1302,7 +1302,7 @@ private fun ImportActionRow(
             ) {
                 Icon(Icons.Outlined.FolderOpen, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                ActionButtonText("파일")
+                ActionButtonText("파일 선택")
             }
             OutlinedButton(
                 modifier = Modifier
@@ -1383,7 +1383,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("사진첩 전체")
+                    ActionButtonText("기본 사진첩")
                 }
                 Button(
                     modifier = Modifier.weight(1f).height(50.dp),
@@ -1423,7 +1423,7 @@ private fun EmptyClipPanel(
                 ) {
                     Icon(Icons.Outlined.FolderOpen, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    ActionButtonText("파일")
+                    ActionButtonText("파일 선택")
                 }
             }
         }
