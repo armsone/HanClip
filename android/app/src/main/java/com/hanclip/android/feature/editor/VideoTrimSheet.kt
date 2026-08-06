@@ -229,6 +229,7 @@ private fun VideoImpactPanel(
     onCenterOnImpact: () -> Unit,
     onUseFullRange: () -> Unit
 ) {
+    val impactIncluded = isImpactInRange(clip, startSeconds, durationSeconds)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -252,10 +253,10 @@ private fun VideoImpactPanel(
                         color = palette.subText
                     )
                 }
-                Text(
-                    "${formatSeconds(startSeconds)} - ${formatSeconds(startSeconds + durationSeconds)}",
-                    color = palette.primary,
-                    fontWeight = FontWeight.Bold
+                ImpactRangeChip(
+                    text = impactRangeChipText(clip, impactIncluded),
+                    active = impactIncluded == true,
+                    palette = palette
                 )
             }
             ImpactWaveform(
@@ -349,6 +350,27 @@ private fun ImpactWaveform(
     }
 }
 
+@Composable
+private fun ImpactRangeChip(
+    text: String,
+    active: Boolean,
+    palette: HanClipPalette
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) palette.primary.copy(alpha = 0.14f) else Color.White,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.38f) else TrimBorder)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            color = if (active) palette.primary else TrimSubText,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelMedium
+        )
+    }
+}
+
 private fun impactSummaryText(clip: ClipItem): String {
     val peakCount = clip.audioPeakTimesSeconds.size
     val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
@@ -436,6 +458,29 @@ private fun TrimAdjustButton(
     ) {
         icon()
         Text(text, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+private fun isImpactInRange(
+    clip: ClipItem,
+    startSeconds: Double,
+    durationSeconds: Double
+): Boolean? {
+    val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
+        ?: return null
+    return primary in startSeconds..(startSeconds + durationSeconds)
+}
+
+private fun impactRangeChipText(
+    clip: ClipItem,
+    included: Boolean?
+): String {
+    val primary = clip.audioPeakTimeSeconds ?: clip.audioPeakTimesSeconds.firstOrNull()
+        ?: return "타격점 없음"
+    return if (included == true) {
+        "타격점 포함 ${formatSeconds(primary)}"
+    } else {
+        "구간 밖 ${formatSeconds(primary)}"
     }
 }
 
