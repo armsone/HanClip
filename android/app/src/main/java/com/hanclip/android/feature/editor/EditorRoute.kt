@@ -1236,6 +1236,7 @@ private fun presetStatusDescription(preset: MoviePreset): String {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ImportActionRow(
     palette: HanClipPalette,
@@ -1261,10 +1262,18 @@ private fun ImportActionRow(
             ActionButtonText("기본 사진첩에서 선택")
         }
         Text(
-            text = "사진과 영상을 여러 개 골라도 선택한 순서대로 클립에 들어갑니다.",
+            text = "기본 사진첩에서 사진과 영상을 한 번에 고르면 선택 번호순으로 완성본에 이어집니다.",
             color = palette.subText,
             style = MaterialTheme.typography.bodySmall
         )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            PresetStatusPill("사진+영상 한 번에", active = true, palette = palette)
+            PresetStatusPill("선택 번호순", active = false, palette = palette)
+            PresetStatusPill("타격점 자동 컷", active = false, palette = palette)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 modifier = Modifier
@@ -1342,6 +1351,7 @@ private fun ActionButtonText(text: String) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EmptyClipPanel(
     preset: MoviePreset,
@@ -1373,13 +1383,21 @@ private fun EmptyClipPanel(
             )
             Text(
                 text = if (preset == MoviePreset.Golf || preset == MoviePreset.AiShot) {
-                    "스윙 소리 피크를 찾아 자동으로 짧은 클립을 만듭니다."
+                    "사진과 영상을 같이 고르면 선택한 순서대로 놓고, 스윙 소리 피크를 찾아 짧은 골프 클립으로 정리합니다."
                 } else {
-                    "선택한 순서대로 클립을 만들고 한 번에 이어 붙입니다."
+                    "사진과 영상을 같이 고르면 선택한 순서대로 클립을 만들고 한 번에 이어 붙입니다."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = palette.subText
             )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                PresetStatusPill("Android 기본 사진첩", active = true, palette = palette)
+                PresetStatusPill("사진+영상", active = false, palette = palette)
+                PresetStatusPill("선택 순서 유지", active = false, palette = palette)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     modifier = Modifier.weight(1f).height(50.dp),
@@ -2814,7 +2832,7 @@ private fun bottomMakeSummary(
         overlayStatusText(hasTextOverlay, hasLogoOverlay).takeIf { it != "자막/로고 꺼짐" },
         "음악".takeIf { hasMusic }
     ).joinToString(" · ").ifBlank { "자막/로고 꺼짐" }
-    return "완성본 구성 · $mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle} · $overlaySummary"
+    return "완성본 구성 · 선택 순서대로 · $mediaSummary · ${formatSummaryDuration(totalSeconds)} · $qualityTitle · ${OutputQualityPreset.ExportFormatTitle} · $overlaySummary"
 }
 
 private fun overlayStatusText(hasTextOverlay: Boolean, hasLogoOverlay: Boolean): String {
