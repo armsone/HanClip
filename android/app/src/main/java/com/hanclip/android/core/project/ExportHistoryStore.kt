@@ -36,6 +36,16 @@ private const val ExportHistoryMaxItems = 10
 private const val ExportHistoryMaxAiShotItems = 2
 private const val ExportHistoryAiShotTitle = "AiShot"
 
+fun hanClipCompletionTitle(title: String): String {
+    return when (val normalizedTitle = title.trim()) {
+        "", "HanClip 영화" -> "HanClip 완성본"
+        "새 영화" -> "새 완성본"
+        "여행 영화" -> "여행 완성본"
+        "골프 영화" -> "골프 완성본"
+        else -> normalizedTitle
+    }
+}
+
 object ExportHistoryStore {
     private const val PreferencesName = "hanclip_export_history"
     private const val HistoryKey = "items"
@@ -68,7 +78,7 @@ object ExportHistoryStore {
             0,
             ExportedMovieSummary(
                 uriString = outputUri.toString(),
-                title = title.ifBlank { "HanClip 영화" },
+                title = hanClipCompletionTitle(title),
                 clipCount = clipCount,
                 totalDurationSeconds = totalDurationSeconds,
                 updatedAtMillis = System.currentTimeMillis(),
@@ -96,7 +106,7 @@ object ExportHistoryStore {
                 val item = array.getJSONObject(index)
                 ExportedMovieSummary(
                     uriString = item.getString("uriString"),
-                    title = item.optString("title", "HanClip 영화"),
+                    title = hanClipCompletionTitle(item.optString("title", "HanClip 완성본")),
                     clipCount = item.optInt("clipCount", 0),
                     totalDurationSeconds = item.optDouble("totalDurationSeconds", 0.0),
                     updatedAtMillis = item.optLong("updatedAtMillis", 0L),
