@@ -967,7 +967,7 @@ private fun ExportConfirmationDialog(
     val autoSegmentCount = state.renderableClips.count { it.isVideoSegmentChild }
     val estimatedRenderSize = estimatedRenderSize(state)
     val aspectRatioText = state.outputAspectRatio?.let(::outputRatioChipText)
-        ?: "자동 ${estimatedRenderSize.first}x${estimatedRenderSize.second}"
+        ?: "자동 원본 비율 ${estimatedRenderSize.first}x${estimatedRenderSize.second}"
     val musicText = when {
         state.backgroundMusicUri != null || state.backgroundMusicSampleId != null ->
             state.backgroundMusicTitle ?: "음악 적용"
@@ -2021,7 +2021,7 @@ private fun ProjectControls(
             FilterChip(
                 selected = selectedRatio == null,
                 onClick = { onSelectRatio(null) },
-                label = { Text("자동") },
+                label = { Text("자동 원본 비율") },
                 leadingIcon = { Icon(Icons.Outlined.AspectRatio, contentDescription = null) },
                 colors = clearFilterChipColors(palette),
                 border = FilterChipDefaults.filterChipBorder(

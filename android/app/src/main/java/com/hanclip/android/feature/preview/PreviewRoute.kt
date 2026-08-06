@@ -504,7 +504,7 @@ private fun previewWatermarkStatusText(summary: PreviewMovieSummary): String {
 }
 
 private fun previewAspectRatioText(ratio: OutputAspectRatio?): String {
-    return ratio?.let { "${it.title} · ${it.width}x${it.height}" } ?: "자동 비율"
+    return ratio?.let { "${it.title} · ${it.width}x${it.height}" } ?: "자동 원본 비율"
 }
 
 @Composable
