@@ -227,10 +227,10 @@ fun MusicSettingsSheet(
                 )
             ) {
                 Icon(Icons.Outlined.Public, contentDescription = null)
-                Text("브라우저")
+                Text("음악 찾기")
             }
             Text(
-                "브라우저에서 받은 음악은 Downloads/HanClip 폴더에서 다시 선택합니다.",
+                "받은 음악은 Downloads/HanClip 폴더에서 `내 음악 파일 선택`으로 적용합니다.",
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall
             )
