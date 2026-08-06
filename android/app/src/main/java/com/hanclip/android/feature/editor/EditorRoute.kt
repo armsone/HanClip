@@ -147,6 +147,7 @@ fun EditorRoute(
     var isReorderMode by remember { mutableStateOf(false) }
     var isResetConfirmationVisible by remember { mutableStateOf(false) }
     var isExitConfirmationVisible by remember { mutableStateOf(false) }
+    var isExportConfirmationVisible by remember { mutableStateOf(false) }
     val expandedCalendarSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val trimmingClip = state.clips.firstOrNull { it.id == trimmingClipID }
     val photoDurationClip = state.clips.firstOrNull { it.id == photoDurationClipID }
@@ -427,7 +428,7 @@ fun EditorRoute(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 palette = palette,
                 isExporting = state.isExporting,
-                onMakeMovie = { viewModel.exportMovie(context, onPreview) }
+                onMakeMovie = { isExportConfirmationVisible = true }
             )
         }
         if (state.isImportingMedia || state.isExporting) {
@@ -550,6 +551,17 @@ fun EditorRoute(
                 textContentColor = palette.subText,
                 title = { Text("편집을 닫을까요?") },
                 text = { Text("현재 작업은 자동 저장됩니다. 홈에서 `작업 열기`로 이어서 편집할 수 있습니다.") }
+            )
+        }
+        if (isExportConfirmationVisible) {
+            ExportConfirmationDialog(
+                state = state,
+                palette = palette,
+                onDismiss = { isExportConfirmationVisible = false },
+                onConfirm = {
+                    isExportConfirmationVisible = false
+                    viewModel.exportMovie(context, onPreview)
+                }
             )
         }
         trimmingClip?.let { clip ->
@@ -852,6 +864,102 @@ private fun formatSummaryDuration(seconds: Double): String {
         "%d분 %.1f초".format(minutes, remainingSeconds)
     } else {
         "%.1f초".format(remainingSeconds)
+    }
+}
+
+@Composable
+private fun ExportConfirmationDialog(
+    state: EditorUiState,
+    palette: HanClipPalette,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val renderableClipCount = state.renderableClips.size
+    val aspectRatioText = state.outputAspectRatio?.title ?: "원본 비율"
+    val musicText = when {
+        state.backgroundMusicUri != null || state.backgroundMusicSampleId != null ->
+            state.backgroundMusicTitle ?: "음악 적용"
+        else -> "음악 없음"
+    }
+    val captionText = when {
+        state.watermarkSettings.shouldRenderText && state.watermarkSettings.logoEnabled -> "자막 · HanClip 로고"
+        state.watermarkSettings.shouldRenderText -> "자막 적용"
+        state.watermarkSettings.logoEnabled -> "HanClip 로고"
+        else -> "자막 없음"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                border = BorderStroke(1.dp, palette.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = palette.panel,
+                    contentColor = palette.text
+                )
+            ) {
+                Text("다시 보기")
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = palette.primary,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(Icons.Outlined.MovieCreation, contentDescription = null)
+                Text("제작 시작")
+            }
+        },
+        shape = RoundedCornerShape(8.dp),
+        containerColor = palette.panel,
+        titleContentColor = palette.text,
+        textContentColor = palette.subText,
+        title = { Text("영화를 만들까요?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "아래 설정으로 HanClip 영화를 만듭니다.",
+                    color = palette.subText,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                ExportConfirmationLine("클립", "${renderableClipCount}개 · ${formatSummaryDuration(state.totalDurationSeconds)}", palette)
+                ExportConfirmationLine("화면", aspectRatioText, palette)
+                ExportConfirmationLine("품질", state.outputQualityPreset.displayTitle, palette)
+                ExportConfirmationLine("음악", musicText, palette)
+                ExportConfirmationLine("자막", captionText, palette)
+            }
+        }
+    )
+}
+
+@Composable
+private fun ExportConfirmationLine(
+    label: String,
+    value: String,
+    palette: HanClipPalette
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            color = palette.subText,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            value,
+            color = palette.text,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
