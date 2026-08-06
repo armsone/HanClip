@@ -169,7 +169,7 @@ fun PreviewRoute(
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · 기본 사진첩의 Movies/HanClip에서 확인하세요."
+                message = "저장 완료 · Android 기본 사진첩의 HanClip 앨범에서 확인하세요."
             }.onFailure {
                 message = "Android 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
@@ -277,7 +277,7 @@ fun PreviewRoute(
                         runCatching {
                             VideoSaveShare.shareVideo(context, shareUri)
                         }.onFailure {
-                            message = "공유 화면을 열지 못했습니다. 먼저 기본 사진첩 저장이나 파일 저장을 완료한 뒤 공유해 주세요."
+                            message = "공유 화면을 열지 못했습니다. 기본 사진첩 저장 후 다시 공유해 주세요."
                         }
                     }
                 },
@@ -479,7 +479,7 @@ private fun PreviewSummaryPanel(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "저장은 기본 사진첩의 Movies/HanClip에 남길 수 있습니다.",
+                        text = "저장은 Android 기본 사진첩의 HanClip 앨범에 남길 수 있습니다.",
                         color = palette.subText,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 2,
@@ -644,7 +644,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("저장하기")
+            Text("사진첩 저장")
         }
     }
 }
@@ -690,7 +690,7 @@ private fun SaveOptionsSheet(
                             color = palette.text
                         )
                         Text(
-                            text = "실사용 테스트와 공유는 기본 사진첩 저장이 가장 쉽습니다.",
+                            text = "완성본은 기본 사진첩에 저장한 뒤 바로 공유할 수 있습니다.",
                             color = palette.subText
                         )
                     }
@@ -699,9 +699,9 @@ private fun SaveOptionsSheet(
                     }
                 }
                 SaveDestinationCard(
-                    title = "기본 사진첩에 저장",
+                    title = "Android 기본 사진첩",
                     badge = "추천",
-                    body = "폰 기본 사진첩에서 바로 보입니다. 저장 위치: Movies/HanClip",
+                    body = "폰 기본 사진첩의 HanClip 앨범에서 바로 보입니다.",
                     icon = Icons.Outlined.Photo,
                     palette = palette,
                     primary = true,
@@ -710,7 +710,7 @@ private fun SaveOptionsSheet(
                 SaveDestinationCard(
                     title = "파일로 저장",
                     badge = "대안",
-                    body = "파일 앱에서 폴더와 이름을 직접 선택합니다.",
+                    body = "원하는 폴더와 파일명을 직접 선택해 MP4로 보관합니다.",
                     icon = Icons.Outlined.FolderOpen,
                     palette = palette,
                     primary = false,
@@ -794,13 +794,13 @@ private fun SaveFormatNote(palette: HanClipPalette) {
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "저장 형식",
+                    text = "저장 형식 · 공유 호환",
                     color = palette.text,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.labelLarge
                 )
                 Text(
-                    text = OutputQualityPreset.ExportFormatDetail,
+                    text = "${OutputQualityPreset.ExportFormatDetail} · Android/iPhone 모두 재생 가능",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -1010,7 +1010,7 @@ private fun SavingMovieDialog(palette: HanClipPalette) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "MP4 영상을 기본 사진첩 또는 선택한 파일 위치에 저장하고 있습니다.",
+                    text = "MP4 영상을 Android 기본 사진첩 또는 선택한 파일 위치에 저장하고 있습니다.",
                     color = palette.subText,
                     style = MaterialTheme.typography.bodySmall
                 )
