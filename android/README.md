@@ -6,7 +6,7 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 
 11단계 기본 검증 완료: 실제 Android 폰 설치와 핵심 흐름 테스트
 
-현재 Android 버전: `1.0.60` (`versionCode=106`)
+현재 Android 버전: `1.0.1` (`versionCode=367`)
 
 - Kotlin
 - Jetpack Compose
@@ -211,29 +211,17 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 디버그 APK:
 
 ```text
-/Users/armsone/git/HanClip/android/app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/debug/app-debug.apk
 ```
 
-테스트 완료 사본:
-
-```text
-/Users/armsone/git/HanClip/android/HanClip-android-debug-tested.apk
-```
-
-바탕화면 설치 파일:
-
-```text
-/Users/armsone/Desktop/HanClip-Android-완성본.apk
-```
-
-파일 크기: 약 37MB
+APK와 빌드 산출물은 저장소에서 추적하지 않습니다.
 
 ## Android Studio에서 열기
 
-Android Studio에서 `File > Open...`을 누른 뒤 이 폴더를 선택합니다.
+Android Studio에서 `File > Open...`을 누른 뒤 저장소의 `android/` 폴더를 선택합니다.
 
 ```text
-/Users/armsone/git/HanClip/android
+android/
 ```
 
 ## 패키지 구조
@@ -316,7 +304,7 @@ com.hanclip.android.feature.preview
 - 자막 설정에 그림자 색상과 그림자 진하기 슬라이더 추가 후 `lintDebug`와 `assembleDebug` 통과, 실제 폰 설치 `lastUpdateTime=2026-08-06 05:22:34`
 - 자막 시트에서 그림자 설정을 색상 바로 아래로 재배치 후 `lintDebug`와 `assembleDebug` 통과, 실제 폰 설치 `lastUpdateTime=2026-08-06 05:27:46`
 - Android 버전 `0.6.1`(`versionCode=7`)로 갱신 후 `lintDebug`와 `assembleDebug` 통과, 실제 폰 설치 `lastUpdateTime=2026-08-06 05:29:14`
-- 바탕화면 APK `/Users/armsone/Desktop/HanClip-Android-완성본.apk`를 `0.6.1` 최신 빌드로 갱신
+- 별도 배포용 APK 사본을 `0.6.1` 최신 빌드로 갱신
 - AiShot 수동 중지 후 재녹화 타이머 안정화와 deprecated API 경고 정리 후 `lintDebug`와 `assembleDebug` 통과, 실제 폰 설치 `lastUpdateTime=2026-08-06 05:31:14`
 - 편집 화면 `Ai컷` 버튼이 가져오기 전 자동 분할 모드를 켜도록 보강 후 `lintDebug`와 `assembleDebug` 통과, 실제 폰 설치 `lastUpdateTime=2026-08-06 05:32:58`
 - `영상만`/`Ai컷` 선택을 다중 선택 가능한 `GET_CONTENT` 기반 Samsung Gallery 우선 호출로 변경 후 `lintDebug`와 `assembleDebug` 통과, 실제 폰 설치 `lastUpdateTime=2026-08-06 05:34:17`
