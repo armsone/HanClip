@@ -6270,13 +6270,13 @@ private struct ImportantInfoSheet: View {
         HanClip은 외부 음원 파일을 독립 음원으로 판매, 배포, 재라이선스하거나 음악 라이브러리 형태로 제공하지 않습니다. 외부 음원은 사용자가 선택한 영상 결과물 안에 배경음악으로 합성될 때만 사용되며, TV/라디오 방송, 게임, CD/DVD, 음원 단독 배포 등 각 사이트가 제한하는 용도에는 사용자가 별도 라이선스 확인 또는 권리자의 허락을 받아야 합니다.
         """),
         ("내장 서체 저작권", """
-        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
+        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon, Paperlogy, NEXON Lv.1 Gothic, Poppins 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
 
         [[embedded_font_size_table]]
 
-        내장 자막 서체 파일의 원본 크기 합계는 약 38 MB입니다. 앱 번들, 압축, App Store 처리 방식에 따라 최종 설치 크기와 다운로드 크기는 달라질 수 있습니다.
+        내장 자막 서체 파일의 원본 크기 합계는 약 41.5 MB입니다. 앱 번들, 압축, App Store 처리 방식에 따라 최종 설치 크기와 다운로드 크기는 달라질 수 있습니다.
 
-        Kakao Big Sans, Nanum Gothic, Pretendard, Tenada, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 SIL Open Font License 1.1로 제공되는 서체입니다. OFL은 서체 파일을 단독으로 판매하지 않는 조건에서 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
+        Kakao Big Sans, Nanum Gothic, Pretendard, Tenada, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon, Paperlogy, Poppins는 SIL Open Font License 1.1로 제공되는 서체입니다. OFL은 서체 파일을 단독으로 판매하지 않는 조건에서 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
 
         MaruBuri의 저작권은 NAVER 및 NAVER Cultural Foundation에 있습니다. NAVER 안내에 따라 개인과 기업을 포함한 모든 사용자가 무료로 사용할 수 있고 상업적 사용이 가능하며, 글꼴 자체를 유료로 판매하는 행위를 제외하고 저작권 안내와 라이선스 전문을 포함해 다른 소프트웨어와 번들하거나 재배포할 수 있다고 설명합니다.
 
@@ -6285,6 +6285,10 @@ private struct ImportantInfoSheet: View {
         Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 Google Fonts의 공식 google/fonts 저장소에서 제공되는 SIL Open Font License 1.1 서체입니다. Google Fonts 안내에 따라 상업적 제품, 앱, 웹사이트, 인쇄물, 영상 등에서 사용할 수 있으며, HanClip은 공식 저장소의 원본 TTF 파일과 OFL 라이선스 전문을 함께 포함합니다. 수정본을 배포하는 경우에는 OFL 조건과 예약 서체명 제한을 별도로 확인해야 합니다.
 
         Tenada는 공식 배포 페이지에서 SIL Open Font License 1.1로 제공됩니다. 앱에 포함된 Tenada.ttf는 공식 배포본의 원본 파일이며, HanClip에서는 골프 기록, 홀 정보, 스코어 같은 제목형 자막에 사용할 수 있도록 제공합니다.
+
+        Paperlogy는 제작자의 공식 저장소에서 배포한 1.001 버전의 Bold 원본 파일이며, Poppins는 Google Fonts 공식 저장소의 Regular 원본 파일입니다. 두 파일 모두 SIL Open Font License 1.1 전문과 저작권 고지를 함께 포함합니다.
+
+        NEXON Lv.1 Gothic의 저작권은 NEXON Korea에 있습니다. 넥슨의 공식 이용 조건에 따라 원본 파일을 수정하지 않고 저작권 안내와 함께 앱에 번들했으며, 글꼴 파일 자체를 단독 판매하지 않습니다.
 
         Cafe24 Ssurround는 Cafe24 공식 안내에 따라 개인 및 기업 사용자를 포함한 모든 사용자에게 무료로 제공되며 상업적 사용이 가능합니다. Cafe24는 영상 제작 및 자막, 소프트웨어 번들, 특정 프로그램 임베드 등 사용 범위 제한 없이 이용할 수 있다고 안내합니다. 단, 글꼴 파일 자체를 유료로 판매하는 행위는 금지됩니다.
 
@@ -9057,6 +9061,11 @@ private struct EmbeddedFontCopyrightRow: View {
             fontFamily: "Pretendard-Bold"
         ),
         EmbeddedFontSizeRow(
+            fontName: "넥슨 Lv.1 고딕",
+            fileSize: "1.8 MB",
+            fontFamily: "NEXONLv1GothicRegular"
+        ),
+        EmbeddedFontSizeRow(
             fontName: "나눔고딕",
             fileSize: "2.0 MB",
             fontFamily: "NanumGothic"
@@ -9070,6 +9079,11 @@ private struct EmbeddedFontCopyrightRow: View {
             fontName: "카카오",
             fileSize: "1.5 MB",
             fontFamily: "KakaoBigSans-Regular"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "페이퍼로지 Bold",
+            fileSize: "1.2 MB",
+            fontFamily: "Paperlogy-7Bold"
         ),
         EmbeddedFontSizeRow(
             fontName: "젠틀고딕",
@@ -9095,6 +9109,11 @@ private struct EmbeddedFontCopyrightRow: View {
             fontName: "둘기마요",
             fileSize: "743 KB",
             fontFamily: "Dovemayo-Medium"
+        ),
+        EmbeddedFontSizeRow(
+            fontName: "Poppins",
+            fileSize: "157 KB",
+            fontFamily: "Poppins-Regular"
         )
     ]
 

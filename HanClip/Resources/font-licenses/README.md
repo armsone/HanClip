@@ -21,8 +21,11 @@ Bundled caption font files:
 | Gowun Batang | GowunBatang-Regular.ttf | 8.0 MB | 8,433,296 | GowunBatang-OFL.txt |
 | Black Han Sans | BlackHanSans-Regular.ttf | 975 KB | 998,424 | BlackHanSans-OFL.txt |
 | Do Hyeon | DoHyeon-Regular.ttf | 859 KB | 879,764 | DoHyeon-OFL.txt |
+| Paperlogy Bold | Paperlogy-7Bold.ttf | 1.2 MB | 1,307,936 | Paperlogy-OFL.txt |
+| NEXON Lv.1 Gothic | NEXONLv1GothicRegular.ttf | 1.8 MB | 1,875,860 | NEXONLv1Gothic-LICENSE.txt |
+| Poppins Regular | Poppins-Regular.ttf | 157 KB | 160,316 | Poppins-OFL.txt |
 
-Approximate raw total for bundled caption font files: 38 MB. App Store
+Approximate raw total for bundled caption font files: 41.5 MB. App Store
 compression, app thinning, and installation processing can make the final
 download/install size different from these source file sizes.
 
@@ -54,6 +57,16 @@ License risk notes:
   OFL-style detailed redistribution license. HanClip bundles the unmodified
   official OTF with this notice. Treat it as the first legal-review/removal
   candidate if stricter app bundling or redistribution evidence is required.
+- Paperlogy and Poppins are bundled under the SIL Open Font License 1.1. Keep
+  their copyright and OFL notices with the redistributed font files.
+- NEXON Lv.1 Gothic is the unmodified official TTF. NEXON permits commercial
+  use and software bundling/embedding when its copyright notice is included;
+  do not modify the file or sell it by itself.
+
+Additional fonts embedded on 2026-08-07:
+- Paperlogy-7Bold.ttf / Paperlogy-OFL.txt / 1.2 MB
+- NEXONLv1GothicRegular.ttf / NEXONLv1Gothic-LICENSE.txt / 1.8 MB
+- Poppins-Regular.ttf / Poppins-OFL.txt / 157 KB
 
 Additional Google Fonts embedded on 2026-08-04:
 - GowunDodum-Regular.ttf / GowunDodum-OFL.txt / 6.9 MB

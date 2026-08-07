@@ -95,6 +95,28 @@ enum FontRegistry {
             legacyStoredValues: ["Pretendard-Bold", "Pretendard Bold"]
         ),
         CaptionFontInfo(
+            id: "nexon_lv1_gothic",
+            displayName: "넥슨 Lv.1 고딕",
+            familyName: "NEXONLv1GothicRegular",
+            category: .basic,
+            assetPath: "Resources/Fonts/NEXONLv1GothicRegular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt",
+            legacyStoredValues: ["NEXON Lv1 Gothic", "NEXONLv1GothicRegular"]
+        ),
+        CaptionFontInfo(
+            id: "poppins",
+            displayName: "Poppins",
+            familyName: "Poppins-Regular",
+            category: .vlog,
+            assetPath: "Resources/Fonts/Poppins-Regular.ttf",
+            availableWeights: [.regular],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/Poppins-OFL.txt",
+            legacyStoredValues: ["Poppins", "Poppins-Regular"]
+        ),
+        CaptionFontInfo(
             id: "puradak_gentle",
             displayName: "젠틀고딕",
             familyName: "PuradakGentleGothicR",
@@ -173,6 +195,17 @@ enum FontRegistry {
             fallbackFont: systemFontID,
             licenseFilePath: "Resources/font-licenses/BlackHanSans-OFL.txt",
             legacyStoredValues: ["BlackHanSans-Regular", "Black Han Sans"]
+        ),
+        CaptionFontInfo(
+            id: "paperlogy_bold",
+            displayName: "페이퍼로지 Bold",
+            familyName: "Paperlogy-7Bold",
+            category: .title,
+            assetPath: "Resources/Fonts/Paperlogy-7Bold.ttf",
+            availableWeights: [.bold],
+            fallbackFont: systemFontID,
+            licenseFilePath: "Resources/font-licenses/Paperlogy-OFL.txt",
+            legacyStoredValues: ["Paperlogy", "Paperlogy-7Bold"]
         ),
         CaptionFontInfo(
             id: "do_hyeon",

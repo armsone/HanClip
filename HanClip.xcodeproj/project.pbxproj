@@ -56,6 +56,12 @@
 		120000000000000000000011 /* Resources/font-licenses/BlackHanSans-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000011 /* Resources/font-licenses/BlackHanSans-OFL.txt */; };
 		120000000000000000000012 /* Resources/Fonts/DoHyeon-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000012 /* Resources/Fonts/DoHyeon-Regular.ttf */; };
 		120000000000000000000013 /* Resources/font-licenses/DoHyeon-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000013 /* Resources/font-licenses/DoHyeon-OFL.txt */; };
+		280000000000000000000001 /* Resources/Fonts/Paperlogy-7Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 280000000000000000000011 /* Resources/Fonts/Paperlogy-7Bold.ttf */; };
+		280000000000000000000002 /* Resources/Fonts/NEXONLv1GothicRegular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 280000000000000000000012 /* Resources/Fonts/NEXONLv1GothicRegular.ttf */; };
+		280000000000000000000003 /* Resources/Fonts/Poppins-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 280000000000000000000013 /* Resources/Fonts/Poppins-Regular.ttf */; };
+		280000000000000000000004 /* Resources/font-licenses/Paperlogy-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 280000000000000000000014 /* Resources/font-licenses/Paperlogy-OFL.txt */; };
+		280000000000000000000005 /* Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 280000000000000000000015 /* Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt */; };
+		280000000000000000000006 /* Resources/font-licenses/Poppins-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 280000000000000000000016 /* Resources/font-licenses/Poppins-OFL.txt */; };
 		130000000000000000000001 /* Resources/Audio/HanClipSampleLoop.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000001 /* Resources/Audio/HanClipSampleLoop.wav */; };
 		130000000000000000000002 /* Resources/Audio/HanClipTravelJoy.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000002 /* Resources/Audio/HanClipTravelJoy.wav */; };
 		130000000000000000000003 /* Resources/Audio/HanClipAdClassicalDrama.wav in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000003 /* Resources/Audio/HanClipAdClassicalDrama.wav */; };
@@ -158,6 +164,12 @@
 		220000000000000000000011 /* Resources/font-licenses/BlackHanSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/font-licenses/BlackHanSans-OFL.txt"; sourceTree = "<group>"; };
 		220000000000000000000012 /* Resources/Fonts/DoHyeon-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/DoHyeon-Regular.ttf"; sourceTree = "<group>"; };
 		220000000000000000000013 /* Resources/font-licenses/DoHyeon-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/font-licenses/DoHyeon-OFL.txt"; sourceTree = "<group>"; };
+		280000000000000000000011 /* Resources/Fonts/Paperlogy-7Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/Paperlogy-7Bold.ttf"; sourceTree = "<group>"; };
+		280000000000000000000012 /* Resources/Fonts/NEXONLv1GothicRegular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/NEXONLv1GothicRegular.ttf"; sourceTree = "<group>"; };
+		280000000000000000000013 /* Resources/Fonts/Poppins-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/Poppins-Regular.ttf"; sourceTree = "<group>"; };
+		280000000000000000000014 /* Resources/font-licenses/Paperlogy-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/font-licenses/Paperlogy-OFL.txt"; sourceTree = "<group>"; };
+		280000000000000000000015 /* Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt"; sourceTree = "<group>"; };
+		280000000000000000000016 /* Resources/font-licenses/Poppins-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/font-licenses/Poppins-OFL.txt"; sourceTree = "<group>"; };
 		230000000000000000000001 /* Resources/Audio/HanClipSampleLoop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipSampleLoop.wav; sourceTree = "<group>"; };
 		230000000000000000000002 /* Resources/Audio/HanClipTravelJoy.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipTravelJoy.wav; sourceTree = "<group>"; };
 		230000000000000000000003 /* Resources/Audio/HanClipAdClassicalDrama.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = Resources/Audio/HanClipAdClassicalDrama.wav; sourceTree = "<group>"; };
@@ -254,6 +266,12 @@
 				220000000000000000000011 /* Resources/font-licenses/BlackHanSans-OFL.txt */,
 				220000000000000000000012 /* Resources/Fonts/DoHyeon-Regular.ttf */,
 				220000000000000000000013 /* Resources/font-licenses/DoHyeon-OFL.txt */,
+				280000000000000000000011 /* Resources/Fonts/Paperlogy-7Bold.ttf */,
+				280000000000000000000012 /* Resources/Fonts/NEXONLv1GothicRegular.ttf */,
+				280000000000000000000013 /* Resources/Fonts/Poppins-Regular.ttf */,
+				280000000000000000000014 /* Resources/font-licenses/Paperlogy-OFL.txt */,
+				280000000000000000000015 /* Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt */,
+				280000000000000000000016 /* Resources/font-licenses/Poppins-OFL.txt */,
 				230000000000000000000001 /* Resources/Audio/HanClipSampleLoop.wav */,
 				230000000000000000000002 /* Resources/Audio/HanClipTravelJoy.wav */,
 				230000000000000000000003 /* Resources/Audio/HanClipAdClassicalDrama.wav */,
@@ -486,6 +504,12 @@
 				120000000000000000000011 /* Resources/font-licenses/BlackHanSans-OFL.txt in Resources */,
 				120000000000000000000012 /* Resources/Fonts/DoHyeon-Regular.ttf in Resources */,
 				120000000000000000000013 /* Resources/font-licenses/DoHyeon-OFL.txt in Resources */,
+				280000000000000000000001 /* Resources/Fonts/Paperlogy-7Bold.ttf in Resources */,
+				280000000000000000000002 /* Resources/Fonts/NEXONLv1GothicRegular.ttf in Resources */,
+				280000000000000000000003 /* Resources/Fonts/Poppins-Regular.ttf in Resources */,
+				280000000000000000000004 /* Resources/font-licenses/Paperlogy-OFL.txt in Resources */,
+				280000000000000000000005 /* Resources/font-licenses/NEXONLv1Gothic-LICENSE.txt in Resources */,
+				280000000000000000000006 /* Resources/font-licenses/Poppins-OFL.txt in Resources */,
 				130000000000000000000001 /* Resources/Audio/HanClipSampleLoop.wav in Resources */,
 				130000000000000000000002 /* Resources/Audio/HanClipTravelJoy.wav in Resources */,
 				130000000000000000000003 /* Resources/Audio/HanClipAdClassicalDrama.wav in Resources */,
@@ -700,7 +724,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.1;
+				CURRENT_PROJECT_VERSION = 3.2.2;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -726,7 +750,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.1;
+				CURRENT_PROJECT_VERSION = 3.2.2;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -752,7 +776,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.1;
+				CURRENT_PROJECT_VERSION = 3.2.2;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -779,7 +803,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.1;
+				CURRENT_PROJECT_VERSION = 3.2.2;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -805,7 +829,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.1;
+				CURRENT_PROJECT_VERSION = 3.2.2;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -831,7 +855,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.1;
+				CURRENT_PROJECT_VERSION = 3.2.2;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
