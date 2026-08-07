@@ -72,7 +72,7 @@
 		150000000000000000000001 /* AudioImpactClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250000000000000000000001 /* AudioImpactClassifier.swift */; };
 		160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000001 /* CopyrightPurchaseManager.swift */; };
 		270000000000000000000001 /* HanClipLockWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000010 /* HanClipLockWidget.swift */; };
-		270000000000000000000002 /* AppIcon-Light.png in Resources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000012 /* AppIcon-Light.png */; };
+		270000000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000012 /* Assets.xcassets */; };
 		270000000000000000000003 /* HanClipWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 270000000000000000000013 /* HanClipWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -180,7 +180,7 @@
 		250000000000000000000001 /* AudioImpactClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioImpactClassifier.swift; sourceTree = "<group>"; };
 		270000000000000000000010 /* HanClipLockWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HanClipLockWidget.swift; sourceTree = "<group>"; };
 		270000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		270000000000000000000012 /* AppIcon-Light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "../HanClip/Assets.xcassets/AppIcon.appiconset/AppIcon-Light.png"; sourceTree = "<group>"; };
+		270000000000000000000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		270000000000000000000013 /* HanClipWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HanClipWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -363,7 +363,7 @@
 			children = (
 				270000000000000000000010 /* HanClipLockWidget.swift */,
 				270000000000000000000011 /* Info.plist */,
-				270000000000000000000012 /* AppIcon-Light.png */,
+				270000000000000000000012 /* Assets.xcassets */,
 			);
 			path = HanClipWidget;
 			sourceTree = "<group>";
@@ -531,7 +531,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				270000000000000000000002 /* AppIcon-Light.png in Resources */,
+				270000000000000000000002 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -724,7 +724,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.8;
+				CURRENT_PROJECT_VERSION = 3.2.9;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -750,7 +750,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.8;
+				CURRENT_PROJECT_VERSION = 3.2.9;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -776,7 +776,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.8;
+				CURRENT_PROJECT_VERSION = 3.2.9;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -803,7 +803,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.8;
+				CURRENT_PROJECT_VERSION = 3.2.9;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -829,7 +829,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.8;
+				CURRENT_PROJECT_VERSION = 3.2.9;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -855,7 +855,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.2.8;
+				CURRENT_PROJECT_VERSION = 3.2.9;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;

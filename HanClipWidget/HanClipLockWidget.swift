@@ -28,27 +28,33 @@ private struct HanClipLockProvider: TimelineProvider {
 
 private struct HanClipLockWidgetView: View {
     var body: some View {
+        accessoryIcon
+            .widgetLabel("HanClip 열기")
+            .containerBackground(.clear, for: .widget)
+            .widgetURL(URL(string: "hanclip://open"))
+    }
+
+    private var accessoryIcon: some View {
         ZStack {
             AccessoryWidgetBackground()
 
-            Image("AppIcon-Light")
+            Image("HanClipWidgetGlyph")
                 .resizable()
+                .renderingMode(.template)
                 .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(7)
-                .accessibilityHidden(true)
+                .foregroundStyle(.white)
+                .padding(3)
+                .widgetAccentable()
+                .unredacted()
         }
-        .containerBackground(for: .widget) {
-            Color.clear
-        }
-        .widgetURL(URL(string: "hanclip://home"))
+        .unredacted()
         .accessibilityLabel("HanClip 열기")
     }
 }
 
 @main
 struct HanClipLockWidget: Widget {
-    private let kind = "HanClipLockWidget"
+    private let kind = "com.intosharp.hanclip.launch.v2"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(
