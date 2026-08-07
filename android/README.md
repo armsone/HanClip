@@ -6,7 +6,7 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 
 11단계 기본 검증 완료: 실제 Android 폰 설치와 핵심 흐름 테스트
 
-현재 Android 버전: `1.0.1` (`versionCode=367`)
+현재 Android 버전: `1.0.1` (`versionCode=368`)
 
 - Kotlin
 - Jetpack Compose
@@ -16,7 +16,9 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 - iOS 앱 아이콘 기반 Android 런처 아이콘/adaptive icon 적용
 - Android 8.0(API 26) 이상 지원
 - iOS 프로젝트 파일은 수정하지 않고 `android/` 폴더 안에서 작업
-- iOS 앱도 계속 변경되므로 Android 작업 중 한 시간에 한 번 최신 iOS 소스를 읽어 차이점 반영
+- iOS 앱도 계속 변경되므로 Android 작업 중 하루에 한 번 최신 iOS 소스를 읽어 플랫폼 차이점 확인
+- Android 개발 중에는 소스 수정 열 번마다 한 번 커밋하고 푸시
+- Mac과 휴대폰이 `zangzip` 네트워크에 연결되어 있으면 무선 디버깅을 우선 사용하고, 연결할 수 없을 때만 USB 사용
 - iOS 테마 선택 흐름을 참고한 홈 테마 선택 팝업과 선택값 저장
 - iOS 최신 `Pixel Pop` 테마 팔레트를 Android 테마 선택지 색상과 동기화
 - Android 홈과 테마 선택 팝업에서 `HanClip` 외 주요 영어 표시(`Automatic Mode`, `SELECT THEME`, `COLOR SYSTEM`)를 한글 중심 문구로 정리

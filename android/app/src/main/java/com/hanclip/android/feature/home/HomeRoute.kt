@@ -3,6 +3,8 @@ package com.hanclip.android.feature.home
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -21,6 +23,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -64,6 +68,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -82,11 +87,14 @@ import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeMode
 import com.hanclip.android.core.theme.HanClipThemeStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 @Composable
 fun HomeRoute(
@@ -122,9 +130,9 @@ fun HomeRoute(
             .navigationBarsPadding()
             .background(palette.background)
             .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
+        item(key = "home-header") {
             Spacer(Modifier.height(10.dp))
             HomeHeader(
                 palette = palette,
@@ -132,37 +140,38 @@ fun HomeRoute(
                 onOpenTheme = { showThemeSelection = true },
                 onOpenSettings = { showSettingsInfo = true }
             )
+            Spacer(Modifier.height(8.dp))
         }
-        item {
-            if (sharedInboxCount > 0) {
+        if (sharedInboxCount > 0) {
+            item(key = "shared-inbox") {
                 SharedInboxBanner(sharedInboxCount, palette)
+                Spacer(Modifier.height(8.dp))
             }
         }
-        item {
+        item(key = "preset-grid") {
             PresetGrid(onStartPreset, palette)
+            Spacer(Modifier.height(8.dp))
         }
-        item {
-            SavedProjectSection(
-                summaries = exportedMovieSummaries,
-                recentlySavedMovieUriString = recentlySavedMovieUriString,
-                hasDraftProject = hasDraftProject,
-                draftProjectSummary = draftProjectSummary,
-                onOpenProject = onOpenProject,
-                onOpenExportedMovie = onOpenExportedMovie,
-                onRemoveExportedMovie = { removalCandidate = it },
-                onToggleExportedMoviePin = { summary ->
-                    if (!onToggleExportedMoviePin(summary)) {
-                        showPinLimitAlert = true
-                    }
-                },
-                onEditExportedMovieMemo = {
-                    memoCandidate = it
-                    memoText = it.memo
+        savedProjectItems(
+            summaries = exportedMovieSummaries,
+            recentlySavedMovieUriString = recentlySavedMovieUriString,
+            hasDraftProject = hasDraftProject,
+            draftProjectSummary = draftProjectSummary,
+            onOpenProject = onOpenProject,
+            onOpenExportedMovie = onOpenExportedMovie,
+            onRemoveExportedMovie = { removalCandidate = it },
+            onToggleExportedMoviePin = { summary ->
+                if (!onToggleExportedMoviePin(summary)) {
+                    showPinLimitAlert = true
                 }
-            )
-        }
-        item {
-            Spacer(Modifier.height(28.dp))
+            },
+            onEditExportedMovieMemo = {
+                memoCandidate = it
+                memoText = it.memo
+            }
+        )
+        item(key = "home-bottom-space") {
+            Spacer(Modifier.height(36.dp))
         }
     }
     if (showThemeSelection) {
@@ -317,32 +326,95 @@ private val HomeText = Color(0xFF14221A)
 private val HomeSubText = Color(0xFF46564C)
 private val HomeBorder = Color(0xFFD4DDD7)
 private const val HomeSavedMovieSlotCount = 10
+private const val HomeThumbnailCacheSizeKb = 8 * 1024
+private const val HomeStripCacheSizeKb = 8 * 1024
+private const val HomeFrameLoadDelayMillis = 100L
+private const val HomeFrameDecodeScale = 2
+private const val HomeThumbnailMinLongEdgePx = 192
+private const val HomeThumbnailMaxLongEdgePx = 640
+private const val HomeStripMinLongEdgePx = 64
+private const val HomeStripMaxLongEdgePx = 192
 
 private object HomeMovieFrameCache {
-    private const val MaxThumbnailEntries = 24
-    private const val MaxStripEntries = 24
-    private val thumbnails = ConcurrentHashMap<String, Bitmap>()
-    private val strips = ConcurrentHashMap<String, List<Bitmap>>()
-
-    fun thumbnail(uriString: String): Bitmap? = thumbnails[uriString]
-
-    fun putThumbnail(uriString: String, bitmap: Bitmap?) {
-        if (bitmap == null) return
-        if (thumbnails.size >= MaxThumbnailEntries && !thumbnails.containsKey(uriString)) {
-            thumbnails.keys.firstOrNull()?.let(thumbnails::remove)
+    private val thumbnails = object : LruCache<String, Bitmap>(HomeThumbnailCacheSizeKb) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.sizeInKilobytes()
+    }
+    private val strips = object : LruCache<String, List<Bitmap>>(HomeStripCacheSizeKb) {
+        override fun sizeOf(key: String, value: List<Bitmap>): Int {
+            return value.fold(0L) { total, bitmap ->
+                total + bitmap.sizeInKilobytes()
+            }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         }
-        thumbnails[uriString] = bitmap
     }
 
-    fun strip(key: String): List<Bitmap>? = strips[key]
+    fun thumbnail(key: String): Bitmap? = thumbnails.get(key)
+
+    fun putThumbnail(key: String, bitmap: Bitmap?) {
+        if (bitmap == null) return
+        thumbnails.put(key, bitmap)
+    }
+
+    fun strip(key: String): List<Bitmap>? = strips.get(key)
 
     fun putStrip(key: String, bitmaps: List<Bitmap>) {
         if (bitmaps.isEmpty()) return
-        if (strips.size >= MaxStripEntries && !strips.containsKey(key)) {
-            strips.keys.firstOrNull()?.let(strips::remove)
-        }
-        strips[key] = bitmaps
+        strips.put(key, bitmaps)
     }
+}
+
+private fun Bitmap.sizeInKilobytes(): Int {
+    return ((allocationByteCount.toLong() + 1023L) / 1024L)
+        .coerceIn(1L, Int.MAX_VALUE.toLong())
+        .toInt()
+}
+
+private fun MediaMetadataRetriever.loadScaledFrameAtTime(
+    positionUs: Long,
+    targetLongEdgePx: Int
+): Bitmap? {
+    val targetSize = videoFrameTargetSize(targetLongEdgePx)
+    val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && targetSize != null) {
+        getScaledFrameAtTime(
+            positionUs,
+            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+            targetSize.first,
+            targetSize.second
+        ) ?: getFrameAtTime(positionUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    } else {
+        getFrameAtTime(positionUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    }
+    return decoded?.scaledDownToLongEdge(targetLongEdgePx)
+}
+
+private fun MediaMetadataRetriever.videoFrameTargetSize(targetLongEdgePx: Int): Pair<Int, Int>? {
+    val sourceWidth = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+        ?.toIntOrNull()
+        ?.takeIf { it > 0 }
+        ?: return null
+    val sourceHeight = extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+        ?.toIntOrNull()
+        ?.takeIf { it > 0 }
+        ?: return null
+    val scale = min(
+        1.0,
+        targetLongEdgePx.toDouble() / max(sourceWidth, sourceHeight).toDouble()
+    )
+    return max(1, (sourceWidth * scale).roundToInt()) to
+        max(1, (sourceHeight * scale).roundToInt())
+}
+
+private fun Bitmap.scaledDownToLongEdge(targetLongEdgePx: Int): Bitmap {
+    val longEdge = max(width, height)
+    if (longEdge <= targetLongEdgePx) return this
+    val scale = targetLongEdgePx.toDouble() / longEdge.toDouble()
+    val scaled = Bitmap.createScaledBitmap(
+        this,
+        max(1, (width * scale).roundToInt()),
+        max(1, (height * scale).roundToInt()),
+        true
+    )
+    if (scaled !== this) recycle()
+    return scaled
 }
 
 @Composable
@@ -979,8 +1051,7 @@ private fun PresetRecommendationBadge(palette: HanClipPalette) {
     }
 }
 
-@Composable
-private fun SavedProjectSection(
+private fun LazyListScope.savedProjectItems(
     summaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
@@ -993,60 +1064,48 @@ private fun SavedProjectSection(
 ) {
     val aiShotSummaries = summaries.filter { it.title == MoviePreset.AiShot.title }
     val standardSummaries = summaries.filterNot { it.title == MoviePreset.AiShot.title }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    item(
+        key = "saved-project-header",
+        contentType = "saved-project-header"
+    ) {
+        SavedProjectHeader(
+            hasDraftProject = hasDraftProject,
+            onOpenProject = onOpenProject
+        )
+    }
+    if (hasDraftProject) {
+        item(
+            key = "draft-project",
+            contentType = "draft-project"
         ) {
-            Column {
-                Text(
-                    text = "저장된 완성본",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = HomeText
-                )
-                Text(
-                    text = "HanClip 앨범 MP4, 방금 만든 완성본, 이어서 편집할 작업을 확인합니다",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = HomeSubText,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            AssistChip(
-                onClick = onOpenProject,
-                leadingIcon = {
-                    Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-                },
-                label = {
-                    Text(
-                        if (hasDraftProject) "편집 작업" else "새 편집",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = Color.White,
-                    labelColor = HomeText,
-                    leadingIconContentColor = HomeSubText
-                ),
-                border = BorderStroke(1.dp, HomeBorder)
-            )
-        }
-        if (hasDraftProject) {
             DraftProjectRow(
                 summary = draftProjectSummary,
                 onClick = onOpenProject
             )
         }
-        if (summaries.isEmpty() && !hasDraftProject) {
+    }
+    if (summaries.isEmpty() && !hasDraftProject) {
+        item(
+            key = "empty-saved-project",
+            contentType = "empty-saved-project"
+        ) {
             EmptySavedProjectRow()
-        } else {
+        }
+    } else {
+        item(
+            key = "aishot-category-header",
+            contentType = "saved-category-header"
+        ) {
             SavedProjectCategoryHeader(
                 title = "AiShot",
                 count = aiShotSummaries.size,
                 icon = null
             )
+        }
+        item(
+            key = "aishot-movie-grid",
+            contentType = "aishot-movie-grid"
+        ) {
             AiShotMovieGrid(
                 summaries = aiShotSummaries,
                 recentlySavedMovieUriString = recentlySavedMovieUriString,
@@ -1055,25 +1114,84 @@ private fun SavedProjectSection(
                 onToggleExportedMoviePin = onToggleExportedMoviePin,
                 onEditExportedMovieMemo = onEditExportedMovieMemo
             )
+        }
+        item(
+            key = "standard-category-header",
+            contentType = "saved-category-header"
+        ) {
             SavedProjectCategoryHeader(
                 title = "일반 완성본",
                 count = standardSummaries.size,
                 icon = Icons.Outlined.Movie
             )
-            standardSummaries.forEach { summary ->
-                SavedProjectRow(
-                    summary = summary,
-                    isRecentlySaved = summary.uriString == recentlySavedMovieUriString,
-                    onClick = { onOpenExportedMovie(summary) },
-                    onRemove = { onRemoveExportedMovie(summary) },
-                    onTogglePin = { onToggleExportedMoviePin(summary) },
-                    onEditMemo = { onEditExportedMovieMemo(summary) }
-                )
-            }
-            EmptyStandardMovieRows(
-                count = (HomeSavedMovieSlotCount - summaries.size).coerceAtLeast(0)
+        }
+        items(
+            items = standardSummaries,
+            key = { summary -> "saved-movie:${summary.uriString}" },
+            contentType = { "saved-movie" }
+        ) { summary ->
+            SavedProjectRow(
+                summary = summary,
+                isRecentlySaved = summary.uriString == recentlySavedMovieUriString,
+                onClick = { onOpenExportedMovie(summary) },
+                onRemove = { onRemoveExportedMovie(summary) },
+                onTogglePin = { onToggleExportedMoviePin(summary) },
+                onEditMemo = { onEditExportedMovieMemo(summary) }
             )
         }
+        items(
+            count = (HomeSavedMovieSlotCount - summaries.size).coerceAtLeast(0),
+            key = { index -> "empty-standard-movie:$index" },
+            contentType = { "empty-standard-movie" }
+        ) {
+            EmptyStandardMovieRow()
+        }
+    }
+}
+
+@Composable
+private fun SavedProjectHeader(
+    hasDraftProject: Boolean,
+    onOpenProject: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(
+                text = "저장된 완성본",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = HomeText
+            )
+            Text(
+                text = "HanClip 앨범 MP4, 방금 만든 완성본, 이어서 편집할 작업을 확인합니다",
+                style = MaterialTheme.typography.bodySmall,
+                color = HomeSubText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        AssistChip(
+            onClick = onOpenProject,
+            leadingIcon = {
+                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+            },
+            label = {
+                Text(
+                    if (hasDraftProject) "편집 작업" else "새 편집",
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            colors = AssistChipDefaults.assistChipColors(
+                containerColor = Color.White,
+                labelColor = HomeText,
+                leadingIconContentColor = HomeSubText
+            ),
+            border = BorderStroke(1.dp, HomeBorder)
+        )
     }
 }
 
@@ -1138,6 +1256,7 @@ private fun AiShotMovieCard(
         ) {
             ExportedMovieThumbnail(
                 summary = summary,
+                displayLongEdgeDp = 58,
                 modifier = Modifier.size(width = 58.dp, height = 58.dp)
             )
             Column(
@@ -1459,13 +1578,6 @@ private fun EmptySavedProjectRow() {
 }
 
 @Composable
-private fun EmptyStandardMovieRows(count: Int) {
-    repeat(count) {
-        EmptyStandardMovieRow()
-    }
-}
-
-@Composable
 private fun EmptyStandardMovieRow() {
     val placeholder = HomePrimary.copy(alpha = 0.10f)
     Surface(
@@ -1689,14 +1801,29 @@ private fun PinnedSavedMovieBadge() {
 @Composable
 private fun ExportedMovieThumbnail(
     summary: ExportedMovieSummary,
+    displayLongEdgeDp: Int = 88,
     modifier: Modifier = Modifier.size(width = 88.dp, height = 54.dp)
 ) {
     val context = LocalContext.current
-    var bitmap by remember(summary.uriString) {
-        mutableStateOf(HomeMovieFrameCache.thumbnail(summary.uriString))
+    val density = LocalDensity.current
+    val targetLongEdgePx = remember(density.density, displayLongEdgeDp) {
+        with(density) { displayLongEdgeDp.dp.roundToPx() }
+            .times(HomeFrameDecodeScale)
+            .coerceIn(HomeThumbnailMinLongEdgePx, HomeThumbnailMaxLongEdgePx)
     }
-    LaunchedEffect(summary.uriString) {
-        HomeMovieFrameCache.thumbnail(summary.uriString)?.let { cached ->
+    val cacheKey = remember(summary.uriString, summary.updatedAtMillis, targetLongEdgePx) {
+        "thumbnail|${summary.uriString}|${summary.updatedAtMillis}|$targetLongEdgePx"
+    }
+    var bitmap by remember(cacheKey) {
+        mutableStateOf(HomeMovieFrameCache.thumbnail(cacheKey))
+    }
+    LaunchedEffect(cacheKey) {
+        HomeMovieFrameCache.thumbnail(cacheKey)?.let { cached ->
+            bitmap = cached
+            return@LaunchedEffect
+        }
+        delay(HomeFrameLoadDelayMillis)
+        HomeMovieFrameCache.thumbnail(cacheKey)?.let { cached ->
             bitmap = cached
             return@LaunchedEffect
         }
@@ -1705,13 +1832,16 @@ private fun ExportedMovieThumbnail(
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(context, Uri.parse(summary.uriString))
-                    retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.loadScaledFrameAtTime(
+                        positionUs = 0L,
+                        targetLongEdgePx = targetLongEdgePx
+                    )
                 } finally {
                     retriever.release()
                 }
             }.getOrNull()
         }.also { loaded ->
-            HomeMovieFrameCache.putThumbnail(summary.uriString, loaded)
+            HomeMovieFrameCache.putThumbnail(cacheKey, loaded)
         }
     }
     Box(
@@ -1758,11 +1888,32 @@ private fun ExportedMovieThumbnailStrip(
 ) {
     if (summary.clipCount <= 1) return
     val context = LocalContext.current
-    val cacheKey = "${summary.uriString}|${summary.clipCount}|${summary.totalDurationSeconds}|$maxFrames"
+    val density = LocalDensity.current
+    val targetLongEdgePx = remember(density.density, frameWidth, frameHeight) {
+        with(density) { max(frameWidth, frameHeight).dp.roundToPx() }
+            .times(HomeFrameDecodeScale)
+            .coerceIn(HomeStripMinLongEdgePx, HomeStripMaxLongEdgePx)
+    }
+    val cacheKey = remember(
+        summary.uriString,
+        summary.updatedAtMillis,
+        summary.clipCount,
+        summary.totalDurationSeconds,
+        maxFrames,
+        targetLongEdgePx
+    ) {
+        "strip|${summary.uriString}|${summary.updatedAtMillis}|${summary.clipCount}|" +
+            "${summary.totalDurationSeconds}|$maxFrames|$targetLongEdgePx"
+    }
     var bitmaps by remember(cacheKey) {
         mutableStateOf(HomeMovieFrameCache.strip(cacheKey).orEmpty())
     }
-    LaunchedEffect(summary.uriString, summary.clipCount, summary.totalDurationSeconds, maxFrames) {
+    LaunchedEffect(cacheKey) {
+        HomeMovieFrameCache.strip(cacheKey)?.let { cached ->
+            bitmaps = cached
+            return@LaunchedEffect
+        }
+        delay(HomeFrameLoadDelayMillis)
         HomeMovieFrameCache.strip(cacheKey)?.let { cached ->
             bitmaps = cached
             return@LaunchedEffect
@@ -1776,7 +1927,10 @@ private fun ExportedMovieThumbnailStrip(
                     val safeDurationUs = (summary.totalDurationSeconds.coerceAtLeast(0.1) * 1_000_000L).toLong()
                     List(count) { index ->
                         val positionUs = (((index + 0.5) / count) * safeDurationUs).toLong()
-                        retriever.getFrameAtTime(positionUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        retriever.loadScaledFrameAtTime(
+                            positionUs = positionUs,
+                            targetLongEdgePx = targetLongEdgePx
+                        )
                     }.filterNotNull()
                 } finally {
                     retriever.release()
