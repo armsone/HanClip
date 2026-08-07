@@ -8525,7 +8525,7 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private var textInputMinimumHeight: CGFloat {
-        max(112, textEditorBaseSize * 5.8) * 0.75
+        max(112, textEditorBaseSize * 5.8) * 0.9
     }
 
     private var textInputHeight: CGFloat {
@@ -11950,37 +11950,52 @@ private struct WatermarkModeSegmentedControl: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            segment(title: "사용", value: true)
-            segment(title: "안함", value: false)
+            segmentAppearance(title: "사용", value: true)
+            segmentAppearance(title: "안함", value: false)
         }
         .padding(isCompact ? 2 : 3)
         .background(
             HanClipTheme.secondary.opacity(0.14),
             in: Capsule()
         )
+        .overlay {
+            HStack(spacing: 0) {
+                segmentHitTarget(title: "사용", value: true)
+                segmentHitTarget(title: "안함", value: false)
+            }
+            .clipShape(Capsule())
+        }
     }
 
-    private func segment(title: String, value: Bool) -> some View {
+    private func segmentAppearance(title: String, value: Bool) -> some View {
+        Text(title)
+            .font(.system(size: isCompact ? 10 : 14, weight: .bold))
+            .foregroundStyle(
+                isEnabled == value ? .white : HanClipTheme.secondary
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: isCompact ? 18 : 32)
+            .background {
+                if isEnabled == value {
+                    Capsule()
+                        .fill(HanClipTheme.primary)
+                }
+            }
+            .allowsHitTesting(false)
+    }
+
+    private func segmentHitTarget(title: String, value: Bool) -> some View {
         Button {
             withAnimation(.snappy) {
                 isEnabled = value
             }
         } label: {
-            Text(title)
-                .font(.system(size: isCompact ? 10 : 14, weight: .bold))
-                .foregroundStyle(
-                    isEnabled == value ? .white : HanClipTheme.secondary
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: isCompact ? 18 : 32)
-                .background {
-                    if isEnabled == value {
-                        Capsule()
-                            .fill(HanClipTheme.primary)
-                    }
-                }
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(isEnabled == value ? .isSelected : [])
     }
 }
