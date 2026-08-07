@@ -233,7 +233,7 @@ struct AiShotCameraView: View {
                         .zIndex(2)
                 }
 
-                manualCaptureButton
+                captureControl
                     .position(
                         x: proxy.size.width / 2,
                         y: previewBottom + bottomSpace * 0.42
@@ -486,18 +486,12 @@ struct AiShotCameraView: View {
                 .frame(width: width, height: 56)
                 .contentShape(Capsule())
                 .highPriorityGesture(zoomBarGesture(width: width))
-                .opacity(
-                    camera.isTriggered || camera.isSwitchingCamera
-                        ? 0
-                        : 1
-                )
-                .allowsHitTesting(
-                    !camera.isTriggered && !camera.isSwitchingCamera
-                )
+                .opacity(camera.isSwitchingCamera ? 0 : 1)
+                .allowsHitTesting(!camera.isSwitchingCamera)
         }
         .frame(width: width)
         .frame(height: 56)
-        .opacity(camera.isTriggered ? 0.55 : 1)
+        .opacity(camera.isSwitchingCamera ? 0.55 : 1)
     }
 
     private func zoomBarGesture(width: CGFloat) -> some Gesture {
@@ -696,8 +690,8 @@ struct AiShotCameraView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(captureSelectionColor.opacity(0.70), lineWidth: 1.2)
         }
-        .disabled(camera.isTriggered || camera.isSwitchingCamera)
-        .opacity(camera.isTriggered ? 0.55 : 1)
+        .disabled(camera.isSwitchingCamera)
+        .opacity(camera.isSwitchingCamera ? 0.55 : 1)
         .accessibilityLabel("카메라 전환")
         .accessibilityValue(
             camera.cameraPosition == .front ? "전면" : "후면"
@@ -1017,6 +1011,40 @@ struct AiShotCameraView: View {
         projectID: UUID
     ) -> String {
         "\(base).\(projectID.uuidString)"
+    }
+
+    @ViewBuilder
+    private var captureControl: some View {
+        if camera.isTriggered {
+            saveProgressIndicator
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
+        } else {
+            manualCaptureButton
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
+        }
+    }
+
+    private var saveProgressIndicator: some View {
+        VStack(spacing: 7) {
+            Text("저장 중")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white.opacity(0.86))
+
+            ProgressView(value: captureRingProgress)
+                .progressViewStyle(.linear)
+                .tint(captureSelectionColor)
+                .frame(width: 92)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(.black.opacity(0.70), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(captureSelectionColor.opacity(0.70), lineWidth: 1.2)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("AiShot 클립 저장 중")
+        .accessibilityValue("\(Int(captureRingProgress * 100))퍼센트")
     }
 
     private var manualCaptureButton: some View {
@@ -1433,6 +1461,11 @@ private struct GolfSwingIndicator: View {
 }
 
 private struct GolfSwingPose {
+    private struct Keyframe {
+        let phase: Double
+        let pose: GolfSwingPose
+    }
+
     let head: CGPoint
     let shoulder: CGPoint
     let hip: CGPoint
@@ -1445,30 +1478,38 @@ private struct GolfSwingPose {
     let hands: CGPoint
     let clubHead: CGPoint
 
-    static func pose(at phase: Double) -> GolfSwingPose {
-        let frames: [(Double, GolfSwingPose)] = [
-            (0.00, address),
-            (0.14, address),
-            (0.36, backswing),
-            (0.48, top),
-            (0.55, top),
-            (0.68, downswing),
-            (0.73, impact),
-            (0.85, followThrough),
-            (0.94, finish),
-            (1.00, finish),
-        ]
+    private static let keyframes: [Keyframe] = [
+        Keyframe(phase: 0.00, pose: address),
+        Keyframe(phase: 0.14, pose: address),
+        Keyframe(phase: 0.36, pose: backswing),
+        Keyframe(phase: 0.48, pose: top),
+        Keyframe(phase: 0.55, pose: top),
+        Keyframe(phase: 0.68, pose: downswing),
+        Keyframe(phase: 0.73, pose: impact),
+        Keyframe(phase: 0.85, pose: followThrough),
+        Keyframe(phase: 0.94, pose: finish),
+        Keyframe(phase: 1.00, pose: finish),
+    ]
 
-        for index in 0..<(frames.count - 1) {
-            let current = frames[index]
-            let next = frames[index + 1]
-            guard phase >= current.0 && phase <= next.0 else { continue }
-            let rawProgress = (phase - current.0) / max(0.001, next.0 - current.0)
-            let previousPose = frames[max(0, index - 1)].1
-            let followingPose = frames[min(frames.count - 1, index + 2)].1
-            return current.1.catmullRom(
+    static func pose(at phase: Double) -> GolfSwingPose {
+        for index in 0..<(keyframes.count - 1) {
+            let current = keyframes[index]
+            let next = keyframes[index + 1]
+            let currentPhase: Double = current.phase
+            let nextPhase: Double = next.phase
+            guard phase >= currentPhase && phase <= nextPhase else { continue }
+
+            let phaseDelta: Double = nextPhase - currentPhase
+            let safePhaseDelta: Double = Swift.max(0.001, phaseDelta)
+            let elapsedPhase: Double = phase - currentPhase
+            let rawProgress: Double = elapsedPhase / safePhaseDelta
+            let previousIndex = Swift.max(0, index - 1)
+            let followingIndex = Swift.min(keyframes.count - 1, index + 2)
+            let previousPose = keyframes[previousIndex].pose
+            let followingPose = keyframes[followingIndex].pose
+            return current.pose.catmullRom(
                 previous: previousPose,
-                to: next.1,
+                to: next.pose,
                 following: followingPose,
                 progress: rawProgress
             )
@@ -1491,17 +1532,22 @@ private struct GolfSwingPose {
             _ p2: CGPoint,
             _ p3: CGPoint
         ) -> CGPoint {
-            CGPoint(
-                x: 0.5 * (
-                    2 * p1.x + (-p0.x + p2.x) * t
-                        + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
-                        + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
-                ),
-                y: 0.5 * (
-                    2 * p1.y + (-p0.y + p2.y) * t
-                        + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
-                        + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
-                )
+            func coordinate(
+                _ c0: CGFloat,
+                _ c1: CGFloat,
+                _ c2: CGFloat,
+                _ c3: CGFloat
+            ) -> CGFloat {
+                let base = 2 * c1
+                let tangent = (-c0 + c2) * t
+                let curve = (2 * c0 - 5 * c1 + 4 * c2 - c3) * t2
+                let cubic = (-c0 + 3 * c1 - 3 * c2 + c3) * t3
+                return 0.5 * (base + tangent + curve + cubic)
+            }
+
+            return CGPoint(
+                x: coordinate(p0.x, p1.x, p2.x, p3.x),
+                y: coordinate(p0.y, p1.y, p2.y, p3.y)
             )
         }
 
@@ -2034,21 +2080,25 @@ final class AiShotCameraController: NSObject, ObservableObject,
 
     func switchCamera() {
         sessionQueue.async { [weak self] in
-            guard let self, self.isActive, self.pendingCameraPosition == nil,
-                  self.triggerTime == nil
+            guard let self, self.isActive, self.pendingCameraPosition == nil
             else { return }
 
+            let isFinishingTriggeredCapture = self.triggerTime != nil
             self.pendingCameraPosition = self.activeCameraPosition == .back
                 ? .front
                 : .back
             DispatchQueue.main.async {
                 self.isSwitchingCamera = true
-                self.isReadyForTrigger = false
-                self.statusText = "전환 중"
+                if !isFinishingTriggeredCapture {
+                    self.isReadyForTrigger = false
+                    self.statusText = "전환 중"
+                }
             }
 
             if self.movieOutput.isRecording {
-                self.movieOutput.stopRecording()
+                if !isFinishingTriggeredCapture {
+                    self.movieOutput.stopRecording()
+                }
             } else {
                 self.finishCameraSwitchAndRestart()
             }
@@ -2919,7 +2969,11 @@ extension AiShotCameraController: AVCaptureFileOutputRecordingDelegate {
 
         sessionQueue.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self, self.isActive, self.session.isRunning else { return }
-            self.startRecording()
+            if self.pendingCameraPosition != nil {
+                self.finishCameraSwitchAndRestart()
+            } else {
+                self.startRecording()
+            }
         }
     }
 }

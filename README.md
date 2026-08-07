@@ -18,9 +18,18 @@
 
 ## iOS 실행
 
+### 개발 환경
+
+- Xcode 16 이상
+- iOS 17 이상 SDK 및 시뮬레이터
+- 저장소에 공유된 `HanClip` 스킴과 Swift 5 언어 모드 사용
+
 1. `HanClip.xcodeproj`를 Xcode로 엽니다.
 2. HanClip 스킴과 iPhone 시뮬레이터를 선택합니다.
 3. 실행 버튼을 누릅니다.
+
+처음 클론한 환경에서는 Xcode의 사용자별 설정을 가져오지 않아도 저장소에
+공유된 스킴과 Debug 빌드 설정으로 바로 빌드할 수 있습니다.
 
 실제 iPhone에서 실행하려면 HanClip 및 HanClipShare 타깃의 Signing & Capabilities에서
 본인의 Apple Developer Team과 고유한 Bundle Identifier/App Group을 설정해야 합니다.
