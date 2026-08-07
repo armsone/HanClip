@@ -7728,6 +7728,60 @@ private struct TextOverlaySettingsSheet: View {
                 shadowColor: WatermarkSettings.greenGolfShadowColor,
                 fontSize: WatermarkSettings.greenGolfFontSize,
                 shadowOpacity: WatermarkSettings.greenGolfShadowOpacity
+            ),
+            FontPresetSpec(
+                id: "paperlogy_magazine",
+                title: "매거진",
+                preferredFontIDs: ["paperlogy_bold", "black_han_sans"],
+                textColor: "#FFF4D6",
+                shadowColor: "#D94A32",
+                fontSize: .extraLarge,
+                shadowOpacity: 0.55
+            ),
+            FontPresetSpec(
+                id: "paperlogy_sports",
+                title: "스포츠",
+                preferredFontIDs: ["paperlogy_bold", "tenada"],
+                textColor: "#D8FF3E",
+                shadowColor: "#10223A",
+                fontSize: .extraLarge,
+                shadowOpacity: 0.7
+            ),
+            FontPresetSpec(
+                id: "nexon_clean",
+                title: "클린",
+                preferredFontIDs: ["nexon_lv1_gothic", "pretendard"],
+                textColor: "#FFFFFF",
+                shadowColor: "#1B4D89",
+                fontSize: .large,
+                shadowOpacity: 0.35
+            ),
+            FontPresetSpec(
+                id: "nexon_neon",
+                title: "네온",
+                preferredFontIDs: ["nexon_lv1_gothic", "pretendard_bold"],
+                textColor: "#7DF9FF",
+                shadowColor: "#6C2BFF",
+                fontSize: .large,
+                shadowOpacity: 0.8
+            ),
+            FontPresetSpec(
+                id: "poppins_vlog",
+                title: "VLOG",
+                preferredFontIDs: ["poppins", "pretendard"],
+                textColor: "#FFFFFF",
+                shadowColor: "#FF6B5E",
+                fontSize: .large,
+                shadowOpacity: 0.55
+            ),
+            FontPresetSpec(
+                id: "poppins_pop",
+                title: "POP",
+                preferredFontIDs: ["poppins", "pretendard_bold"],
+                textColor: "#FFE45C",
+                shadowColor: "#642BFF",
+                fontSize: .extraLarge,
+                shadowOpacity: 0.75
             )
         ]
     }
