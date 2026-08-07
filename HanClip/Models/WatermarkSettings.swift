@@ -243,15 +243,15 @@ struct WatermarkSettings: Codable {
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip
     static let defaultPosition = WatermarkPosition.topLeading
-    static let defaultFontName = "pretendard"
-    static let defaultTextColor = "#FFFFFF"
+    static let defaultFontName = "poppins"
+    static let defaultTextColor = "#FFE45C"
     static let defaultShadowEnabled = true
-    static let defaultShadowOpacity = 0.2
-    static let defaultShadowColor = "#000000"
+    static let defaultShadowOpacity = 0.75
+    static let defaultShadowColor = "#642BFF"
     static let defaultLineSpacing = WatermarkLineSpacing.normal
     static let defaultLineSpacingScale =
         WatermarkLineSpacing.defaultMultiplier
-    static let defaultFontSize = WatermarkFontSize.large
+    static let defaultFontSize = WatermarkFontSize.extraLarge
     static let defaultCopyrightPosition = WatermarkPosition.bottomTrailing
     static let defaultCopyrightTextColor = "#007644"
     static let defaultCopyrightShadowColor = "#29AB87"

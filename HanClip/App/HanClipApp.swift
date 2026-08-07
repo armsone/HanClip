@@ -469,6 +469,25 @@ enum HanClipTheme {
         return secondary.opacity(selectedMode == .dark ? 0.14 : 0.08)
     }
 
+    static var browserDownloadPanelFill: Color {
+        if selectedMode == .light {
+            return secondary.opacity(0.36)
+        }
+        if selectedMode == .dark {
+            return Color.white.opacity(0.12)
+        }
+        if selectedMode == .blossomGlow {
+            return secondary.opacity(0.20)
+        }
+        if selectedMode == .grayscalePlay {
+            return secondary.opacity(0.24)
+        }
+        if selectedMode == .pixelPop {
+            return secondary.opacity(0.17)
+        }
+        return secondary.opacity(selectedMode == .dark ? 0.28 : 0.16)
+    }
+
     static var panelStroke: Color {
         if selectedMode == .light {
             return primary.opacity(0.36)

@@ -10828,7 +10828,7 @@ private struct OnlineMusicBrowserView: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(HanClipTheme.secondary.opacity(0.12))
+                        .fill(HanClipTheme.secondary.opacity(0.24))
 
                     Capsule()
                         .fill(HanClipTheme.primary)
@@ -10844,13 +10844,13 @@ private struct OnlineMusicBrowserView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
-            HanClipTheme.panelFill,
+            HanClipTheme.browserDownloadPanelFill,
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(
-                    HanClipTheme.secondary.opacity(0.16),
+                    HanClipTheme.secondary.opacity(0.32),
                     lineWidth: 1
                 )
         }
