@@ -8519,7 +8519,7 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private var textInputMinimumHeight: CGFloat {
-        max(112, textEditorBaseSize * 5.8)
+        max(112, textEditorBaseSize * 5.8) * 1.5
     }
 
     private func textEditorLineSpacing(size: CGFloat) -> CGFloat {
