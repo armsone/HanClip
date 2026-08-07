@@ -7371,6 +7371,7 @@ private struct TextOverlaySettingsSheet: View {
     @State private var fontImportNotice: String?
     @State private var textInputBackgroundHex =
         TextOverlaySettingsSheet.randomTextInputBackgroundHex()
+    @State private var expandedTextInputHeight: CGFloat = 0
     @State private var originalSessionState: SessionState?
     @State private var activeFontPresetID: String?
     @State private var suppressNextResetTap = false
@@ -7559,11 +7560,12 @@ private struct TextOverlaySettingsSheet: View {
             shadowOpacity: shadowOpacity,
             textAlignment: textEditorNSTextAlignment,
             lineSpacing: textEditorLineSpacing(size: textEditorBaseSize),
-            onBeginEditing: clearSampleTextIfNeeded
+            onBeginEditing: clearSampleTextIfNeeded,
+            onRequiredHeightChange: growTextInputIfNeeded
         )
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(minHeight: textInputMinimumHeight)
+            .padding(.vertical, Self.textInputOuterVerticalPadding)
+            .frame(height: textInputHeight, alignment: .top)
             .background(
                 textInputBackgroundColor.opacity(0.72),
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -7872,16 +7874,20 @@ private struct TextOverlaySettingsSheet: View {
             .opacity(presetShadowOpacity)
 
         return Button {
-            applyFontPreset(
-                presetID: presetID,
-                fontID: fontID,
-                textColor: textColor,
-                shadowColor: shadowColor,
-                shadowOpacity: presetShadowOpacity,
-                fontSize: fontSize,
-                lineSpacing: presetLineSpacing,
-                lineSpacingScale: presetLineSpacingScale
-            )
+            if isSelected {
+                refreshTextInputBackground()
+            } else {
+                applyFontPreset(
+                    presetID: presetID,
+                    fontID: fontID,
+                    textColor: textColor,
+                    shadowColor: shadowColor,
+                    shadowOpacity: presetShadowOpacity,
+                    fontSize: fontSize,
+                    lineSpacing: presetLineSpacing,
+                    lineSpacingScale: presetLineSpacingScale
+                )
+            }
         } label: {
             HStack(spacing: 8) {
                 ZStack {
@@ -8519,7 +8525,19 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private var textInputMinimumHeight: CGFloat {
-        max(112, textEditorBaseSize * 5.8) * 1.5
+        max(112, textEditorBaseSize * 5.8) * 0.75
+    }
+
+    private var textInputHeight: CGFloat {
+        max(textInputMinimumHeight, expandedTextInputHeight)
+    }
+
+    private func growTextInputIfNeeded(_ requiredTextViewHeight: CGFloat) {
+        let requiredOuterHeight = ceil(
+            requiredTextViewHeight + Self.textInputOuterVerticalPadding * 2
+        )
+        guard requiredOuterHeight > textInputHeight + 0.5 else { return }
+        expandedTextInputHeight = requiredOuterHeight
     }
 
     private func textEditorLineSpacing(size: CGFloat) -> CGFloat {
@@ -8533,7 +8551,8 @@ private struct TextOverlaySettingsSheet: View {
 
     private func refreshTextInputBackground() {
         textInputBackgroundHex = Self.randomTextInputBackgroundHex(
-            excluding: [textColorHex, shadowColorHex]
+            excluding: [textColorHex, shadowColorHex],
+            avoiding: textInputBackgroundHex
         )
     }
 
@@ -8542,7 +8561,8 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     nonisolated private static func randomTextInputBackgroundHex(
-        excluding excludedHexes: [String] = []
+        excluding excludedHexes: [String] = [],
+        avoiding avoidedHex: String? = nil
     ) -> String {
         let palette = [
             "#FFF7C7",
@@ -8563,8 +8583,23 @@ private struct TextOverlaySettingsSheet: View {
             return (hex, score)
         }
 
-        return candidates.max { $0.score < $1.score }?.hex ?? "#FFF7C7"
+        let alternatives = candidates
+            .filter {
+                guard let avoidedHex else { return true }
+                return $0.hex.caseInsensitiveCompare(avoidedHex) != .orderedSame
+            }
+            .sorted { $0.score > $1.score }
+        guard let bestScore = alternatives.first?.score else {
+            return "#FFF7C7"
+        }
+        let highContrastCandidates = alternatives.filter {
+            $0.score >= bestScore * 0.85
+        }
+        return highContrastCandidates.randomElement()?.hex
+            ?? alternatives[0].hex
     }
+
+    private static let textInputOuterVerticalPadding: CGFloat = 10
 
     nonisolated private static func uiColor(_ hexString: String) -> UIColor? {
         var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -8981,6 +9016,7 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
     let textAlignment: NSTextAlignment
     let lineSpacing: CGFloat
     let onBeginEditing: () -> Void
+    let onRequiredHeightChange: (CGFloat) -> Void
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -9010,6 +9046,11 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.parent = self
         applyAttributes(to: textView)
+        DispatchQueue.main.async {
+            [weak textView, weak coordinator = context.coordinator] in
+            guard let textView, let coordinator else { return }
+            coordinator.reportRequiredHeight(for: textView)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -9077,6 +9118,19 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
+            reportRequiredHeight(for: textView)
+        }
+
+        func reportRequiredHeight(for textView: UITextView) {
+            let availableWidth = textView.bounds.width
+            guard availableWidth > 0 else { return }
+
+            let fittingSize = CGSize(
+                width: availableWidth,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+            let requiredHeight = textView.sizeThatFits(fittingSize).height
+            parent.onRequiredHeightChange(requiredHeight)
         }
     }
 }
