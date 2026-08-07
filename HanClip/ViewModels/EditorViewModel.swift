@@ -1190,7 +1190,12 @@ final class EditorViewModel: ObservableObject {
                     items: compositionItems,
                     renderSize: outputRenderSize,
                     watermarkSettings: textOverlaySettings
-                        .withCopyrightSettings(WatermarkSettings.stored()),
+                        .withCopyrightSettings(
+                            CopyrightPurchaseManager.shared.isPurchased
+                                ? WatermarkSettings.stored()
+                                : WatermarkSettings.stored()
+                                    .withLogoEnabled(false)
+                        ),
                     backgroundMusicSettings: backgroundMusicSettings
                 ) { [self] progress in
                     await updatePreviewProgress(progress)

@@ -64,6 +64,7 @@
 		130000000000000000000006 /* Resources/Audio/HanClipJiwooFirstSnowOriginal.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 230000000000000000000006 /* Resources/Audio/HanClipJiwooFirstSnowOriginal.mp3 */; };
 		140000000000000000000001 /* AiShotCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240000000000000000000001 /* AiShotCamera.swift */; };
 		150000000000000000000001 /* AudioImpactClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250000000000000000000001 /* AudioImpactClassifier.swift */; };
+		160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000001 /* CopyrightPurchaseManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,6 +114,8 @@
 		200000000000000000000017 /* FilePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePicker.swift; sourceTree = "<group>"; };
 		200000000000000000000018 /* WatermarkSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatermarkSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000019 /* FontImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontImportStore.swift; sourceTree = "<group>"; };
+		260000000000000000000001 /* CopyrightPurchaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyrightPurchaseManager.swift; sourceTree = "<group>"; };
+		260000000000000000000002 /* HanClip.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = HanClip.storekit; sourceTree = "<group>"; };
 		20000000000000000000001C /* Resources/Fonts/KakaoBigSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/KakaoBigSans-Regular.ttf"; sourceTree = "<group>"; };
 		20000000000000000000001D /* Resources/Fonts/KakaoBigSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/Fonts/KakaoBigSans-OFL.txt"; sourceTree = "<group>"; };
 		20000000000000000000001E /* Resources/Fonts/NanumGothic-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/NanumGothic-Regular.ttf"; sourceTree = "<group>"; };
@@ -236,6 +239,7 @@
 				20000000000000000000000F /* Info.plist */,
 				200000000000000000000010 /* HanClip.entitlements */,
 				200000000000000000000013 /* Assets.xcassets */,
+				260000000000000000000002 /* HanClip.storekit */,
 			);
 			path = HanClip;
 			sourceTree = "<group>";
@@ -289,6 +293,7 @@
 				210000000000000000000002 /* AudioAnalysisService.swift */,
 				250000000000000000000001 /* AudioImpactClassifier.swift */,
 				240000000000000000000001 /* AiShotCamera.swift */,
+				260000000000000000000001 /* CopyrightPurchaseManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -362,6 +367,11 @@
 				TargetAttributes = {
 					500000000000000000000001 = {
 						CreatedOnToolsVersion = 26.6;
+						SystemCapabilities = {
+							com.apple.InAppPurchase = {
+								enabled = 1;
+							};
+						};
 					};
 					500000000000000000000002 = {
 						CreatedOnToolsVersion = 26.6;
@@ -463,6 +473,7 @@
 				150000000000000000000001 /* AudioImpactClassifier.swift in Sources */,
 				110000000000000000000003 /* VideoTrimEditor.swift in Sources */,
 				140000000000000000000001 /* AiShotCamera.swift in Sources */,
+				160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

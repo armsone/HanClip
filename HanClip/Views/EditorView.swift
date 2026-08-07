@@ -155,6 +155,8 @@ struct EditorView: View {
         WatermarkSettings.defaultCopyrightIconColor
     @EnvironmentObject private var quickActionRouter:
         HanClipQuickActionRouter
+    @EnvironmentObject private var purchaseManager:
+        CopyrightPurchaseManager
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hanClipSleepPreventionMode") private var sleepPreventionModeRaw =
         SleepPreventionMode.defaultValue.rawValue
@@ -1044,6 +1046,7 @@ struct EditorView: View {
         ImportantInfoSheet(
             sleepPreventionModeRaw: $sleepPreventionModeRaw,
             copyrightEnabled: $logoWatermarkEnabled,
+            purchaseManager: purchaseManager,
             platformRaw: $watermarkPlatformRaw,
             address: $watermarkAddress,
             positionRaw: $copyrightPositionRaw,
@@ -6186,6 +6189,7 @@ private struct ImportantInfoSheet: View {
         WatermarkSettings.defaultCustomCopyrightIconPath
     @Binding var sleepPreventionModeRaw: String
     @Binding var copyrightEnabled: Bool
+    @ObservedObject var purchaseManager: CopyrightPurchaseManager
     @Binding var platformRaw: String
     @Binding var address: String
     @Binding var positionRaw: String
@@ -6334,6 +6338,25 @@ private struct ImportantInfoSheet: View {
         .onAppear {
             loadAddress(for: selectedPlatform)
         }
+        .onChange(of: purchaseManager.isPurchased) { _, isPurchased in
+            if !isPurchased {
+                copyrightEnabled = false
+                isWatermarkSettingsExpanded = false
+            }
+        }
+        .alert(
+            "인앱 구매",
+            isPresented: Binding(
+                get: { purchaseManager.message != nil },
+                set: { if !$0 { purchaseManager.message = nil } }
+            )
+        ) {
+            Button("확인", role: .cancel) {
+                purchaseManager.message = nil
+            }
+        } message: {
+            Text(purchaseManager.message ?? "")
+        }
     }
 
     private var settingsHeaderIdentity: some View {
@@ -6390,8 +6413,14 @@ private struct ImportantInfoSheet: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isWatermarkSettingsExpanded.toggle()
+                    if purchaseManager.isPurchased {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isWatermarkSettingsExpanded.toggle()
+                        }
+                    } else {
+                        Task {
+                            await purchaseManager.purchase()
+                        }
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -6399,28 +6428,47 @@ private struct ImportantInfoSheet: View {
 
                         Spacer(minLength: 8)
 
-                        Text(copyrightEnabled ? "사용" : "안함")
+                        if purchaseManager.isPurchasing {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("구매 진행 중")
+                        }
+
+                        Text(
+                            purchaseManager.isPurchased
+                                ? (copyrightEnabled ? "사용" : "안함")
+                                : "인앱 구매"
+                        )
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(
-                                copyrightEnabled
+                                purchaseManager.isPurchased && copyrightEnabled
                                     ? HanClipTheme.primary
                                     : HanClipTheme.secondaryText
                             )
 
-                        Image(
-                            systemName: isWatermarkSettingsExpanded
-                                ? "chevron.up"
-                                : "chevron.down"
-                        )
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(HanClipTheme.secondary)
+                        if purchaseManager.isPurchased {
+                            Image(
+                                systemName: isWatermarkSettingsExpanded
+                                    ? "chevron.up"
+                                    : "chevron.down"
+                            )
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(HanClipTheme.secondary)
+                        }
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("워터마크 설정")
+                .disabled(purchaseManager.isPurchasing)
+                .accessibilityLabel(
+                    purchaseManager.isPurchased
+                        ? "워터마크 설정"
+                        : "워터마크 인앱 구매"
+                )
                 .accessibilityValue(
-                    isWatermarkSettingsExpanded ? "펼쳐짐" : "접힘"
+                    purchaseManager.isPurchased
+                        ? (isWatermarkSettingsExpanded ? "펼쳐짐" : "접힘")
+                        : "구매 필요"
                 )
 
                 if isWatermarkSettingsExpanded {
@@ -6517,6 +6565,20 @@ private struct ImportantInfoSheet: View {
                     .padding(.top, 16)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+
+                Button {
+                    Task {
+                        await purchaseManager.restore()
+                    }
+                } label: {
+                    Text("구매 복원")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 14)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(HanClipTheme.secondary)
+                .disabled(purchaseManager.isPurchasing)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
