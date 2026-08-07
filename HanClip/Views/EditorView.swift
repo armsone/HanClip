@@ -6412,34 +6412,44 @@ private struct ImportantInfoSheet: View {
             )
 
             VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isWatermarkSettingsExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        sectionTitle("워터마크", systemImage: "seal.fill")
-
-                        Spacer(minLength: 8)
-
-                        if purchaseManager.isPurchasing {
-                            ProgressView()
-                                .controlSize(.small)
-                                .accessibilityLabel("구매 진행 중")
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isWatermarkSettingsExpanded.toggle()
                         }
+                    } label: {
+                        sectionTitle("워터마크", systemImage: "seal.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(purchaseManager.isPurchasing)
 
-                        Text(
-                            purchaseManager.isPurchased
-                                ? (copyrightEnabled ? "사용" : "안함")
-                                : "구매 옵션"
+                    Spacer(minLength: 8)
+
+                    if purchaseManager.isPurchasing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("구매 진행 중")
+                    }
+
+                    if purchaseManager.isPurchased {
+                        WatermarkModeSegmentedControl(
+                            isEnabled: $copyrightEnabled
                         )
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(
-                                purchaseManager.isPurchased && copyrightEnabled
-                                    ? HanClipTheme.primary
-                                    : HanClipTheme.secondaryText
-                            )
+                        .frame(width: 112)
+                        .accessibilityLabel("워터마크 사용 설정")
+                    } else {
+                        Text(
+                            "구매 옵션"
+                        )
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.secondaryText)
+                    }
 
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isWatermarkSettingsExpanded.toggle()
+                        }
+                    } label: {
                         Image(
                             systemName: isWatermarkSettingsExpanded
                                 ? "chevron.up"
@@ -6448,20 +6458,13 @@ private struct ImportantInfoSheet: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(HanClipTheme.secondary)
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .disabled(purchaseManager.isPurchasing)
+                    .accessibilityLabel("워터마크 설정")
+                    .accessibilityValue(
+                        isWatermarkSettingsExpanded ? "펼쳐짐" : "접힘"
+                    )
                 }
-                .buttonStyle(.plain)
-                .disabled(purchaseManager.isPurchasing)
-                .accessibilityLabel(
-                    purchaseManager.isPurchased
-                        ? "워터마크 설정"
-                        : "워터마크 구매 옵션"
-                )
-                .accessibilityValue(
-                    purchaseManager.isPurchased
-                        ? (isWatermarkSettingsExpanded ? "펼쳐짐" : "접힘")
-                        : (isWatermarkSettingsExpanded ? "구매 옵션 펼쳐짐" : "구매 필요")
-                )
 
                 if isWatermarkSettingsExpanded {
                     VStack(alignment: .leading, spacing: 16) {
@@ -11826,26 +11829,30 @@ private struct WatermarkModeSegmentedControl: View {
             HanClipTheme.secondary.opacity(0.14),
             in: Capsule()
         )
-        .contentShape(Capsule())
-        .onTapGesture {
-            withAnimation(.snappy) {
-                isEnabled.toggle()
-            }
-        }
     }
 
     private func segment(title: String, value: Bool) -> some View {
-        Text(title)
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(isEnabled == value ? .white : HanClipTheme.secondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 32)
-            .background {
-                if isEnabled == value {
-                    Capsule()
-                        .fill(HanClipTheme.primary)
-                }
+        Button {
+            withAnimation(.snappy) {
+                isEnabled = value
             }
+        } label: {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(
+                    isEnabled == value ? .white : HanClipTheme.secondary
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 32)
+                .background {
+                    if isEnabled == value {
+                        Capsule()
+                            .fill(HanClipTheme.primary)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isEnabled == value ? .isSelected : [])
     }
 }
 
