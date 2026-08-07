@@ -224,8 +224,11 @@ struct EditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
+        lifecycleConfiguredView
+    }
+
+    private var rootEditorContent: some View {
+        ZStack {
                 HanClipTheme.backgroundGradient
                     .ignoresSafeArea()
 
@@ -246,7 +249,11 @@ struct EditorView: View {
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                 }
-            }
+        }
+    }
+
+    private var rootEditorSurface: some View {
+        rootEditorContent
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -379,7 +386,16 @@ struct EditorView: View {
                     )
                 }
             }
+    }
+
+    private var rootNavigationView: some View {
+        NavigationStack {
+            rootEditorSurface
         }
+    }
+
+    private var modalOverlayConfiguredView: some View {
+        rootNavigationView
         .blur(
             radius: showResetConfirmation
                 || showHeaderExitConfirmation
@@ -563,6 +579,10 @@ struct EditorView: View {
                 }
             }
         }
+    }
+
+    private var presentationConfiguredView: some View {
+        modalOverlayConfiguredView
         .fullScreenCover(isPresented: $model.isPickerPresented) {
             photoPicker
         }
@@ -798,6 +818,10 @@ struct EditorView: View {
                 }
             )
         }
+    }
+
+    private var lifecycleConfiguredView: some View {
+        presentationConfiguredView
         .fileExporter(
             isPresented: $model.showFileExporter,
             document: model.fileDocument,
@@ -4632,6 +4656,15 @@ struct EditorView: View {
         isSelectAllChecked = currentSignature == selectAllAppliedSignature
     }
 
+    private var reorderGridItems: [(offset: Int, element: ClipItem)] {
+        Array(
+            model.clips
+                .filter { !$0.isVideoSegmentChild }
+                .filter { !$0.isSimilarPhotoGroupChild }
+                .enumerated()
+        )
+    }
+
     private var reorderGrid: some View {
         LazyVGrid(
             columns: Array(
@@ -4640,205 +4673,8 @@ struct EditorView: View {
             ),
             spacing: 9
         ) {
-            ForEach(
-                Array(
-                    model.clips
-                        .filter { !$0.isVideoSegmentChild }
-                        .filter { !$0.isSimilarPhotoGroupChild }
-                        .enumerated()
-                ),
-                id: \.element.id
-            ) {
-                index,
-                clip in
-                GeometryReader { proxy in
-                    ZStack {
-                        reorderMediaThumbnail(for: clip, size: proxy.size)
-
-                        if clip.isVideoSegmentParent
-                            || clip.isSimilarPhotoGroupParent {
-                            LinearGradient(
-                                colors: [
-                                    HanClipTheme.secondary.opacity(0.16),
-                                    HanClipTheme.primary.opacity(0.08),
-                                    Color.black.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            .blendMode(.multiply)
-
-                            HanClipTheme.secondary.opacity(0.08)
-                        }
-
-                        LinearGradient(
-                            colors: [
-                                Color.black.opacity(0.22),
-                                Color.clear,
-                                Color.black.opacity(0.30)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                }
-                    .aspectRatio(1, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(alignment: .topLeading) {
-                        Text("\(index + 1)")
-                            .font(
-                                .system(
-                                    size: 12,
-                                    weight: .bold,
-                                    design: .monospaced
-                                )
-                            )
-                            .foregroundStyle(.white)
-                            .frame(width: 23, height: 23)
-                            .background(
-                                Color.black.opacity(0.36),
-                                in: Circle()
-                            )
-                            .overlay {
-                                Circle()
-                                    .stroke(
-                                        Color.white.opacity(0.34),
-                                        lineWidth: 0.8
-                                    )
-                            }
-                            .padding(5)
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        Text(reorderMediaTitle(for: clip))
-                            .font(.system(size: 12, weight: .black))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .padding(.horizontal, 6)
-                            .frame(height: 22)
-                            .background(
-                                Color.black.opacity(0.34),
-                                in: Capsule()
-                            )
-                            .overlay {
-                                Capsule()
-                                    .stroke(
-                                        Color.white.opacity(0.28),
-                                        lineWidth: 0.8
-                                    )
-                            }
-                            .multilineTextAlignment(.trailing)
-                            .padding(5)
-                    }
-                    .overlay(alignment: .bottom) {
-                        Text(reorderMediaDurationText(for: clip))
-                            .font(
-                                .system(
-                                    size: 12,
-                                    weight: .semibold,
-                                    design: .monospaced
-                                )
-                            )
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .padding(.horizontal, 6)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 22)
-                            .background(
-                                LinearGradient(
-                                            colors: [
-                                                Color.black.opacity(0.34),
-                                                Color.black.opacity(0.12)
-                                            ],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if let count = reorderMediaGroupCount(for: clip) {
-                            Text("\(count)")
-                                .font(
-                                    .system(
-                                        size: 15,
-                                        weight: .black,
-                                        design: .rounded
-                                    )
-                                )
-                                .monospacedDigit()
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 7)
-                                .frame(height: 24)
-                                .background(
-                                    Color.black.opacity(0.38),
-                                    in: Capsule()
-                                )
-                                .overlay {
-                                    Capsule()
-                                        .stroke(
-                                            Color.white.opacity(0.30),
-                                            lineWidth: 0.8
-                                        )
-                                }
-                                .padding(5)
-                        }
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(
-                                Color.white.opacity(0.28),
-                                lineWidth: 0.7
-                            )
-                    }
-                    .shadow(
-                        color: Color.black.opacity(0.08),
-                        radius: 4,
-                        y: 2
-                    )
-                    .opacity(1)
-                    .contentShape(Rectangle())
-                    .onDrag {
-                        draggedClipID = clip.id
-                        return NSItemProvider(
-                            object: clip.id.uuidString as NSString
-                        )
-                    } preview: {
-                        reorderMediaThumbnail(for: clip, size: CGSize(width: 72, height: 72))
-                            .frame(width: 72, height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .onDrop(
-                        of: [UTType.text],
-                        delegate: ClipReorderDropDelegate(
-                            targetID: clip.id,
-                            clips: $model.clips,
-                            draggedClipID: $draggedClipID
-                        )
-                    )
-                    .onTapGesture {
-                        if clip.isVideoSegmentParent {
-                            let childClips = model.renderableClips.filter {
-                                $0.videoSegmentParentID == clip.id
-                            }
-                            guard let firstChildClip = childClips.first
-                            else { return }
-                            isAutoAdvancingPreview = false
-                            isLoopingPreviewAutoAdvance = false
-                            videoSegmentPreviewParentID = nil
-                            selectedClipID = firstChildClip.id
-                        } else {
-                            isAutoAdvancingPreview = false
-                            isLoopingPreviewAutoAdvance = false
-                            videoSegmentPreviewParentID = nil
-                            selectedClipID = clip.id
-                        }
-                    }
-                    .accessibilityLabel(
-                        "\(index + 1)번째 \(reorderMediaTitle(for: clip))"
-                    )
-                    .accessibilityHint(
-                        "한 번 누르면 편집을 열고, 누른 뒤 끌면 순서를 변경합니다."
-                    )
+            ForEach(reorderGridItems, id: \.element.id) { item in
+                reorderGridCell(index: item.offset, clip: item.element)
             }
 
             mediaImportMenu {
@@ -4871,6 +4707,184 @@ struct EditorView: View {
         }
         .animation(.snappy, value: model.clips.map(\.id))
         .accessibilityLabel("순서변경 상태")
+    }
+
+    private func reorderGridCell(index: Int, clip: ClipItem) -> some View {
+        reorderGridCellVisual(index: index, clip: clip)
+            .contentShape(Rectangle())
+            .onDrag {
+                draggedClipID = clip.id
+                return NSItemProvider(
+                    object: clip.id.uuidString as NSString
+                )
+            } preview: {
+                reorderMediaThumbnail(
+                    for: clip,
+                    size: CGSize(width: 72, height: 72)
+                )
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .onDrop(
+                of: [UTType.text],
+                delegate: ClipReorderDropDelegate(
+                    targetID: clip.id,
+                    clips: $model.clips,
+                    draggedClipID: $draggedClipID
+                )
+            )
+            .onTapGesture {
+                openReorderGridClip(clip)
+            }
+            .accessibilityLabel(
+                "\(index + 1)번째 \(reorderMediaTitle(for: clip))"
+            )
+            .accessibilityHint(
+                "한 번 누르면 편집을 열고, 누른 뒤 끌면 순서를 변경합니다."
+            )
+    }
+
+    private func reorderGridCellVisual(
+        index: Int,
+        clip: ClipItem
+    ) -> some View {
+        reorderGridThumbnailLayer(for: clip)
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                reorderGridIndexBadge(index + 1)
+            }
+            .overlay(alignment: .topTrailing) {
+                reorderGridTitleBadge(for: clip)
+            }
+            .overlay(alignment: .bottom) {
+                reorderGridDurationBadge(for: clip)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                reorderGridCountBadge(for: clip)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.28), lineWidth: 0.7)
+            }
+            .shadow(color: Color.black.opacity(0.08), radius: 4, y: 2)
+    }
+
+    private func reorderGridThumbnailLayer(for clip: ClipItem) -> some View {
+        GeometryReader { proxy in
+            ZStack {
+                reorderMediaThumbnail(for: clip, size: proxy.size)
+
+                if clip.isVideoSegmentParent || clip.isSimilarPhotoGroupParent {
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.secondary.opacity(0.16),
+                            HanClipTheme.primary.opacity(0.08),
+                            Color.black.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .blendMode(.multiply)
+
+                    HanClipTheme.secondary.opacity(0.08)
+                }
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.22),
+                        Color.clear,
+                        Color.black.opacity(0.30)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+    }
+
+    private func reorderGridIndexBadge(_ position: Int) -> some View {
+        Text("\(position)")
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(.white)
+            .frame(width: 23, height: 23)
+            .background(Color.black.opacity(0.36), in: Circle())
+            .overlay {
+                Circle()
+                    .stroke(Color.white.opacity(0.34), lineWidth: 0.8)
+            }
+            .padding(5)
+    }
+
+    private func reorderGridTitleBadge(for clip: ClipItem) -> some View {
+        Text(reorderMediaTitle(for: clip))
+            .font(.system(size: 12, weight: .black))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 6)
+            .frame(height: 22)
+            .background(Color.black.opacity(0.34), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
+            }
+            .multilineTextAlignment(.trailing)
+            .padding(5)
+    }
+
+    private func reorderGridDurationBadge(for clip: ClipItem) -> some View {
+        Text(reorderMediaDurationText(for: clip))
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity)
+            .frame(height: 22)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.34),
+                        Color.black.opacity(0.12)
+                    ],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+            )
+    }
+
+    @ViewBuilder
+    private func reorderGridCountBadge(for clip: ClipItem) -> some View {
+        if let count = reorderMediaGroupCount(for: clip) {
+            Text("\(count)")
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .frame(height: 24)
+                .background(Color.black.opacity(0.38), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(Color.white.opacity(0.30), lineWidth: 0.8)
+                }
+                .padding(5)
+        }
+    }
+
+    private func openReorderGridClip(_ clip: ClipItem) {
+        isAutoAdvancingPreview = false
+        isLoopingPreviewAutoAdvance = false
+        videoSegmentPreviewParentID = nil
+
+        if clip.isVideoSegmentParent {
+            let firstChildClip = model.renderableClips.first {
+                $0.videoSegmentParentID == clip.id
+            }
+            guard let firstChildClip else { return }
+            selectedClipID = firstChildClip.id
+        } else {
+            selectedClipID = clip.id
+        }
     }
 
     @ViewBuilder
