@@ -5,18 +5,18 @@
   ],
   "products" : [
     {
-      "displayPrice" : "1.99",
+      "displayPrice" : "9.99",
       "familyShareable" : false,
       "internalID" : "66CE2160-7B8A-46BA-A5CB-149E71870D3F",
       "localizations" : [
         {
-          "description" : "영상에 카피라이터 워터마크를 추가할 수 있습니다.",
-          "displayName" : "카피라이터 워터마크",
+          "description" : "카피라이터 워터마크 기능을 영구적으로 사용할 수 있습니다.",
+          "displayName" : "카피라이터 워터마크 영구 제거",
           "locale" : "ko_KR"
         }
       ],
       "productID" : "com.intosharp.hanclip.copyright",
-      "referenceName" : "Copyright Watermark Unlock",
+      "referenceName" : "Copyright Watermark Lifetime",
       "type" : "NonConsumable"
     }
   ],
@@ -34,7 +34,75 @@
     "_timeRate" : 0
   },
   "subscriptionGroups" : [
+    {
+      "id" : "53EB3E6E-4D65-49DA-96C6-43550849226B",
+      "localizations" : [
+        {
+          "customAppName" : "HanClip",
+          "locale" : "ko_KR",
+          "name" : "카피라이터 워터마크"
+        }
+      ],
+      "name" : "Copyright Watermark Access",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
 
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "59121742-3354-45E8-BD60-332F794151FC",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "카피라이터 워터마크 기능을 1년 동안 사용할 수 있으며 매년 자동 갱신됩니다.",
+              "displayName" : "카피라이터 1년 제거",
+              "locale" : "ko_KR"
+            }
+          ],
+          "productID" : "com.intosharp.hanclip.copyright.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Copyright Watermark Yearly",
+          "subscriptionGroupID" : "53EB3E6E-4D65-49DA-96C6-43550849226B",
+          "type" : "RecurringSubscription",
+          "winBackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "0.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "76AE20EC-EC80-4F29-8E09-717E71FE9D9B",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "카피라이터 워터마크 기능을 1개월 동안 사용할 수 있으며 매월 자동 갱신됩니다.",
+              "displayName" : "카피라이터 1달 제거",
+              "locale" : "ko_KR"
+            }
+          ],
+          "productID" : "com.intosharp.hanclip.copyright.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Copyright Watermark Monthly",
+          "subscriptionGroupID" : "53EB3E6E-4D65-49DA-96C6-43550849226B",
+          "type" : "RecurringSubscription",
+          "winBackOffers" : [
+
+          ]
+        }
+      ]
+    }
   ],
   "version" : {
     "major" : 4,

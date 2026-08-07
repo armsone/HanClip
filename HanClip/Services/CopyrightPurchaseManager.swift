@@ -1,12 +1,67 @@
 import Combine
 import StoreKit
 
+enum CopyrightPurchasePlan: String, CaseIterable, Identifiable {
+    case lifetime
+    case yearly
+    case monthly
+
+    var id: String { productID }
+
+    var productID: String {
+        switch self {
+        case .lifetime:
+            "com.intosharp.hanclip.copyright"
+        case .yearly:
+            "com.intosharp.hanclip.copyright.yearly"
+        case .monthly:
+            "com.intosharp.hanclip.copyright.monthly"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .lifetime:
+            "영구 제거"
+        case .yearly:
+            "1년 제거"
+        case .monthly:
+            "1달 제거"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .lifetime:
+            "한 번 구매하면 계속 사용할 수 있습니다."
+        case .yearly:
+            "매년 자동 갱신됩니다."
+        case .monthly:
+            "매월 자동 갱신됩니다."
+        }
+    }
+
+    var fallbackPrice: String {
+        switch self {
+        case .lifetime:
+            "$9.99"
+        case .yearly:
+            "$4.99 / 년"
+        case .monthly:
+            "$0.99 / 월"
+        }
+    }
+}
+
 @MainActor
 final class CopyrightPurchaseManager: ObservableObject {
     static let shared = CopyrightPurchaseManager()
-    static let productID = "com.intosharp.hanclip.copyright"
+    static let productIDs = Set(
+        CopyrightPurchasePlan.allCases.map(\.productID)
+    )
 
-    @Published private(set) var product: Product?
+    @Published private(set) var products: [String: Product] = [:]
+    @Published private(set) var activeProductID: String?
     @Published private(set) var isPurchased = false
     @Published private(set) var isPurchasing = false
     @Published private(set) var isLoading = false
@@ -25,20 +80,46 @@ final class CopyrightPurchaseManager: ObservableObject {
         updatesTask?.cancel()
     }
 
+    var activePlan: CopyrightPurchasePlan? {
+        guard let activeProductID else { return nil }
+        return CopyrightPurchasePlan.allCases.first {
+            $0.productID == activeProductID
+        }
+    }
+
+    func product(for plan: CopyrightPurchasePlan) -> Product? {
+        products[plan.productID]
+    }
+
+    func displayPrice(for plan: CopyrightPurchasePlan) -> String {
+        guard let product = product(for: plan) else {
+            return plan.fallbackPrice
+        }
+
+        switch plan {
+        case .lifetime:
+            return product.displayPrice
+        case .yearly:
+            return "\(product.displayPrice) / 년"
+        case .monthly:
+            return "\(product.displayPrice) / 월"
+        }
+    }
+
     func refresh() async {
         isLoading = true
         defer { isLoading = false }
 
-        await loadProduct(showEmptyProductMessage: false)
+        await loadProducts(showEmptyProductMessage: false)
         await updateEntitlement()
     }
 
-    func purchase() async {
+    func purchase(_ plan: CopyrightPurchasePlan) async {
         guard !isPurchasing else { return }
-        if product == nil {
-            await loadProduct(showEmptyProductMessage: true)
+        if product(for: plan) == nil {
+            await loadProducts(showEmptyProductMessage: true)
         }
-        guard let product else {
+        guard let product = product(for: plan) else {
             return
         }
 
@@ -79,15 +160,19 @@ final class CopyrightPurchaseManager: ObservableObject {
         }
     }
 
-    private func loadProduct(showEmptyProductMessage: Bool) async {
+    private func loadProducts(showEmptyProductMessage: Bool) async {
         do {
-            let products = try await Product.products(for: [Self.productID])
-            product = products.first
-            if product == nil, showEmptyProductMessage {
+            let loadedProducts = try await Product.products(
+                for: Array(Self.productIDs)
+            )
+            products = Dictionary(
+                uniqueKeysWithValues: loadedProducts.map { ($0.id, $0) }
+            )
+            if products.isEmpty, showEmptyProductMessage {
                 message = emptyProductMessage
             }
         } catch {
-            product = nil
+            products = [:]
             message = "구매 상품을 불러오지 못했습니다. \(error.localizedDescription)"
         }
     }
@@ -121,20 +206,28 @@ final class CopyrightPurchaseManager: ObservableObject {
     }
 
     private func updateEntitlement() async {
-        var hasEntitlement = false
+        var entitledProductIDs = Set<String>()
 
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result,
-                  transaction.productID == Self.productID,
+                  Self.productIDs.contains(transaction.productID),
                   transaction.revocationDate == nil else {
                 continue
             }
-            hasEntitlement = true
-            break
+            if let expirationDate = transaction.expirationDate,
+               expirationDate <= Date() {
+                continue
+            }
+            entitledProductIDs.insert(transaction.productID)
         }
 
-        isPurchased = hasEntitlement
-        if !hasEntitlement {
+        let activePlan = CopyrightPurchasePlan.allCases.first {
+            entitledProductIDs.contains($0.productID)
+        }
+        activeProductID = activePlan?.productID
+        isPurchased = activePlan != nil
+
+        if !isPurchased {
             UserDefaults.standard.set(
                 false,
                 forKey: WatermarkSettings.logoEnabledStorageKey
@@ -165,7 +258,7 @@ final class CopyrightPurchaseManager: ObservableObject {
     }
 
     private func purchaseErrorMessage(for error: Error) -> String {
-        return "구매에 실패했습니다. \(error.localizedDescription)"
+        "구매에 실패했습니다. \(error.localizedDescription)"
     }
 }
 

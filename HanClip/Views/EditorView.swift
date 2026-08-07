@@ -6413,14 +6413,8 @@ private struct ImportantInfoSheet: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Button {
-                    if purchaseManager.isPurchased {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isWatermarkSettingsExpanded.toggle()
-                        }
-                    } else {
-                        Task {
-                            await purchaseManager.purchase()
-                        }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isWatermarkSettingsExpanded.toggle()
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -6437,7 +6431,7 @@ private struct ImportantInfoSheet: View {
                         Text(
                             purchaseManager.isPurchased
                                 ? (copyrightEnabled ? "사용" : "안함")
-                                : "인앱 구매"
+                                : "구매 옵션"
                         )
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(
@@ -6446,15 +6440,13 @@ private struct ImportantInfoSheet: View {
                                     : HanClipTheme.secondaryText
                             )
 
-                        if purchaseManager.isPurchased {
-                            Image(
-                                systemName: isWatermarkSettingsExpanded
-                                    ? "chevron.up"
-                                    : "chevron.down"
-                            )
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(HanClipTheme.secondary)
-                        }
+                        Image(
+                            systemName: isWatermarkSettingsExpanded
+                                ? "chevron.up"
+                                : "chevron.down"
+                        )
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(HanClipTheme.secondary)
                     }
                     .contentShape(Rectangle())
                 }
@@ -6463,103 +6455,107 @@ private struct ImportantInfoSheet: View {
                 .accessibilityLabel(
                     purchaseManager.isPurchased
                         ? "워터마크 설정"
-                        : "워터마크 인앱 구매"
+                        : "워터마크 구매 옵션"
                 )
                 .accessibilityValue(
                     purchaseManager.isPurchased
                         ? (isWatermarkSettingsExpanded ? "펼쳐짐" : "접힘")
-                        : "구매 필요"
+                        : (isWatermarkSettingsExpanded ? "구매 옵션 펼쳐짐" : "구매 필요")
                 )
 
                 if isWatermarkSettingsExpanded {
                     VStack(alignment: .leading, spacing: 16) {
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(), spacing: 8),
-                                count: 5
-                            ),
-                            spacing: 8
-                        ) {
-                            ForEach(WatermarkPlatform.allCases) { platform in
-                                copyrightPlatformButton(platform)
+                        if purchaseManager.isPurchased {
+                            LazyVGrid(
+                                columns: Array(
+                                    repeating: GridItem(.flexible(), spacing: 8),
+                                    count: 5
+                                ),
+                                spacing: 8
+                            ) {
+                                ForEach(WatermarkPlatform.allCases) { platform in
+                                    copyrightPlatformButton(platform)
+                                }
                             }
-                        }
 
-                        if showsAddressInput {
-                            TextField(
-                                selectedPlatform == .custom
-                                    ? "표시할 자막"
-                                    : "\(selectedPlatform.title) 한 줄 입력",
-                                text: addressBinding(for: selectedPlatform)
-                            )
-                            .font(.system(size: 14, weight: .medium))
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .padding(.horizontal, 12)
-                            .frame(height: 44)
-                            .background(
-                                Color.white.opacity(0.42),
-                                in: RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
+                            if showsAddressInput {
+                                TextField(
+                                    selectedPlatform == .custom
+                                        ? "표시할 자막"
+                                        : "\(selectedPlatform.title) 한 줄 입력",
+                                    text: addressBinding(for: selectedPlatform)
                                 )
-                            )
-                            .overlay {
-                                RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
-                                )
-                                .stroke(
-                                    HanClipTheme.secondary.opacity(0.22),
-                                    lineWidth: 1
-                                )
-                            }
-                        }
-
-                        if copyrightEnabled && selectedPlatform == .custom {
-                            customIconPicker
-                        }
-
-                        copyrightPositionSettings
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            sectionTitle("색상", systemImage: "paintpalette.fill")
-
-                            HStack(spacing: 10) {
-                                copyrightColorPicker(
-                                    title: "글자",
-                                    selection: Binding(
-                                        get: {
-                                            Color(hexString: textColorHex)
-                                                ?? HanClipTheme.primary
-                                        },
-                                        set: {
-                                            textColorHex = $0.hexString
-                                                ?? WatermarkSettings.defaultCopyrightTextColor
-                                            shadowColorHex = Color(
-                                                uiColor: complementaryColor(for: UIColor($0))
-                                            ).hexString
-                                                ?? WatermarkSettings.defaultCopyrightShadowColor
-                                        }
+                                .font(.system(size: 14, weight: .medium))
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .padding(.horizontal, 12)
+                                .frame(height: 44)
+                                .background(
+                                    Color.white.opacity(0.42),
+                                    in: RoundedRectangle(
+                                        cornerRadius: 12,
+                                        style: .continuous
                                     )
                                 )
-
-                                copyrightColorPicker(
-                                    title: "그림자 색",
-                                    selection: Binding(
-                                        get: {
-                                            Color(hexString: shadowColorHex)
-                                                ?? HanClipTheme.secondary
-                                        },
-                                        set: {
-                                            shadowColorHex = $0.hexString
-                                                ?? WatermarkSettings.defaultCopyrightShadowColor
-                                        }
+                                .overlay {
+                                    RoundedRectangle(
+                                        cornerRadius: 12,
+                                        style: .continuous
                                     )
-                                )
+                                    .stroke(
+                                        HanClipTheme.secondary.opacity(0.22),
+                                        lineWidth: 1
+                                    )
+                                }
                             }
 
-                            copyrightShadowOpacityControl
+                            if copyrightEnabled && selectedPlatform == .custom {
+                                customIconPicker
+                            }
+
+                            copyrightPositionSettings
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                sectionTitle("색상", systemImage: "paintpalette.fill")
+
+                                HStack(spacing: 10) {
+                                    copyrightColorPicker(
+                                        title: "글자",
+                                        selection: Binding(
+                                            get: {
+                                                Color(hexString: textColorHex)
+                                                    ?? HanClipTheme.primary
+                                            },
+                                            set: {
+                                                textColorHex = $0.hexString
+                                                    ?? WatermarkSettings.defaultCopyrightTextColor
+                                                shadowColorHex = Color(
+                                                    uiColor: complementaryColor(for: UIColor($0))
+                                                ).hexString
+                                                    ?? WatermarkSettings.defaultCopyrightShadowColor
+                                            }
+                                        )
+                                    )
+
+                                    copyrightColorPicker(
+                                        title: "그림자 색",
+                                        selection: Binding(
+                                            get: {
+                                                Color(hexString: shadowColorHex)
+                                                    ?? HanClipTheme.secondary
+                                            },
+                                            set: {
+                                                shadowColorHex = $0.hexString
+                                                    ?? WatermarkSettings.defaultCopyrightShadowColor
+                                            }
+                                        )
+                                    )
+                                }
+
+                                copyrightShadowOpacityControl
+                            }
+                        } else {
+                            copyrightPurchaseOptions
                         }
                     }
                     .padding(.top, 16)
@@ -6597,6 +6593,70 @@ private struct ImportantInfoSheet: View {
             )
             .hanClipGlassPanel(cornerRadius: 22, shadowOpacity: 0.05)
         }
+    }
+
+    private var copyrightPurchaseOptions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("카피라이터 워터마크 이용권")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(HanClipTheme.text)
+
+            Text("영구 이용권 또는 자동 갱신 구독을 선택하세요.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(HanClipTheme.secondaryText)
+
+            ForEach(CopyrightPurchasePlan.allCases) { plan in
+                copyrightPurchaseButton(plan)
+            }
+
+            Text("월간 및 연간 상품은 결제 확인 후 자동 갱신되며, Apple 계정의 구독 관리에서 언제든 해지할 수 있습니다.")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(HanClipTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func copyrightPurchaseButton(
+        _ plan: CopyrightPurchasePlan
+    ) -> some View {
+        Button {
+            Task {
+                await purchaseManager.purchase(plan)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(plan.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(HanClipTheme.text)
+
+                    Text(plan.detail)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(HanClipTheme.secondaryText)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(purchaseManager.displayPrice(for: plan))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                HanClipTheme.secondary.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(HanClipTheme.secondary.opacity(0.20), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(purchaseManager.isPurchasing || purchaseManager.isLoading)
+        .accessibilityLabel("\(plan.title), \(purchaseManager.displayPrice(for: plan))")
+        .accessibilityHint(plan.detail)
     }
 
     private var copyrightPositionSettings: some View {
