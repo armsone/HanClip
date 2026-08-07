@@ -6433,9 +6433,10 @@ private struct ImportantInfoSheet: View {
 
                     if purchaseManager.isPurchased {
                         WatermarkModeSegmentedControl(
-                            isEnabled: $copyrightEnabled
+                            isEnabled: $copyrightEnabled,
+                            isCompact: true
                         )
-                        .frame(width: 112)
+                        .frame(width: 84)
                         .accessibilityLabel("워터마크 사용 설정")
                     } else {
                         Text(
@@ -11818,13 +11819,14 @@ private struct TextOverlayPositionThumbnail: View {
 
 private struct WatermarkModeSegmentedControl: View {
     @Binding var isEnabled: Bool
+    var isCompact = false
 
     var body: some View {
         HStack(spacing: 0) {
             segment(title: "사용", value: true)
             segment(title: "안함", value: false)
         }
-        .padding(3)
+        .padding(isCompact ? 2 : 3)
         .background(
             HanClipTheme.secondary.opacity(0.14),
             in: Capsule()
@@ -11838,12 +11840,12 @@ private struct WatermarkModeSegmentedControl: View {
             }
         } label: {
             Text(title)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: isCompact ? 10 : 14, weight: .bold))
                 .foregroundStyle(
                     isEnabled == value ? .white : HanClipTheme.secondary
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 32)
+                .frame(height: isCompact ? 18 : 32)
                 .background {
                     if isEnabled == value {
                         Capsule()
