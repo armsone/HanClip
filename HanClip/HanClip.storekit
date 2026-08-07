@@ -1,0 +1,43 @@
+{
+  "identifier" : "A0D8E867-77CF-48A9-85D8-E6D0B99778A5",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "1.99",
+      "familyShareable" : false,
+      "internalID" : "66CE2160-7B8A-46BA-A5CB-149E71870D3F",
+      "localizations" : [
+        {
+          "description" : "영상에 카피라이터 워터마크를 추가할 수 있습니다.",
+          "displayName" : "카피라이터 워터마크",
+          "locale" : "ko_KR"
+        }
+      ],
+      "productID" : "com.intosharp.hanclip.copyright",
+      "referenceName" : "Copyright Watermark Unlock",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "com.intosharp.hanclip",
+    "_developerTeamID" : "T7B4EPLHPK",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "ko_KR",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "KOR",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

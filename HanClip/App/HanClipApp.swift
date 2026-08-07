@@ -822,11 +822,14 @@ final class HanClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
 struct HanClipApp: App {
     @UIApplicationDelegateAdaptor(HanClipAppDelegate.self)
     private var appDelegate
+    @StateObject private var purchaseManager =
+        CopyrightPurchaseManager.shared
 
     var body: some Scene {
         WindowGroup {
             EditorView()
                 .environmentObject(appDelegate.quickActionRouter)
+                .environmentObject(purchaseManager)
                 .tint(HanClipTheme.primary)
                 .foregroundStyle(HanClipTheme.text)
                 .background(HanClipTheme.backgroundGradient)
