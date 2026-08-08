@@ -1,5 +1,8 @@
 package com.hanclip.android.feature.editor
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -52,6 +55,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -62,7 +66,9 @@ import com.hanclip.android.core.model.CopyrightIconColorMode
 import com.hanclip.android.core.model.WatermarkFontSize
 import com.hanclip.android.core.model.WatermarkLineSpacing
 import com.hanclip.android.core.model.WatermarkPosition
+import com.hanclip.android.core.model.WatermarkPlatform
 import com.hanclip.android.core.model.WatermarkSettings
+import com.hanclip.android.core.project.ImportedFontStore
 import com.hanclip.android.core.theme.HanClipPalette
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -82,7 +88,27 @@ fun TextOverlaySheet(
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
 ) {
+    val context = LocalContext.current
     var draft by remember(settings) { mutableStateOf(settings) }
+    var importedFonts by remember { mutableStateOf(ImportedFontStore.list(context)) }
+    val fontPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching { ImportedFontStore.import(context, uri) }
+                .onSuccess { imported ->
+                    importedFonts = ImportedFontStore.list(context)
+                    draft = draft.copy(fontName = imported.id)
+                }
+                .onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "글꼴 파일을 가져오지 못했습니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+        }
+    }
 
     Surface(
         modifier = if (fullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
@@ -138,8 +164,8 @@ fun TextOverlaySheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("HanClip 로고", fontWeight = FontWeight.SemiBold, color = SheetText)
-                    Text("완성 MP4에 HanClip 표시를 작게 합성합니다.", color = SheetSubText)
+                    Text("워터마크", fontWeight = FontWeight.SemiBold, color = SheetText)
+                    Text("완성 MP4에 선택한 플랫폼과 주소를 작게 합성합니다.", color = SheetSubText)
                 }
                 Switch(
                     checked = draft.logoEnabled,
@@ -332,6 +358,34 @@ fun TextOverlaySheet(
                         border = sheetFilterChipBorder(draft.fontName == font)
                     )
                 }
+                importedFonts.forEach { font ->
+                    FilterChip(
+                        selected = draft.fontName == font.id,
+                        onClick = { draft = draft.copy(fontName = font.id) },
+                        label = { Text(font.displayName, fontWeight = FontWeight.SemiBold) },
+                        colors = sheetFilterChipColors(),
+                        border = sheetFilterChipBorder(draft.fontName == font.id)
+                    )
+                }
+                Button(
+                    onClick = {
+                        fontPicker.launch(
+                            arrayOf(
+                                "font/ttf",
+                                "font/otf",
+                                "application/x-font-ttf",
+                                "application/x-font-opentype",
+                                "application/octet-stream"
+                            )
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE9F4EE),
+                        contentColor = SheetText
+                    )
+                ) {
+                    Text("TTF/OTF 가져오기", fontWeight = FontWeight.Bold)
+                }
             }
 
             SettingGroup(title = "색상") {
@@ -353,6 +407,42 @@ fun TextOverlaySheet(
             }
 
             if (draft.logoEnabled) {
+                SettingGroup(title = "플랫폼") {
+                    WatermarkPlatform.entries.forEach { platform ->
+                        FilterChip(
+                            selected = draft.platform == platform,
+                            onClick = { draft = draft.copy(platform = platform) },
+                            label = { Text("${platform.mark} ${platform.title}", fontWeight = FontWeight.SemiBold) },
+                            colors = sheetFilterChipColors(),
+                            border = sheetFilterChipBorder(draft.platform == platform)
+                        )
+                    }
+                }
+
+                if (draft.platform != WatermarkPlatform.HanClip) {
+                    OutlinedTextField(
+                        value = draft.address,
+                        onValueChange = { draft = draft.copy(address = it.take(120)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = {
+                            Text(
+                                if (draft.platform == WatermarkPlatform.Custom) {
+                                    "표시할 자막"
+                                } else {
+                                    "${draft.platform.title} 한 줄 입력"
+                                }
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SheetText,
+                            unfocusedTextColor = SheetText,
+                            focusedBorderColor = palette.primary,
+                            unfocusedBorderColor = palette.border
+                        )
+                    )
+                }
+
                 SettingGroup(title = "HanClip 로고 색상") {
                     listOf(
                         "#007644" to "골프",
@@ -549,6 +639,7 @@ fun TextOverlaySheet(
 
 @Composable
 private fun CaptionPreview(settings: WatermarkSettings) {
+    val context = LocalContext.current
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -608,7 +699,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                     text = settings.text,
                     modifier = Modifier.align(previewAlignment(settings.position)),
                     color = parseHexColor(settings.textColorHex),
-                    fontFamily = fontFamilyForName(settings.fontName),
+                    fontFamily = fontFamilyForName(context, settings.fontName),
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         lineHeight = (18 * settings.lineSpacingScale.coerceIn(0.5, 2.0)).sp,
@@ -617,7 +708,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                 )
             }
             if (settings.logoEnabled) {
-                HanClipLogoPreview(
+                CopyrightLogoPreview(
                     modifier = Modifier
                         .align(previewAlignment(settings.copyrightPosition))
                         .shadow(
@@ -625,6 +716,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
                             ambientColor = parseHexColor(settings.logoShadowColorHex),
                             spotColor = parseHexColor(settings.logoShadowColorHex)
                         ),
+                    settings = settings,
                     color = parseHexColor(settings.effectiveLogoColorHex)
                 )
             }
@@ -649,8 +741,9 @@ private fun CaptionPreview(settings: WatermarkSettings) {
 }
 
 @Composable
-private fun HanClipLogoPreview(
+private fun CopyrightLogoPreview(
     modifier: Modifier = Modifier,
+    settings: WatermarkSettings,
     color: Color
 ) {
     Row(
@@ -658,14 +751,22 @@ private fun HanClipLogoPreview(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Image(
-            painter = painterResource(R.drawable.logo_mark),
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            colorFilter = ColorFilter.tint(color)
-        )
+        if (settings.platform == WatermarkPlatform.HanClip) {
+            Image(
+                painter = painterResource(R.drawable.logo_mark),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                colorFilter = ColorFilter.tint(color)
+            )
+        } else {
+            Text(settings.platform.mark, color = color, fontWeight = FontWeight.Black)
+        }
         Text(
-            text = "HanClip",
+            text = if (settings.platform == WatermarkPlatform.HanClip) {
+                "HanClip"
+            } else {
+                settings.displayCopyrightText
+            },
             color = color,
             fontWeight = FontWeight.Black,
             style = MaterialTheme.typography.labelLarge
@@ -706,7 +807,7 @@ private fun CaptionStateSummary(
                 palette = palette
             )
             CaptionStateChip(
-                text = if (settings.logoEnabled) "HanClip 로고 켬" else "HanClip 로고 꺼짐",
+                text = if (settings.logoEnabled) "${settings.platform.title} 워터마크 켬" else "워터마크 꺼짐",
                 active = settings.logoEnabled,
                 palette = palette
             )
@@ -726,7 +827,7 @@ private fun CaptionStateSummary(
                 palette = palette
             )
             CaptionStateChip(
-                text = "로고 ${watermarkPositionShortTitle(settings.copyrightPosition)}",
+                text = "워터마크 ${watermarkPositionShortTitle(settings.copyrightPosition)}",
                 active = settings.logoEnabled,
                 palette = palette
             )
@@ -768,9 +869,9 @@ private fun previewTextShadow(settings: WatermarkSettings): Shadow? {
 
 private fun applyButtonText(settings: WatermarkSettings): String {
     return when {
-        settings.shouldRenderText && settings.logoEnabled -> "MP4에 자막과 HanClip 로고 적용"
+        settings.shouldRenderText && settings.logoEnabled -> "MP4에 자막과 워터마크 적용"
         settings.shouldRenderText -> "MP4에 자막 적용"
-        settings.logoEnabled -> "MP4에 HanClip 로고 적용"
+        settings.logoEnabled -> "MP4에 워터마크 적용"
         else -> "MP4 자막/로고 끄기 적용"
     }
 }
@@ -779,6 +880,8 @@ private fun hanClipDefaultWatermark(settings: WatermarkSettings): WatermarkSetti
     return settings.copy(
         isEnabled = true,
         logoEnabled = true,
+        address = "",
+        platform = WatermarkPlatform.HanClip,
         text = settings.text.ifBlank { CaptionTextPreset.Swing.text() },
         position = WatermarkPosition.TopLeading,
         copyrightPosition = WatermarkPosition.BottomTrailing,
@@ -931,6 +1034,12 @@ private fun sheetFilterChipBorder(selected: Boolean) = FilterChipDefaults.filter
 )
 
 private fun fontDisplayName(font: String): String {
+    if (ImportedFontStore.isImportedFont(font)) {
+        return font.removePrefix("imported_font:")
+            .substringBeforeLast('.')
+            .substringBeforeLast("--")
+            .ifBlank { "사용자 글꼴" }
+    }
     return when (font) {
         "pretendard" -> "프리텐다드"
         "pretendard_bold" -> "프리텐다드B"
@@ -949,7 +1058,8 @@ private fun fontDisplayName(font: String): String {
     }
 }
 
-private fun fontFamilyForName(font: String): FontFamily {
+private fun fontFamilyForName(context: android.content.Context, font: String): FontFamily {
+    ImportedFontStore.typeface(context, font)?.let { return FontFamily(it) }
     return when (font) {
         "gowun_batang" -> FontFamily.Serif
         "maruburi" -> FontFamily.Serif

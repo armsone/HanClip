@@ -8,6 +8,7 @@ import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
@@ -40,6 +41,7 @@ object MediaImportReader {
         } else {
             null
         }
+        val sourceCreatedAtMillis = readSourceCreatedAtMillis(context, uri)
         val localSourceUri = persistWorkingMedia(context, uri, mimeType)
         val photoFingerprint = if (isImage) {
             makePhotoSimilarityFingerprint(context, localSourceUri)
@@ -53,7 +55,7 @@ object MediaImportReader {
             id = UUID.randomUUID().toString(),
             sourceUri = localSourceUri,
             thumbnailUri = localSourceUri,
-            durationSeconds = max(0.5, selectedDuration),
+            durationSeconds = max(0.1, selectedDuration),
             photoDurationSeconds = defaultDurationSeconds,
             mediaKind = if (isVideo) ClipMediaKind.Video else ClipMediaKind.Photo,
             sourceDurationSeconds = sourceDuration,
@@ -67,6 +69,7 @@ object MediaImportReader {
             audioPeakTimesSeconds = analysis?.peakTimesSeconds ?: emptyList(),
             videoSegmentMode = if (isVideo) defaultVideoSegmentMode else VideoSegmentMode.Single,
             photoSimilarityFingerprint = photoFingerprint,
+            sourceCreatedAtMillis = sourceCreatedAtMillis,
             sourceWidth = metadata?.width ?: imageSize?.first ?: 1,
             sourceHeight = metadata?.height ?: imageSize?.second ?: 1
         )
@@ -78,21 +81,21 @@ object MediaImportReader {
                 val source = ImageDecoder.createSource(context.contentResolver, uri)
                 ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
                     decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    decoder.setTargetSize(8, 8)
+                    decoder.setTargetSize(16, 16)
                 }
             } else {
                 context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
             }
         }.getOrNull() ?: return emptyList()
 
-        val scaled = if (bitmap.width == 8 && bitmap.height == 8) {
+        val scaled = if (bitmap.width == 16 && bitmap.height == 16) {
             bitmap
         } else {
-            Bitmap.createScaledBitmap(bitmap, 8, 8, true)
+            Bitmap.createScaledBitmap(bitmap, 16, 16, true)
         }
-        val fingerprint = buildList(64) {
-            for (y in 0 until 8) {
-                for (x in 0 until 8) {
+        val fingerprint = buildList(16 * 16) {
+            for (y in 0 until 16) {
+                for (x in 0 until 16) {
                     val pixel = scaled.getPixel(x, y)
                     val luminance = (
                         Color.red(pixel) * 0.299 +
@@ -106,6 +109,25 @@ object MediaImportReader {
         if (scaled !== bitmap) scaled.recycle()
         bitmap.recycle()
         return fingerprint
+    }
+
+    private fun readSourceCreatedAtMillis(context: Context, uri: Uri): Long? {
+        return runCatching {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val takenAt = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+                    .takeIf { it >= 0 }
+                    ?.let(cursor::getLong)
+                    ?.takeIf { it > 0L }
+                if (takenAt != null) return@use takenAt
+
+                cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+                    .takeIf { it >= 0 }
+                    ?.let(cursor::getLong)
+                    ?.takeIf { it > 0L }
+                    ?.times(1_000L)
+            }
+        }.getOrNull()
     }
 
     private fun persistWorkingMedia(context: Context, uri: Uri, mimeType: String): Uri {
@@ -221,7 +243,7 @@ object MediaImportReader {
                     MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
                 )?.toIntOrNull() ?: 1
                 VideoMetadata(
-                    durationSeconds = max(0.5, durationMs / 1000.0),
+                    durationSeconds = max(0.1, durationMs / 1000.0),
                     width = width,
                     height = height
                 )

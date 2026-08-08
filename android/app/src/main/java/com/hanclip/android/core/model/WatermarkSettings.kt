@@ -72,9 +72,45 @@ enum class CopyrightIconColorMode(val title: String) {
     }
 }
 
+enum class WatermarkPlatform(val title: String, val mark: String) {
+    HanClip("한클립", "▶"),
+    Instagram("인스타그램", "◎"),
+    Facebook("페이스북", "f"),
+    YouTube("유튜브", "▶"),
+    Blog("블로그", "blog"),
+    KakaoTalk("카카오톡", "TALK"),
+    X("엑스", "𝕏"),
+    Phone("전화번호", "☎"),
+    Homepage("홈페이지", "◎"),
+    Custom("직접입력", "▧");
+
+    val storedValue: String
+        get() = when (this) {
+            HanClip -> "hanclip"
+            Instagram -> "instagram"
+            Facebook -> "facebook"
+            YouTube -> "youtube"
+            Blog -> "blog"
+            KakaoTalk -> "kakaoTalk"
+            X -> "x"
+            Phone -> "phone"
+            Homepage -> "homepage"
+            Custom -> "custom"
+        }
+
+    companion object {
+        fun fromStoredValue(value: String?): WatermarkPlatform {
+            return entries.firstOrNull { it.storedValue == value }
+                ?: if (value == "other") Custom else HanClip
+        }
+    }
+}
+
 data class WatermarkSettings(
     val isEnabled: Boolean = false,
     val logoEnabled: Boolean = false,
+    val address: String = "",
+    val platform: WatermarkPlatform = WatermarkPlatform.HanClip,
     val text: String = "오늘의 스윙\nHanClip",
     val position: WatermarkPosition = WatermarkPosition.TopLeading,
     val fontName: String = "pretendard",
@@ -105,4 +141,7 @@ data class WatermarkSettings(
             CopyrightIconColorMode.Gray -> "#8A8A8A"
             CopyrightIconColorMode.Tint -> copyrightIconColorHex
         }
+
+    val displayCopyrightText: String
+        get() = address.trim().ifBlank { platform.title }
 }

@@ -73,12 +73,12 @@ fun VideoTrimSheet(
     onDismiss: () -> Unit,
     onApplyTrim: (startSeconds: Double, durationSeconds: Double) -> Unit
 ) {
-    val sourceDuration = max(0.5, clip.sourceDurationSeconds ?: clip.durationSeconds)
+    val sourceDuration = max(0.1, clip.sourceDurationSeconds ?: clip.durationSeconds)
     var startSeconds by remember(clip.id) {
         mutableDoubleStateOf(clip.trimStartSeconds.coerceIn(0.0, sourceDuration))
     }
     var durationSeconds by remember(clip.id) {
-        mutableDoubleStateOf(clip.durationSeconds.coerceIn(0.5, sourceDuration))
+        mutableDoubleStateOf(clip.durationSeconds.coerceIn(0.1, sourceDuration))
     }
 
     LaunchedEffect(startSeconds, durationSeconds, sourceDuration) {
@@ -160,7 +160,7 @@ fun VideoTrimSheet(
                 title = "길이",
                 valueText = formatSeconds(durationSeconds),
                 value = durationSeconds,
-                valueRange = 0.5..sourceDuration,
+                valueRange = 0.1..sourceDuration,
                 onValueChange = { value ->
                     durationSeconds = min(value, sourceDuration)
                     if (startSeconds + durationSeconds > sourceDuration) {
@@ -177,7 +177,7 @@ fun VideoTrimSheet(
                     startSeconds = next.coerceIn(0.0, max(0.0, sourceDuration - durationSeconds))
                 },
                 onDurationChange = { next ->
-                    durationSeconds = next.coerceIn(0.5, sourceDuration)
+                    durationSeconds = next.coerceIn(0.1, sourceDuration)
                     if (startSeconds + durationSeconds > sourceDuration) {
                         startSeconds = max(0.0, sourceDuration - durationSeconds)
                     }
@@ -317,7 +317,7 @@ private fun ImpactWaveform(
             .fillMaxWidth()
             .height(64.dp)
     ) {
-        val safeDuration = sourceDuration.coerceAtLeast(0.5)
+        val safeDuration = sourceDuration.coerceAtLeast(0.1)
         val selectedStartX = (startSeconds / safeDuration).toFloat() * size.width
         val selectedEndX = ((startSeconds + durationSeconds) / safeDuration).toFloat() * size.width
         drawRoundRect(
@@ -473,7 +473,7 @@ private fun TrimPrecisionControls(
                 TrimAdjustButton(
                     text = "짧게 0.1초",
                     icon = { Icon(Icons.Outlined.Remove, contentDescription = null) },
-                    enabled = durationSeconds > 0.5,
+                    enabled = durationSeconds > 0.1,
                     palette = palette,
                     modifier = Modifier.weight(1f),
                     onClick = { onDurationChange(durationSeconds - 0.1) }

@@ -232,7 +232,10 @@ fun EditorRoute(
         state.backgroundMusicTitle,
         state.backgroundMusicSampleId,
         state.backgroundMusicVolume,
-        state.originalAudioVolume
+        state.originalAudioVolume,
+        state.backgroundMusicLoopsToFillVideo,
+        state.backgroundMusicFadeInEnabled,
+        state.backgroundMusicFadeOutEnabled
     ) {
         if (state.clips.isNotEmpty() && !state.isImportingMedia && !state.isExporting) {
             viewModel.saveDraft(context)
@@ -329,6 +332,13 @@ fun EditorRoute(
                     musicTitle = state.backgroundMusicTitle,
                     musicVolume = state.backgroundMusicVolume,
                     originalAudioVolume = state.originalAudioVolume,
+                    hasSimilarPhotoGroups = state.clips.any { it.isSimilarPhotoGroupParent },
+                    similarPhotoRepresentativeInterval = state.similarPhotoRepresentativeInterval,
+                    similarPhotoGroupMode = state.clips
+                        .filter { it.isSimilarPhotoGroupParent }
+                        .map { it.videoSegmentMode }
+                        .distinct()
+                        .singleOrNull() ?: VideoSegmentMode.Single,
                     isReorderMode = isReorderMode,
                     sleepPreventionMode = sleepPreventionMode,
                     hasClips = state.clips.isNotEmpty(),
@@ -336,6 +346,10 @@ fun EditorRoute(
                     onSelectQuality = { quality -> viewModel.selectOutputQualityPreset(context, quality) },
                     onOpenTextOverlay = { isTextOverlaySheetVisible = true },
                     onOpenMusicSettings = { isMusicSettingsSheetVisible = true },
+                    onSetSimilarPhotoInterval = { value ->
+                        viewModel.setSimilarPhotoRepresentativeInterval(context, value)
+                    },
+                    onSetSimilarPhotoMode = viewModel::applySimilarPhotoGroupModeToAll,
                     onToggleReorder = { isReorderMode = !isReorderMode },
                     onCycleSleepPrevention = {
                         onSleepPreventionModeChange(sleepPreventionMode.next())
@@ -394,7 +408,7 @@ fun EditorRoute(
                     .takeWhile { it.id != clip.id }
                     .count { it.isRenderableClip }
                     .let { if (clip.isRenderableClip) it + 1 else it }
-                    .takeIf { !clip.isVideoSegmentParent && !clip.isSimilarPhotoGroupMember }
+                    .takeIf { !clip.isVideoSegmentParent && !clip.isSimilarPhotoGroupChild }
                 val childSegmentCount = state.clips.count { it.videoSegmentParentId == clip.id }
                 ClipRow(
                     palette = palette,
@@ -409,8 +423,8 @@ fun EditorRoute(
                             photoDurationClipID = clip.id
                         }
                     },
-                    onDecreaseDuration = { viewModel.adjustClipDuration(clip.id, -0.5) },
-                    onIncreaseDuration = { viewModel.adjustClipDuration(clip.id, 0.5) },
+                    onDecreaseDuration = { viewModel.adjustClipDuration(clip.id, -1.0) },
+                    onIncreaseDuration = { viewModel.adjustClipDuration(clip.id, 1.0) },
                     onMoveUp = { viewModel.moveClipUp(clip.id) },
                     onMoveDown = { viewModel.moveClipDown(clip.id) },
                     onDelete = { viewModel.removeClip(clip.id) },
@@ -660,6 +674,9 @@ fun EditorRoute(
                     currentSampleId = state.backgroundMusicSampleId,
                     musicVolume = state.backgroundMusicVolume,
                     originalAudioVolume = state.originalAudioVolume,
+                    loopsToFillVideo = state.backgroundMusicLoopsToFillVideo,
+                    fadeInEnabled = state.backgroundMusicFadeInEnabled,
+                    fadeOutEnabled = state.backgroundMusicFadeOutEnabled,
                     palette = palette,
                     fullScreen = true,
                     onUseSample = { sample ->
@@ -680,6 +697,9 @@ fun EditorRoute(
                     },
                     onMusicVolumeChange = viewModel::updateBackgroundMusicVolume,
                     onOriginalAudioVolumeChange = viewModel::updateOriginalAudioVolume,
+                    onLoopingChange = viewModel::updateBackgroundMusicLooping,
+                    onFadeInChange = viewModel::updateBackgroundMusicFadeIn,
+                    onFadeOutChange = viewModel::updateBackgroundMusicFadeOut,
                     onDismiss = { isMusicSettingsSheetVisible = false }
                 )
             }
@@ -1904,6 +1924,9 @@ private fun ProjectControls(
     musicTitle: String?,
     musicVolume: Double,
     originalAudioVolume: Double,
+    hasSimilarPhotoGroups: Boolean,
+    similarPhotoRepresentativeInterval: Int,
+    similarPhotoGroupMode: VideoSegmentMode,
     isReorderMode: Boolean,
     sleepPreventionMode: SleepPreventionMode,
     hasClips: Boolean,
@@ -1911,6 +1934,8 @@ private fun ProjectControls(
     onSelectQuality: (OutputQualityPreset) -> Unit,
     onOpenTextOverlay: () -> Unit,
     onOpenMusicSettings: () -> Unit,
+    onSetSimilarPhotoInterval: (Int) -> Unit,
+    onSetSimilarPhotoMode: (VideoSegmentMode) -> Unit,
     onToggleReorder: () -> Unit,
     onCycleSleepPrevention: () -> Unit,
     onResetProject: () -> Unit
@@ -1979,6 +2004,59 @@ private fun ProjectControls(
                 )
             }
         }
+        if (hasSimilarPhotoGroups) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = palette.chip,
+                    border = BorderStroke(1.dp, palette.border)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { onSetSimilarPhotoInterval(similarPhotoRepresentativeInterval - 1) },
+                            enabled = similarPhotoRepresentativeInterval > 1,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Outlined.Remove, contentDescription = "대표사진 간격 줄이기")
+                        }
+                        Text(
+                            "묶음사진 1/$similarPhotoRepresentativeInterval",
+                            color = palette.text,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        IconButton(
+                            onClick = { onSetSimilarPhotoInterval(similarPhotoRepresentativeInterval + 1) },
+                            enabled = similarPhotoRepresentativeInterval < 20,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Outlined.Add, contentDescription = "대표사진 간격 늘리기")
+                        }
+                    }
+                }
+                listOf(
+                    VideoSegmentMode.Single to "자동",
+                    VideoSegmentMode.Multiple to "수동",
+                    VideoSegmentMode.All to "전체"
+                ).forEach { (mode, title) ->
+                    FilterChip(
+                        selected = similarPhotoGroupMode == mode,
+                        onClick = { onSetSimilarPhotoMode(mode) },
+                        label = { Text(title) },
+                        leadingIcon = { Icon(Icons.Outlined.Collections, contentDescription = null) },
+                        colors = clearFilterChipColors(palette),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = similarPhotoGroupMode == mode,
+                            borderColor = palette.border,
+                            selectedBorderColor = palette.primary
+                        )
+                    )
+                }
+            }
+        }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2042,7 +2120,7 @@ private fun ProjectControls(
                     selectedBorderColor = palette.primary
                 )
             )
-            OutputAspectRatio.entries.take(3).forEach { ratio ->
+            OutputAspectRatio.entries.forEach { ratio ->
                 FilterChip(
                     selected = selectedRatio == ratio,
                     onClick = { onSelectRatio(ratio) },
@@ -2138,7 +2216,7 @@ private fun ClipRow(
                 Text(
                     text = when {
                         clip.isVideoSegmentParent -> "·"
-                        clip.isSimilarPhotoGroupMember -> "+"
+                        clip.isSimilarPhotoGroupChild -> "+"
                         else -> "${position ?: 0}"
                     },
                     style = MaterialTheme.typography.titleMedium,
@@ -2163,13 +2241,13 @@ private fun ClipRow(
                     Text(
                         text = when {
                             clip.isVideoSegmentParent -> "$childSegmentCount"
-                            clip.isSimilarPhotoGroupMember -> "+"
+                            clip.isSimilarPhotoGroupChild -> "+"
                             else -> "${position ?: 0}"
                         },
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
-                    if (clip.similarPhotoGroupCount > 1 && clip.isSimilarPhotoGroupRepresentative && !clip.isVideoSegmentParent) {
+                    if (clip.isSimilarPhotoGroupParent) {
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -2222,15 +2300,15 @@ private fun ClipRow(
                             )
                         }
                     }
-                    if (clip.isSimilarPhotoGroupMember) {
+                    if (clip.isSimilarPhotoGroupChild) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             ClipControlPill(
                                 palette = palette,
-                                text = "사용",
-                                active = true,
+                                text = if (clip.isHiddenSimilarPhotoGroupMember) "사용" else "제외",
+                                active = clip.isSimilarPhotoGroupRepresentative,
                                 icon = { Icon(Icons.Outlined.AddCircle, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onIncludeSimilarPhoto
                             )
@@ -2258,7 +2336,7 @@ private fun ClipRow(
                                     onClick = onToggleSegmentMode
                                 )
                             }
-                            if (clip.similarPhotoGroupCount > 1 && clip.isSimilarPhotoGroupRepresentative) {
+                            if (clip.isSimilarPhotoGroupParent) {
                                 ClipControlPill(
                                     palette = palette,
                                     text = if (isSimilarPhotoGroupExpanded) "접기" else "묶음",
@@ -2269,13 +2347,13 @@ private fun ClipRow(
                             }
                             ClipControlPill(
                                 palette = palette,
-                                text = "-0.5초",
+                                text = "-1초",
                                 icon = { Icon(Icons.Outlined.Remove, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onDecreaseDuration
                             )
                             ClipControlPill(
                                 palette = palette,
-                                text = "+0.5초",
+                                text = "+1초",
                                 icon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                 onClick = onIncreaseDuration
                             )
@@ -2449,7 +2527,7 @@ private fun ClipPreviewPlayer(
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
                         .setStartPositionMs((startSeconds * 1000).toLong().coerceAtLeast(0))
-                        .setEndPositionMs((endSeconds * 1000).toLong().coerceAtLeast(500))
+                        .setEndPositionMs((endSeconds * 1000).toLong().coerceAtLeast(100))
                         .build()
                 )
                 .build()
@@ -2557,7 +2635,7 @@ private fun ClipControlPill(
 private fun clipRowFill(clip: ClipItem, palette: HanClipPalette): Color {
     return when {
         clip.isVideoSegmentParent -> palette.chip
-        clip.isSimilarPhotoGroupMember -> palette.chip.copy(alpha = 0.58f)
+        clip.isSimilarPhotoGroupChild -> palette.chip.copy(alpha = 0.58f)
         clip.isVideoSegmentChild -> palette.chip.copy(alpha = 0.72f)
         else -> palette.panel
     }
@@ -2566,7 +2644,7 @@ private fun clipRowFill(clip: ClipItem, palette: HanClipPalette): Color {
 private fun clipRowBorder(clip: ClipItem, palette: HanClipPalette): Color {
     return when {
         clip.isVideoSegmentParent -> palette.primary.copy(alpha = 0.45f)
-        clip.isSimilarPhotoGroupMember -> palette.secondary.copy(alpha = 0.28f)
+        clip.isSimilarPhotoGroupChild -> palette.secondary.copy(alpha = 0.28f)
         clip.isVideoSegmentChild -> palette.secondary.copy(alpha = 0.35f)
         else -> palette.border
     }
@@ -2587,7 +2665,8 @@ private fun clipTitle(clip: ClipItem, position: Int?): String {
     if (clip.isVideoSegmentChild) {
         return position?.let { "완성본 자동 컷 ${it}번" } ?: "완성본 자동 컷"
     }
-    if (clip.isSimilarPhotoGroupMember) return "완성본 제외 후보"
+    if (clip.isHiddenSimilarPhotoGroupMember) return "완성본 제외 후보"
+    if (clip.isSimilarPhotoGroupChild) return "완성본 포함 사진"
     if (clip.similarPhotoGroupCount > 1) return "완성본 대표 사진"
     return when (clip.mediaKind) {
         ClipMediaKind.Video -> "영상"
@@ -2618,7 +2697,8 @@ private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
         clip.isVideoSegmentParent -> "원본은 보관하고 타격점 기준 자동 컷만 완성본에 넣습니다"
         clip.isVideoSegmentChild -> "타격점 중심 구간 · 완성본 번호순 포함"
-        clip.isSimilarPhotoGroupMember -> "비슷한 사진 묶음에서 제외 중 · 사용하면 대표로 바뀝니다"
+        clip.isHiddenSimilarPhotoGroupMember -> "비슷한 사진 묶음에서 제외 중 · 사용하면 완성본에 포함됩니다"
+        clip.isSimilarPhotoGroupChild -> "비슷한 사진 묶음에서 완성본에 포함 중"
         clip.similarPhotoGroupCount > 1 -> "비슷한 사진 ${clip.similarPhotoGroupCount}장 중 이 사진만 완성본에 넣습니다"
         clip.videoSegmentMode == VideoSegmentMode.Multiple -> "타격점 후보 ${clip.audioPeakTimesSeconds.size}개"
         else -> "단일 구간"
@@ -2654,7 +2734,7 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
         if (clip.isVideoSegmentParent) {
             add("원본 보관")
         }
-        if (clip.isSimilarPhotoGroupMember) {
+        if (clip.isHiddenSimilarPhotoGroupMember) {
             add("완성본 제외")
         }
         impactChipText(clip)?.let {
@@ -2664,7 +2744,7 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
             add("자동 ${childSegmentCount}컷")
         }
         if (clip.similarPhotoGroupCount > 1) {
-            add(if (clip.isSimilarPhotoGroupMember) "후보 묶음" else "대표 선택")
+            add(if (clip.isHiddenSimilarPhotoGroupMember) "후보 묶음" else "대표 선택")
         }
     }
 }
@@ -2775,14 +2855,14 @@ private fun GlobalTimePanel(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     IconButton(
-                        onClick = { onSetDuration(defaultDuration - 0.5) },
+                        onClick = { onSetDuration(defaultDuration - 0.1) },
                         modifier = Modifier.size(34.dp)
                     ) {
                         Icon(Icons.Outlined.Remove, contentDescription = "전체 시간 줄이기", tint = palette.secondary)
                     }
                     Text("%.1f초".format(defaultDuration), fontWeight = FontWeight.Bold, color = palette.primary)
                     IconButton(
-                        onClick = { onSetDuration(defaultDuration + 0.5) },
+                        onClick = { onSetDuration(defaultDuration + 0.1) },
                         modifier = Modifier.size(34.dp)
                     ) {
                         Icon(Icons.Outlined.Add, contentDescription = "전체 시간 늘리기", tint = palette.secondary)

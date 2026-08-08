@@ -23,6 +23,7 @@ import com.hanclip.android.core.model.VideoSegmentMode
 import com.hanclip.android.core.project.DraftProject
 import com.hanclip.android.core.project.DraftProjectStore
 import com.hanclip.android.core.project.EditorPreferenceStore
+import com.hanclip.android.core.project.EditableProjectStore
 import com.hanclip.android.core.project.ExportHistoryStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,10 +44,11 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 data class EditorUiState(
+    val activeProjectId: String = UUID.randomUUID().toString(),
     val clips: List<ClipItem> = emptyList(),
     val preset: MoviePreset = MoviePreset.NewMovie,
     val defaultDurationSeconds: Double = 3.0,
-    val defaultVideoSegmentMode: VideoSegmentMode = VideoSegmentMode.Single,
+    val defaultVideoSegmentMode: VideoSegmentMode = VideoSegmentMode.Multiple,
     val outputAspectRatio: OutputAspectRatio? = null,
     val outputQualityPreset: OutputQualityPreset = OutputQualityPreset.Standard,
     val watermarkSettings: WatermarkSettings = WatermarkSettings(),
@@ -57,6 +59,10 @@ data class EditorUiState(
     val backgroundMusicSampleId: String? = null,
     val backgroundMusicVolume: Double = 0.35,
     val originalAudioVolume: Double = 1.0,
+    val similarPhotoRepresentativeInterval: Int = 6,
+    val backgroundMusicLoopsToFillVideo: Boolean = true,
+    val backgroundMusicFadeInEnabled: Boolean = true,
+    val backgroundMusicFadeOutEnabled: Boolean = true,
     val isExporting: Boolean = false,
     val exportedVideoUri: Uri? = null,
     val recentlySavedMovieUriString: String? = null,
@@ -70,7 +76,7 @@ data class EditorUiState(
 
     val visibleClips: List<ClipItem>
         get() = clips.filter { clip ->
-            if (clip.isSimilarPhotoGroupMember) {
+            if (clip.isSimilarPhotoGroupChild) {
                 clip.similarPhotoGroupId in expandedSimilarPhotoGroupIds
             } else {
                 true
@@ -161,7 +167,7 @@ class EditorViewModel : ViewModel() {
                     }
                     val groupedImported = applySimilarPhotoGrouping(expandedImported)
                     val hiddenSimilarPhotoCount = groupedImported.count { clip ->
-                        clip.isSimilarPhotoGroupMember
+                        clip.isHiddenSimilarPhotoGroupMember
                     }
                     val importMessage = mediaImportSummaryMessage(
                         selectedCount = uris.size,
@@ -223,7 +229,10 @@ class EditorViewModel : ViewModel() {
                     watermarkSettings = state.watermarkSettings,
                     backgroundMusicUri = state.backgroundMusicUri,
                     backgroundMusicVolume = state.backgroundMusicVolume,
-                    originalAudioVolume = state.originalAudioVolume
+                    originalAudioVolume = state.originalAudioVolume,
+                    backgroundMusicLoopsToFillVideo = state.backgroundMusicLoopsToFillVideo,
+                    backgroundMusicFadeInEnabled = state.backgroundMusicFadeInEnabled,
+                    backgroundMusicFadeOutEnabled = state.backgroundMusicFadeOutEnabled
                 )
 
                 suspend fun runExportAttempt(
@@ -316,7 +325,7 @@ class EditorViewModel : ViewModel() {
     }
 
     fun setDefaultDuration(context: Context, seconds: Double) {
-        val safeSeconds = seconds.coerceIn(0.5, 30.0)
+        val safeSeconds = seconds.coerceIn(0.1, 30.0)
         EditorPreferenceStore.saveDefaultDurationSeconds(context.applicationContext, safeSeconds)
         _uiState.update {
             it.copy(
@@ -450,6 +459,18 @@ class EditorViewModel : ViewModel() {
         }
     }
 
+    fun updateBackgroundMusicLooping(enabled: Boolean) {
+        _uiState.update { it.copy(backgroundMusicLoopsToFillVideo = enabled) }
+    }
+
+    fun updateBackgroundMusicFadeIn(enabled: Boolean) {
+        _uiState.update { it.copy(backgroundMusicFadeInEnabled = enabled) }
+    }
+
+    fun updateBackgroundMusicFadeOut(enabled: Boolean) {
+        _uiState.update { it.copy(backgroundMusicFadeOutEnabled = enabled) }
+    }
+
     fun removeBackgroundMusic() {
         _uiState.update {
             it.copy(
@@ -502,9 +523,8 @@ class EditorViewModel : ViewModel() {
 
     fun saveDraft(context: Context) {
         val state = _uiState.value
-        DraftProjectStore.save(
-            context = context.applicationContext,
-            project = DraftProject(
+        val project = DraftProject(
+                projectId = state.activeProjectId,
                 clips = state.clips,
                 preset = state.preset,
                 defaultDurationSeconds = state.defaultDurationSeconds,
@@ -516,9 +536,27 @@ class EditorViewModel : ViewModel() {
                 backgroundMusicTitle = state.backgroundMusicTitle,
                 backgroundMusicSampleId = state.backgroundMusicSampleId,
                 backgroundMusicVolume = state.backgroundMusicVolume,
-                originalAudioVolume = state.originalAudioVolume
+                originalAudioVolume = state.originalAudioVolume,
+                backgroundMusicLoopsToFillVideo = state.backgroundMusicLoopsToFillVideo,
+                backgroundMusicFadeInEnabled = state.backgroundMusicFadeInEnabled,
+                backgroundMusicFadeOutEnabled = state.backgroundMusicFadeOutEnabled
             )
-        )
+        val persistedProject = EditableProjectStore.upsert(context.applicationContext, project)
+        DraftProjectStore.save(context.applicationContext, persistedProject)
+        if (persistedProject.clips != state.clips ||
+            persistedProject.backgroundMusicUri != state.backgroundMusicUri
+        ) {
+            _uiState.update { current ->
+                if (current.activeProjectId == persistedProject.projectId) {
+                    current.copy(
+                        clips = persistedProject.clips,
+                        backgroundMusicUri = persistedProject.backgroundMusicUri
+                    )
+                } else {
+                    current
+                }
+            }
+        }
     }
 
     fun openDraft(context: Context): Boolean {
@@ -526,6 +564,7 @@ class EditorViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 clips = draft.clips,
+                activeProjectId = draft.projectId,
                 preset = draft.preset,
                 defaultDurationSeconds = draft.defaultDurationSeconds,
                 defaultVideoSegmentMode = draft.defaultVideoSegmentMode,
@@ -537,8 +576,40 @@ class EditorViewModel : ViewModel() {
                 backgroundMusicSampleId = draft.backgroundMusicSampleId,
                 backgroundMusicVolume = draft.backgroundMusicVolume,
                 originalAudioVolume = draft.originalAudioVolume,
+                backgroundMusicLoopsToFillVideo = draft.backgroundMusicLoopsToFillVideo,
+                backgroundMusicFadeInEnabled = draft.backgroundMusicFadeInEnabled,
+                backgroundMusicFadeOutEnabled = draft.backgroundMusicFadeOutEnabled,
                 importedMediaCount = draft.clips.count { clip -> clip.isRenderableClip },
                 alertMessage = null
+            )
+        }
+        return true
+    }
+
+    fun openEditableProject(context: Context, projectId: String): Boolean {
+        val project = EditableProjectStore.load(context.applicationContext, projectId) ?: return false
+        DraftProjectStore.save(context.applicationContext, project)
+        _uiState.update {
+            it.copy(
+                activeProjectId = project.projectId,
+                clips = project.clips,
+                preset = project.preset,
+                defaultDurationSeconds = project.defaultDurationSeconds,
+                defaultVideoSegmentMode = project.defaultVideoSegmentMode,
+                outputAspectRatio = project.outputAspectRatio,
+                outputQualityPreset = project.outputQualityPreset,
+                watermarkSettings = project.watermarkSettings,
+                backgroundMusicUri = project.backgroundMusicUri,
+                backgroundMusicTitle = project.backgroundMusicTitle,
+                backgroundMusicSampleId = project.backgroundMusicSampleId,
+                backgroundMusicVolume = project.backgroundMusicVolume,
+                originalAudioVolume = project.originalAudioVolume,
+                backgroundMusicLoopsToFillVideo = project.backgroundMusicLoopsToFillVideo,
+                backgroundMusicFadeInEnabled = project.backgroundMusicFadeInEnabled,
+                backgroundMusicFadeOutEnabled = project.backgroundMusicFadeOutEnabled,
+                importedMediaCount = project.clips.count { clip -> clip.isRenderableClip },
+                alertMessage = null,
+                undoDeleteMessage = null
             )
         }
         return true
@@ -554,7 +625,7 @@ class EditorViewModel : ViewModel() {
 
     fun updatePhotoDuration(id: String, durationSeconds: Double) {
         _uiState.update { state ->
-            val safeDuration = durationSeconds.coerceIn(0.5, 30.0)
+            val safeDuration = durationSeconds.coerceIn(0.1, 30.0)
             state.copy(
                 clips = state.clips.map { clip ->
                     if (clip.id == id && clip.mediaKind != ClipMediaKind.Video) {
@@ -581,7 +652,7 @@ class EditorViewModel : ViewModel() {
                         clip
                     } else {
                         val sourceDuration = clip.sourceDurationSeconds ?: clip.durationSeconds
-                        val safeDuration = min(sourceDuration, max(0.5, durationSeconds))
+                        val safeDuration = min(sourceDuration, max(0.1, durationSeconds))
                         clip.copy(
                             durationSeconds = safeDuration,
                             photoDurationSeconds = safeDuration,
@@ -593,7 +664,7 @@ class EditorViewModel : ViewModel() {
                     }
                 },
                 alertMessage = "선택한 영상 구간을 MP4 완성본에 %.1f초로 적용했습니다. 현재 작업도 자동 저장됩니다."
-                    .format(durationSeconds.coerceAtLeast(0.5)),
+                    .format(durationSeconds.coerceAtLeast(0.1)),
                 undoDeleteMessage = null
             )
         }
@@ -608,7 +679,7 @@ class EditorViewModel : ViewModel() {
                     } else if (clip.mediaKind == ClipMediaKind.Video) {
                         val sourceDuration = clip.sourceDurationSeconds ?: clip.durationSeconds
                         val center = clip.trimStartSeconds + clip.durationSeconds / 2.0
-                        val newDuration = min(sourceDuration, max(0.5, clip.durationSeconds + deltaSeconds))
+                        val newDuration = min(sourceDuration, max(0.1, clip.durationSeconds + deltaSeconds))
                         clip.copy(
                             durationSeconds = newDuration,
                             photoDurationSeconds = newDuration,
@@ -618,7 +689,7 @@ class EditorViewModel : ViewModel() {
                             )
                         )
                     } else {
-                        val newDuration = max(0.5, clip.durationSeconds + deltaSeconds)
+                        val newDuration = max(0.1, clip.durationSeconds + deltaSeconds)
                         clip.copy(
                             durationSeconds = newDuration,
                             photoDurationSeconds = newDuration,
@@ -680,17 +751,17 @@ class EditorViewModel : ViewModel() {
                     durationSeconds = min(
                         state.defaultDurationSeconds,
                         clip.sourceDurationSeconds ?: clip.durationSeconds
-                    ).coerceAtLeast(0.5),
+                    ).coerceAtLeast(0.1),
                     photoDurationSeconds = min(
                         state.defaultDurationSeconds,
                         clip.sourceDurationSeconds ?: clip.durationSeconds
-                    ).coerceAtLeast(0.5),
+                    ).coerceAtLeast(0.1),
                     trimStartSeconds = centeredTrimStart(
                         clip = clip,
                         selectedDuration = min(
                             state.defaultDurationSeconds,
                             clip.sourceDurationSeconds ?: clip.durationSeconds
-                        ).coerceAtLeast(0.5)
+                        ).coerceAtLeast(0.1)
                     )
                 )
                 return@update state.copy(
@@ -737,7 +808,7 @@ class EditorViewModel : ViewModel() {
             }
 
             val sourceDuration = clip.sourceDurationSeconds ?: clip.durationSeconds
-            val selectedDuration = min(state.defaultDurationSeconds, sourceDuration).coerceAtLeast(0.5)
+            val selectedDuration = min(state.defaultDurationSeconds, sourceDuration).coerceAtLeast(0.1)
             val baseClip = clip.copy(
                 videoSegmentMode = VideoSegmentMode.Single,
                 isVideoSegmentParent = false,
@@ -838,31 +909,102 @@ class EditorViewModel : ViewModel() {
         _uiState.update { state ->
             val target = state.clips.firstOrNull { it.id == id }
             val groupId = target?.similarPhotoGroupId ?: return@update state
+            val shouldInclude = !target.isSimilarPhotoGroupRepresentative
             lastUndoSnapshot = EditorUndoSnapshot(
                 state = state,
-                restoredMessage = "사진 포함을 되돌렸습니다."
+                restoredMessage = if (shouldInclude) "사진 포함을 되돌렸습니다." else "사진 제외를 되돌렸습니다."
             )
-            val detached = state.clips.map { clip ->
-                if (clip.id == id) {
-                    clip.copy(
-                        similarPhotoGroupId = null,
-                        similarPhotoGroupIndex = 0,
-                        similarPhotoGroupCount = 1,
-                        isSimilarPhotoGroupRepresentative = true
-                    )
-                } else {
-                    clip
+            val rebalanced = state.clips.map { clip ->
+                when {
+                    clip.id == id -> clip.copy(isSimilarPhotoGroupRepresentative = shouldInclude)
+                    clip.similarPhotoGroupId == groupId && clip.isSimilarPhotoGroupParent ->
+                        clip.copy(videoSegmentMode = VideoSegmentMode.Multiple)
+                    else -> clip
                 }
             }
-            val rebalanced = rebalanceSimilarPhotoGroup(detached, groupId)
             state.copy(
                 clips = rebalanced,
                 importedMediaCount = rebalanced.count { it.isRenderableClip },
                 expandedSimilarPhotoGroupIds = state.expandedSimilarPhotoGroupIds
                     .filter { expandedGroupId -> rebalanced.any { it.similarPhotoGroupId == expandedGroupId } }
                     .toSet(),
-                alertMessage = "묶음 사진을 독립 클립으로 추가했습니다. 필요하면 되돌릴 수 있습니다.",
-                undoDeleteMessage = "방금 포함한 사진을 다시 묶음 상태로 되돌릴 수 있습니다."
+                alertMessage = if (shouldInclude) {
+                    "묶음 사진을 완성본에 포함했습니다. 묶음 관계와 순서는 그대로 유지됩니다."
+                } else {
+                    "묶음 사진을 완성본에서 제외했습니다. 묶음 관계와 순서는 그대로 유지됩니다."
+                },
+                undoDeleteMessage = if (shouldInclude) {
+                    "방금 포함한 사진을 다시 제외할 수 있습니다."
+                } else {
+                    "방금 제외한 사진을 다시 포함할 수 있습니다."
+                }
+            )
+        }
+    }
+
+    fun setSimilarPhotoGroupMode(id: String, mode: VideoSegmentMode) {
+        _uiState.update { state ->
+            val parent = state.clips.firstOrNull { it.id == id && it.isSimilarPhotoGroupParent }
+                ?: return@update state
+            val groupId = parent.similarPhotoGroupId ?: return@update state
+            val groupIndices = state.clips.indices.filter { state.clips[it].similarPhotoGroupId == groupId }
+            val representativeIds = when (mode) {
+                VideoSegmentMode.Single -> automaticSimilarPhotoRepresentativeIds(
+                    state.clips,
+                    groupIndices,
+                    state.similarPhotoRepresentativeInterval
+                )
+                VideoSegmentMode.Multiple -> state.clips
+                    .filter { it.similarPhotoGroupId == groupId && it.isSimilarPhotoGroupRepresentative }
+                    .mapTo(mutableSetOf()) { it.id }
+                    .apply { if (isEmpty()) add(parent.id) }
+                VideoSegmentMode.All -> groupIndices.mapTo(mutableSetOf()) { state.clips[it].id }
+            }
+            val updated = state.clips.map { clip ->
+                if (clip.similarPhotoGroupId != groupId) clip else clip.copy(
+                    videoSegmentMode = if (clip.isSimilarPhotoGroupParent) mode else clip.videoSegmentMode,
+                    isSimilarPhotoGroupRepresentative = clip.id in representativeIds
+                )
+            }
+            state.copy(
+                clips = updated,
+                importedMediaCount = updated.count { it.isRenderableClip },
+                expandedSimilarPhotoGroupIds = if (mode == VideoSegmentMode.Single) {
+                    state.expandedSimilarPhotoGroupIds - groupId
+                } else {
+                    state.expandedSimilarPhotoGroupIds + groupId
+                }
+            )
+        }
+    }
+
+    fun applySimilarPhotoGroupModeToAll(mode: VideoSegmentMode) {
+        val parentIds = _uiState.value.clips.filter { it.isSimilarPhotoGroupParent }.map { it.id }
+        parentIds.forEach { setSimilarPhotoGroupMode(it, mode) }
+    }
+
+    fun setSimilarPhotoRepresentativeInterval(context: Context, value: Int) {
+        val normalized = value.coerceIn(1, 20)
+        EditorPreferenceStore.saveSimilarPhotoRepresentativeInterval(context.applicationContext, normalized)
+        _uiState.update { state ->
+            var updated = state.clips
+            val automaticParents = updated.filter {
+                it.isSimilarPhotoGroupParent && it.videoSegmentMode == VideoSegmentMode.Single
+            }
+            automaticParents.forEach { parent ->
+                val groupId = parent.similarPhotoGroupId ?: return@forEach
+                val indices = updated.indices.filter { updated[it].similarPhotoGroupId == groupId }
+                val representativeIds = automaticSimilarPhotoRepresentativeIds(updated, indices, normalized)
+                updated = updated.map { clip ->
+                    if (clip.similarPhotoGroupId == groupId) {
+                        clip.copy(isSimilarPhotoGroupRepresentative = clip.id in representativeIds)
+                    } else clip
+                }
+            }
+            state.copy(
+                clips = updated,
+                similarPhotoRepresentativeInterval = normalized,
+                importedMediaCount = updated.count { it.isRenderableClip }
             )
         }
     }
@@ -886,6 +1028,7 @@ class EditorViewModel : ViewModel() {
             )
         }
         DraftProjectStore.clear(context.applicationContext)
+        EditableProjectStore.remove(context.applicationContext, previousState.activeProjectId)
         _uiState.update { state ->
             state.copy(
                 clips = emptyList(),
@@ -982,15 +1125,27 @@ class EditorViewModel : ViewModel() {
         fun commitCurrentGroup() {
             if (currentGroup.size <= 1) return
             val groupId = UUID.randomUUID().toString()
-            val representativeIndex = currentGroup.maxBy { index ->
+            val rankedIndices = currentGroup.sortedByDescending { index ->
                 photoRepresentativeScore(mutable[index])
             }
-            currentGroup.forEachIndexed { offset, clipIndex ->
-                mutable[clipIndex] = mutable[clipIndex].copy(
+            val representativeInterval = _uiState.value.similarPhotoRepresentativeInterval
+            val representativeCount = (currentGroup.size + representativeInterval - 1) /
+                representativeInterval
+            val representativeIds = rankedIndices
+                .take(representativeCount)
+                .mapTo(mutableSetOf()) { mutable[it].id }
+            val bestIndex = rankedIndices.first()
+            val orderedClips = buildList {
+                add(mutable[bestIndex])
+                currentGroup.filter { it != bestIndex }.forEach { add(mutable[it]) }
+            }
+            val groupStart = currentGroup.first()
+            orderedClips.forEachIndexed { offset, clip ->
+                mutable[groupStart + offset] = clip.copy(
                     similarPhotoGroupId = groupId,
                     similarPhotoGroupIndex = offset,
                     similarPhotoGroupCount = currentGroup.size,
-                    isSimilarPhotoGroupRepresentative = clipIndex == representativeIndex
+                    isSimilarPhotoGroupRepresentative = clip.id in representativeIds
                 )
             }
         }
@@ -1025,18 +1180,68 @@ class EditorViewModel : ViewModel() {
     }
 
     private fun canGroupAsSimilarPhoto(clip: ClipItem): Boolean {
-        return clip.mediaKind == ClipMediaKind.Photo && clip.photoSimilarityFingerprint.size == 64
+        return clip.mediaKind == ClipMediaKind.Photo && clip.photoSimilarityFingerprint.size >= 16 * 16
     }
 
     private fun areSimilarPhotos(lhs: ClipItem, rhs: ClipItem): Boolean {
+        val lhsCreatedAt = lhs.sourceCreatedAtMillis ?: return false
+        val rhsCreatedAt = rhs.sourceCreatedAtMillis ?: return false
+        if (abs(lhsCreatedAt - rhsCreatedAt) > 45_000L) return false
+
         val aspectDifference = abs(lhs.sourceAspectRatio - rhs.sourceAspectRatio)
-        if (aspectDifference > 0.10) return false
-        return photoFingerprintDistance(lhs.photoSimilarityFingerprint, rhs.photoSimilarityFingerprint) <= 18.0
+        if (aspectDifference > 0.06) return false
+        val lhsFingerprint = lhs.photoSimilarityFingerprint.take(16 * 16)
+        val rhsFingerprint = rhs.photoSimilarityFingerprint.take(16 * 16)
+        if (photoTranslatedDistance(lhsFingerprint, rhsFingerprint, subtractMean = false) > 28.0) {
+            return false
+        }
+        if (photoTranslatedDistance(lhsFingerprint, rhsFingerprint, subtractMean = true) > 30.0) {
+            return false
+        }
+        return abs(photoFingerprintMean(lhsFingerprint) - photoFingerprintMean(rhsFingerprint)) <= 28.0
     }
 
-    private fun photoFingerprintDistance(lhs: List<Int>, rhs: List<Int>): Double {
+    private fun photoTranslatedDistance(
+        lhs: List<Int>,
+        rhs: List<Int>,
+        subtractMean: Boolean
+    ): Double {
         if (lhs.size != rhs.size || lhs.isEmpty()) return Double.POSITIVE_INFINITY
-        return lhs.zip(rhs).sumOf { (left, right) -> abs(left - right).toDouble() } / lhs.size
+        val dimension = 16
+        val lhsMean = if (subtractMean) photoFingerprintMean(lhs) else 0.0
+        val rhsMean = if (subtractMean) photoFingerprintMean(rhs) else 0.0
+        var bestDistance = lhs.indices.sumOf { index ->
+            abs((lhs[index] - lhsMean) - (rhs[index] - rhsMean))
+        } / lhs.size
+
+        for (yOffset in -2..2) {
+            for (xOffset in -2..2) {
+                if (xOffset == 0 && yOffset == 0) continue
+                var total = 0.0
+                var comparedCount = 0
+                for (y in 0 until dimension) {
+                    for (x in 0 until dimension) {
+                        val shiftedX = x + xOffset
+                        val shiftedY = y + yOffset
+                        if (shiftedX !in 0 until dimension || shiftedY !in 0 until dimension) continue
+                        total += abs(
+                            (lhs[y * dimension + x] - lhsMean) -
+                                (rhs[shiftedY * dimension + shiftedX] - rhsMean)
+                        )
+                        comparedCount += 1
+                    }
+                }
+                if (comparedCount > 0) {
+                    bestDistance = min(bestDistance, total / comparedCount)
+                }
+            }
+        }
+        return bestDistance
+    }
+
+    private fun photoFingerprintMean(values: List<Int>): Double {
+        if (values.isEmpty()) return 0.0
+        return values.sum().toDouble() / values.size
     }
 
     private fun photoRepresentativeScore(clip: ClipItem): Double {
@@ -1051,6 +1256,17 @@ class EditorViewModel : ViewModel() {
             abs(left - right)
         } / max(1, fingerprint.size - 1).toDouble() / 55.0
         return exposureScore * 0.42 + min(1.0, contrast) * 0.34 + min(1.0, detail) * 0.24
+    }
+
+    private fun automaticSimilarPhotoRepresentativeIds(
+        clips: List<ClipItem>,
+        indices: List<Int>,
+        interval: Int
+    ): Set<String> {
+        val count = (indices.size + interval.coerceAtLeast(1) - 1) / interval.coerceAtLeast(1)
+        return indices.sortedByDescending { photoRepresentativeScore(clips[it]) }
+            .take(count.coerceAtLeast(1))
+            .mapTo(mutableSetOf()) { clips[it].id }
     }
 
     private fun rebalanceSimilarPhotoGroup(clips: List<ClipItem>, groupId: String): List<ClipItem> {
@@ -1142,15 +1358,14 @@ class EditorViewModel : ViewModel() {
         val outputAspectRatio = context?.let(EditorPreferenceStore::outputAspectRatio)
         val outputQualityPreset = context?.let(EditorPreferenceStore::outputQualityPreset)
             ?: OutputQualityPreset.Standard
+        val similarPhotoRepresentativeInterval = context?.let(
+            EditorPreferenceStore::similarPhotoRepresentativeInterval
+        ) ?: 6
         val sampleMusic = presetSampleMusic(preset)
         return EditorUiState(
             preset = preset,
             defaultDurationSeconds = defaultDuration,
-            defaultVideoSegmentMode = if (preset == MoviePreset.NewMovie) {
-                VideoSegmentMode.Single
-            } else {
-                VideoSegmentMode.Multiple
-            },
+            defaultVideoSegmentMode = VideoSegmentMode.Multiple,
             outputAspectRatio = outputAspectRatio,
             outputQualityPreset = outputQualityPreset,
             watermarkSettings = presetWatermark(preset),
@@ -1158,7 +1373,8 @@ class EditorViewModel : ViewModel() {
             backgroundMusicTitle = sampleMusic?.title,
             backgroundMusicSampleId = sampleMusic?.id,
             backgroundMusicVolume = 0.35,
-            originalAudioVolume = 1.0
+            originalAudioVolume = 1.0,
+            similarPhotoRepresentativeInterval = similarPhotoRepresentativeInterval
         )
     }
 
@@ -1377,7 +1593,7 @@ class EditorViewModel : ViewModel() {
         }
 
         val sourceDuration = clip.sourceDurationSeconds ?: clip.durationSeconds
-        val selectedDuration = min(defaultDurationSeconds, sourceDuration).coerceAtLeast(0.5)
+        val selectedDuration = min(defaultDurationSeconds, sourceDuration).coerceAtLeast(0.1)
         val peaks = normalizedSegmentPeaks(
             clip = clip,
             sourceDuration = sourceDuration,

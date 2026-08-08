@@ -12,12 +12,17 @@ import com.hanclip.android.core.model.VideoSegmentMode
 import com.hanclip.android.core.model.CopyrightIconColorMode
 import com.hanclip.android.core.model.WatermarkFontSize
 import com.hanclip.android.core.model.WatermarkLineSpacing
+import com.hanclip.android.core.model.WatermarkPlatform
 import com.hanclip.android.core.model.WatermarkPosition
 import com.hanclip.android.core.model.WatermarkSettings
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.nio.file.Files
+import java.util.UUID
 
 data class DraftProject(
+    val projectId: String = UUID.randomUUID().toString(),
     val clips: List<ClipItem>,
     val preset: MoviePreset,
     val defaultDurationSeconds: Double,
@@ -30,6 +35,9 @@ data class DraftProject(
     val backgroundMusicSampleId: String? = null,
     val backgroundMusicVolume: Double = 0.35,
     val originalAudioVolume: Double = 1.0,
+    val backgroundMusicLoopsToFillVideo: Boolean = true,
+    val backgroundMusicFadeInEnabled: Boolean = true,
+    val backgroundMusicFadeOutEnabled: Boolean = true,
     val savedAtMillis: Long = System.currentTimeMillis()
 )
 
@@ -69,6 +77,7 @@ object DraftProjectStore {
 
 private fun DraftProject.toJson(): JSONObject {
     return JSONObject()
+        .put("projectId", projectId)
         .put("preset", preset.routeValue)
         .put("defaultDurationSeconds", defaultDurationSeconds)
         .put("defaultVideoSegmentMode", defaultVideoSegmentMode.name)
@@ -79,6 +88,9 @@ private fun DraftProject.toJson(): JSONObject {
         .put("backgroundMusicSampleId", backgroundMusicSampleId)
         .put("backgroundMusicVolume", backgroundMusicVolume)
         .put("originalAudioVolume", originalAudioVolume)
+        .put("backgroundMusicLoopsToFillVideo", backgroundMusicLoopsToFillVideo)
+        .put("backgroundMusicFadeInEnabled", backgroundMusicFadeInEnabled)
+        .put("backgroundMusicFadeOutEnabled", backgroundMusicFadeOutEnabled)
         .put("savedAtMillis", savedAtMillis)
         .put("watermarkSettings", watermarkSettings.toJson())
         .put("clips", JSONArray().also { array ->
@@ -89,6 +101,8 @@ private fun DraftProject.toJson(): JSONObject {
 private fun JSONObject.toDraftProject(): DraftProject {
     val clipsArray = optJSONArray("clips") ?: JSONArray()
     return DraftProject(
+        projectId = optString("projectId").takeIf { it.isNotBlank() }
+            ?: UUID.randomUUID().toString(),
         clips = List(clipsArray.length()) { index ->
             clipsArray.getJSONObject(index).toClipItem()
         },
@@ -116,9 +130,292 @@ private fun JSONObject.toDraftProject(): DraftProject {
             .takeIf { it.isNotBlank() && it != "null" },
         backgroundMusicVolume = optDouble("backgroundMusicVolume", 0.35),
         originalAudioVolume = optDouble("originalAudioVolume", 1.0),
+        backgroundMusicLoopsToFillVideo = optBoolean("backgroundMusicLoopsToFillVideo", true),
+        backgroundMusicFadeInEnabled = optBoolean("backgroundMusicFadeInEnabled", true),
+        backgroundMusicFadeOutEnabled = optBoolean("backgroundMusicFadeOutEnabled", true),
         savedAtMillis = optLong("savedAtMillis", System.currentTimeMillis())
     )
 }
+
+data class EditableProjectSummary(
+    val projectId: String,
+    val preset: MoviePreset,
+    val clipCount: Int,
+    val totalDurationSeconds: Double,
+    val outputAspectRatio: OutputAspectRatio?,
+    val outputQualityPreset: OutputQualityPreset,
+    val savedAtMillis: Long,
+    val isPinned: Boolean,
+    val memo: String
+)
+
+enum class EditableProjectPinResult {
+    Toggled,
+    LimitReached,
+    Missing
+}
+
+object EditableProjectStore {
+    private const val PreferencesName = "hanclip_editable_projects"
+    private const val ProjectsKey = "projects"
+    private const val ProjectsDirectoryName = "editable-projects"
+    private const val ProjectMetadataFilename = "project.json"
+    private const val MediaDirectoryName = "media"
+    const val MaximumProjectCount = 10
+    const val MaximumAiShotProjectCount = 2
+    const val MaximumPinnedProjectCount = 5
+
+    fun upsert(context: Context, project: DraftProject): DraftProject {
+        val records = loadRecords(context).toMutableList()
+        val existingIndex = records.indexOfFirst { it.project.projectId == project.projectId }
+        val existing = records.getOrNull(existingIndex)
+        val record = EditableProjectRecord(
+            project = persistProjectMedia(
+                context,
+                project.copy(savedAtMillis = System.currentTimeMillis())
+            ),
+            isPinned = existing?.isPinned ?: false,
+            memo = existing?.memo.orEmpty()
+        )
+        if (existingIndex >= 0) records[existingIndex] = record else records += record
+        saveRecords(context, enforceLimits(records))
+        return load(context, project.projectId) ?: record.project
+    }
+
+    fun load(context: Context, projectId: String): DraftProject? {
+        return loadRecords(context).firstOrNull { it.project.projectId == projectId }?.project
+    }
+
+    fun list(context: Context): List<EditableProjectSummary> {
+        return loadRecords(context)
+            .sortedWith(
+                compareByDescending<EditableProjectRecord> { it.isPinned }
+                    .thenByDescending { it.project.savedAtMillis }
+            )
+            .map { record ->
+                EditableProjectSummary(
+                    projectId = record.project.projectId,
+                    preset = record.project.preset,
+                    clipCount = record.project.clips.count { it.isRenderableClip },
+                    totalDurationSeconds = record.project.clips
+                        .filter { it.isRenderableClip }
+                        .sumOf { it.durationSeconds },
+                    outputAspectRatio = record.project.outputAspectRatio,
+                    outputQualityPreset = record.project.outputQualityPreset,
+                    savedAtMillis = record.project.savedAtMillis,
+                    isPinned = record.isPinned,
+                    memo = record.memo
+                )
+            }
+    }
+
+    fun remove(context: Context, projectId: String) {
+        saveRecords(context, loadRecords(context).filterNot { it.project.projectId == projectId })
+    }
+
+    fun updateMemo(context: Context, projectId: String, memo: String) {
+        saveRecords(
+            context,
+            loadRecords(context).map { record ->
+                if (record.project.projectId == projectId) record.copy(memo = memo.trim()) else record
+            }
+        )
+    }
+
+    fun togglePinned(context: Context, projectId: String): EditableProjectPinResult {
+        val records = loadRecords(context)
+        val target = records.firstOrNull { it.project.projectId == projectId }
+            ?: return EditableProjectPinResult.Missing
+        if (!target.isPinned && records.count { it.isPinned } >= MaximumPinnedProjectCount) {
+            return EditableProjectPinResult.LimitReached
+        }
+        saveRecords(
+            context,
+            records.map { record ->
+                if (record.project.projectId == projectId) record.copy(isPinned = !record.isPinned) else record
+            }
+        )
+        return EditableProjectPinResult.Toggled
+    }
+
+    private fun enforceLimits(records: List<EditableProjectRecord>): List<EditableProjectRecord> {
+        var kept = records.toMutableList()
+        fun removeOldestUnpinned(candidates: List<EditableProjectRecord>): Boolean {
+            val target = candidates.filterNot { it.isPinned }.minByOrNull { it.project.savedAtMillis }
+                ?: candidates.minByOrNull { it.project.savedAtMillis }
+                ?: return false
+            kept.removeAll { it.project.projectId == target.project.projectId }
+            return true
+        }
+        while (kept.count { it.project.preset == MoviePreset.AiShot } > MaximumAiShotProjectCount) {
+            val oldestAiShot = kept
+                .filter { it.project.preset == MoviePreset.AiShot }
+                .minByOrNull { it.project.savedAtMillis }
+                ?: break
+            kept.removeAll { it.project.projectId == oldestAiShot.project.projectId }
+        }
+        while (kept.size > MaximumProjectCount) {
+            if (!removeOldestUnpinned(kept)) break
+        }
+        return kept
+    }
+
+    private fun loadRecords(context: Context): List<EditableProjectRecord> {
+        val storedRecords = loadFileRecords(context)
+        if (storedRecords.isNotEmpty()) return storedRecords
+
+        val legacyRecords = loadLegacyRecords(context)
+        if (legacyRecords.isNotEmpty()) {
+            saveRecords(context, legacyRecords)
+            return loadFileRecords(context)
+        }
+        return emptyList()
+    }
+
+    private fun loadFileRecords(context: Context): List<EditableProjectRecord> {
+        return projectsRoot(context).listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { directory ->
+                runCatching {
+                    val json = JSONObject(File(directory, ProjectMetadataFilename).readText())
+                    EditableProjectRecord(
+                        project = json.getJSONObject("project").toDraftProject(),
+                        isPinned = json.optBoolean("isPinned", false),
+                        memo = json.optString("memo", "")
+                    )
+                }.getOrNull()
+            }
+            .orEmpty()
+    }
+
+    private fun loadLegacyRecords(context: Context): List<EditableProjectRecord> {
+        val raw = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .getString(ProjectsKey, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            List(array.length()) { index ->
+                val json = array.getJSONObject(index)
+                EditableProjectRecord(
+                    project = json.getJSONObject("project").toDraftProject(),
+                    isPinned = json.optBoolean("isPinned", false),
+                    memo = json.optString("memo", "")
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun saveRecords(context: Context, records: List<EditableProjectRecord>) {
+        val root = projectsRoot(context)
+        val keptDirectoryNames = records.map { safeProjectDirectoryName(it.project.projectId) }.toSet()
+        root.listFiles()
+            ?.filter { it.isDirectory && it.name !in keptDirectoryNames }
+            ?.forEach { directory -> runCatching { directory.deleteRecursively() } }
+
+        records.forEach { originalRecord ->
+            val record = originalRecord.copy(
+                project = persistProjectMedia(context, originalRecord.project)
+            )
+            val directory = projectDirectory(context, record.project.projectId).apply { mkdirs() }
+            val metadata = JSONObject()
+                .put("project", record.project.toJson())
+                .put("isPinned", record.isPinned)
+                .put("memo", record.memo)
+            val destination = File(directory, ProjectMetadataFilename)
+            val staging = File(directory, "$ProjectMetadataFilename.tmp")
+            staging.writeText(metadata.toString())
+            if (!staging.renameTo(destination)) {
+                staging.copyTo(destination, overwrite = true)
+                staging.delete()
+            }
+        }
+        context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .edit()
+            .remove(ProjectsKey)
+            .apply()
+    }
+
+    private fun persistProjectMedia(context: Context, project: DraftProject): DraftProject {
+        val directory = File(projectDirectory(context, project.projectId), MediaDirectoryName)
+            .apply { mkdirs() }
+        val persistedSources = mutableMapOf<String, Uri>()
+        val clips = project.clips.map { clip ->
+            val source = persistedSources.getOrPut(clip.sourceUri.toString()) {
+                persistProjectUri(
+                    context = context,
+                    source = clip.sourceUri,
+                    destination = File(
+                        directory,
+                        "source-${safeFilename(clip.id)}.${fileExtension(clip.sourceUri, clip.mediaKind)}"
+                    )
+                )
+            }
+            val thumbnail = when {
+                clip.thumbnailUri == null -> null
+                clip.thumbnailUri == clip.sourceUri -> source
+                else -> persistProjectUri(
+                    context = context,
+                    source = clip.thumbnailUri,
+                    destination = File(directory, "thumbnail-${safeFilename(clip.id)}.jpg")
+                )
+            }
+            clip.copy(sourceUri = source, thumbnailUri = thumbnail)
+        }
+        val musicUri = project.backgroundMusicUri?.let { source ->
+            persistProjectUri(
+                context = context,
+                source = source,
+                destination = File(directory, "background-music.${fileExtension(source, null)}")
+            )
+        }
+        return project.copy(clips = clips, backgroundMusicUri = musicUri)
+    }
+
+    private fun persistProjectUri(context: Context, source: Uri, destination: File): Uri {
+        if (source.scheme == "sample") return source
+        val sourceFile = source.takeIf { it.scheme == "file" }?.path?.let(::File)
+        if (sourceFile?.canonicalPath == destination.canonicalPath) return Uri.fromFile(destination)
+        if (destination.isFile && destination.length() > 0L) return Uri.fromFile(destination)
+        destination.parentFile?.mkdirs()
+        if (sourceFile?.isFile == true) {
+            runCatching { Files.createLink(destination.toPath(), sourceFile.toPath()) }
+                .recoverCatching { sourceFile.copyTo(destination, overwrite = true) }
+                .getOrThrow()
+        } else {
+            context.contentResolver.openInputStream(source)?.use { input ->
+                destination.outputStream().use(input::copyTo)
+            } ?: error("프로젝트 미디어를 열 수 없습니다: $source")
+        }
+        return Uri.fromFile(destination)
+    }
+
+    private fun projectsRoot(context: Context): File {
+        return File(context.filesDir, ProjectsDirectoryName).apply { mkdirs() }
+    }
+
+    private fun projectDirectory(context: Context, projectId: String): File {
+        return File(projectsRoot(context), safeProjectDirectoryName(projectId))
+    }
+
+    private fun safeProjectDirectoryName(projectId: String): String = safeFilename(projectId)
+
+    private fun safeFilename(value: String): String {
+        return value.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { UUID.randomUUID().toString() }
+    }
+
+    private fun fileExtension(uri: Uri, mediaKind: ClipMediaKind?): String {
+        return uri.lastPathSegment
+            ?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.lowercase()
+            ?.takeIf { it.matches(Regex("[a-z0-9]{1,5}")) }
+            ?: if (mediaKind == ClipMediaKind.Video) "mp4" else "jpg"
+    }
+}
+
+private data class EditableProjectRecord(
+    val project: DraftProject,
+    val isPinned: Boolean,
+    val memo: String
+)
 
 private fun ClipItem.toJson(): JSONObject {
     return JSONObject()
@@ -146,6 +443,7 @@ private fun ClipItem.toJson(): JSONObject {
         .put("photoSimilarityFingerprint", JSONArray().also { array ->
             photoSimilarityFingerprint.forEach(array::put)
         })
+        .put("sourceCreatedAtMillis", sourceCreatedAtMillis)
         .put("similarPhotoGroupId", similarPhotoGroupId)
         .put("similarPhotoGroupIndex", similarPhotoGroupIndex)
         .put("similarPhotoGroupCount", similarPhotoGroupCount)
@@ -177,6 +475,7 @@ private fun JSONObject.toClipItem(): ClipItem {
         videoSegmentParentId = optString("videoSegmentParentId")
             .takeIf { it.isNotBlank() && it != "null" },
         photoSimilarityFingerprint = optIntList("photoSimilarityFingerprint"),
+        sourceCreatedAtMillis = optNullableLong("sourceCreatedAtMillis"),
         similarPhotoGroupId = optString("similarPhotoGroupId")
             .takeIf { it.isNotBlank() && it != "null" },
         similarPhotoGroupIndex = optInt("similarPhotoGroupIndex", 0),
@@ -191,6 +490,8 @@ private fun WatermarkSettings.toJson(): JSONObject {
     return JSONObject()
         .put("isEnabled", isEnabled)
         .put("logoEnabled", logoEnabled)
+        .put("address", address)
+        .put("platform", platform.storedValue)
         .put("text", text)
         .put("position", position.name)
         .put("fontName", fontName)
@@ -214,6 +515,8 @@ private fun JSONObject.toWatermarkSettings(): WatermarkSettings {
     return WatermarkSettings(
         isEnabled = optBoolean("isEnabled", false),
         logoEnabled = optBoolean("logoEnabled", false),
+        address = optString("address", ""),
+        platform = WatermarkPlatform.fromStoredValue(optString("platform", "hanclip")),
         text = optString("text", ""),
         position = enumValueOrDefault(optString("position"), WatermarkPosition.TopLeading),
         fontName = optString("fontName", "pretendard"),
@@ -254,6 +557,11 @@ private fun JSONObject.optIntList(key: String): List<Int> {
 private fun JSONObject.optNullableDouble(key: String): Double? {
     if (!has(key) || isNull(key)) return null
     return optDouble(key)
+}
+
+private fun JSONObject.optNullableLong(key: String): Long? {
+    if (!has(key) || isNull(key)) return null
+    return optLong(key)
 }
 
 private inline fun <reified T : Enum<T>> enumValueOrNull(value: String): T? {

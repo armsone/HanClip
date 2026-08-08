@@ -8,6 +8,9 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
+import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -84,6 +87,7 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.ceil
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -126,9 +130,11 @@ private enum class ShotLength(
 }
 
 private enum class ZoomPreset(val title: String, val ratio: Double) {
+    Half(".5", 0.5),
     One("1x", 1.0),
     Two("2x", 2.0),
-    Four("4x", 4.0)
+    Four("4x", 4.0),
+    Eight("8x", 8.0)
 }
 
 private object AiShotModelInfo {
@@ -237,6 +243,7 @@ fun AiShotRoute(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val cameraExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+    val visualAnalyzer = remember { RealtimeVisualAnalyzer() }
 
     var hasPermissions by remember {
         mutableStateOf(context.hasAiShotPermissions())
@@ -379,6 +386,7 @@ fun AiShotRoute(
             .build()
         runCatching {
             cameraProvider.unbindAll()
+            visualAnalyzer.reset()
             camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
             videoCapture = capture
         }.onFailure {
@@ -397,11 +405,24 @@ fun AiShotRoute(
         }
     }
 
+    LaunchedEffect(previewView, camera) {
+        val view = previewView ?: return@LaunchedEffect
+        if (camera == null) return@LaunchedEffect
+        while (isActive) {
+            delay(220L)
+            val textureView = view.getChildAt(0) as? TextureView ?: continue
+            val bitmap = textureView.getBitmap(8, 8) ?: continue
+            visualAnalyzer.analyze(bitmap)
+            bitmap.recycle()
+        }
+    }
+
     LaunchedEffect(hasPermissions, sensitivity, recording) {
         if (!hasPermissions || recording != null) return@LaunchedEffect
         withContext(Dispatchers.Default) {
             monitorImpactAudio(
                 sensitivity = sensitivity,
+                visualAnalyzer = visualAnalyzer,
                 onLevel = {
                     withContext(Dispatchers.Main) {
                         level = it
@@ -434,6 +455,7 @@ fun AiShotRoute(
             AndroidView(
                 factory = { viewContext ->
                     PreviewView(viewContext).apply {
+                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                         scaleType = PreviewView.ScaleType.FILL_CENTER
                         previewView = this
                     }
@@ -581,7 +603,12 @@ private fun AiShotBottomPanel(
                 }
             }
             ChipRow {
-                ShotSensitivity.entries.forEach {
+                listOf(
+                    ShotSensitivity.Loud,
+                    ShotSensitivity.Normal,
+                    ShotSensitivity.Quiet,
+                    ShotSensitivity.Auto
+                ).forEach {
                     DarkFilterChip(
                         text = it.title,
                         selected = sensitivity == it,
@@ -667,7 +694,7 @@ private fun AiShotFloatingControls(
     ) {
         Row(
             modifier = Modifier
-                .width(220.dp)
+                .fillMaxWidth(0.90f)
                 .height(46.dp)
                 .background(Color.Black.copy(alpha = 0.34f), CircleShape)
                 .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
@@ -979,6 +1006,7 @@ private fun PermissionPanel(onRequest: () -> Unit) {
 @SuppressLint("MissingPermission")
 private suspend fun monitorImpactAudio(
     sensitivity: ShotSensitivity,
+    visualAnalyzer: RealtimeVisualAnalyzer,
     onLevel: suspend (Double) -> Unit,
     onImpact: suspend () -> Unit
 ) {
@@ -1001,6 +1029,7 @@ private suspend fun monitorImpactAudio(
     var recentLevel = 0.008
     var lastTrigger = 0L
     val readyDelayMillis = 1200L
+    val readyPromptSuppressionMillis = 1050L
     var startedAt = 0L
     try {
         recorder.startRecording()
@@ -1042,8 +1071,24 @@ private suspend fun monitorImpactAudio(
                 previousRecentLevel = previousRecentLevel,
                 sensitivity = sensitivity
             )
+            val visualScore = visualAnalyzer.recentScore()
+            val isVisuallySupportedImpact = visualScore >= 0.62 &&
+                decision.confidence + visualScore * 0.32 >= 0.96 &&
+                score >= max(0.04, baseline * 1.45)
+            val isInsideReadyPromptWindow = now - startedAt <
+                readyDelayMillis + readyPromptSuppressionMillis
+            val isClearlyPhysicalImpact = visualScore >= 0.5 &&
+                score >= max(0.16, baseline * 2.4) &&
+                metrics.peak >= 0.25
+            val isAudioTriggerAllowed = decision.isTriggered &&
+                (!isInsideReadyPromptWindow || isClearlyPhysicalImpact)
+            val isVisualTriggerAllowed = isVisuallySupportedImpact &&
+                (!isInsideReadyPromptWindow || isClearlyPhysicalImpact)
             val ready = now - startedAt >= readyDelayMillis
-            if (ready && decision.isTriggered && now - lastTrigger > 3500L) {
+            if (ready &&
+                (isAudioTriggerAllowed || isVisualTriggerAllowed) &&
+                now - lastTrigger > 3500L
+            ) {
                 lastTrigger = now
                 onImpact()
                 delay(1500L)
@@ -1052,6 +1097,107 @@ private suspend fun monitorImpactAudio(
     } finally {
         runCatching { recorder.stop() }
         recorder.release()
+    }
+}
+
+private data class RealtimeVisualFrame(
+    val cells: DoubleArray,
+    val averageBrightness: Double
+)
+
+private class RealtimeVisualAnalyzer {
+    companion object {
+        private const val AnalysisIntervalMillis = 220L
+        private const val SignalLifetimeMillis = 750L
+        private const val GridWidth = 8
+        private const val GridHeight = 8
+    }
+
+    @Volatile
+    private var latestSignalTimeMillis = 0L
+
+    @Volatile
+    private var latestSignalScore = 0.0
+
+    private var lastAnalysisTimeMillis = 0L
+    private var lastFrame: RealtimeVisualFrame? = null
+    private var visualBaseline = 0.04
+    private var processedSignalCount = 0
+
+    fun reset() {
+        latestSignalTimeMillis = 0L
+        latestSignalScore = 0.0
+        lastAnalysisTimeMillis = 0L
+        lastFrame = null
+        visualBaseline = 0.04
+        processedSignalCount = 0
+    }
+
+    fun recentScore(nowMillis: Long = SystemClock.elapsedRealtime()): Double {
+        return if (nowMillis - latestSignalTimeMillis <= SignalLifetimeMillis) {
+            latestSignalScore
+        } else {
+            0.0
+        }
+    }
+
+    fun analyze(bitmap: android.graphics.Bitmap) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAnalysisTimeMillis < AnalysisIntervalMillis) return
+        lastAnalysisTimeMillis = now
+        val frame = makeFrame(bitmap) ?: return
+        val previous = lastFrame
+        lastFrame = frame
+        if (previous == null || previous.cells.size != frame.cells.size) return
+
+        var motion = 0.0
+        for (index in frame.cells.indices) {
+            motion += abs(frame.cells[index] - previous.cells[index])
+        }
+        motion /= max(1, frame.cells.size).toDouble()
+        val brightnessChange = abs(frame.averageBrightness - previous.averageBrightness)
+        val rawVisualEnergy = motion * 2.6 + brightnessChange * 1.4
+        visualBaseline = visualBaseline * 0.92 +
+            min(rawVisualEnergy, max(0.015, visualBaseline * 1.45)) * 0.08
+        val contrast = rawVisualEnergy / max(0.018, visualBaseline)
+        latestSignalScore = min(
+            1.0,
+            max(0.0, contrast - 1.0) * 0.28 +
+                min(1.0, motion * 4.0) * 0.48 +
+                min(1.0, brightnessChange * 3.0) * 0.24
+        )
+        latestSignalTimeMillis = now
+        processedSignalCount += 1
+        if (processedSignalCount == 1) {
+            Log.d("HanClipAiShot", "Visual assist active: 8x8 preview frames")
+        }
+    }
+
+    private fun makeFrame(bitmap: android.graphics.Bitmap): RealtimeVisualFrame? {
+        if (bitmap.width <= 0 || bitmap.height <= 0) return null
+        val cells = DoubleArray(GridWidth * GridHeight)
+        var brightnessTotal = 0.0
+        var outputIndex = 0
+        for (yCell in 0 until GridHeight) {
+            val y = ((yCell * bitmap.height + bitmap.height / 2) / GridHeight)
+                .coerceIn(0, bitmap.height - 1)
+            for (xCell in 0 until GridWidth) {
+                val x = ((xCell * bitmap.width + bitmap.width / 2) / GridWidth)
+                    .coerceIn(0, bitmap.width - 1)
+                val pixel = bitmap.getPixel(x, y)
+                val brightness = (
+                    android.graphics.Color.red(pixel) * 0.299 +
+                        android.graphics.Color.green(pixel) * 0.587 +
+                        android.graphics.Color.blue(pixel) * 0.114
+                    ) / 255.0
+                cells[outputIndex++] = brightness
+                brightnessTotal += brightness
+            }
+        }
+        return RealtimeVisualFrame(
+            cells = cells,
+            averageBrightness = brightnessTotal / max(1, cells.size).toDouble()
+        )
     }
 }
 

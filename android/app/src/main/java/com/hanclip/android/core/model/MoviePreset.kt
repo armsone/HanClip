@@ -1,10 +1,10 @@
 package com.hanclip.android.core.model
 
 enum class MoviePreset(val routeValue: String, val title: String, val detail: String) {
-    NewMovie("newMovie", "새 완성본", "사진/영상을 번호순으로 연결"),
-    AiShot("aiShot", "AiShot", "스윙 순간을 자동 촬영"),
-    Travel("travel", "여행 완성본", "사진/영상을 부드럽게 연결"),
-    Golf("golf", "골프 완성본", "타격점 중심 자동 컷");
+    NewMovie("newMovie", "새 영화", "모든 것의 시작"),
+    AiShot("aiShot", "AiShot", "스마트한 레코딩"),
+    Travel("travel", "여행 영화", "여행을 추억으로"),
+    Golf("golf", "골프 영화", "공도 넣고 기억도 넣고");
 
     companion object {
         fun fromRouteValue(value: String?): MoviePreset {

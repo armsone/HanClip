@@ -9,6 +9,7 @@ object EditorPreferenceStore {
     private const val DefaultDurationKey = "default_duration_seconds"
     private const val AspectRatioKey = "output_aspect_ratio"
     private const val QualityPresetKey = "output_quality_preset"
+    private const val SimilarPhotoRepresentativeIntervalKey = "similar_photo_representative_interval"
     private const val AutomaticAspectRatioValue = "automatic"
 
     fun defaultDurationSeconds(context: Context, fallback: Double): Double {
@@ -17,13 +18,13 @@ object EditorPreferenceStore {
         return preferences
             .getFloat(DefaultDurationKey, fallback.toFloat())
             .toDouble()
-            .coerceIn(0.5, 30.0)
+            .coerceIn(0.1, 30.0)
     }
 
     fun saveDefaultDurationSeconds(context: Context, seconds: Double) {
         context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
             .edit()
-            .putFloat(DefaultDurationKey, seconds.coerceIn(0.5, 30.0).toFloat())
+            .putFloat(DefaultDurationKey, seconds.coerceIn(0.1, 30.0).toFloat())
             .apply()
     }
 
@@ -54,6 +55,19 @@ object EditorPreferenceStore {
         context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
             .edit()
             .putString(QualityPresetKey, preset.name)
+            .apply()
+    }
+
+    fun similarPhotoRepresentativeInterval(context: Context): Int {
+        return context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .getInt(SimilarPhotoRepresentativeIntervalKey, 6)
+            .coerceIn(1, 20)
+    }
+
+    fun saveSimilarPhotoRepresentativeInterval(context: Context, value: Int) {
+        context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(SimilarPhotoRepresentativeIntervalKey, value.coerceIn(1, 20))
             .apply()
     }
 }

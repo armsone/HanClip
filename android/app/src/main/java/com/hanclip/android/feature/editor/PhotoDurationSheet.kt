@@ -63,7 +63,7 @@ fun PhotoDurationSheet(
     onApplyDuration: (Double) -> Unit
 ) {
     var duration by remember(clip.id) {
-        mutableFloatStateOf(clip.durationSeconds.toFloat().coerceIn(0.5f, 30f))
+        mutableFloatStateOf(clip.durationSeconds.toFloat().coerceIn(0.1f, 30f))
     }
 
     Surface(
@@ -120,8 +120,8 @@ fun PhotoDurationSheet(
             }
             Slider(
                 value = duration,
-                onValueChange = { duration = it.coerceIn(0.5f, 30f) },
-                valueRange = 0.5f..30f,
+                onValueChange = { duration = it.coerceIn(0.1f, 30f) },
+                valueRange = 0.1f..30f,
                 steps = 58
             )
             FlowRow(
@@ -150,7 +150,7 @@ fun PhotoDurationSheet(
                 FilterChip(
                     selected = kotlin.math.abs(duration - clip.durationSeconds.toFloat()) < 0.05f,
                     onClick = {
-                        duration = clip.durationSeconds.toFloat().coerceIn(0.5f, 30f)
+                        duration = clip.durationSeconds.toFloat().coerceIn(0.1f, 30f)
                     },
                     label = {
                         Text(

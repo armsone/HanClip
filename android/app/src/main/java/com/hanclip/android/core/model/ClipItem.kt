@@ -18,7 +18,8 @@ enum class LivePhotoMode(val title: String) {
 
 enum class VideoSegmentMode(val title: String) {
     Single("단일"),
-    Multiple("다중")
+    Multiple("다중"),
+    All("전체")
 }
 
 data class ClipItem(
@@ -40,6 +41,7 @@ data class ClipItem(
     val isVideoSegmentParent: Boolean = false,
     val videoSegmentParentId: String? = null,
     val photoSimilarityFingerprint: List<Int> = emptyList(),
+    val sourceCreatedAtMillis: Long? = null,
     val similarPhotoGroupId: String? = null,
     val similarPhotoGroupIndex: Int = 0,
     val similarPhotoGroupCount: Int = 1,
@@ -54,10 +56,19 @@ data class ClipItem(
         get() = videoSegmentParentId != null
 
     val isSimilarPhotoGroupMember: Boolean
+        get() = similarPhotoGroupId != null
+
+    val isSimilarPhotoGroupParent: Boolean
+        get() = similarPhotoGroupId != null && similarPhotoGroupCount > 1 && similarPhotoGroupIndex == 0
+
+    val isSimilarPhotoGroupChild: Boolean
+        get() = similarPhotoGroupId != null && similarPhotoGroupCount > 1 && similarPhotoGroupIndex > 0
+
+    val isHiddenSimilarPhotoGroupMember: Boolean
         get() = similarPhotoGroupId != null && !isSimilarPhotoGroupRepresentative
 
     val isRenderableClip: Boolean
-        get() = !isVideoSegmentParent && !isSimilarPhotoGroupMember
+        get() = !isVideoSegmentParent && !isHiddenSimilarPhotoGroupMember
 
     val sourceAspectRatio: Double
         get() = sourceWidth.toDouble() / max(1, sourceHeight).toDouble()

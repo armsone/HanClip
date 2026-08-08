@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,6 +67,9 @@ fun MusicSettingsSheet(
     currentSampleId: String?,
     musicVolume: Double,
     originalAudioVolume: Double,
+    loopsToFillVideo: Boolean,
+    fadeInEnabled: Boolean,
+    fadeOutEnabled: Boolean,
     palette: HanClipPalette,
     fullScreen: Boolean = false,
     onUseSample: (BackgroundMusicSample) -> Unit,
@@ -74,6 +78,9 @@ fun MusicSettingsSheet(
     onRemove: () -> Unit,
     onMusicVolumeChange: (Double) -> Unit,
     onOriginalAudioVolumeChange: (Double) -> Unit,
+    onLoopingChange: (Boolean) -> Unit,
+    onFadeInChange: (Boolean) -> Unit,
+    onFadeOutChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -185,6 +192,39 @@ fun MusicSettingsSheet(
                 onValueChange = onOriginalAudioVolumeChange
             )
 
+            MusicPlaybackOptionRow(
+                title = "영상 끝까지 반복",
+                detail = "음악이 짧으면 완성본 길이만큼 처음부터 반복합니다.",
+                checked = loopsToFillVideo,
+                enabled = currentTitle != null,
+                palette = palette,
+                onCheckedChange = onLoopingChange
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MusicPlaybackOptionRow(
+                    title = "페이드 인",
+                    detail = "0.3초",
+                    checked = fadeInEnabled,
+                    enabled = currentTitle != null,
+                    palette = palette,
+                    onCheckedChange = onFadeInChange,
+                    modifier = Modifier.weight(1f)
+                )
+                MusicPlaybackOptionRow(
+                    title = "페이드 아웃",
+                    detail = "1.0초",
+                    checked = fadeOutEnabled,
+                    enabled = currentTitle != null,
+                    palette = palette,
+                    onCheckedChange = onFadeOutChange,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             BackgroundMusicSample.entries.forEach { sample ->
                 SampleMusicButton(
                     sample = sample,
@@ -249,6 +289,40 @@ fun MusicSettingsSheet(
                 Text("음악 제거")
             }
             Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun MusicPlaybackOptionRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    enabled: Boolean,
+    palette: HanClipPalette,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = if (enabled) palette.chip else palette.chip.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold, color = palette.text)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = palette.subText)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled
+            )
         }
     }
 }

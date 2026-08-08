@@ -603,11 +603,11 @@ private fun CalendarMediaStrip(
             )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
+                columns = GridCells.Fixed(5),
                 modifier = Modifier.height(gridHeight),
                 contentPadding = PaddingValues(bottom = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 items(items, key = { it.uri.toString() }) { item ->
                     CalendarMediaThumb(

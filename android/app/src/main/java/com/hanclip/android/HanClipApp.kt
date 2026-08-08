@@ -22,6 +22,9 @@ import com.hanclip.android.core.settings.SleepPreventionMode
 import com.hanclip.android.core.settings.SleepPreventionStore
 import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.project.DraftProjectStore
+import com.hanclip.android.core.project.EditableProjectPinResult
+import com.hanclip.android.core.project.EditableProjectStore
+import com.hanclip.android.core.project.EditableProjectSummary
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMoviePinResult
 import com.hanclip.android.core.project.ExportedMovieSummary
@@ -60,42 +63,25 @@ fun HanClipApp(
     var previewHistorySummary by remember { mutableStateOf<ExportedMovieSummary?>(null) }
     var isPreviewSavingVideo by remember { mutableStateOf(false) }
     var hasDraftProject by remember { mutableStateOf(false) }
-    val draftProjectSummary = remember(
-        hasDraftProject,
-        editorState.clips,
-        editorState.preset,
-        editorState.totalDurationSeconds,
-        editorState.outputAspectRatio,
-        editorState.outputQualityPreset
-    ) {
-        if (!hasDraftProject) {
-            null
-        } else if (editorState.clips.isNotEmpty()) {
+    var editableProjectSummaries by remember {
+        mutableStateOf<List<EditableProjectSummary>>(emptyList())
+    }
+    val editableDraftProjectSummaries = remember(editableProjectSummaries) {
+        editableProjectSummaries.map { project ->
             DraftProjectSummary(
-                presetTitle = editorState.preset.title,
-                clipCount = editorState.renderableClips.size,
-                totalDurationSeconds = editorState.totalDurationSeconds,
-                outputText = listOfNotNull(
-                    editorState.outputAspectRatio?.title ?: "원본 비율",
-                    editorState.outputQualityPreset.detail
+                projectId = project.projectId,
+                preset = project.preset,
+                presetTitle = project.preset.title,
+                clipCount = project.clipCount,
+                totalDurationSeconds = project.totalDurationSeconds,
+                outputText = listOf(
+                    project.outputAspectRatio?.title ?: "원본 비율",
+                    project.outputQualityPreset.detail
                 ).joinToString(" · "),
-                savedAtMillis = System.currentTimeMillis()
+                savedAtMillis = project.savedAtMillis,
+                isPinned = project.isPinned,
+                memo = project.memo
             )
-        } else {
-            DraftProjectStore.load(context)?.let { draft ->
-                DraftProjectSummary(
-                    presetTitle = draft.preset.title,
-                    clipCount = draft.clips.count { clip -> clip.isRenderableClip },
-                    totalDurationSeconds = draft.clips
-                        .filter { clip -> clip.isRenderableClip }
-                        .sumOf { clip -> clip.durationSeconds },
-                    outputText = listOfNotNull(
-                        draft.outputAspectRatio?.title ?: "원본 비율",
-                        draft.outputQualityPreset.detail
-                    ).joinToString(" · "),
-                    savedAtMillis = draft.savedAtMillis
-                )
-            }
         }
     }
 
@@ -161,6 +147,19 @@ fun HanClipApp(
 
     val activeRoute = navBackStackEntry?.destination?.route
 
+    LaunchedEffect(activeRoute) {
+        if (activeRoute == HanClipDestination.Home.route) {
+            DraftProjectStore.load(context)?.let { legacyDraft ->
+                if (EditableProjectStore.load(context, legacyDraft.projectId) == null) {
+                    EditableProjectStore.upsert(context, legacyDraft)
+                }
+            }
+            editableProjectSummaries = EditableProjectStore.list(context)
+            hasDraftProject = editableProjectSummaries.isNotEmpty()
+            exportedMovieSummaries = ExportHistoryStore.list(context)
+        }
+    }
+
     LaunchedEffect(quickAction) {
         val action = quickAction ?: return@LaunchedEffect
         when (action) {
@@ -201,11 +200,14 @@ fun HanClipApp(
 
     LaunchedEffect(editorState.exportedVideoUri) {
         exportedMovieSummaries = ExportHistoryStore.list(context)
-        hasDraftProject = DraftProjectStore.hasDraft(context)
+        editableProjectSummaries = EditableProjectStore.list(context)
+        hasDraftProject = editableProjectSummaries.isNotEmpty() || DraftProjectStore.hasDraft(context)
     }
 
     LaunchedEffect(editorState.clips) {
-        hasDraftProject = editorState.clips.isNotEmpty() || DraftProjectStore.hasDraft(context)
+        hasDraftProject = editorState.clips.isNotEmpty() ||
+            editableProjectSummaries.isNotEmpty() ||
+            DraftProjectStore.hasDraft(context)
     }
 
     val shouldKeepScreenOnForWork = editorState.isExporting ||
@@ -232,14 +234,14 @@ fun HanClipApp(
                 exportedMovieSummaries = exportedMovieSummaries,
                 recentlySavedMovieUriString = editorState.recentlySavedMovieUriString,
                 hasDraftProject = hasDraftProject,
-                draftProjectSummary = draftProjectSummary,
+                editableProjectSummaries = editableDraftProjectSummaries,
                 sharedInboxCount = pendingSharedCount,
                 sleepPreventionMode = sleepPreventionMode,
                 onStartPreset = { preset ->
                     previewHistorySummary = null
                     DraftProjectStore.clear(context)
                     editorViewModel.startNewPreset(context, preset)
-                    hasDraftProject = false
+                    hasDraftProject = editableProjectSummaries.isNotEmpty()
                     if (preset == MoviePreset.AiShot) {
                         navController.navigate(HanClipDestination.AiShot.route)
                     } else {
@@ -249,12 +251,41 @@ fun HanClipApp(
                 onOpenProject = {
                     previewHistorySummary = null
                     val draft = DraftProjectStore.load(context)
+                        ?: editableProjectSummaries.firstOrNull()?.let { project ->
+                            EditableProjectStore.load(context, project.projectId)
+                        }
                     if (draft != null) {
-                        editorViewModel.openDraft(context)
+                        editorViewModel.openEditableProject(context, draft.projectId)
                         navController.navigate(HanClipDestination.Editor.routeFor(draft.preset))
                     } else {
                         navController.navigate(HanClipDestination.Editor.route)
                     }
+                },
+                onOpenEditableProject = { summary ->
+                    previewHistorySummary = null
+                    if (editorViewModel.openEditableProject(context, summary.projectId)) {
+                        navController.navigate(HanClipDestination.Editor.routeFor(summary.preset))
+                    }
+                },
+                onRemoveEditableProject = { summary ->
+                    val latestDraft = DraftProjectStore.load(context)
+                    EditableProjectStore.remove(context, summary.projectId)
+                    if (latestDraft?.projectId == summary.projectId) {
+                        DraftProjectStore.clear(context)
+                    }
+                    editableProjectSummaries = EditableProjectStore.list(context)
+                    hasDraftProject = editableProjectSummaries.isNotEmpty()
+                },
+                onToggleEditableProjectPin = { summary ->
+                    val result = EditableProjectStore.togglePinned(context, summary.projectId)
+                    if (result == EditableProjectPinResult.Toggled) {
+                        editableProjectSummaries = EditableProjectStore.list(context)
+                    }
+                    result == EditableProjectPinResult.Toggled
+                },
+                onUpdateEditableProjectMemo = { summary, memo ->
+                    EditableProjectStore.updateMemo(context, summary.projectId, memo)
+                    editableProjectSummaries = EditableProjectStore.list(context)
                 },
                 onOpenExportedMovie = { summary ->
                     previewHistorySummary = summary

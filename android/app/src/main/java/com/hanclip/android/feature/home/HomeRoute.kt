@@ -31,6 +31,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Flight
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Palette
@@ -65,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -101,11 +105,15 @@ fun HomeRoute(
     exportedMovieSummaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
-    draftProjectSummary: DraftProjectSummary?,
+    editableProjectSummaries: List<DraftProjectSummary>,
     sharedInboxCount: Int,
     sleepPreventionMode: SleepPreventionMode,
     onStartPreset: (MoviePreset) -> Unit,
     onOpenProject: () -> Unit,
+    onOpenEditableProject: (DraftProjectSummary) -> Unit,
+    onRemoveEditableProject: (DraftProjectSummary) -> Unit,
+    onToggleEditableProjectPin: (DraftProjectSummary) -> Boolean,
+    onUpdateEditableProjectMemo: (DraftProjectSummary, String) -> Unit,
     onOpenExportedMovie: (ExportedMovieSummary) -> Unit,
     onRemoveExportedMovie: (ExportedMovieSummary) -> Unit,
     onToggleExportedMoviePin: (ExportedMovieSummary) -> Boolean,
@@ -121,6 +129,8 @@ fun HomeRoute(
     val palette = themeMode.palette
     var removalCandidate by remember { mutableStateOf<ExportedMovieSummary?>(null) }
     var memoCandidate by remember { mutableStateOf<ExportedMovieSummary?>(null) }
+    var editableRemovalCandidate by remember { mutableStateOf<DraftProjectSummary?>(null) }
+    var editableMemoCandidate by remember { mutableStateOf<DraftProjectSummary?>(null) }
     var memoText by remember { mutableStateOf("") }
     var showPinLimitAlert by remember { mutableStateOf(false) }
     LazyColumn(
@@ -128,7 +138,15 @@ fun HomeRoute(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .background(palette.background)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFF9FCFB),
+                        palette.panel,
+                        palette.secondary.copy(alpha = 0.10f)
+                    )
+                )
+            )
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -136,9 +154,8 @@ fun HomeRoute(
             Spacer(Modifier.height(10.dp))
             HomeHeader(
                 palette = palette,
-                themeName = themeMode.displayName,
                 onOpenTheme = { showThemeSelection = true },
-                onOpenSettings = { showSettingsInfo = true }
+                onQuickAdd = { onStartPreset(MoviePreset.NewMovie) }
             )
             Spacer(Modifier.height(8.dp))
         }
@@ -156,8 +173,17 @@ fun HomeRoute(
             summaries = exportedMovieSummaries,
             recentlySavedMovieUriString = recentlySavedMovieUriString,
             hasDraftProject = hasDraftProject,
-            draftProjectSummary = draftProjectSummary,
+            editableProjectSummaries = editableProjectSummaries,
             onOpenProject = onOpenProject,
+            onOpenEditableProject = onOpenEditableProject,
+            onRemoveEditableProject = { editableRemovalCandidate = it },
+            onToggleEditableProjectPin = { summary ->
+                if (!onToggleEditableProjectPin(summary)) showPinLimitAlert = true
+            },
+            onEditEditableProjectMemo = {
+                editableMemoCandidate = it
+                memoText = it.memo
+            },
             onOpenExportedMovie = onOpenExportedMovie,
             onRemoveExportedMovie = { removalCandidate = it },
             onToggleExportedMoviePin = { summary ->
@@ -170,6 +196,28 @@ fun HomeRoute(
                 memoText = it.memo
             }
         )
+        item(key = "home-info") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clickable { showSettingsInfo = true },
+                    shape = CircleShape,
+                    color = palette.secondary.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.34f))
+                ) {
+                    Icon(
+                        Icons.Outlined.Info,
+                        contentDescription = "설정과 기능 안내",
+                        tint = palette.primary,
+                        modifier = Modifier.padding(11.dp)
+                    )
+                }
+            }
+        }
         item(key = "home-bottom-space") {
             Spacer(Modifier.height(36.dp))
         }
@@ -287,6 +335,48 @@ fun HomeRoute(
             }
         )
     }
+    editableRemovalCandidate?.let { summary ->
+        AlertDialog(
+            onDismissRequest = { editableRemovalCandidate = null },
+            dismissButton = {
+                OutlinedButton(onClick = { editableRemovalCandidate = null }) { Text("취소") }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRemoveEditableProject(summary)
+                        editableRemovalCandidate = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE45D42))
+                ) { Text("프로젝트 제거") }
+            },
+            title = { Text("편집 프로젝트 제거") },
+            text = { Text("목록과 자동 저장 정보에서 제거합니다. 갤러리에 저장된 MP4는 삭제하지 않습니다.") }
+        )
+    }
+    editableMemoCandidate?.let { summary ->
+        AlertDialog(
+            onDismissRequest = { editableMemoCandidate = null },
+            dismissButton = {
+                OutlinedButton(onClick = { editableMemoCandidate = null }) { Text("취소") }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onUpdateEditableProjectMemo(summary, memoText)
+                    editableMemoCandidate = null
+                }) { Text("저장") }
+            },
+            title = { Text("프로젝트 메모") },
+            text = {
+                TextField(
+                    value = memoText,
+                    onValueChange = { memoText = it.take(80) },
+                    singleLine = true,
+                    placeholder = { Text("메모 추가") }
+                )
+            }
+        )
+    }
     if (showPinLimitAlert) {
         AlertDialog(
             onDismissRequest = { showPinLimitAlert = false },
@@ -314,11 +404,15 @@ fun HomeRoute(
 }
 
 data class DraftProjectSummary(
+    val projectId: String,
+    val preset: MoviePreset,
     val presetTitle: String,
     val clipCount: Int,
     val totalDurationSeconds: Double,
     val outputText: String,
-    val savedAtMillis: Long
+    val savedAtMillis: Long,
+    val isPinned: Boolean = false,
+    val memo: String = ""
 )
 
 private val HomePrimary = Color(0xFF0B7A4E)
@@ -598,65 +692,32 @@ private fun ThemeColorSwatch(color: Color) {
 @Composable
 private fun HomeHeader(
     palette: HanClipPalette,
-    themeName: String,
     onOpenTheme: () -> Unit,
-    onOpenSettings: () -> Unit
+    onQuickAdd: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                HanClipBrandCapsule()
-                Text(
-                    text = "기본 사진첩의 골프 사진과 영상을 한 번에 골라 HanClip 완성본으로",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = palette.subText
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Surface(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clickable(onClick = onOpenSettings),
-                    shape = CircleShape,
-                    color = palette.chip,
-                    border = BorderStroke(1.dp, palette.border)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Settings,
-                        contentDescription = "설정",
-                        tint = palette.primary,
-                        modifier = Modifier.padding(11.dp)
-                    )
-                }
-                Surface(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clickable(onClick = onOpenTheme),
-                    shape = CircleShape,
-                    color = palette.primary
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Palette,
-                        contentDescription = "테마 선택",
-                        tint = Color.White,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.clickable(onClick = onOpenTheme)) {
+            HanClipBrandCapsule()
         }
-        Text(
-            text = themeName,
-            color = palette.secondary,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        Surface(
+            modifier = Modifier
+                .size(58.dp)
+                .clickable(onClick = onQuickAdd),
+            shape = CircleShape,
+            color = palette.chip.copy(alpha = 0.62f),
+            border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.28f))
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AddPhotoAlternate,
+                contentDescription = "미디어 추가",
+                tint = Color(0xFF07323A),
+                modifier = Modifier.padding(15.dp)
+            )
+        }
     }
 }
 
@@ -919,18 +980,13 @@ private fun SharedInboxBanner(
 @Composable
 private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPalette) {
     val orderedPresets = listOf(
-        MoviePreset.Golf,
         MoviePreset.NewMovie,
         MoviePreset.AiShot,
-        MoviePreset.Travel
+        MoviePreset.Travel,
+        MoviePreset.Golf
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "HanClip 완성본 만들기",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = palette.text
-        )
+        HomeSectionTitle("영화 프리셋", Icons.Outlined.Collections, palette)
         orderedPresets.chunked(2).forEach { rowPresets ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowPresets.forEach { preset ->
@@ -940,7 +996,7 @@ private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPal
                         icon = when (preset) {
                             MoviePreset.NewMovie -> Icons.Outlined.Movie
                             MoviePreset.AiShot -> null
-                            MoviePreset.Travel -> Icons.Outlined.TravelExplore
+                            MoviePreset.Travel -> Icons.Outlined.Flight
                             MoviePreset.Golf -> Icons.Outlined.SportsGolf
                         },
                         palette = palette,
@@ -963,73 +1019,97 @@ private fun PresetTile(
     palette: HanClipPalette,
     onClick: () -> Unit
 ) {
-    Card(
+    Surface(
         modifier = modifier
             .height(132.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (preset == MoviePreset.Golf) palette.chip else palette.panel
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (preset == MoviePreset.Golf) 2.dp else 1.dp),
-        border = BorderStroke(
-            width = if (preset == MoviePreset.Golf) 1.5.dp else 1.dp,
-            color = if (preset == MoviePreset.Golf) palette.primary.copy(alpha = 0.42f) else palette.border
-        )
+        shape = RoundedCornerShape(10.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.32f)),
+        shadowElevation = 1.dp
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            palette.panel.copy(alpha = 0.98f),
+                            palette.chip.copy(alpha = 0.72f),
+                            palette.secondary.copy(alpha = 0.08f)
+                        )
+                    )
+                )
+                .padding(horizontal = 10.dp, vertical = 15.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(palette.chip),
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(palette.primary, palette.secondary)
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (preset == MoviePreset.AiShot) {
                     Image(
                         painter = painterResource(R.drawable.aishot_icon),
                         contentDescription = null,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(29.dp)
                     )
                 } else if (icon != null) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = palette.secondary,
-                        modifier = Modifier.size(20.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(23.dp)
                     )
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = preset.title,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (preset == MoviePreset.Golf) {
-                        PresetRecommendationBadge(palette)
-                    }
-                }
-                Text(
-                    text = preset.detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.subText,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = preset.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = palette.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = preset.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.subText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
+    }
+}
+
+@Composable
+private fun HomeSectionTitle(
+    title: String,
+    icon: ImageVector,
+    palette: HanClipPalette
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(24.dp),
+            shape = RoundedCornerShape(7.dp),
+            color = palette.secondary.copy(alpha = 0.14f)
+        ) {
+            Icon(icon, contentDescription = null, tint = palette.secondary, modifier = Modifier.padding(5.dp))
+        }
+        Spacer(Modifier.size(7.dp))
+        Text(title, color = palette.subText, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1055,8 +1135,12 @@ private fun LazyListScope.savedProjectItems(
     summaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
-    draftProjectSummary: DraftProjectSummary?,
+    editableProjectSummaries: List<DraftProjectSummary>,
     onOpenProject: () -> Unit,
+    onOpenEditableProject: (DraftProjectSummary) -> Unit,
+    onRemoveEditableProject: (DraftProjectSummary) -> Unit,
+    onToggleEditableProjectPin: (DraftProjectSummary) -> Unit,
+    onEditEditableProjectMemo: (DraftProjectSummary) -> Unit,
     onOpenExportedMovie: (ExportedMovieSummary) -> Unit,
     onRemoveExportedMovie: (ExportedMovieSummary) -> Unit,
     onToggleExportedMoviePin: (ExportedMovieSummary) -> Unit,
@@ -1073,18 +1157,20 @@ private fun LazyListScope.savedProjectItems(
             onOpenProject = onOpenProject
         )
     }
-    if (hasDraftProject) {
-        item(
-            key = "draft-project",
-            contentType = "draft-project"
-        ) {
+    items(
+        items = editableProjectSummaries,
+        key = { "editable-project:${it.projectId}" },
+        contentType = { "editable-project" }
+    ) { project ->
             DraftProjectRow(
-                summary = draftProjectSummary,
-                onClick = onOpenProject
+                summary = project,
+                onClick = { onOpenEditableProject(project) },
+                onRemove = { onRemoveEditableProject(project) },
+                onTogglePin = { onToggleEditableProjectPin(project) },
+                onEditMemo = { onEditEditableProjectMemo(project) }
             )
-        }
     }
-    if (summaries.isEmpty() && !hasDraftProject) {
+    if (summaries.isEmpty() && editableProjectSummaries.isEmpty()) {
         item(
             key = "empty-saved-project",
             contentType = "empty-saved-project"
@@ -1159,39 +1245,16 @@ private fun SavedProjectHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
-            Text(
-                text = "저장된 완성본",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = HomeText
-            )
-            Text(
-                text = "HanClip 앨범 MP4, 방금 만든 완성본, 이어서 편집할 작업을 확인합니다",
-                style = MaterialTheme.typography.bodySmall,
-                color = HomeSubText,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+        Spacer(Modifier.weight(1f))
+        Surface(
+            modifier = Modifier.size(24.dp),
+            shape = RoundedCornerShape(7.dp),
+            color = Color(0xFFDCEDE9)
+        ) {
+            Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = HomeSubText, modifier = Modifier.padding(5.dp))
         }
-        AssistChip(
-            onClick = onOpenProject,
-            leadingIcon = {
-                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-            },
-            label = {
-                Text(
-                    if (hasDraftProject) "편집 작업" else "새 편집",
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            colors = AssistChipDefaults.assistChipColors(
-                containerColor = Color.White,
-                labelColor = HomeText,
-                leadingIconContentColor = HomeSubText
-            ),
-            border = BorderStroke(1.dp, HomeBorder)
-        )
+        Spacer(Modifier.size(7.dp))
+        Text("영화 목록", color = HomeSubText, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1460,8 +1523,11 @@ private fun SavedProjectCategoryHeader(
 
 @Composable
 private fun DraftProjectRow(
-    summary: DraftProjectSummary?,
-    onClick: () -> Unit
+    summary: DraftProjectSummary,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+    onTogglePin: () -> Unit,
+    onEditMemo: () -> Unit
 ) {
     Surface(
         modifier = Modifier
@@ -1483,41 +1549,57 @@ private fun DraftProjectRow(
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    summary?.let { "자동 저장된 HanClip 편집 · ${it.presetTitle}" } ?: "편집 중인 HanClip 작업 없음",
+                    "저장된 HanClip 편집 · ${summary.presetTitle}",
                     fontWeight = FontWeight.SemiBold,
                     color = HomeText
                 )
                 Text(
-                    summary?.let { draftSummaryText(it) } ?: "사진/영상을 고르면 HanClip 편집이 자동 저장됩니다",
+                    draftSummaryText(summary),
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (summary != null) {
-                    Row(
-                        modifier = Modifier.padding(top = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        DraftInfoPill("자동 저장")
-                        DraftInfoPill("다시 편집 가능")
-                        DraftInfoPill(homeProjectDateText(summary.savedAtMillis))
-                        DraftInfoPill("${summary.clipCount}개 클립")
-                        DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
-                    }
+                if (summary.memo.isNotBlank()) {
+                    Text(summary.memo, color = HomePrimary, style = MaterialTheme.typography.bodySmall)
+                }
+                Row(
+                    modifier = Modifier.padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    DraftInfoPill("자동 저장")
+                    DraftInfoPill("${summary.clipCount}개")
+                    DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
                 }
             }
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.White,
-                border = BorderStroke(1.dp, HomeBorder)
+            CompactSavedMovieIconButton(
+                onClick = onEditMemo
             ) {
-                Text(
-                    text = "편집 이어가기",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = HomePrimary,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelMedium
+                Icon(
+                    Icons.Outlined.TextFields,
+                    contentDescription = if (summary.memo.isBlank()) "메모 추가" else "메모 편집",
+                    tint = HomeSubText,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            CompactSavedMovieIconButton(
+                onClick = onTogglePin
+            ) {
+                Icon(
+                    Icons.Outlined.PushPin,
+                    contentDescription = if (summary.isPinned) "핀 해제" else "핀 고정",
+                    tint = if (summary.isPinned) HomePrimary else HomeSubText,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            CompactSavedMovieIconButton(
+                onClick = onRemove
+            ) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = "프로젝트 제거",
+                    tint = Color(0xFFE45D42),
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

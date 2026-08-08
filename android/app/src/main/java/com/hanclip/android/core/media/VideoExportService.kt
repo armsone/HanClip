@@ -28,6 +28,7 @@ import androidx.media3.common.util.UnstableApi
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.WatermarkSettings
+import com.hanclip.android.core.project.ImportedFontStore
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.StaticOverlaySettings
@@ -61,7 +62,10 @@ data class VideoExportRequest(
     val watermarkSettings: WatermarkSettings = WatermarkSettings(),
     val backgroundMusicUri: Uri? = null,
     val backgroundMusicVolume: Double = 0.35,
-    val originalAudioVolume: Double = 1.0
+    val originalAudioVolume: Double = 1.0,
+    val backgroundMusicLoopsToFillVideo: Boolean = true,
+    val backgroundMusicFadeInEnabled: Boolean = true,
+    val backgroundMusicFadeOutEnabled: Boolean = true
 )
 
 interface VideoExportService {
@@ -108,10 +112,10 @@ class Media3TransformerExportService(
                 EditedMediaItem.Builder(MediaItem.fromUri(musicUri))
                     .setRemoveVideo(true)
                     .setRemoveAudio(false)
-                    .setEffects(Effects(audioProcessorsForVolume(request.backgroundMusicVolume), Collections.emptyList()))
+                    .setEffects(Effects(audioProcessorsForMusic(request), Collections.emptyList()))
                     .build()
             )
-                .setIsLooping(true)
+                .setIsLooping(request.backgroundMusicLoopsToFillVideo)
                 .experimentalSetForceAudioTrack(true)
                 .build()
         }
@@ -203,7 +207,7 @@ class Media3TransformerExportService(
         if (clip.mediaKind == ClipMediaKind.Video) {
             val startMs = (clip.trimStartSeconds * 1000).toLong().coerceAtLeast(0)
             val endMs = ((clip.trimStartSeconds + clip.durationSeconds) * 1000).toLong()
-                .coerceAtLeast(startMs + 500)
+                .coerceAtLeast(startMs + 100)
             builder.setClippingConfiguration(
                 MediaItem.ClippingConfiguration.Builder()
                     .setStartPositionMs(startMs)
@@ -211,7 +215,7 @@ class Media3TransformerExportService(
                     .build()
             )
         } else {
-            builder.setImageDurationMs((clip.durationSeconds * 1000).toLong().coerceAtLeast(500))
+            builder.setImageDurationMs((clip.durationSeconds * 1000).toLong().coerceAtLeast(100))
         }
 
         return builder.build()
@@ -255,9 +259,16 @@ class Media3TransformerExportService(
                 )
             }
             if (watermark.logoEnabled) {
+                val copyrightText = if (watermark.platform ==
+                    com.hanclip.android.core.model.WatermarkPlatform.HanClip
+                ) {
+                    "▶ HanClip"
+                } else {
+                    "${watermark.platform.mark} ${watermark.displayCopyrightText}"
+                }
                 add(
                     textOverlay(
-                        text = "▶ HanClip",
+                        text = copyrightText,
                         colorHex = watermark.effectiveLogoColorHex,
                         shadowColorHex = watermark.logoShadowColorHex,
                         shadowOpacity = watermark.logoShadowOpacity,
@@ -282,6 +293,31 @@ class Media3TransformerExportService(
                 DefaultGainProvider.Builder(safeVolume.toFloat()).build()
             )
         )
+    }
+
+    private fun audioProcessorsForMusic(request: VideoExportRequest): List<GainProcessor> {
+        val processors = audioProcessorsForVolume(request.backgroundMusicVolume).toMutableList()
+        val totalDurationUs = (request.clips.sumOf { it.durationSeconds } * 1_000_000.0)
+            .toLong()
+            .coerceAtLeast(1L)
+        val fadeProvider = DefaultGainProvider.Builder(1f)
+        var hasFade = false
+        if (request.backgroundMusicFadeInEnabled) {
+            val durationUs = minOf(300_000L, totalDurationUs / 2).coerceAtLeast(1L)
+            fadeProvider.addFadeAt(0L, durationUs, DefaultGainProvider.FADE_IN_LINEAR)
+            hasFade = true
+        }
+        if (request.backgroundMusicFadeOutEnabled) {
+            val durationUs = minOf(1_000_000L, totalDurationUs / 2).coerceAtLeast(1L)
+            fadeProvider.addFadeAt(
+                totalDurationUs - durationUs,
+                durationUs,
+                DefaultGainProvider.FADE_OUT_LINEAR
+            )
+            hasFade = true
+        }
+        if (hasFade) processors += GainProcessor(fadeProvider.build())
+        return processors
     }
 
     private fun isUnityVolume(volume: Double): Boolean {
@@ -360,6 +396,7 @@ class Media3TransformerExportService(
     }
 
     private fun typefaceForWatermark(fontName: String): Typeface {
+        ImportedFontStore.typeface(context, fontName)?.let { return it }
         val assetPath = when (fontName) {
             "pretendard_bold" -> "fonts/pretendard_bold.ttf"
             "kakao_big_sans" -> "fonts/kakao_big_sans_regular.ttf"
@@ -427,7 +464,7 @@ class Media3TransformerExportService(
             trackMappings.keys.forEach(extractor::selectTrack)
             val startUs = (clip.trimStartSeconds * 1_000_000).toLong().coerceAtLeast(0)
             val endUs = ((clip.trimStartSeconds + clip.durationSeconds) * 1_000_000).toLong()
-                .coerceAtLeast(startUs + 500_000)
+                .coerceAtLeast(startUs + 100_000)
             extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
             val buffer = ByteBuffer.allocate(maxInputSize)
