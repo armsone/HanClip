@@ -84,7 +84,7 @@ struct ClipRow: View {
                                     SimilarPhotoGroupModeSegmentedControl(
                                         mode: videoSegmentModeBinding,
                                         tint: HanClipTheme.secondary,
-                                        width: 90,
+                                        width: 126,
                                         height: 26
                                     )
                                 } else if !displaysAsSimilarPhotoChild {
@@ -212,7 +212,7 @@ struct ClipRow: View {
                                     SimilarPhotoGroupModeSegmentedControl(
                                         mode: videoSegmentModeBinding,
                                         tint: HanClipTheme.secondary,
-                                        width: 90,
+                                        width: 126,
                                         height: 26
                                     )
                                 }
@@ -276,8 +276,8 @@ struct ClipRow: View {
 
                                     CompactDurationStepper(
                                         value: durationBinding,
-                                        range: 0.5...30,
-                                        step: 0.5,
+                                        range: 0.1...30,
+                                        step: 0.1,
                                         isSmall: true
                                     )
                                 }
@@ -715,17 +715,17 @@ struct ClipRow: View {
                         Capsule()
                             .fill(HanClipTheme.primary.opacity(0.040))
                             .frame(width: 9, height: 58)
-                            .offset(x: 20)
+                            .offset(x: 7)
 
                         Capsule()
                             .fill(HanClipTheme.primary.opacity(0.16))
                             .frame(width: 2.5, height: 54)
-                            .offset(x: 20)
+                            .offset(x: 7)
 
                         Circle()
                             .fill(HanClipTheme.primary.opacity(0.38))
                             .frame(width: 5.5, height: 5.5)
-                            .offset(x: 20)
+                            .offset(x: 7)
                     }
                 }
             }
@@ -745,7 +745,7 @@ struct ClipRow: View {
         if displaysAsSimilarPhotoParent {
             return String(
                 format: "%@ %d장 · %@ / 전체 %d개",
-                clip.videoSegmentMode == .single ? "자동" : "수동",
+                similarPhotoGroupModeTitle,
                 selectedSimilarPhotoCount,
                 durationText(childSegmentDuration),
                 clip.similarPhotoGroupCount
@@ -774,6 +774,14 @@ struct ClipRow: View {
             )
         }
         return String(format: "%.1f초", clip.duration)
+    }
+
+    private var similarPhotoGroupModeTitle: String {
+        switch clip.videoSegmentMode {
+        case .single: "자동"
+        case .multiple: "수동"
+        case .all: "전체"
+        }
     }
 
     private var totalSourceDurationText: String {
@@ -1012,11 +1020,11 @@ private struct VideoDurationStepper: View {
     @Binding var clip: ClipItem
 
     private var sourceDuration: Double {
-        max(0.5, clip.sourceDuration ?? clip.duration)
+        max(0.1, clip.sourceDuration ?? clip.duration)
     }
 
     private var canDecrease: Bool {
-        clip.duration - 1 >= 0.5
+        clip.duration - 1 >= 0.1
     }
 
     private var canIncrease: Bool {
@@ -1082,7 +1090,7 @@ private struct VideoDurationStepper: View {
         let previousCenter = clip.trimStart + previousDuration / 2
         let newDuration = min(
             sourceDuration,
-            max(0.5, previousDuration + change)
+            max(0.1, previousDuration + change)
         )
         let centeredStart = previousCenter - newDuration / 2
 
@@ -1118,12 +1126,12 @@ struct LivePhotoModeSegmentedControl: View {
                 HStack(spacing: 0) {
                     segment(
                         mode: .still,
-                        title: "정지"
+                        title: "사진"
                     )
 
                     segment(
                         mode: .motion,
-                        title: "동작"
+                        title: "영상"
                     )
                 }
                 .padding(2)
@@ -1234,7 +1242,7 @@ struct SimilarPhotoExposureSegmentedControl: View {
                 }
                 .frame(width: 14, height: 14)
 
-                Text(isIncluded ? "사용중" : "제외됨")
+                Text(isIncluded ? "사용" : "제외")
                     .font(.system(size: 9.5, weight: .bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -1296,6 +1304,11 @@ struct SimilarPhotoGroupModeSegmentedControl: View {
                         mode: .multiple,
                         title: "수동"
                     )
+
+                    segment(
+                        mode: .all,
+                        title: "전체"
+                    )
                 }
                 .padding(2)
             }
@@ -1304,13 +1317,16 @@ struct SimilarPhotoGroupModeSegmentedControl: View {
             .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
                     .onEnded { value in
-                        if abs(value.translation.width) < 1 {
-                            mode = mode == .single ? .multiple : .single
-                            return
+                        let segmentWidth = max(1, proxy.size.width / 3)
+                        let segmentIndex = min(
+                            2,
+                            max(0, Int(value.location.x / segmentWidth))
+                        )
+                        mode = switch segmentIndex {
+                        case 0: .single
+                        case 1: .multiple
+                        default: .all
                         }
-                        mode = value.location.x < proxy.size.width / 2
-                            ? .single
-                            : .multiple
                     }
             )
         }
@@ -1470,6 +1486,8 @@ struct CompactDurationStepper: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
+    var fineStepThreshold: Double?
+    var fineStep: Double?
     var isSmall = false
     var controlWidth: CGFloat = 68
     var controlHeight: CGFloat?
@@ -1485,7 +1503,7 @@ struct CompactDurationStepper: View {
                 systemImage: "minus",
                 isEnabled: value > range.lowerBound
             ) {
-                value = max(range.lowerBound, value - step)
+                value = max(range.lowerBound, value - decrementStep)
             }
 
             Rectangle()
@@ -1496,7 +1514,7 @@ struct CompactDurationStepper: View {
                 systemImage: "plus",
                 isEnabled: value < range.upperBound
             ) {
-                value = min(range.upperBound, value + step)
+                value = min(range.upperBound, value + incrementStep)
             }
         }
         .frame(width: controlWidth, height: resolvedHeight)
@@ -1507,6 +1525,25 @@ struct CompactDurationStepper: View {
                 .stroke(HanClipTheme.panelStroke.opacity(0.24), lineWidth: 0.8)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var decrementStep: Double {
+        guard let threshold = fineStepThreshold,
+              let fineStep else { return step }
+        if value <= threshold {
+            return fineStep
+        }
+        if value - step < threshold {
+            return value - threshold
+        }
+        return step
+    }
+
+    private var incrementStep: Double {
+        guard let threshold = fineStepThreshold,
+              let fineStep,
+              value < threshold else { return step }
+        return min(fineStep, threshold - value)
     }
 
     private func stepButton(

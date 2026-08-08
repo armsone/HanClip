@@ -80,7 +80,7 @@ final class VideoComposer {
                 )
             }
             var requestedDuration = CMTime(
-                seconds: min(sourceSeconds, max(0.5, item.duration)),
+                seconds: min(sourceSeconds, max(0.1, item.duration)),
                 preferredTimescale: 600
             )
 
@@ -88,7 +88,7 @@ final class VideoComposer {
                 || (item.isLivePhoto && item.livePhotoMode == .motion) {
                 let requestedSeconds = min(
                     sourceSeconds,
-                    max(0.5, item.duration)
+                    max(0.1, item.duration)
                 )
                 let sourceStartSeconds = min(
                     max(0, item.trimStart),
@@ -237,6 +237,7 @@ final class VideoComposer {
         exporter.shouldOptimizeForNetworkUse = true
         exporter.videoComposition = videoComposition
         exporter.audioMix = audioMix
+        exporter.timeRange = CMTimeRange(start: .zero, duration: cursor)
         logger.info("내보내기 시작: 사진 랜덤 줌인·줌아웃 합성 적용")
         await progressHandler(0.86)
         try Task.checkCancellation()
@@ -259,6 +260,10 @@ final class VideoComposer {
         }
         await progressHandler(0.96)
         guard watermarkSettings.shouldRender else {
+            try await validateOutputDuration(
+                at: outputURL,
+                expectedDuration: cursor
+            )
             await progressHandler(1)
             logger.info("영상 생성 완료")
             return outputURL
@@ -268,11 +273,16 @@ final class VideoComposer {
             to: outputURL,
             outputURL: finalOutputURL,
             renderSize: renderSize,
-            settings: watermarkSettings
+            settings: watermarkSettings,
+            expectedDuration: cursor
         ) { watermarkProgress in
             await progressHandler(0.96 + watermarkProgress * 0.04)
         }
         try? FileManager.default.removeItem(at: outputURL)
+        try await validateOutputDuration(
+            at: watermarkedOutput,
+            expectedDuration: cursor
+        )
         await progressHandler(1)
         logger.info("영상 생성 완료")
         return watermarkedOutput
@@ -431,6 +441,7 @@ final class VideoComposer {
         outputURL: URL,
         renderSize: CGSize,
         settings: WatermarkSettings,
+        expectedDuration: CMTime,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
@@ -527,6 +538,10 @@ final class VideoComposer {
         exporter.outputFileType = .mp4
         exporter.shouldOptimizeForNetworkUse = true
         exporter.videoComposition = videoComposition
+        exporter.timeRange = CMTimeRange(
+            start: .zero,
+            duration: expectedDuration
+        )
 
         try await export(
             exporter,
@@ -546,6 +561,28 @@ final class VideoComposer {
         }
 
         return outputURL
+    }
+
+    private func validateOutputDuration(
+        at url: URL,
+        expectedDuration: CMTime
+    ) async throws {
+        let actualDuration = try await AVURLAsset(url: url).load(.duration)
+        let expectedSeconds = expectedDuration.seconds
+        let actualSeconds = actualDuration.seconds
+        let tolerance = max(0.05, 1 / Double(frameRate))
+        guard expectedSeconds.isFinite,
+              actualSeconds.isFinite,
+              abs(actualSeconds - expectedSeconds) <= tolerance
+        else {
+            throw MediaError.exportFailed(
+                "예상 길이 \(Self.timeText(expectedSeconds))와 실제 길이 "
+                    + "\(Self.timeText(actualSeconds))가 일치하지 않습니다."
+            )
+        }
+        logger.info(
+            "영상 길이 검증 완료: 예상 \(expectedSeconds, privacy: .public)초, 실제 \(actualSeconds, privacy: .public)초"
+        )
     }
 
     private static func renderedOutputURL() -> URL {
@@ -626,7 +663,7 @@ final class VideoComposer {
 
         let url = try await makeStillVideo(
             image: image,
-            duration: max(0.5, item.duration),
+            duration: max(0.1, item.duration),
             renderSize: renderSize,
             progressHandler: progressHandler
         )

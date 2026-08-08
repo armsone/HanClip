@@ -363,7 +363,7 @@ enum PhotoLibraryService {
         guard seconds.isFinite, seconds > 0 else {
             throw MediaError.livePhotoVideoUnavailable
         }
-        return max(0.5, seconds)
+        return max(0.1, seconds)
     }
 
     static func videoDuration(at url: URL) async throws -> Double {
@@ -372,7 +372,7 @@ enum PhotoLibraryService {
         guard seconds.isFinite, seconds > 0 else {
             throw MediaError.videoTrackUnavailable
         }
-        return max(0.5, seconds)
+        return max(0.1, seconds)
     }
 
     static func saveVideo(

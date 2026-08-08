@@ -93,6 +93,7 @@ struct EditorView: View {
     @State private var isDeleteDropTargeted = false
     @State private var isSharedInboxBannerDismissed = false
     @State private var bulkLivePhotoMode = LivePhotoMode.motion
+    @State private var bulkSimilarPhotoGroupMode = VideoSegmentMode.single
     @State private var selectAllSnapshot: [UUID: SelectAllClipSnapshot] = [:]
     @State private var selectAllAppliedSignature: [SelectAllClipSnapshot] = []
     @State private var isSelectAllChecked = false
@@ -4380,8 +4381,10 @@ struct EditorView: View {
                 HStack(spacing: 7) {
                     CompactDurationStepper(
                         value: $model.defaultDuration,
-                        range: 0.5...30,
-                        step: 0.5,
+                        range: 0.1...30,
+                        step: 0.1,
+                        fineStepThreshold: 1.0,
+                        fineStep: 0.1,
                         controlWidth: 82,
                         controlHeight: 22,
                         iconSize: 18
@@ -4488,10 +4491,47 @@ struct EditorView: View {
                 )
                 .accessibilityLabel("모든 라이브포토 사용 방식")
                 .accessibilityValue(
-                    bulkLivePhotoMode == .still ? "정지" : "동작"
+                    bulkLivePhotoMode == .still ? "사진" : "영상"
                 )
                 .accessibilityHint(
-                    "모든 라이브포토 클립을 정지 또는 동작으로 전환합니다."
+                    "모든 라이브포토 클립을 사진 또는 영상으로 전환합니다."
+                )
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .frame(height: 42)
+
+            settingsPanelDivider
+
+            HStack(spacing: 8) {
+                Image(systemName: "photo.stack")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
+                    .frame(width: 24, alignment: .center)
+                    .accessibilityHidden(true)
+
+                Text("묶음사진")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+
+                Spacer()
+
+                SimilarPhotoGroupModeSegmentedControl(
+                    mode: Binding(
+                        get: { bulkSimilarPhotoGroupMode },
+                        set: { mode in
+                            bulkSimilarPhotoGroupMode = mode
+                            model.applySimilarPhotoGroupModeToAll(mode)
+                        }
+                    ),
+                    tint: HanClipTheme.secondary,
+                    width: 126,
+                    height: 24
+                )
+                .accessibilityLabel("모든 묶음사진 선택 방식")
+                .accessibilityValue(bulkSimilarPhotoGroupModeTitle)
+                .accessibilityHint(
+                    "모든 묶음사진을 자동, 수동 또는 전체 선택으로 전환합니다."
                 )
             }
             .padding(.leading, 16)
@@ -4574,6 +4614,14 @@ struct EditorView: View {
                     trailing: 12
                 )
             )
+        }
+    }
+
+    private var bulkSimilarPhotoGroupModeTitle: String {
+        switch bulkSimilarPhotoGroupMode {
+        case .single: "자동"
+        case .multiple: "수동"
+        case .all: "전체"
         }
     }
 
@@ -6230,12 +6278,12 @@ private struct ImportantInfoSheet: View {
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
         ("영화 설정", "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다."),
         ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시되며, 아래에 들어 있는 자사진에서 실제 사용할 컷을 확인합니다."),
-        ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 자동은 Ai가 대표 1장을 사용하고, 수동은 묶음을 펼쳐 사용할 사진을 고릅니다."),
-        ("자동 / 수동", "묶음사진에서 사용할 사진을 Ai가 고르게 할지, 사용자가 직접 고르게 할지 정하는 선택입니다."),
+        ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 촬영 시각, 화면 비율, 밝기와 화면 구도가 모두 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 자동은 전체 사진 수의 1/6을 올림한 수만큼 대표 사진을 고르고, 수동은 묶음을 펼쳐 사용할 사진을 직접 고르며, 전체는 모든 사진을 사용합니다."),
+        ("자동 / 수동 / 전체", "묶음사진에서 사용할 사진을 Ai가 고르게 할지, 사용자가 직접 고를지, 모든 사진을 사용할지 정하는 선택입니다."),
         ("사용 / 제외", "수동으로 펼친 자사진 행에서 해당 사진 또는 라이브포토를 영상에 넣을지 뺄지 정하는 상태 버튼입니다."),
-        ("정지 / 동작", "라이브포토를 일반 사진처럼 정지 컷으로 쓸지, 짧은 동작으로 쓸지 정하는 선택입니다."),
+        ("사진 / 영상", "라이브포토를 일반 사진으로 쓸지, 짧은 영상으로 쓸지 정하는 선택입니다."),
         ("순서변경 상태", "큰 단위의 순서를 바꾸는 화면입니다. 묶음사진은 안의 자사진을 흩어 놓지 않고 하나의 묶음 타일로 이동하며, 숫자는 선택된 자사진 수를 뜻합니다."),
-        ("세그먼트 컨트롤", "자동 / 수동, 정지 / 동작, 한컷 / 분할처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다."),
+        ("세그먼트 컨트롤", "자동 / 수동 / 전체, 사진 / 영상, 한컷 / 분할처럼 사용 방식을 고르는 스위치형 컨트롤입니다."),
         ("한컷 / 분할", "영상 클립을 하나의 구간으로 쓸지, Ai가 찾은 피크 기준으로 여러 자클립으로 나눌지 정하는 선택입니다."),
         ("모클립", "다중 분할을 만들 때 원본 역할로 남는 부모 클립입니다."),
         ("자클립", "모클립에서 Ai가 찾은 피크 기준으로 만들어진 하위 클립입니다. 삭제는 원본 삭제가 아니라 비선택으로 처리되며, 비선택된 자클립은 클립목록에서 다시 확인하고 선택할 수 있습니다."),
@@ -7258,9 +7306,9 @@ private struct ImportantInfoSheet: View {
         case "로고": "play.hexagon.fill"
         case "워터마크": "signature"
         case "세그먼트 컨트롤": "rectangle.split.2x1.fill"
-        case "자동 / 수동": "sparkles"
+        case "자동 / 수동 / 전체": "sparkles"
         case "사용 / 제외": "checkmark.circle.fill"
-        case "정지 / 동작": "livephoto"
+        case "사진 / 영상": "livephoto"
         case "한컷 / 분할": "square.stack.3d.up.fill"
         case "모클립": "rectangle.stack.fill"
         case "자클립": "rectangle.fill.on.rectangle.fill"

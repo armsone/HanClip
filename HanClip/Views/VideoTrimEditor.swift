@@ -68,7 +68,7 @@ struct VideoTrimEditor: View {
     }
 
     private var sourceDuration: Double {
-        max(0.5, clip.sourceDuration ?? clip.duration)
+        max(0.1, clip.sourceDuration ?? clip.duration)
     }
 
     var body: some View {
@@ -956,7 +956,7 @@ struct VideoTrimEditor: View {
                 let fixedEnd = clip.trimEnd
                 clip.trimStart = max(
                     0,
-                    min(fixedEnd - 0.5, time)
+                    min(fixedEnd - 0.1, time)
                 )
                 clip.duration = fixedEnd - clip.trimStart
                 clip.photoDuration = clip.duration
@@ -966,7 +966,7 @@ struct VideoTrimEditor: View {
             case .trailing:
                 let newEnd = min(
                     sourceDuration,
-                    max(clip.trimStart + 0.5, time)
+                    max(clip.trimStart + 0.1, time)
                 )
                 clip.duration = newEnd - clip.trimStart
                 clip.photoDuration = clip.duration

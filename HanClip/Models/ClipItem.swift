@@ -276,6 +276,7 @@ enum ClipMediaKind: String {
 enum VideoSegmentMode: String, CaseIterable, Identifiable {
     case single = "단일"
     case multiple = "다중"
+    case all = "전체"
 
     var id: String { rawValue }
 
@@ -293,38 +294,47 @@ enum VideoSegmentMode: String, CaseIterable, Identifiable {
 
 enum PhotoSimilarityFingerprint {
     static func make(from image: UIImage) -> [UInt8] {
-        let dimension = 8
+        // 16×16 keeps enough spatial information to distinguish a changed
+        // camera angle while remaining cheap to calculate during import.
+        let dimension = 16
         let size = CGSize(width: dimension, height: dimension)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
+        let bytesPerPixel = 4
+        var rgba = [UInt8](
+            repeating: 0,
+            count: dimension * dimension * bytesPerPixel
+        )
 
-        let rendered = UIGraphicsImageRenderer(
-            size: size,
-            format: format
-        ).image { _ in
+        let didRender = rgba.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(
+                data: bytes.baseAddress,
+                width: dimension,
+                height: dimension,
+                bitsPerComponent: 8,
+                bytesPerRow: dimension * bytesPerPixel,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+
+            UIGraphicsPushContext(context)
             UIColor.black.setFill()
             UIRectFill(CGRect(origin: .zero, size: size))
             image.draw(in: CGRect(origin: .zero, size: size))
+            UIGraphicsPopContext()
+            return true
         }
+        guard didRender else { return [] }
 
-        guard let cgImage = rendered.cgImage,
-              let dataProvider = cgImage.dataProvider,
-              let data = dataProvider.data
-        else { return [] }
-
-        let bytes = CFDataGetBytePtr(data)
-        let bytesPerPixel = 4
         let pixelCount = dimension * dimension
         var luminance: [UInt8] = []
         luminance.reserveCapacity(pixelCount)
 
         for index in 0..<pixelCount {
             let offset = index * bytesPerPixel
-            let red = Double(bytes?[offset] ?? 0)
-            let green = Double(bytes?[offset + 1] ?? 0)
-            let blue = Double(bytes?[offset + 2] ?? 0)
-            luminance.append(UInt8((red * 0.299 + green * 0.587 + blue * 0.114).rounded()))
+            let red = Double(rgba[offset])
+            let green = Double(rgba[offset + 1])
+            let blue = Double(rgba[offset + 2])
+            let value = red * 0.299 + green * 0.587 + blue * 0.114
+            luminance.append(UInt8(value.rounded()))
         }
 
         return luminance
@@ -337,6 +347,62 @@ enum PhotoSimilarityFingerprint {
             partial + abs(Double(values.0) - Double(values.1))
         }
         return total / Double(lhs.count)
+    }
+
+    static func structureDistance(_ lhs: [UInt8], _ rhs: [UInt8]) -> Double {
+        guard lhs.count == rhs.count, !lhs.isEmpty else { return .infinity }
+
+        let lhsMean = mean(lhs)
+        let rhsMean = mean(rhs)
+        var bestDistance = zip(lhs, rhs).reduce(0.0) { partial, values in
+            let lhsStructure = Double(values.0) - lhsMean
+            let rhsStructure = Double(values.1) - rhsMean
+            return partial + abs(lhsStructure - rhsStructure)
+        } / Double(lhs.count)
+
+        let dimension = Int(Double(lhs.count).squareRoot())
+        guard dimension * dimension == lhs.count else { return bestDistance }
+
+        // Hand-held burst photos often move by a few pixels even when the
+        // subject and composition are unchanged. Compare one fingerprint cell
+        // of translation in every direction before deciding it is a new angle.
+        for yOffset in -1...1 {
+            for xOffset in -1...1 where xOffset != 0 || yOffset != 0 {
+                var total = 0.0
+                var comparedPixelCount = 0
+
+                for y in 0..<dimension {
+                    for x in 0..<dimension {
+                        let shiftedX = x + xOffset
+                        let shiftedY = y + yOffset
+                        guard shiftedX >= 0, shiftedX < dimension,
+                              shiftedY >= 0, shiftedY < dimension
+                        else { continue }
+
+                        let lhsValue = Double(lhs[y * dimension + x]) - lhsMean
+                        let rhsValue = Double(
+                            rhs[shiftedY * dimension + shiftedX]
+                        ) - rhsMean
+                        total += abs(lhsValue - rhsValue)
+                        comparedPixelCount += 1
+                    }
+                }
+
+                if comparedPixelCount > 0 {
+                    bestDistance = min(
+                        bestDistance,
+                        total / Double(comparedPixelCount)
+                    )
+                }
+            }
+        }
+
+        return bestDistance
+    }
+
+    static func mean(_ values: [UInt8]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        return values.reduce(0.0) { $0 + Double($1) } / Double(values.count)
     }
 }
 
@@ -522,7 +588,7 @@ enum VideoClipSegmenter {
         analysis: AudioAnalysisResult?,
         sourcePixelSize: CGSize
     ) -> [ClipItem] {
-        let safeDuration = min(max(0.5, selectedDuration), sourceDuration)
+        let safeDuration = min(max(0.1, selectedDuration), sourceDuration)
         let safeSegmentCount = normalizedSegmentCount(segmentCount)
         let fallbackPeak = sourceDuration / 2
         let rankedPeaks = analysis?.peakTimes.isEmpty == false
@@ -563,7 +629,7 @@ enum VideoClipSegmenter {
         selectedDuration: Double,
         limit: Int
     ) -> [Double] {
-        let safeDuration = min(max(0.5, selectedDuration), sourceDuration)
+        let safeDuration = min(max(0.1, selectedDuration), sourceDuration)
         let safeLimit = normalizedSegmentCount(limit)
         var selected: [(peak: Double, start: Double, end: Double)] = []
 

@@ -148,7 +148,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     private static func normalizedDefaultDuration(_ duration: Double) -> Double {
-        min(max(duration, 0.5), 30)
+        min(max(duration, 0.1), 30)
     }
 
     private static func storedDefaultAspectRatio() -> OutputAspectRatio? {
@@ -209,6 +209,7 @@ final class EditorViewModel: ObservableObject {
                   })
             else { return false }
             return parent.videoSegmentMode == .multiple
+                || parent.videoSegmentMode == .all
         }
         if clip.isVideoSegmentChild {
             guard let parentID = clip.videoSegmentParentID,
@@ -223,6 +224,7 @@ final class EditorViewModel: ObservableObject {
     func isSimilarPhotoGroupExpanded(for clip: ClipItem) -> Bool {
         if clip.isSimilarPhotoGroupParent {
             return clip.videoSegmentMode == .multiple
+                || clip.videoSegmentMode == .all
         }
         guard let groupID = clip.similarPhotoGroupID,
               let parent = clips.first(where: {
@@ -231,6 +233,7 @@ final class EditorViewModel: ObservableObject {
               })
         else { return false }
         return parent.videoSegmentMode == .multiple
+            || parent.videoSegmentMode == .all
     }
 
     func toggleSimilarPhotoGroup(for id: UUID) {
@@ -238,9 +241,9 @@ final class EditorViewModel: ObservableObject {
               clips[index].isSimilarPhotoGroupParent
         else { return }
 
-        clips[index].videoSegmentMode = clips[index].videoSegmentMode == .single
-            ? .multiple
-            : .single
+        clips[index].videoSegmentMode = clips[index].videoSegmentMode == .multiple
+            ? .single
+            : .multiple
     }
 
     func setSimilarPhotoGroupMode(id: UUID, mode: VideoSegmentMode) {
@@ -249,14 +252,22 @@ final class EditorViewModel: ObservableObject {
         else { return }
 
         clips[index].videoSegmentMode = mode
-        if mode == .single, let groupID = clips[index].similarPhotoGroupID {
-            for groupIndex in clips.indices where
-                clips[groupIndex].similarPhotoGroupID == groupID {
-                clips[groupIndex].isSimilarPhotoGroupRepresentative =
-                    clips[groupIndex].isSimilarPhotoGroupParent
-            }
-            rebalanceSimilarPhotoGroup(groupID)
+        guard let groupID = clips[index].similarPhotoGroupID else { return }
+
+        switch mode {
+        case .single:
+            applyAutomaticSimilarPhotoSelection(groupID: groupID)
+        case .multiple:
+            break
+        case .all:
+            setAllSimilarPhotosIncluded(groupID: groupID)
         }
+        rebalanceSimilarPhotoGroup(groupID)
+    }
+
+    func applySimilarPhotoGroupModeToAll(_ mode: VideoSegmentMode) {
+        let parentIDs = clips.filter(\.isSimilarPhotoGroupParent).map(\.id)
+        parentIDs.forEach { setSimilarPhotoGroupMode(id: $0, mode: mode) }
     }
 
     func includeSimilarPhoto(id: UUID) {
@@ -667,10 +678,17 @@ final class EditorViewModel: ObservableObject {
         func commitCurrentGroup() {
             guard currentGroup.count > 1 else { return }
             let groupID = UUID()
-            let representativeIndex = currentGroup.max {
+            let rankedIndices = currentGroup.sorted {
                 photoRepresentativeScore(for: clips[$0])
-                    < photoRepresentativeScore(for: clips[$1])
+                    > photoRepresentativeScore(for: clips[$1])
             }
+            let representativeIndex = rankedIndices.first
+            let representativeCount = automaticSimilarPhotoRepresentativeCount(
+                total: currentGroup.count
+            )
+            let representativeIDs = Set(
+                rankedIndices.prefix(representativeCount).map { clips[$0].id }
+            )
             var orderedGroup = currentGroup
             if let representativeIndex,
                let representativeOffset = orderedGroup.firstIndex(
@@ -690,7 +708,7 @@ final class EditorViewModel: ObservableObject {
                 clips[clipIndex].similarPhotoGroupIndex = offset
                 clips[clipIndex].similarPhotoGroupCount = groupClips.count
                 clips[clipIndex].isSimilarPhotoGroupRepresentative =
-                    offset == 0
+                    representativeIDs.contains(clips[clipIndex].id)
                 clips[clipIndex].videoSegmentMode = .single
                 if clips[clipIndex].isLivePhoto {
                     clips[clipIndex].livePhotoMode = .still
@@ -721,6 +739,49 @@ final class EditorViewModel: ObservableObject {
         commitCurrentGroup()
     }
 
+    private func reapplyCurrentProjectCriteria() {
+        let previousGroupByClip = Dictionary(
+            uniqueKeysWithValues: clips.compactMap { clip in
+                clip.similarPhotoGroupID.map { (clip.id, $0) }
+            }
+        )
+        let previouslyIncluded = Set(
+            clips.filter(\.isSimilarPhotoGroupRepresentative).map(\.id)
+        )
+        var previousModeByGroup: [UUID: VideoSegmentMode] = [:]
+        for clip in clips where clip.similarPhotoGroupIndex == 0 {
+            if let groupID = clip.similarPhotoGroupID {
+                previousModeByGroup[groupID] = clip.videoSegmentMode
+            }
+        }
+
+        applySimilarPhotoGrouping(to: clips.map(\.id))
+
+        let currentGroupIDs = Set(clips.compactMap(\.similarPhotoGroupID))
+        for groupID in currentGroupIDs {
+            let indices = clips.indices.filter {
+                clips[$0].similarPhotoGroupID == groupID
+            }
+            let previousGroupIDs = Set(indices.compactMap {
+                previousGroupByClip[clips[$0].id]
+            })
+            guard previousGroupIDs.count == 1,
+                  let previousGroupID = previousGroupIDs.first,
+                  let previousMode = previousModeByGroup[previousGroupID],
+                  let parentIndex = indices.first
+            else { continue }
+
+            clips[parentIndex].videoSegmentMode = previousMode
+            if previousMode == .multiple {
+                for index in indices {
+                    clips[index].isSimilarPhotoGroupRepresentative =
+                        previouslyIncluded.contains(clips[index].id)
+                }
+            }
+            rebalanceSimilarPhotoGroup(groupID)
+        }
+    }
+
     private func canGroupAsSimilarPhoto(_ clip: ClipItem) -> Bool {
         switch clip.mediaKind {
         case .photo:
@@ -739,13 +800,25 @@ final class EditorViewModel: ObservableObject {
         guard areContinuousPhotoMoments(lhs, rhs) else { return false }
 
         let aspectDifference = abs(lhs.sourceAspectRatio - rhs.sourceAspectRatio)
-        guard aspectDifference <= 0.18 else { return false }
+        guard aspectDifference <= 0.06 else { return false }
 
-        let distance = PhotoSimilarityFingerprint.distance(
+        let luminanceDistance = PhotoSimilarityFingerprint.distance(
             lhs.photoSimilarityFingerprint,
             rhs.photoSimilarityFingerprint
         )
-        return distance <= 70
+        guard luminanceDistance <= 28 else { return false }
+
+        let structureDistance = PhotoSimilarityFingerprint.structureDistance(
+            lhs.photoSimilarityFingerprint,
+            rhs.photoSimilarityFingerprint
+        )
+        guard structureDistance <= 21 else { return false }
+
+        let averageDifference = abs(
+            PhotoSimilarityFingerprint.mean(lhs.photoSimilarityFingerprint)
+                - PhotoSimilarityFingerprint.mean(rhs.photoSimilarityFingerprint)
+        )
+        return averageDifference <= 28
     }
 
     private func areContinuousPhotoMoments(
@@ -754,9 +827,9 @@ final class EditorViewModel: ObservableObject {
     ) -> Bool {
         guard let lhsDate = lhs.sourceCreatedAt,
               let rhsDate = rhs.sourceCreatedAt
-        else { return true }
+        else { return false }
 
-        return abs(lhsDate.timeIntervalSince(rhsDate)) <= 120
+        return abs(lhsDate.timeIntervalSince(rhsDate)) <= 45
     }
 
     private func photoRepresentativeScore(for clip: ClipItem) -> Double {
@@ -794,6 +867,16 @@ final class EditorViewModel: ObservableObject {
             return
         }
 
+        let groupMode = clips[groupIndices[0]].videoSegmentMode
+        switch groupMode {
+        case .single:
+            applyAutomaticSimilarPhotoSelection(groupID: groupID)
+        case .multiple:
+            break
+        case .all:
+            setAllSimilarPhotosIncluded(groupID: groupID)
+        }
+
         let includedIndices = groupIndices.filter {
             clips[$0].isSimilarPhotoGroupRepresentative
         }
@@ -813,6 +896,32 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    private func automaticSimilarPhotoRepresentativeCount(total: Int) -> Int {
+        max(1, Int(ceil(Double(total) / 6.0)))
+    }
+
+    private func applyAutomaticSimilarPhotoSelection(groupID: UUID) {
+        let rankedIndices = clips.indices
+            .filter { clips[$0].similarPhotoGroupID == groupID }
+            .sorted {
+                photoRepresentativeScore(for: clips[$0])
+                    > photoRepresentativeScore(for: clips[$1])
+            }
+        let count = automaticSimilarPhotoRepresentativeCount(
+            total: rankedIndices.count
+        )
+        let selected = Set(rankedIndices.prefix(count))
+        for index in rankedIndices {
+            clips[index].isSimilarPhotoGroupRepresentative = selected.contains(index)
+        }
+    }
+
+    private func setAllSimilarPhotosIncluded(groupID: UUID) {
+        for index in clips.indices where clips[index].similarPhotoGroupID == groupID {
+            clips[index].isSimilarPhotoGroupRepresentative = true
+        }
+    }
+
     func addAiShotVideo(url: URL, triggerTime: Double) {
         Task {
             defer {
@@ -829,7 +938,7 @@ final class EditorViewModel: ObservableObject {
                 let analysis = try? await AudioAnalysisService.analyze(url: url)
                 let selectedDuration = min(
                     defaultDuration,
-                    max(0.5, sourceDuration)
+                    max(0.1, sourceDuration)
                 )
                 let trimStart = max(
                     0,
@@ -1289,7 +1398,9 @@ final class EditorViewModel: ObservableObject {
         do {
             let project = try ProjectStore.load(id: id)
             clips = project.clips
-            defaultDuration = project.defaultDuration
+            defaultDuration = Self.normalizedDefaultDuration(
+                project.defaultDuration
+            )
             defaultVideoSegmentMode = project.defaultVideoSegmentMode
             outputAspectRatio = project.outputAspectRatio
             automaticSourceSize = project.automaticSourceSize
@@ -1299,6 +1410,9 @@ final class EditorViewModel: ObservableObject {
             showPreview = false
             activeProjectID = project.id
             isProjectOpen = true
+            // Saved projects may contain groups produced by an older
+            // similarity algorithm. Rebuild them whenever the project opens.
+            reapplyCurrentProjectCriteria()
             refreshLivePhotoDurations()
             openedProjectSignature = currentProjectSignature()
         } catch {
@@ -2072,7 +2186,7 @@ final class EditorViewModel: ObservableObject {
             ?? clips[index].duration
         let safeDuration = min(
             sourceDuration,
-            max(0.5, duration)
+            max(0.1, duration)
         )
         clips[index].duration = safeDuration
         clips[index].photoDuration = safeDuration

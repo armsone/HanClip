@@ -304,13 +304,13 @@ enum ProjectStore {
             let livePhotoDuration = storedClip.sourceDuration
                 ?? storedClip.livePhotoDuration
                 ?? (storedClip.isLivePhoto ? storedClip.duration : nil)
-            let activeDuration = mediaKind == .video
-                ? storedClip.duration
-                : storedClip.isLivePhoto
-                ? (livePhotoMode == .motion
-                    ? (livePhotoDuration ?? storedClip.duration)
-                    : photoDuration)
-                : storedClip.duration
+            let activeDuration = restoredActiveDuration(
+                mediaKind: mediaKind,
+                isLivePhoto: storedClip.isLivePhoto,
+                livePhotoMode: livePhotoMode,
+                storedDuration: storedClip.duration,
+                photoDuration: photoDuration
+            )
 
             return ClipItem(
                 id: storedClip.id,
@@ -333,8 +333,11 @@ enum ProjectStore {
                 videoSegmentParentID: storedClip.videoSegmentParentID,
                 isVideoSegmentSelected: storedClip.isVideoSegmentSelected
                     ?? true,
-                photoSimilarityFingerprint: storedClip
-                    .photoSimilarityFingerprint,
+                // Rebuild with the current algorithm so projects saved by an
+                // older app version use today's grouping criteria when opened.
+                photoSimilarityFingerprint: PhotoSimilarityFingerprint.make(
+                    from: thumbnail
+                ),
                 similarPhotoGroupID: storedClip.similarPhotoGroupID,
                 similarPhotoGroupIndex: storedClip.similarPhotoGroupIndex ?? 0,
                 similarPhotoGroupCount: storedClip.similarPhotoGroupCount ?? 1,
@@ -370,6 +373,18 @@ enum ProjectStore {
                 fallback: stored.kind == .aiShot ? .empty : .projectDefault
             )
         )
+    }
+
+    static func restoredActiveDuration(
+        mediaKind: ClipMediaKind,
+        isLivePhoto: Bool,
+        livePhotoMode: LivePhotoMode,
+        storedDuration: Double,
+        photoDuration: Double
+    ) -> Double {
+        if mediaKind == .video { return storedDuration }
+        guard isLivePhoto else { return storedDuration }
+        return livePhotoMode == .motion ? storedDuration : photoDuration
     }
 
     static func togglePin(id: UUID) throws {
