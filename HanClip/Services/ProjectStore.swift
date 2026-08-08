@@ -96,8 +96,11 @@ enum ProjectStore {
         backgroundMusicSettings: BackgroundMusicSettings,
         activeProjectID: UUID?,
         kind: ProjectKind = .standard,
-        projectKindOverride: ProjectKind? = nil
+        projectKindOverride: ProjectKind? = nil,
+        progressHandler: (@Sendable (Double) -> Void)? = nil
     ) throws -> UUID {
+        try Task.checkCancellation()
+        progressHandler?(0)
         let root = try projectsRoot()
         let existing = activeProjectID.flatMap {
             try? readStoredProject(at: projectDirectory(for: $0, root: root))
@@ -115,11 +118,15 @@ enum ProjectStore {
         do {
             var storedClips: [StoredClip] = []
             for (index, clip) in clips.enumerated() {
+                try Task.checkCancellation()
                 let thumbnailFilename = "thumbnail-\(index).jpg"
-                guard let thumbnailData = clip.thumbnail.jpegData(
-                    compressionQuality: 0.86
-                ) else {
-                    throw ProjectStoreError.thumbnailEncodingFailed
+                let thumbnailData: Data = try autoreleasepool {
+                    guard let data = clip.thumbnail.jpegData(
+                        compressionQuality: 0.86
+                    ) else {
+                        throw ProjectStoreError.thumbnailEncodingFailed
+                    }
+                    return data
                 }
                 try thumbnailData.write(
                     to: staging.appendingPathComponent(thumbnailFilename),
@@ -163,8 +170,13 @@ enum ProjectStore {
                         sourceHeight: clip.sourcePixelSize.height
                     )
                 )
+                progressHandler?(
+                    0.05 + (Double(index + 1) / Double(max(clips.count, 1))) * 0.80
+                )
             }
 
+            try Task.checkCancellation()
+            progressHandler?(0.88)
             var renderedVideoFilename: String?
             var renderedVideoByteCount: Int64?
             if let filename = existing?.renderedVideoFilename {
@@ -192,6 +204,8 @@ enum ProjectStore {
                 in: staging
             )
 
+            try Task.checkCancellation()
+            progressHandler?(0.94)
             let stored = StoredProject(
                 id: projectID,
                 createdAt: existing?.createdAt ?? Date(),
@@ -212,6 +226,7 @@ enum ProjectStore {
             )
             try write(stored, to: staging)
 
+            try Task.checkCancellation()
             let destination = projectDirectory(for: projectID, root: root)
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
@@ -220,11 +235,42 @@ enum ProjectStore {
             if !clips.isEmpty {
                 try enforceMaximumCount()
             }
+            progressHandler?(1)
             return projectID
         } catch {
             try? FileManager.default.removeItem(at: staging)
             throw error
         }
+    }
+
+    static func saveWithProgress(
+        clips: [ClipItem],
+        defaultDuration: Double,
+        defaultVideoSegmentMode: VideoSegmentMode = .single,
+        outputAspectRatio: OutputAspectRatio?,
+        automaticSourceSize: CGSize,
+        textOverlaySettings: WatermarkSettings,
+        backgroundMusicSettings: BackgroundMusicSettings,
+        activeProjectID: UUID?,
+        kind: ProjectKind = .standard,
+        projectKindOverride: ProjectKind? = nil,
+        progressHandler: @escaping @Sendable (Double) -> Void
+    ) async throws -> UUID {
+        try await Task.detached(priority: .userInitiated) {
+            try save(
+                clips: clips,
+                defaultDuration: defaultDuration,
+                defaultVideoSegmentMode: defaultVideoSegmentMode,
+                outputAspectRatio: outputAspectRatio,
+                automaticSourceSize: automaticSourceSize,
+                textOverlaySettings: textOverlaySettings,
+                backgroundMusicSettings: backgroundMusicSettings,
+                activeProjectID: activeProjectID,
+                kind: kind,
+                projectKindOverride: projectKindOverride,
+                progressHandler: progressHandler
+            )
+        }.value
     }
 
     static func saveRenderedVideo(
@@ -272,82 +318,99 @@ enum ProjectStore {
         }
     }
 
-    static func load(id: UUID) throws -> LoadedProject {
+    static func load(
+        id: UUID,
+        progressHandler: (@Sendable (Double) -> Void)? = nil
+    ) throws -> LoadedProject {
+        try Task.checkCancellation()
+        progressHandler?(0)
         let directory = projectDirectory(
             for: id,
             root: try projectsRoot()
         )
         let stored = try readStoredProject(at: directory)
-        let clips = try stored.clips.map { storedClip in
-            let thumbnailURL = directory.appendingPathComponent(
-                storedClip.thumbnailFilename
-            )
-            guard let thumbnail = UIImage(contentsOfFile: thumbnailURL.path)
-            else {
-                throw ProjectStoreError.missingProjectFile
-            }
-
-            let restoredSource = try restoreSource(
-                storedClip.source,
-                in: directory
-            )
-            let livePhotoMode = LivePhotoMode(
-                rawValue: storedClip.livePhotoMode
-            ) ?? .still
-            let mediaKind = storedClip.mediaKind
-                .flatMap(ClipMediaKind.init(rawValue:))
-                ?? (storedClip.isLivePhoto ? .livePhoto : .photo)
-            let photoDuration = storedClip.photoDuration
-                ?? (storedClip.isLivePhoto
-                    ? stored.defaultDuration
-                    : storedClip.duration)
-            let livePhotoDuration = storedClip.sourceDuration
-                ?? storedClip.livePhotoDuration
-                ?? (storedClip.isLivePhoto ? storedClip.duration : nil)
-            let activeDuration = restoredActiveDuration(
-                mediaKind: mediaKind,
-                isLivePhoto: storedClip.isLivePhoto,
-                livePhotoMode: livePhotoMode,
-                storedDuration: storedClip.duration,
-                photoDuration: photoDuration
-            )
-
-            return ClipItem(
-                id: storedClip.id,
-                source: restoredSource,
-                thumbnail: thumbnail,
-                duration: activeDuration,
-                photoDuration: photoDuration,
-                livePhotoDuration: livePhotoDuration,
-                isLivePhoto: storedClip.isLivePhoto,
-                livePhotoMode: livePhotoMode,
-                mediaKind: mediaKind,
-                sourceDuration: storedClip.sourceDuration,
-                trimStart: storedClip.trimStart ?? 0,
-                audioWaveform: storedClip.audioWaveform ?? [],
-                audioPeakTime: storedClip.audioPeakTime,
-                audioPeakTimes: storedClip.audioPeakTimes ?? [],
-                videoSegmentMode: storedClip.videoSegmentMode
-                    .map(VideoSegmentMode.init(storedValue:)) ?? .single,
-                isVideoSegmentParent: storedClip.isVideoSegmentParent ?? false,
-                videoSegmentParentID: storedClip.videoSegmentParentID,
-                isVideoSegmentSelected: storedClip.isVideoSegmentSelected
-                    ?? true,
-                // Rebuild with the current algorithm so projects saved by an
-                // older app version use today's grouping criteria when opened.
-                photoSimilarityFingerprint: PhotoSimilarityFingerprint.make(
-                    from: thumbnail
-                ),
-                similarPhotoGroupID: storedClip.similarPhotoGroupID,
-                similarPhotoGroupIndex: storedClip.similarPhotoGroupIndex ?? 0,
-                similarPhotoGroupCount: storedClip.similarPhotoGroupCount ?? 1,
-                isSimilarPhotoGroupRepresentative: storedClip
-                    .isSimilarPhotoGroupRepresentative ?? true,
-                sourceCreatedAt: storedClip.sourceCreatedAt,
-                sourcePixelSize: CGSize(
-                    width: storedClip.sourceWidth,
-                    height: storedClip.sourceHeight
+        var clips: [ClipItem] = []
+        clips.reserveCapacity(stored.clips.count)
+        for (index, storedClip) in stored.clips.enumerated() {
+            try Task.checkCancellation()
+            let clip: ClipItem = try autoreleasepool {
+                let thumbnailURL = directory.appendingPathComponent(
+                    storedClip.thumbnailFilename
                 )
+                guard let thumbnail = UIImage(
+                    contentsOfFile: thumbnailURL.path
+                ) else {
+                    throw ProjectStoreError.missingProjectFile
+                }
+
+                let restoredSource = try restoreSource(
+                    storedClip.source,
+                    in: directory
+                )
+                let livePhotoMode = LivePhotoMode(
+                    rawValue: storedClip.livePhotoMode
+                ) ?? .still
+                let mediaKind = storedClip.mediaKind
+                    .flatMap(ClipMediaKind.init(rawValue:))
+                    ?? (storedClip.isLivePhoto ? .livePhoto : .photo)
+                let photoDuration = storedClip.photoDuration
+                    ?? (storedClip.isLivePhoto
+                        ? stored.defaultDuration
+                        : storedClip.duration)
+                let livePhotoDuration = storedClip.sourceDuration
+                    ?? storedClip.livePhotoDuration
+                    ?? (storedClip.isLivePhoto ? storedClip.duration : nil)
+                let activeDuration = restoredActiveDuration(
+                    mediaKind: mediaKind,
+                    isLivePhoto: storedClip.isLivePhoto,
+                    livePhotoMode: livePhotoMode,
+                    storedDuration: storedClip.duration,
+                    photoDuration: photoDuration
+                )
+
+                return ClipItem(
+                    id: storedClip.id,
+                    source: restoredSource,
+                    thumbnail: thumbnail,
+                    duration: activeDuration,
+                    photoDuration: photoDuration,
+                    livePhotoDuration: livePhotoDuration,
+                    isLivePhoto: storedClip.isLivePhoto,
+                    livePhotoMode: livePhotoMode,
+                    mediaKind: mediaKind,
+                    sourceDuration: storedClip.sourceDuration,
+                    trimStart: storedClip.trimStart ?? 0,
+                    audioWaveform: storedClip.audioWaveform ?? [],
+                    audioPeakTime: storedClip.audioPeakTime,
+                    audioPeakTimes: storedClip.audioPeakTimes ?? [],
+                    videoSegmentMode: storedClip.videoSegmentMode
+                        .map(VideoSegmentMode.init(storedValue:)) ?? .single,
+                    isVideoSegmentParent: storedClip.isVideoSegmentParent
+                        ?? false,
+                    videoSegmentParentID: storedClip.videoSegmentParentID,
+                    isVideoSegmentSelected: storedClip.isVideoSegmentSelected
+                        ?? true,
+                    photoSimilarityFingerprint:
+                        PhotoSimilarityFingerprint.make(from: thumbnail),
+                    similarPhotoGroupID: storedClip.similarPhotoGroupID,
+                    similarPhotoGroupIndex: storedClip.similarPhotoGroupIndex
+                        ?? 0,
+                    similarPhotoGroupCount: storedClip.similarPhotoGroupCount
+                        ?? 1,
+                    isSimilarPhotoGroupRepresentative: storedClip
+                        .isSimilarPhotoGroupRepresentative ?? true,
+                    sourceCreatedAt: storedClip.sourceCreatedAt,
+                    sourcePixelSize: CGSize(
+                        width: storedClip.sourceWidth,
+                        height: storedClip.sourceHeight
+                    )
+                )
+            }
+            clips.append(clip)
+            progressHandler?(
+                0.04
+                    + Double(index + 1)
+                    / Double(max(1, stored.clips.count)) * 0.92
             )
         }
 
@@ -373,6 +436,15 @@ enum ProjectStore {
                 fallback: stored.kind == .aiShot ? .empty : .projectDefault
             )
         )
+    }
+
+    static func loadWithProgress(
+        id: UUID,
+        progressHandler: @escaping @Sendable (Double) -> Void
+    ) async throws -> LoadedProject {
+        try await Task.detached(priority: .userInitiated) {
+            try load(id: id, progressHandler: progressHandler)
+        }.value
     }
 
     static func restoredActiveDuration(

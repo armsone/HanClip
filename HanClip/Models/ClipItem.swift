@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Vision
 
 struct BackgroundMusicSampleTrack: Identifiable, Equatable {
     let id: String
@@ -293,6 +294,8 @@ enum VideoSegmentMode: String, CaseIterable, Identifiable {
 }
 
 enum PhotoSimilarityFingerprint {
+    private static let imageSampleCount = 16 * 16
+
     static func make(from image: UIImage) -> [UInt8] {
         // 16×16 keeps enough spatial information to distinguish a changed
         // camera angle while remaining cheap to calculate during import.
@@ -337,7 +340,13 @@ enum PhotoSimilarityFingerprint {
             luminance.append(UInt8(value.rounded()))
         }
 
+        luminance.append(UInt8(clamping: detectedFaceCount(in: image)))
         return luminance
+    }
+
+    static func faceCount(_ fingerprint: [UInt8]) -> Int? {
+        guard fingerprint.count > imageSampleCount else { return nil }
+        return Int(fingerprint[imageSampleCount])
     }
 
     static func distance(_ lhs: [UInt8], _ rhs: [UInt8]) -> Double {
@@ -349,11 +358,25 @@ enum PhotoSimilarityFingerprint {
         return total / Double(lhs.count)
     }
 
+    static func alignedDistance(_ lhs: [UInt8], _ rhs: [UInt8]) -> Double {
+        translatedDistance(lhs, rhs, subtractingMean: false)
+    }
+
     static func structureDistance(_ lhs: [UInt8], _ rhs: [UInt8]) -> Double {
+        translatedDistance(lhs, rhs, subtractingMean: true)
+    }
+
+    private static func translatedDistance(
+        _ lhs: [UInt8],
+        _ rhs: [UInt8],
+        subtractingMean: Bool
+    ) -> Double {
+        let lhs = imageSamples(lhs)
+        let rhs = imageSamples(rhs)
         guard lhs.count == rhs.count, !lhs.isEmpty else { return .infinity }
 
-        let lhsMean = mean(lhs)
-        let rhsMean = mean(rhs)
+        let lhsMean = subtractingMean ? mean(lhs) : 0
+        let rhsMean = subtractingMean ? mean(rhs) : 0
         var bestDistance = zip(lhs, rhs).reduce(0.0) { partial, values in
             let lhsStructure = Double(values.0) - lhsMean
             let rhsStructure = Double(values.1) - rhsMean
@@ -363,11 +386,10 @@ enum PhotoSimilarityFingerprint {
         let dimension = Int(Double(lhs.count).squareRoot())
         guard dimension * dimension == lhs.count else { return bestDistance }
 
-        // Hand-held burst photos often move by a few pixels even when the
-        // subject and composition are unchanged. Compare one fingerprint cell
-        // of translation in every direction before deciding it is a new angle.
-        for yOffset in -1...1 {
-            for xOffset in -1...1 where xOffset != 0 || yOffset != 0 {
+        // A two-cell translation at 16×16 absorbs normal hand-held framing
+        // movement while the structure threshold still rejects a changed angle.
+        for yOffset in -2...2 {
+            for xOffset in -2...2 where xOffset != 0 || yOffset != 0 {
                 var total = 0.0
                 var comparedPixelCount = 0
 
@@ -401,8 +423,41 @@ enum PhotoSimilarityFingerprint {
     }
 
     static func mean(_ values: [UInt8]) -> Double {
+        let values = imageSamples(values)
         guard !values.isEmpty else { return 0 }
         return values.reduce(0.0) { $0 + Double($1) } / Double(values.count)
+    }
+
+    private static func imageSamples(_ fingerprint: [UInt8]) -> [UInt8] {
+        guard fingerprint.count > imageSampleCount else { return fingerprint }
+        return Array(fingerprint.prefix(imageSampleCount))
+    }
+
+    private static func detectedFaceCount(in image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else { return 0 }
+        let request = VNDetectFaceRectanglesRequest()
+        let handler = VNImageRequestHandler(
+            cgImage: cgImage,
+            orientation: image.cgImagePropertyOrientation
+        )
+        guard (try? handler.perform([request])) != nil else { return 0 }
+        return request.results?.count ?? 0
+    }
+}
+
+private extension UIImage {
+    var cgImagePropertyOrientation: CGImagePropertyOrientation {
+        switch imageOrientation {
+        case .up: .up
+        case .upMirrored: .upMirrored
+        case .down: .down
+        case .downMirrored: .downMirrored
+        case .left: .left
+        case .leftMirrored: .leftMirrored
+        case .right: .right
+        case .rightMirrored: .rightMirrored
+        @unknown default: .up
+        }
     }
 }
 

@@ -54,8 +54,11 @@ enum MoviePreset {
 final class EditorViewModel: ObservableObject {
     private static let defaultDurationStorageKey = "hanClipDefaultDuration"
     private static let defaultAspectRatioStorageKey = "hanClipDefaultAspectRatio"
+    private static let similarPhotoRepresentativeIntervalStorageKey =
+        "hanClipSimilarPhotoRepresentativeInterval"
     private static let automaticAspectRatioStorageValue = "automatic"
     private static let fallbackDefaultDuration = 3.0
+    private static let fallbackSimilarPhotoRepresentativeInterval = 6
 
     @Published var clips: [ClipItem] = []
     @Published var defaultDuration: Double = EditorViewModel.storedDefaultDuration() {
@@ -63,7 +66,9 @@ final class EditorViewModel: ObservableObject {
             Self.storeDefaultDuration(defaultDuration)
         }
     }
-    @Published private(set) var defaultVideoSegmentMode: VideoSegmentMode = .single
+    @Published private(set) var defaultVideoSegmentMode: VideoSegmentMode = .multiple
+    @Published private(set) var similarPhotoRepresentativeInterval =
+        EditorViewModel.storedSimilarPhotoRepresentativeInterval()
     @Published var outputAspectRatio: OutputAspectRatio? =
         EditorViewModel.storedDefaultAspectRatio()
     @Published var textOverlaySettings = WatermarkSettings.projectDefault()
@@ -82,6 +87,10 @@ final class EditorViewModel: ObservableObject {
     @Published var isImportingCalendarMedia = false
     @Published var calendarImportProgress = 0.0
     @Published var progressMessage = ""
+    @Published var isSavingProject = false
+    @Published var projectSaveProgress = 0.0
+    @Published var isLoadingProject = false
+    @Published var projectLoadProgress = 0.0
     @Published var previewProgress = 0.0
     @Published var isPreviewRendering = false
     @Published var isImportingFiles = false
@@ -118,7 +127,10 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var initialCalendarMediaDates: Set<Date> = []
     @Published private(set) var initialCalendarMediaCounts: [Date: Int] = [:]
     private var previewTask: Task<Void, Never>?
+    private var projectSaveTask: Task<Void, Never>?
+    private var projectLoadTask: Task<Void, Never>?
     private var pendingThumbnailTask: Task<Void, Never>?
+    private var calendarImportTask: Task<Void, Never>?
     private var pendingPhotoAlbumName = ""
     private var previewSaveRequest: PreviewSaveRequest?
     private var openedProjectSignature: ProjectEditSignature?
@@ -166,8 +178,33 @@ final class EditorViewModel: ObservableObject {
         )
     }
 
+    private static func storedSimilarPhotoRepresentativeInterval() -> Int {
+        let stored = UserDefaults.standard.integer(
+            forKey: similarPhotoRepresentativeIntervalStorageKey
+        )
+        guard stored > 0 else {
+            return fallbackSimilarPhotoRepresentativeInterval
+        }
+        return normalizedSimilarPhotoRepresentativeInterval(stored)
+    }
+
+    private static func storeSimilarPhotoRepresentativeInterval(_ value: Int) {
+        UserDefaults.standard.set(
+            normalizedSimilarPhotoRepresentativeInterval(value),
+            forKey: similarPhotoRepresentativeIntervalStorageKey
+        )
+    }
+
+    private static func normalizedSimilarPhotoRepresentativeInterval(
+        _ value: Int
+    ) -> Int {
+        min(max(value, 1), 20)
+    }
+
     var totalDuration: Double {
-        renderableClips.reduce(0) { $0 + $1.duration }
+        clips.reduce(0) { total, clip in
+            clip.isRenderableClip ? total + clip.duration : total
+        }
     }
 
     var totalDurationText: String {
@@ -268,6 +305,26 @@ final class EditorViewModel: ObservableObject {
     func applySimilarPhotoGroupModeToAll(_ mode: VideoSegmentMode) {
         let parentIDs = clips.filter(\.isSimilarPhotoGroupParent).map(\.id)
         parentIDs.forEach { setSimilarPhotoGroupMode(id: $0, mode: mode) }
+    }
+
+    func setSimilarPhotoRepresentativeInterval(_ value: Int) {
+        let normalized = Self.normalizedSimilarPhotoRepresentativeInterval(value)
+        guard normalized != similarPhotoRepresentativeInterval else { return }
+
+        similarPhotoRepresentativeInterval = normalized
+        Self.storeSimilarPhotoRepresentativeInterval(normalized)
+
+        let automaticGroupIDs = Set(
+            clips.compactMap { clip -> UUID? in
+                guard clip.isSimilarPhotoGroupParent,
+                      clip.videoSegmentMode == .single
+                else { return nil }
+                return clip.similarPhotoGroupID
+            }
+        )
+        for groupID in automaticGroupIDs {
+            applyAutomaticSimilarPhotoSelection(groupID: groupID)
+        }
     }
 
     func includeSimilarPhoto(id: UUID) {
@@ -513,7 +570,7 @@ final class EditorViewModel: ObservableObject {
         switch preset {
         case .newMovie:
             defaultDuration = 2
-            defaultVideoSegmentMode = .single
+            defaultVideoSegmentMode = .multiple
             overlay.isEnabled = false
             musicTrackID = nil
         case .aiShot:
@@ -599,23 +656,34 @@ final class EditorViewModel: ObservableObject {
         backgroundMusicSettings = .projectDefault
     }
 
-    func addPickedItems(_ newItems: [ClipItem]) {
-        if !newItems.isEmpty {
-            isProjectOpen = true
-        }
+    @discardableResult
+    func addPickedItems(
+        _ newItems: [ClipItem],
+        sourcesAlreadyPersisted: Bool = false
+    ) -> Task<Void, Never>? {
+        guard !newItems.isEmpty else { return nil }
+
         if clips.isEmpty, let first = newItems.first {
             automaticSourceSize = first.sourcePixelSize
             outputAspectRatio = Self.storedDefaultAspectRatio()
         }
-        let newClipIDs = newItems.compactMap { item -> UUID? in
+
+        var updatedClips = clips
+        var newClipIDs: [UUID] = []
+        newClipIDs.reserveCapacity(newItems.count)
+        updatedClips.reserveCapacity(updatedClips.count + newItems.count)
+
+        for item in newItems {
             let stableItem: ClipItem
             do {
-                stableItem = try item.replacingSource(
-                    WorkingClipSourceStore.persist(item.source)
-                )
+                stableItem = sourcesAlreadyPersisted
+                    ? item
+                    : item.replacingSource(
+                        try WorkingClipSourceStore.persist(item.source)
+                    )
             } catch {
                 alertMessage = "가져온 원본 파일을 보관할 수 없습니다."
-                return nil
+                continue
             }
 
             var adjusted = stableItem
@@ -650,93 +718,188 @@ final class EditorViewModel: ObservableObject {
                 )
             }
             adjusted.videoSegmentMode = .single
-            clips.append(adjusted)
-            return adjusted.id
+            updatedClips.append(adjusted)
+            newClipIDs.append(adjusted.id)
         }
-        applySimilarPhotoGrouping(to: newClipIDs)
-        if defaultVideoSegmentMode == .multiple {
-            newClipIDs.forEach { id in
-                setVideoSegmentMode(id: id, mode: .multiple)
-            }
-        }
+
+        guard !newClipIDs.isEmpty else { return nil }
+        applySimilarPhotoGrouping(to: newClipIDs, in: &updatedClips)
+        let segmentedParentIDs = defaultVideoSegmentMode == .multiple
+            ? applyDefaultVideoSegmentation(
+                to: newClipIDs,
+                in: &updatedClips
+            )
+            : []
+        clips = updatedClips
+        isProjectOpen = true
+
+        let thumbnailRefreshTask = segmentedParentIDs.isEmpty
+            ? nil
+            : refreshSegmentChildThumbnails(parentIDs: segmentedParentIDs)
         refreshLivePhotoDurations()
+        return thumbnailRefreshTask
+    }
+
+    private func applyDefaultVideoSegmentation(
+        to ids: [UUID],
+        in workingClips: inout [ClipItem]
+    ) -> [UUID] {
+        var segmentedParentIDs: [UUID] = []
+
+        for id in ids {
+            guard let parentIndex = workingClips.firstIndex(where: {
+                $0.id == id
+            }) else { continue }
+
+            let sourceClip = workingClips[parentIndex]
+            guard sourceClip.mediaKind == .video,
+                  !sourceClip.isVideoSegmentChild
+            else { continue }
+
+            let sourceDuration = sourceClip.sourceDuration
+                ?? sourceClip.duration
+            let segmentDuration = segmentSelectionDuration(
+                for: sourceClip,
+                sourceDuration: sourceDuration
+            )
+            let peaks = normalizedPeakTimes(
+                for: sourceClip,
+                sourceDuration: sourceDuration,
+                selectedDuration: segmentDuration
+            )
+            guard peaks.count > 1 else { continue }
+
+            workingClips[parentIndex].videoSegmentMode = .multiple
+            workingClips[parentIndex].isVideoSegmentParent = true
+            let childClips = peaks.map { peak in
+                let duration = min(segmentDuration, sourceDuration)
+                let start = max(
+                    0,
+                    min(sourceDuration - duration, peak - duration / 2)
+                )
+                return ClipItem(
+                    source: sourceClip.source,
+                    thumbnail: sourceClip.thumbnail,
+                    duration: duration,
+                    photoDuration: duration,
+                    mediaKind: .video,
+                    sourceDuration: sourceDuration,
+                    trimStart: start,
+                    audioWaveform: sourceClip.audioWaveform,
+                    audioPeakTime: peak,
+                    audioPeakTimes: peaks,
+                    videoSegmentMode: .single,
+                    videoSegmentParentID: sourceClip.id,
+                    isVideoSegmentSelected: true,
+                    sourcePixelSize: sourceClip.sourcePixelSize
+                )
+            }
+            workingClips.insert(
+                contentsOf: childClips,
+                at: workingClips.index(after: parentIndex)
+            )
+            segmentedParentIDs.append(sourceClip.id)
+        }
+
+        return segmentedParentIDs
     }
 
     private func applySimilarPhotoGrouping(to ids: [UUID]) {
+        var updatedClips = clips
+        applySimilarPhotoGrouping(to: ids, in: &updatedClips)
+        clips = updatedClips
+    }
+
+    private func applySimilarPhotoGrouping(
+        to ids: [UUID],
+        in workingClips: inout [ClipItem]
+    ) {
         let newIDSet = Set(ids)
-        let newIndices = clips.indices.filter { newIDSet.contains(clips[$0].id) }
+        let newIndices = workingClips.indices.filter {
+            newIDSet.contains(workingClips[$0].id)
+        }
         guard newIndices.count > 1 else { return }
 
         for index in newIndices {
-            clips[index].similarPhotoGroupID = nil
-            clips[index].similarPhotoGroupIndex = 0
-            clips[index].similarPhotoGroupCount = 1
-            clips[index].isSimilarPhotoGroupRepresentative = true
+            workingClips[index].similarPhotoGroupID = nil
+            workingClips[index].similarPhotoGroupIndex = 0
+            workingClips[index].similarPhotoGroupCount = 1
+            workingClips[index].isSimilarPhotoGroupRepresentative = true
         }
 
         var currentGroup: [Int] = []
-        func commitCurrentGroup() {
-            guard currentGroup.count > 1 else { return }
-            let groupID = UUID()
-            let rankedIndices = currentGroup.sorted {
-                photoRepresentativeScore(for: clips[$0])
-                    > photoRepresentativeScore(for: clips[$1])
-            }
-            let representativeIndex = rankedIndices.first
-            let representativeCount = automaticSimilarPhotoRepresentativeCount(
-                total: currentGroup.count
-            )
-            let representativeIDs = Set(
-                rankedIndices.prefix(representativeCount).map { clips[$0].id }
-            )
-            var orderedGroup = currentGroup
-            if let representativeIndex,
-               let representativeOffset = orderedGroup.firstIndex(
-                of: representativeIndex
-               ) {
-                orderedGroup.remove(at: representativeOffset)
-                orderedGroup.insert(representativeIndex, at: 0)
-            }
-
-            let groupRange = currentGroup[0]...currentGroup[currentGroup.count - 1]
-            let groupClips = orderedGroup.map { clips[$0] }
-            clips.replaceSubrange(groupRange, with: groupClips)
-
-            for offset in 0..<groupClips.count {
-                let clipIndex = groupRange.lowerBound + offset
-                clips[clipIndex].similarPhotoGroupID = groupID
-                clips[clipIndex].similarPhotoGroupIndex = offset
-                clips[clipIndex].similarPhotoGroupCount = groupClips.count
-                clips[clipIndex].isSimilarPhotoGroupRepresentative =
-                    representativeIDs.contains(clips[clipIndex].id)
-                clips[clipIndex].videoSegmentMode = .single
-                if clips[clipIndex].isLivePhoto {
-                    clips[clipIndex].livePhotoMode = .still
-                    clips[clipIndex].photoDuration = defaultDuration
-                    clips[clipIndex].duration = defaultDuration
-                    clips[clipIndex].trimStart = 0
-                }
-            }
-        }
 
         for index in newIndices {
-            guard canGroupAsSimilarPhoto(clips[index]) else {
-                commitCurrentGroup()
+            guard canGroupAsSimilarPhoto(workingClips[index]) else {
+                commitSimilarPhotoGroup(currentGroup, in: &workingClips)
                 currentGroup = []
                 continue
             }
 
             guard let previousIndex = currentGroup.last,
-                  areSimilarPhotos(clips[previousIndex], clips[index])
+                  areSimilarPhotos(
+                    workingClips[previousIndex],
+                    workingClips[index]
+                  )
             else {
-                commitCurrentGroup()
+                commitSimilarPhotoGroup(currentGroup, in: &workingClips)
                 currentGroup = [index]
                 continue
             }
 
             currentGroup.append(index)
         }
-        commitCurrentGroup()
+        commitSimilarPhotoGroup(currentGroup, in: &workingClips)
+    }
+
+    private func commitSimilarPhotoGroup(
+        _ group: [Int],
+        in workingClips: inout [ClipItem]
+    ) {
+        guard group.count > 1 else { return }
+
+        let groupID = UUID()
+        let rankedIndices = group.sorted {
+            photoRepresentativeScore(for: workingClips[$0])
+                > photoRepresentativeScore(for: workingClips[$1])
+        }
+        let representativeIndex = rankedIndices.first
+        let representativeCount = automaticSimilarPhotoRepresentativeCount(
+            total: group.count
+        )
+        let representativeIDs = Set(
+            rankedIndices.prefix(representativeCount).map {
+                workingClips[$0].id
+            }
+        )
+        var orderedGroup = group
+        if let representativeIndex,
+           let representativeOffset = orderedGroup.firstIndex(
+            of: representativeIndex
+           ) {
+            orderedGroup.remove(at: representativeOffset)
+            orderedGroup.insert(representativeIndex, at: 0)
+        }
+
+        let groupRange = group[0]...group[group.count - 1]
+        let groupClips = orderedGroup.map { workingClips[$0] }
+        workingClips.replaceSubrange(groupRange, with: groupClips)
+
+        for offset in 0..<groupClips.count {
+            let clipIndex = groupRange.lowerBound + offset
+            workingClips[clipIndex].similarPhotoGroupID = groupID
+            workingClips[clipIndex].similarPhotoGroupIndex = offset
+            workingClips[clipIndex].similarPhotoGroupCount = groupClips.count
+            workingClips[clipIndex].isSimilarPhotoGroupRepresentative =
+                representativeIDs.contains(workingClips[clipIndex].id)
+            workingClips[clipIndex].videoSegmentMode = .single
+            if workingClips[clipIndex].isLivePhoto {
+                workingClips[clipIndex].livePhotoMode = .still
+                workingClips[clipIndex].photoDuration = defaultDuration
+                workingClips[clipIndex].duration = defaultDuration
+                workingClips[clipIndex].trimStart = 0
+            }
+        }
     }
 
     private func reapplyCurrentProjectCriteria() {
@@ -802,7 +965,18 @@ final class EditorViewModel: ObservableObject {
         let aspectDifference = abs(lhs.sourceAspectRatio - rhs.sourceAspectRatio)
         guard aspectDifference <= 0.06 else { return false }
 
-        let luminanceDistance = PhotoSimilarityFingerprint.distance(
+        let lhsFaceCount = PhotoSimilarityFingerprint.faceCount(
+            lhs.photoSimilarityFingerprint
+        )
+        let rhsFaceCount = PhotoSimilarityFingerprint.faceCount(
+            rhs.photoSimilarityFingerprint
+        )
+        if let lhsFaceCount, let rhsFaceCount,
+           lhsFaceCount != rhsFaceCount {
+            return false
+        }
+
+        let luminanceDistance = PhotoSimilarityFingerprint.alignedDistance(
             lhs.photoSimilarityFingerprint,
             rhs.photoSimilarityFingerprint
         )
@@ -812,7 +986,7 @@ final class EditorViewModel: ObservableObject {
             lhs.photoSimilarityFingerprint,
             rhs.photoSimilarityFingerprint
         )
-        guard structureDistance <= 21 else { return false }
+        guard structureDistance <= 30 else { return false }
 
         let averageDifference = abs(
             PhotoSimilarityFingerprint.mean(lhs.photoSimilarityFingerprint)
@@ -897,7 +1071,15 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func automaticSimilarPhotoRepresentativeCount(total: Int) -> Int {
-        max(1, Int(ceil(Double(total) / 6.0)))
+        max(
+            1,
+            Int(
+                ceil(
+                    Double(total)
+                        / Double(similarPhotoRepresentativeInterval)
+                )
+            )
+        )
     }
 
     private func applyAutomaticSimilarPhotoSelection(groupID: UUID) {
@@ -1156,6 +1338,12 @@ final class EditorViewModel: ObservableObject {
     func reset() {
         previewTask?.cancel()
         previewTask = nil
+        projectSaveTask?.cancel()
+        projectSaveTask = nil
+        projectLoadTask?.cancel()
+        projectLoadTask = nil
+        calendarImportTask?.cancel()
+        calendarImportTask = nil
         releaseEditingMemory()
         isPickerPresented = false
         isCalendarPickerPresented = false
@@ -1167,6 +1355,10 @@ final class EditorViewModel: ObservableObject {
         isImportingCalendarMedia = false
         calendarImportProgress = 0
         progressMessage = ""
+        isSavingProject = false
+        projectSaveProgress = 0
+        isLoadingProject = false
+        projectLoadProgress = 0
         previewProgress = 0
         isPreviewRendering = false
         isImportingFiles = false
@@ -1198,60 +1390,82 @@ final class EditorViewModel: ObservableObject {
             return
         }
 
-        isExporting = true
-        progressMessage = "영화를 저장하는 중…"
-
-        do {
-            let savedID = try ProjectStore.save(
-                clips: clips,
-                defaultDuration: defaultDuration,
-                defaultVideoSegmentMode: defaultVideoSegmentMode,
-                outputAspectRatio: outputAspectRatio,
-                automaticSourceSize: automaticSourceSize,
-                textOverlaySettings: textOverlaySettings,
-                backgroundMusicSettings: backgroundMusicSettings,
-                activeProjectID: activeProjectID,
-                projectKindOverride: .standard
-            )
-            newlySavedProjectID = savedID
-            openedProjectSignature = nil
-            reset()
-        } catch {
-            isExporting = false
-            progressMessage = ""
-            alertMessage = error.localizedDescription
-        }
+        startProjectSave(returnHomeAfterSaving: true)
     }
 
     func saveProjectOnly() {
         guard !clips.isEmpty, !isExporting else { return }
 
-        isExporting = true
-        progressMessage = "영화를 저장하는 중…"
+        startProjectSave(returnHomeAfterSaving: false)
+    }
 
-        do {
-            let savedID = try ProjectStore.save(
-                clips: clips,
-                defaultDuration: defaultDuration,
-                defaultVideoSegmentMode: defaultVideoSegmentMode,
-                outputAspectRatio: outputAspectRatio,
-                automaticSourceSize: automaticSourceSize,
-                textOverlaySettings: textOverlaySettings,
-                backgroundMusicSettings: backgroundMusicSettings,
-                activeProjectID: activeProjectID,
-                projectKindOverride: .standard
-            )
-            activeProjectID = savedID
-            newlySavedProjectID = savedID
-            openedProjectSignature = currentProjectSignature()
-            isExporting = false
-            progressMessage = ""
-            reloadProjects()
-        } catch {
-            isExporting = false
-            progressMessage = ""
-            alertMessage = error.localizedDescription
+    private func startProjectSave(returnHomeAfterSaving: Bool) {
+        isExporting = true
+        isSavingProject = true
+        projectSaveProgress = 0
+        progressMessage = "영화 프로젝트를 저장하는 중…"
+
+        let clipsToSave = clips
+        let duration = defaultDuration
+        let segmentMode = defaultVideoSegmentMode
+        let aspectRatio = outputAspectRatio
+        let sourceSize = automaticSourceSize
+        let overlaySettings = textOverlaySettings
+        let musicSettings = backgroundMusicSettings
+        let projectID = activeProjectID
+
+        projectSaveTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let savedID = try await ProjectStore.saveWithProgress(
+                    clips: clipsToSave,
+                    defaultDuration: duration,
+                    defaultVideoSegmentMode: segmentMode,
+                    outputAspectRatio: aspectRatio,
+                    automaticSourceSize: sourceSize,
+                    textOverlaySettings: overlaySettings,
+                    backgroundMusicSettings: musicSettings,
+                    activeProjectID: projectID,
+                    projectKindOverride: .standard
+                ) { [self] progress in
+                    Task { @MainActor in
+                        self.projectSaveProgress = progress
+                    }
+                }
+                try Task.checkCancellation()
+                activeProjectID = savedID
+                newlySavedProjectID = savedID
+                openedProjectSignature = returnHomeAfterSaving
+                    ? nil
+                    : currentProjectSignature()
+                projectSaveTask = nil
+                if returnHomeAfterSaving {
+                    reset()
+                } else {
+                    finishProjectSave()
+                    reloadProjects()
+                }
+            } catch is CancellationError {
+                finishProjectSave()
+            } catch {
+                finishProjectSave()
+                alertMessage = error.localizedDescription
+            }
         }
+    }
+
+    func cancelProjectSave() {
+        guard isSavingProject else { return }
+        progressMessage = "영화 저장을 취소하는 중…"
+        projectSaveTask?.cancel()
+    }
+
+    private func finishProjectSave() {
+        projectSaveTask = nil
+        isExporting = false
+        isSavingProject = false
+        projectSaveProgress = 0
+        progressMessage = ""
     }
 
     func saveProjectAndOpenPreview() {
@@ -1264,7 +1478,7 @@ final class EditorViewModel: ObservableObject {
 
         previewTask = Task {
             do {
-                let savedID = try ProjectStore.save(
+                let savedID = try await ProjectStore.saveWithProgress(
                     clips: clips,
                     defaultDuration: defaultDuration,
                     defaultVideoSegmentMode: defaultVideoSegmentMode,
@@ -1273,7 +1487,11 @@ final class EditorViewModel: ObservableObject {
                     textOverlaySettings: textOverlaySettings,
                     backgroundMusicSettings: backgroundMusicSettings,
                     activeProjectID: activeProjectID
-                )
+                ) { [self] progress in
+                    Task { @MainActor in
+                        self.previewProgress = progress * 0.10
+                    }
+                }
                 try Task.checkCancellation()
                 let savedProject = try ProjectStore.load(id: savedID)
                 clips = savedProject.clips
@@ -1379,7 +1597,7 @@ final class EditorViewModel: ObservableObject {
         clips = []
         WorkingClipSourceStore.clear()
         defaultDuration = Self.storedDefaultDuration()
-        defaultVideoSegmentMode = .single
+        defaultVideoSegmentMode = .multiple
         outputAspectRatio = Self.storedDefaultAspectRatio()
         textOverlaySettings = WatermarkSettings.projectDefault()
         backgroundMusicSettings = .projectDefault
@@ -1394,35 +1612,89 @@ final class EditorViewModel: ObservableObject {
         openedProjectSignature = nil
     }
 
-    func loadProject(id: UUID) {
+    func loadProject(
+        id: UUID,
+        completion: (@MainActor (Bool) -> Void)? = nil
+    ) {
+        guard !isLoadingProject else { return }
+        isLoadingProject = true
+        projectLoadProgress = 0
+        progressMessage = "저장된 영화 파일을 불러오는 중…"
+
+        projectLoadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let project = try await ProjectStore.loadWithProgress(
+                    id: id
+                ) { [self] progress in
+                    Task { @MainActor in
+                        self.projectLoadProgress = progress
+                    }
+                }
+                try Task.checkCancellation()
+                projectLoadProgress = 0.97
+                progressMessage = "영화 설정과 묶음사진을 정리하는 중…"
+                await Task.yield()
+                applyLoadedProject(project)
+                finishProjectLoad()
+                completion?(true)
+            } catch is CancellationError {
+                finishProjectLoad()
+                completion?(false)
+            } catch {
+                finishProjectLoad()
+                alertMessage = error.localizedDescription
+                reloadProjects()
+                completion?(false)
+            }
+        }
+    }
+
+    private func applyLoadedProject(_ project: LoadedProject) {
+        clips = project.clips
+        defaultDuration = Self.normalizedDefaultDuration(
+            project.defaultDuration
+        )
+        defaultVideoSegmentMode = project.defaultVideoSegmentMode
+        outputAspectRatio = project.outputAspectRatio
+        automaticSourceSize = project.automaticSourceSize
+        textOverlaySettings = project.textOverlaySettings
+        backgroundMusicSettings = project.backgroundMusicSettings
+        exportedURL = nil
+        showPreview = false
+        activeProjectID = project.id
+        isProjectOpen = true
+        reapplyCurrentProjectCriteria()
+        refreshLivePhotoDurations()
+        openedProjectSignature = currentProjectSignature()
+    }
+
+    private func loadProjectImmediately(id: UUID) {
         do {
             let project = try ProjectStore.load(id: id)
-            clips = project.clips
-            defaultDuration = Self.normalizedDefaultDuration(
-                project.defaultDuration
-            )
-            defaultVideoSegmentMode = project.defaultVideoSegmentMode
-            outputAspectRatio = project.outputAspectRatio
-            automaticSourceSize = project.automaticSourceSize
-            textOverlaySettings = project.textOverlaySettings
-            backgroundMusicSettings = project.backgroundMusicSettings
-            exportedURL = nil
-            showPreview = false
-            activeProjectID = project.id
-            isProjectOpen = true
-            // Saved projects may contain groups produced by an older
-            // similarity algorithm. Rebuild them whenever the project opens.
-            reapplyCurrentProjectCriteria()
-            refreshLivePhotoDurations()
-            openedProjectSignature = currentProjectSignature()
+            applyLoadedProject(project)
         } catch {
             alertMessage = error.localizedDescription
             reloadProjects()
         }
     }
 
+    func cancelProjectLoad() {
+        guard isLoadingProject else { return }
+        progressMessage = "영화 불러오기를 취소하는 중…"
+        projectLoadTask?.cancel()
+    }
+
+    private func finishProjectLoad() {
+        projectLoadTask = nil
+        isLoadingProject = false
+        projectLoadProgress = 0
+        progressMessage = ""
+    }
+
     func editLastSavedProject() {
         showPreview = false
+        guard !isLoadingProject else { return }
         let projectID = activeProjectID
             ?? savedProjects.max(by: {
                 $0.updatedAt < $1.updatedAt
@@ -1756,9 +2028,12 @@ final class EditorViewModel: ObservableObject {
     }
 
     func loadProjectAndImportPending(id: UUID) {
-        loadProject(id: id)
-        guard isProjectOpen, pendingSharedItemCount > 0 else { return }
-        importSharedItems(destination: .existingProject)
+        loadProject(id: id) { [weak self] didLoad in
+            guard let self, didLoad,
+                  isProjectOpen, pendingSharedItemCount > 0
+            else { return }
+            importSharedItems(destination: .existingProject)
+        }
     }
 
     func importPendingItemsIntoNewProject() {
@@ -1782,6 +2057,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     func previewDidDismiss() {
+        guard !isLoadingProject else { return }
         guard let previewSaveRequest else {
             if clips.isEmpty {
                 editLastSavedProject()
@@ -2075,7 +2351,7 @@ final class EditorViewModel: ObservableObject {
         if let latestProject = savedProjects.max(by: {
             $0.updatedAt < $1.updatedAt
         }) {
-            loadProject(id: latestProject.id)
+            loadProjectImmediately(id: latestProject.id)
         } else {
             beginNewProject()
             alertMessage =
@@ -2127,6 +2403,7 @@ final class EditorViewModel: ObservableObject {
 
     func importMediaFromCalendarDates(_ dates: Set<Date>) {
         guard !dates.isEmpty else { return }
+        calendarImportTask?.cancel()
         let selectedDates = Set(
             dates.map { Calendar.current.startOfDay(for: $0) }
         )
@@ -2135,42 +2412,136 @@ final class EditorViewModel: ObservableObject {
         calendarImportProgress = 0
         progressMessage = "선택한 날짜의 미디어를 불러오는 중…"
 
-        Task {
+        calendarImportTask = Task {
             let assets = PhotoLibraryService.mediaAssets(
                 on: selectedDates,
                 calendar: .current
             )
             var imported: [ClipItem] = []
+            imported.reserveCapacity(assets.count)
 
             for (index, asset) in assets.enumerated() {
+                guard !Task.isCancelled else { break }
                 do {
                     let thumbnail = try await PhotoLibraryService.thumbnail(
-                        for: asset
+                        for: asset,
+                        size: CGSize(width: 160, height: 160)
                     )
                     let items = try await makeClips(from: asset, thumbnail)
-                    if !items.isEmpty {
-                        imported.append(contentsOf: items)
+                    for item in items {
+                        guard !Task.isCancelled else { break }
+                        let persistedItem = try await persistCalendarImportedItem(
+                            item
+                        )
+                        if Task.isCancelled {
+                            WorkingClipSourceStore.remove(persistedItem.source)
+                            break
+                        }
+                        imported.append(persistedItem)
                     }
                 } catch {
                     continue
                 }
 
+                guard !Task.isCancelled else { break }
+
                 calendarImportProgress = assets.isEmpty
                     ? 1
-                    : Double(index + 1) / Double(assets.count)
+                    : Double(index + 1) / Double(assets.count) * 0.92
                 progressMessage =
                     "선택한 날짜의 미디어 \(index + 1)/\(assets.count)개를 "
                     + "불러오는 중…"
             }
 
-            isImportingCalendarMedia = false
-            calendarImportProgress = 0
-            progressMessage = ""
-            addPickedItems(imported)
+            guard !Task.isCancelled else {
+                cancelCalendarImportAndRollback(imported)
+                return
+            }
+
+            calendarImportProgress = 0.94
+            progressMessage = "불러온 미디어를 정리하는 중…"
+            let thumbnailRefreshTask = addPickedItems(
+                imported,
+                sourcesAlreadyPersisted: true
+            )
+
+            if let thumbnailRefreshTask {
+                calendarImportProgress = 0.97
+                progressMessage = "자영상 썸네일을 정리하는 중…"
+                await withTaskCancellationHandler {
+                    await thumbnailRefreshTask.value
+                } onCancel: {
+                    thumbnailRefreshTask.cancel()
+                }
+            }
+
+            guard !Task.isCancelled else {
+                cancelCalendarImportAndRollback(imported)
+                return
+            }
 
             alertMessage = imported.isEmpty
                 ? "선택한 날짜에 가져올 수 있는 미디어가 없습니다."
                 : "선택한 날짜의 미디어 \(imported.count)개를 가져왔습니다."
+            calendarImportProgress = 1
+            progressMessage = ""
+            isImportingCalendarMedia = false
+            calendarImportProgress = 0
+            calendarImportTask = nil
+        }
+    }
+
+    func cancelCalendarMediaImport() {
+        guard isImportingCalendarMedia else { return }
+        progressMessage = "미디어 불러오기를 취소하는 중…"
+        calendarImportTask?.cancel()
+    }
+
+    private func cancelCalendarImportAndRollback(_ imported: [ClipItem]) {
+        let importedIDs = Set(imported.map(\.id))
+        clips.removeAll { clip in
+            importedIDs.contains(clip.id)
+                || clip.videoSegmentParentID.map(importedIDs.contains) == true
+        }
+        imported.forEach { WorkingClipSourceStore.remove($0.source) }
+        progressMessage = ""
+        calendarImportProgress = 0
+        isImportingCalendarMedia = false
+        calendarImportTask = nil
+        alertMessage = "미디어 불러오기를 취소했습니다."
+    }
+
+    private func persistCalendarImportedItem(
+        _ item: ClipItem
+    ) async throws -> ClipItem {
+        if case .photoAsset = item.source {
+            return item
+        }
+
+        let originalSource = item.source
+        let stableSource = try await Task.detached(priority: .userInitiated) {
+            try WorkingClipSourceStore.persist(originalSource)
+        }.value
+        removeTemporaryImportedSource(originalSource)
+        return item.replacingSource(stableSource)
+    }
+
+    private func removeTemporaryImportedSource(_ source: ClipSource) {
+        let temporaryDirectory = FileManager.default.temporaryDirectory.path
+
+        func removeIfTemporary(_ url: URL) {
+            guard url.path.hasPrefix(temporaryDirectory) else { return }
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        switch source {
+        case .photoAsset:
+            break
+        case .imageFile(let url), .videoFile(let url):
+            removeIfTemporary(url)
+        case .livePhotoFiles(let imageURL, let videoURL):
+            removeIfTemporary(imageURL)
+            removeIfTemporary(videoURL)
         }
     }
 
@@ -2236,6 +2607,45 @@ final class EditorViewModel: ObservableObject {
         }
 
         splitVideoClip(at: index, sourceClip: sourceClip, peaks: peaks)
+    }
+
+    @discardableResult
+    func applyVideoSegmentModeToAll(
+        _ mode: VideoSegmentMode
+    ) -> Task<Void, Never>? {
+        let normalizedMode: VideoSegmentMode = mode == .single
+            ? .single
+            : .multiple
+        defaultVideoSegmentMode = normalizedMode
+
+        let parentIDs = clips.compactMap { clip -> UUID? in
+            guard clip.mediaKind == .video,
+                  !clip.isVideoSegmentChild
+            else { return nil }
+            return clip.id
+        }
+        guard !parentIDs.isEmpty else { return nil }
+
+        var updatedClips = clips.filter { !$0.isVideoSegmentChild }
+        for index in updatedClips.indices where
+            updatedClips[index].mediaKind == .video {
+            updatedClips[index].videoSegmentMode = .single
+            updatedClips[index].isVideoSegmentParent = false
+        }
+
+        guard normalizedMode == .multiple else {
+            clips = updatedClips
+            return nil
+        }
+
+        let segmentedParentIDs = applyDefaultVideoSegmentation(
+            to: parentIDs,
+            in: &updatedClips
+        )
+        clips = updatedClips
+        return segmentedParentIDs.isEmpty
+            ? nil
+            : refreshSegmentChildThumbnails(parentIDs: segmentedParentIDs)
     }
 
     private func reanalyzeAndSplitVideoClip(_ sourceClip: ClipItem) {
@@ -2361,33 +2771,128 @@ final class EditorViewModel: ObservableObject {
             contentsOf: childClips,
             at: clips.index(after: parentIndex)
         )
-        refreshSegmentChildThumbnails(
+        _ = refreshSegmentChildThumbnails(
             parentID: sourceClip.id,
             sourceClip: sourceClip
         )
     }
 
+    @discardableResult
     private func refreshSegmentChildThumbnails(
         parentID: UUID,
         sourceClip: ClipItem
-    ) {
-        guard case .videoFile(let url) = sourceClip.source else { return }
-        let childTargets = clips
-            .filter { $0.videoSegmentParentID == parentID }
-            .map { ($0.id, $0.trimStart + $0.duration / 2) }
-        guard !childTargets.isEmpty else { return }
+    ) -> Task<Void, Never>? {
+        refreshSegmentChildThumbnails(
+            parentSources: [(id: parentID, clip: sourceClip)]
+        )
+    }
 
-        Task {
-            for (id, midpoint) in childTargets {
-                guard let thumbnail = try? await videoThumbnail(
-                    for: url,
-                    at: midpoint
-                ) else { continue }
-                guard let index = clips.firstIndex(where: { $0.id == id }),
-                      clips[index].videoSegmentParentID == parentID
-                else { continue }
-                clips[index].thumbnail = thumbnail
+    @discardableResult
+    private func refreshSegmentChildThumbnails(
+        parentIDs: [UUID]
+    ) -> Task<Void, Never>? {
+        let parentIDSet = Set(parentIDs)
+        let parentSources = clips.compactMap { clip -> (id: UUID, clip: ClipItem)? in
+            guard parentIDSet.contains(clip.id) else { return nil }
+            return (id: clip.id, clip: clip)
+        }
+        return refreshSegmentChildThumbnails(parentSources: parentSources)
+    }
+
+    @discardableResult
+    private func refreshSegmentChildThumbnails(
+        parentSources: [(id: UUID, clip: ClipItem)]
+    ) -> Task<Void, Never>? {
+        let videoURLs: [UUID: URL] = Dictionary(
+            uniqueKeysWithValues: parentSources.compactMap { parent in
+                guard case .videoFile(let url) = parent.clip.source
+                else { return nil }
+                return (parent.id, url)
             }
+        )
+        let childTargets = clips.compactMap {
+            clip -> (id: UUID, parentID: UUID, url: URL, midpoint: Double)? in
+            guard let parentID = clip.videoSegmentParentID,
+                  let url = videoURLs[parentID]
+            else { return nil }
+            return (
+                id: clip.id,
+                parentID: parentID,
+                url: url,
+                midpoint: clip.trimStart + clip.duration / 2
+            )
+        }
+        guard !childTargets.isEmpty else { return nil }
+
+        return Task {
+            let batchSize = 8
+            var batchStart = 0
+
+            while batchStart < childTargets.count {
+                guard !Task.isCancelled else { break }
+                let batchEnd = min(batchStart + batchSize, childTargets.count)
+                let batch = Array(childTargets[batchStart..<batchEnd])
+                let updates = await withTaskGroup(
+                    of: (id: UUID, parentID: UUID, image: UIImage)?.self,
+                    returning: [(id: UUID, parentID: UUID, image: UIImage)].self
+                ) { group in
+                    for target in batch {
+                        group.addTask {
+                            guard !Task.isCancelled else { return nil }
+                            guard let thumbnail = try? await self.videoThumbnail(
+                                for: target.url,
+                                at: target.midpoint,
+                                maximumSize: CGSize(width: 160, height: 160)
+                            ) else { return nil }
+                            guard !Task.isCancelled else { return nil }
+                            return (
+                                id: target.id,
+                                parentID: target.parentID,
+                                image: thumbnail
+                            )
+                        }
+                    }
+
+                    var completed: [(
+                        id: UUID,
+                        parentID: UUID,
+                        image: UIImage
+                    )] = []
+                    completed.reserveCapacity(batch.count)
+                    for await update in group {
+                        if let update {
+                            completed.append(update)
+                        }
+                    }
+                    return completed
+                }
+
+                guard !Task.isCancelled else { break }
+                applySegmentThumbnailUpdates(updates)
+                batchStart = batchEnd
+                await Task.yield()
+            }
+        }
+    }
+
+    private func applySegmentThumbnailUpdates(
+        _ updates: [(id: UUID, parentID: UUID, image: UIImage)]
+    ) {
+        let updatesByID = Dictionary(
+            uniqueKeysWithValues: updates.map { ($0.id, $0) }
+        )
+        var updatedClips = clips
+        var didUpdate = false
+
+        for index in updatedClips.indices {
+            guard let update = updatesByID[updatedClips[index].id],
+                  updatedClips[index].videoSegmentParentID == update.parentID
+            else { continue }
+            updatedClips[index].thumbnail = update.image
+            didUpdate = true
+        }
+        if didUpdate {
+            clips = updatedClips
         }
     }
 
@@ -2432,7 +2937,10 @@ final class EditorViewModel: ObservableObject {
 
     private func refreshLivePhotoDurations() {
         let liveClipIDs = clips
-            .filter(\.isLivePhoto)
+            .filter {
+                $0.isLivePhoto
+                    && ($0.sourceDuration == nil || $0.livePhotoDuration == nil)
+            }
             .map(\.id)
         guard !liveClipIDs.isEmpty else { return }
 
@@ -2554,12 +3062,14 @@ final class EditorViewModel: ObservableObject {
 
     private func videoThumbnail(
         for url: URL,
-        at seconds: Double = 0
+        at seconds: Double = 0,
+        maximumSize: CGSize = CGSize(width: 640, height: 640)
     ) async throws -> UIImage {
         try await Task.detached {
             let asset = AVURLAsset(url: url)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = maximumSize
             let image = try generator.copyCGImage(
                 at: CMTime(
                     seconds: max(0, seconds),
@@ -2731,6 +3241,18 @@ private enum WorkingClipSourceStore {
               FileManager.default.fileExists(atPath: directory.path)
         else { return }
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    static func remove(_ source: ClipSource) {
+        switch source {
+        case .photoAsset:
+            break
+        case .imageFile(let url), .videoFile(let url):
+            try? FileManager.default.removeItem(at: url)
+        case .livePhotoFiles(let imageURL, let videoURL):
+            try? FileManager.default.removeItem(at: imageURL)
+            try? FileManager.default.removeItem(at: videoURL)
+        }
     }
 
     private static func copy(
