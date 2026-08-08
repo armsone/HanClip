@@ -189,6 +189,7 @@ struct EditorView: View {
 
     private var isSharedInboxBannerVisible: Bool {
         !model.isProjectOpen
+            && !model.isImportingSharedItems
             && model.pendingSharedItemCount > 0
             && !isSharedInboxBannerDismissed
     }
@@ -296,11 +297,6 @@ struct EditorView: View {
                 value: pendingSegmentResetClipID
             )
             .overlay {
-                if isBusyOverlayVisible {
-                    progressOverlay
-                }
-            }
-            .overlay {
                 if isSharedInboxBannerVisible {
                     HanClipTheme.secondary
                         .opacity(0.05)
@@ -396,6 +392,13 @@ struct EditorView: View {
                     .transition(
                         .move(edge: .top).combined(with: .opacity)
                     )
+                }
+            }
+            .overlay {
+                if isBusyOverlayVisible {
+                    progressOverlay
+                        .transition(.identity)
+                        .zIndex(100)
                 }
             }
     }
@@ -918,7 +921,10 @@ struct EditorView: View {
     private var photoPicker: some View {
         PhotoPicker(
             onComplete: handlePhotoPickerComplete,
-            onStart: model.startPhotoLibraryImport
+            onStart: model.startPhotoLibraryImport,
+            onDismiss: {
+                model.isPickerPresented = false
+            }
         )
         .ignoresSafeArea()
     }
@@ -1450,9 +1456,7 @@ struct EditorView: View {
 
             HStack(alignment: .top, spacing: 10) {
                 Button {
-                    withAnimation(.snappy) {
-                        isSharedInboxBannerDismissed = true
-                    }
+                    isSharedInboxBannerDismissed = true
                     model.importPendingItemsIntoNewProject()
                 } label: {
                     sharedInboxActionButton(
@@ -4306,7 +4310,7 @@ struct EditorView: View {
 
             Text("클립 \(model.renderableClips.count)개")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(HanClipTheme.primaryText)
+                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.90))
 
             Spacer()
 
@@ -4373,7 +4377,7 @@ struct EditorView: View {
 
     private var defaultDurationPanel: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: 5) {
                 Image(systemName: "stopwatch")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
@@ -4381,10 +4385,12 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("기본시간")
-                .font(.system(size: 14))
-                .foregroundStyle(HanClipTheme.secondaryText)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 HStack(spacing: 6) {
                     HStack(spacing: 0) {
@@ -4393,7 +4399,7 @@ struct EditorView: View {
                         } label: {
                             Image(systemName: "minus")
                                 .font(.system(size: 9, weight: .bold))
-                                .frame(width: 44, height: 44)
+                                .frame(width: 40, height: 44)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -4403,7 +4409,7 @@ struct EditorView: View {
                         Text("\(model.defaultDuration, specifier: "%.1f")초")
                             .font(.system(size: 10, weight: .semibold))
                             .monospacedDigit()
-                            .frame(minWidth: 40)
+                            .frame(width: 38)
                             .accessibilityLabel(
                                 "기본시간 \(model.defaultDuration, specifier: "%.1f")초"
                             )
@@ -4413,7 +4419,7 @@ struct EditorView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 9, weight: .bold))
-                                .frame(width: 44, height: 44)
+                                .frame(width: 40, height: 44)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -4435,8 +4441,6 @@ struct EditorView: View {
                             )
                             .frame(height: 24)
                     }
-                    .offset(x: -40)
-
                     Button {
                         model.applyDefaultDurationToAll()
                         UIImpactFeedbackGenerator(style: .light)
@@ -4446,7 +4450,7 @@ struct EditorView: View {
                         Text("적용")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
-                            .frame(width: 58, height: 44)
+                            .frame(width: 112, height: 44)
                             .contentShape(Rectangle())
                             .background {
                                 LinearGradient(
@@ -4516,7 +4520,7 @@ struct EditorView: View {
                         }
                     ),
                     tint: HanClipTheme.secondary,
-                    width: 140,
+                    width: 112,
                     height: 24
                 )
                 .accessibilityLabel("모든 영상 길이")
@@ -4555,7 +4559,7 @@ struct EditorView: View {
                         }
                     ),
                     tint: HanClipTheme.secondary,
-                    width: 98,
+                    width: 112,
                     height: 24
                 )
                 .accessibilityLabel("모든 라이브포토 사용 방식")
@@ -5821,6 +5825,9 @@ struct EditorView: View {
 
     private var progressOverlay: some View {
         ZStack {
+            Color(uiColor: .systemBackground)
+                .ignoresSafeArea()
+
             HanClipTheme.backgroundGradient
                 .ignoresSafeArea()
 
@@ -5860,6 +5867,10 @@ struct EditorView: View {
                        let thumbnail = model.previewThumbnail {
                         generationProgressThumbnail(thumbnail)
                             .padding(.bottom, 2)
+                    } else if model.isImportingSharedItems,
+                              let thumbnail = model.sharedImportThumbnail {
+                        generationProgressThumbnail(thumbnail)
+                            .padding(.bottom, 2)
                     } else {
                         ZStack {
                             Circle()
@@ -5880,6 +5891,8 @@ struct EditorView: View {
                                     ? "영화 불러오는 중"
                                 : model.isSavingProject
                                     ? "영화 저장 중"
+                                : model.isImportingSharedItems
+                                    ? "공유 미디어 불러오는 중"
                                     : "준비하고 있습니다"
                         )
                             .font(.system(size: 24, weight: .black))
@@ -5969,7 +5982,7 @@ struct EditorView: View {
                 .padding(.horizontal, 22)
                 .padding(.vertical, 24)
                 .background(
-                    .ultraThinMaterial,
+                    HanClipTheme.panelFill,
                     in: RoundedRectangle(cornerRadius: 34, style: .continuous)
                 )
                 .background(
@@ -5998,6 +6011,7 @@ struct EditorView: View {
 
                 if model.isPreviewRendering
                     || model.isImportingCalendarMedia
+                    || model.isImportingSharedItems
                     || model.isSavingProject
                     || model.isLoadingProject {
                     Button(role: .cancel) {
@@ -6007,6 +6021,8 @@ struct EditorView: View {
                             model.cancelProjectLoad()
                         } else if model.isSavingProject {
                             model.cancelProjectSave()
+                        } else if model.isImportingSharedItems {
+                            model.cancelSharedItemImport()
                         } else {
                             model.cancelCalendarMediaImport()
                         }
@@ -9810,7 +9826,7 @@ private struct InlineStatusSegmentedControl: View {
             segment(title: "안함", selected: !effectiveIsOn)
         }
         .padding(2)
-        .frame(width: 94, height: 28)
+        .frame(width: 112, height: 28)
         .background(HanClipTheme.secondary.opacity(0.13), in: Capsule())
         .overlay {
             Button {

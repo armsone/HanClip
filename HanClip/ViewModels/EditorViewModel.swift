@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import ImageIO
 import Photos
 import SwiftUI
 
@@ -97,6 +98,7 @@ final class EditorViewModel: ObservableObject {
     @Published var isImportingPhotoLibraryMedia = false
     @Published var isImportingSharedItems = false
     @Published var sharedImportProgress = 0.0
+    @Published var sharedImportThumbnail: UIImage?
     @Published var previewThumbnail: UIImage?
     @Published var exportedURL: URL?
     @Published var showPreview = false
@@ -131,6 +133,7 @@ final class EditorViewModel: ObservableObject {
     private var projectLoadTask: Task<Void, Never>?
     private var pendingThumbnailTask: Task<Void, Never>?
     private var calendarImportTask: Task<Void, Never>?
+    private var sharedImportTask: Task<Void, Never>?
     private var pendingPhotoAlbumName = ""
     private var previewSaveRequest: PreviewSaveRequest?
     private var openedProjectSignature: ProjectEditSignature?
@@ -1344,6 +1347,8 @@ final class EditorViewModel: ObservableObject {
         projectLoadTask = nil
         calendarImportTask?.cancel()
         calendarImportTask = nil
+        sharedImportTask?.cancel()
+        sharedImportTask = nil
         releaseEditingMemory()
         isPickerPresented = false
         isCalendarPickerPresented = false
@@ -1365,6 +1370,7 @@ final class EditorViewModel: ObservableObject {
         isImportingPhotoLibraryMedia = false
         isImportingSharedItems = false
         sharedImportProgress = 0
+        sharedImportThumbnail = nil
         previewThumbnail = nil
         exportedURL = nil
         showPreview = false
@@ -2104,18 +2110,33 @@ final class EditorViewModel: ObservableObject {
     func importSharedItems(
         destination: SharedImportDestination? = nil
     ) {
+        guard !isImportingSharedItems else { return }
         let storedDestination = SharedInbox.consumeImportDestination()
         let requestedDestination = destination ?? storedDestination
         let records = SharedInbox.consumePendingRecords()
         guard !records.isEmpty else { return }
         pendingSharedItemCount = 0
+        pendingSharedThumbnails = []
         isImportingSharedItems = true
         sharedImportProgress = 0
+        sharedImportThumbnail = nil
         progressMessage =
             "공유한 파일 \(records.count)개를 불러오는 중…"
 
-        Task {
+        sharedImportTask = Task {
+            let preparedNewProjectBeforeImport: Bool
+            if requestedDestination == .newProject {
+                // Do this before decoding shared media. Otherwise a large
+                // existing project and every newly decoded thumbnail coexist
+                // until 100%, creating the import's highest memory spike.
+                prepareNewProjectForSharedImport()
+                preparedNewProjectBeforeImport = true
+            } else {
+                preparedNewProjectBeforeImport = false
+            }
+
             var imported: [ClipItem] = []
+            imported.reserveCapacity(records.count)
             let audioRecords = records
                 .filter(Self.isSharedAudioRecord)
                 .sorted(by: sharedAudioRecordSortOrder)
@@ -2123,36 +2144,72 @@ final class EditorViewModel: ObservableObject {
                 !Self.isSharedAudioRecord($0)
                     && $0.kind != .browserFavorites
             }
+            let shouldAnalyzeSharedVideoAudio = records.count < 20
+            let unresolvedLivePhotoNames = Set(
+                mediaRecords.compactMap { record -> String? in
+                    guard record.kind == .livePhoto,
+                          record.secondaryFilename == nil else { return nil }
+                    return record.originalFilename
+                }
+            )
+            let resolvedLivePhotoAssets: [String: PHAsset]
+            if !unresolvedLivePhotoNames.isEmpty,
+               await PhotoLibraryService.requestReadAccess() {
+                resolvedLivePhotoAssets = PhotoLibraryService.livePhotoAssets(
+                    matchingOriginalFilenames: unresolvedLivePhotoNames
+                )
+            } else {
+                resolvedLivePhotoAssets = [:]
+            }
             var unresolvedLivePhotoCount = 0
             for (index, record) in mediaRecords.enumerated() {
+                guard !Task.isCancelled else {
+                    cancelSharedImportAndRestore(
+                        records
+                    )
+                    return
+                }
                 do {
                     let primary = try SharedInbox.fileURL(
                         named: record.primaryFilename
                     )
                     switch record.kind {
                     case .image:
-                        guard let image = UIImage(
-                            contentsOfFile: primary.path
-                        ) else { continue }
+                        let imageInfo = await Task.detached(
+                            priority: .userInitiated
+                        ) {
+                            Self.sharedImageInfo(at: primary)
+                        }.value
+                        guard let imageInfo else { continue }
                         imported.append(
                             ClipItem(
                                 source: .imageFile(primary),
-                                thumbnail: image,
+                                thumbnail: imageInfo.thumbnail,
                                 duration: defaultDuration,
-                                sourcePixelSize: image.size
+                                photoSimilarityFingerprint:
+                                    imageInfo.fingerprint,
+                                sourcePixelSize: imageInfo.pixelSize
                             )
                         )
+                        sharedImportThumbnail = imageInfo.thumbnail
 
                     case .video:
                         imported.append(
-                            contentsOf: try await makeVideoClips(from: primary)
+                            contentsOf: try await makeVideoClips(
+                                from: primary,
+                                analyzeAudio: shouldAnalyzeSharedVideoAudio
+                            )
                         )
 
                     case .livePhoto:
-                        guard let image = UIImage(
-                                contentsOfFile: primary.path
-                              )
-                        else { continue }
+                        let imageInfo = await Task.detached(
+                            priority: .userInitiated
+                        ) {
+                            Self.sharedImageInfo(at: primary)
+                        }.value
+                        guard let imageInfo else { continue }
+                        let image = imageInfo.thumbnail
+                        sharedImportThumbnail = image
 
                         if let secondaryName = record.secondaryFilename {
                             let secondary = try SharedInbox.fileURL(
@@ -2173,17 +2230,17 @@ final class EditorViewModel: ObservableObject {
                                     isLivePhoto: true,
                                     livePhotoMode: .motion,
                                     sourceDuration: duration,
-                                    sourcePixelSize: image.size
+                                    photoSimilarityFingerprint:
+                                        imageInfo.fingerprint,
+                                    sourcePixelSize: imageInfo.pixelSize
                                 )
                             )
-                            continue
-                        }
-
-                        if let originalFilename = record.originalFilename,
-                           await PhotoLibraryService.requestReadAccess(),
-                           let asset = PhotoLibraryService.livePhotoAsset(
-                            matchingOriginalFilename: originalFilename
-                           ) {
+                        } else if let originalFilename = record.originalFilename,
+                           let asset = resolvedLivePhotoAssets[
+                            PhotoLibraryService.normalizedFilename(
+                                originalFilename
+                            )
+                           ] {
                             let duration = try await PhotoLibraryService
                                 .livePhotoVideoDuration(for: asset)
                             imported.append(
@@ -2200,6 +2257,8 @@ final class EditorViewModel: ObservableObject {
                                     livePhotoMode: .motion,
                                     mediaKind: .livePhoto,
                                     sourceDuration: duration,
+                                    photoSimilarityFingerprint:
+                                        imageInfo.fingerprint,
                                     sourceCreatedAt: asset.creationDate,
                                     sourcePixelSize: CGSize(
                                         width: asset.pixelWidth,
@@ -2215,7 +2274,9 @@ final class EditorViewModel: ObservableObject {
                                     thumbnail: image,
                                     duration: defaultDuration,
                                     photoDuration: defaultDuration,
-                                    sourcePixelSize: image.size
+                                    photoSimilarityFingerprint:
+                                        imageInfo.fingerprint,
+                                    sourcePixelSize: imageInfo.pixelSize
                                 )
                             )
                         }
@@ -2228,23 +2289,37 @@ final class EditorViewModel: ObservableObject {
 
                 let completedCount = index + 1
                 sharedImportProgress =
-                    Double(completedCount) / Double(records.count)
+                    Double(completedCount) / Double(max(1, records.count))
+                    * 0.98
                 progressMessage =
                     "공유한 파일 \(completedCount)/\(records.count)개를 "
                     + "불러오는 중…"
+
+                // Give SwiftUI a chance to display progress between large
+                // batches instead of presenting a frozen 0% screen.
+                await Task.yield()
+            }
+
+            guard !Task.isCancelled else {
+                cancelSharedImportAndRestore(
+                    records
+                )
+                return
             }
 
             let selectedAudioURL = audioRecords.first.flatMap {
                 try? SharedInbox.fileURL(named: $0.primaryFilename)
             }
-            isImportingSharedItems = false
-            progressMessage = ""
-            sharedImportProgress = 0
+            sharedImportProgress = 0.99
+            progressMessage = "영화 화면을 정리하는 중…"
+            await Task.yield()
 
             if !imported.isEmpty || selectedAudioURL != nil {
                 switch requestedDestination {
                 case .newProject:
-                    prepareNewProjectForSharedImport()
+                    if !preparedNewProjectBeforeImport {
+                        prepareNewProjectForSharedImport()
+                    }
                 case .existingProject:
                     prepareExistingProjectForSharedImport()
                 case nil:
@@ -2253,7 +2328,10 @@ final class EditorViewModel: ObservableObject {
                     }
                 }
                 if !imported.isEmpty {
-                    addPickedItems(imported)
+                    addPickedItems(
+                        imported,
+                        sourcesAlreadyPersisted: true
+                    )
                 }
                 let didImportMusic: Bool
                 if let selectedAudioURL {
@@ -2285,7 +2363,85 @@ final class EditorViewModel: ObservableObject {
                 alertMessage =
                     "공유한 항목을 불러오지 못했습니다."
             }
+            isImportingSharedItems = false
+            progressMessage = ""
+            sharedImportProgress = 0
+            sharedImportThumbnail = nil
+            sharedImportTask = nil
         }
+    }
+
+    func cancelSharedItemImport() {
+        guard isImportingSharedItems else { return }
+        progressMessage = "공유 미디어 불러오기를 취소하는 중…"
+        sharedImportTask?.cancel()
+    }
+
+    private func cancelSharedImportAndRestore(
+        _ records: [SharedImportRecord]
+    ) {
+        SharedInbox.append(records)
+        isImportingSharedItems = false
+        sharedImportProgress = 0
+        sharedImportThumbnail = nil
+        progressMessage = ""
+        sharedImportTask = nil
+        refreshPendingSharedItems()
+        alertMessage = "공유 미디어 불러오기를 취소했습니다. 다시 시도할 수 있습니다."
+    }
+
+    nonisolated private static func sharedImageInfo(
+        at url: URL,
+        maxPixelSize: CGFloat = 320
+    ) -> (
+        thumbnail: UIImage,
+        pixelSize: CGSize,
+        fingerprint: [UInt8]
+    )? {
+        guard let source = CGImageSourceCreateWithURL(
+            url as CFURL,
+            [kCGImageSourceShouldCache: false] as CFDictionary
+        ) else { return nil }
+
+        let properties = CGImageSourceCopyPropertiesAtIndex(
+            source,
+            0,
+            nil
+        ) as? [CFString: Any]
+        let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?
+            .doubleValue ?? 0
+        let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?
+            .doubleValue ?? 0
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            options as CFDictionary
+        ) else { return nil }
+
+        let thumbnail = UIImage(cgImage: image)
+        let pixelSize = width > 0 && height > 0
+            ? CGSize(width: width, height: height)
+            : thumbnail.size
+        return (
+            thumbnail,
+            pixelSize,
+            // Shared imports can contain hundreds of items. The 16×16
+            // structure fingerprint is sufficient for grouping; running a
+            // Vision face request for every shared image made this path
+            // several times slower and accumulated memory before the final
+            // screen transition.
+            PhotoSimilarityFingerprint.make(
+                from: thumbnail,
+                detectFaces: false
+            )
+        )
     }
 
     private func sharedAudioRecordSortOrder(
@@ -2996,10 +3152,18 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    private func makeVideoClips(from url: URL) async throws -> [ClipItem] {
+    private func makeVideoClips(
+        from url: URL,
+        analyzeAudio: Bool = true
+    ) async throws -> [ClipItem] {
         let thumbnail = try await videoThumbnail(for: url)
         let duration = try await PhotoLibraryService.videoDuration(at: url)
-        let analysis = try? await AudioAnalysisService.analyze(url: url)
+        let analysis: AudioAnalysisResult?
+        if analyzeAudio {
+            analysis = try? await AudioAnalysisService.analyze(url: url)
+        } else {
+            analysis = nil
+        }
         return VideoClipSegmenter.makeClips(
             source: .videoFile(url),
             thumbnail: thumbnail,

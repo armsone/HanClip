@@ -187,8 +187,18 @@ enum PhotoLibraryService {
     static func livePhotoAsset(
         matchingOriginalFilename originalFilename: String
     ) -> PHAsset? {
-        let expectedName = normalizedFilename(originalFilename)
-        guard !expectedName.isEmpty else { return nil }
+        livePhotoAssets(
+            matchingOriginalFilenames: Set([originalFilename])
+        )[normalizedFilename(originalFilename)]
+    }
+
+    static func livePhotoAssets(
+        matchingOriginalFilenames originalFilenames: Set<String>
+    ) -> [String: PHAsset] {
+        let expectedNames = Set(
+            originalFilenames.map(normalizedFilename).filter { !$0.isEmpty }
+        )
+        guard !expectedNames.isEmpty else { return [:] }
 
         let options = PHFetchOptions()
         options.predicate = NSPredicate(
@@ -200,25 +210,26 @@ enum PhotoLibraryService {
             options: options
         )
 
-        var matchedAsset: PHAsset?
+        var matchedAssets: [String: PHAsset] = [:]
         assets.enumerateObjects { asset, _, stop in
             let resources = PHAssetResource.assetResources(for: asset)
-            let matches = resources.contains { resource in
+            for resource in resources {
                 guard resource.type == .photo
                         || resource.type == .fullSizePhoto
-                else { return false }
-                return normalizedFilename(resource.originalFilename)
-                    == expectedName
+                else { continue }
+                let name = normalizedFilename(resource.originalFilename)
+                guard expectedNames.contains(name) else { continue }
+                matchedAssets[name] = asset
+                break
             }
-            if matches {
-                matchedAsset = asset
+            if matchedAssets.count == expectedNames.count {
                 stop.pointee = true
             }
         }
-        return matchedAsset
+        return matchedAssets
     }
 
-    private static func normalizedFilename(_ filename: String) -> String {
+    static func normalizedFilename(_ filename: String) -> String {
         URL(fileURLWithPath: filename)
             .deletingPathExtension()
             .lastPathComponent

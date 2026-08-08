@@ -1,4 +1,5 @@
 import AVFoundation
+import ImageIO
 import UIKit
 import UniformTypeIdentifiers
 
@@ -305,8 +306,13 @@ final class ShareViewController: UIViewController {
                 guard !Task.isCancelled else { return }
                 if let record = try? await importProvider(provider) {
                     records.append(record)
-                    await MainActor.run {
-                        self.showThumbnail(for: record)
+                    let completed = index + 1
+                    if completed == 1
+                        || completed.isMultiple(of: 10)
+                        || completed == providers.count {
+                        await MainActor.run {
+                            self.showThumbnail(for: record)
+                        }
                     }
                 }
                 guard !Task.isCancelled else { return }
@@ -336,13 +342,16 @@ final class ShareViewController: UIViewController {
     private func importProvider(
         _ provider: NSItemProvider
     ) async throws -> SharedImportRecord {
-        if let fileURLRecord = try? await importFileURL(provider) {
-            return fileURLRecord
-        }
-
+        // Photos also exposes the still HEIC of a Live Photo as a generic
+        // file URL. Resolve the Live Photo bundle first so its paired video
+        // is not silently discarded.
         if supportsLivePhoto(provider),
            let liveRecord = try? await importLivePhoto(provider) {
             return liveRecord
+        }
+
+        if let fileURLRecord = try? await importFileURL(provider) {
+            return fileURLRecord
         }
 
         if let movieTypeIdentifier = provider.typeIdentifier(
@@ -927,7 +936,7 @@ final class ShareViewController: UIViewController {
         let image: UIImage?
         switch record.kind {
         case .image, .livePhoto:
-            image = UIImage(contentsOfFile: url.path)
+            image = downsampledImage(at: url, maximumPixelSize: 640)
         case .video:
             let asset = AVURLAsset(url: url)
             let generator = AVAssetImageGenerator(asset: asset)
@@ -944,6 +953,32 @@ final class ShareViewController: UIViewController {
         guard let image else { return }
         thumbnailView.contentMode = .scaleAspectFill
         thumbnailView.image = image
+    }
+
+    private func downsampledImage(
+        at url: URL,
+        maximumPixelSize: CGFloat
+    ) -> UIImage? {
+        let sourceOptions = [
+            kCGImageSourceShouldCache: false
+        ] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(
+            url as CFURL,
+            sourceOptions
+        ) else { return nil }
+
+        let thumbnailOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ] as CFDictionary
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            thumbnailOptions
+        ) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     @objc private func cancelImport() {

@@ -5,11 +5,17 @@ import Photos
 import UIKit
 
 final class VideoComposer {
+    private struct RecoveredIntermediate {
+        let item: ClipItem
+        let cleanupURLs: [URL]
+    }
+
     private let logger = Logger(
         subsystem: "com.hanclip.app",
         category: "VideoComposer"
     )
     private let frameRate: Int32 = 30
+    private static let maximumItemsPerComposition = 120
 
     func compose(
         items: [ClipItem],
@@ -20,6 +26,15 @@ final class VideoComposer {
     ) async throws -> URL {
         guard !items.isEmpty else {
             throw MediaError.exportFailed("선택된 사진이 없습니다.")
+        }
+        if items.count > Self.maximumItemsPerComposition {
+            return try await composeLargeProject(
+                items: items,
+                renderSize: requestedRenderSize,
+                watermarkSettings: watermarkSettings,
+                backgroundMusicSettings: backgroundMusicSettings,
+                progressHandler: progressHandler
+            )
         }
         let renderSize = Self.codecSafeRenderSize(requestedRenderSize)
         logger.info(
@@ -286,6 +301,292 @@ final class VideoComposer {
         await progressHandler(1)
         logger.info("영상 생성 완료")
         return watermarkedOutput
+    }
+
+    private func composeLargeProject(
+        items: [ClipItem],
+        renderSize: CGSize,
+        watermarkSettings: WatermarkSettings,
+        backgroundMusicSettings: BackgroundMusicSettings,
+        progressHandler: @escaping @Sendable (Double) async -> Void
+    ) async throws -> URL {
+        let chunkSize = Self.maximumItemsPerComposition
+        let chunkCount = Int(ceil(Double(items.count) / Double(chunkSize)))
+        logger.info(
+            "대형 프로젝트 분할 합성 시작: 클립 \(items.count)개, 중간 영상 \(chunkCount)개"
+        )
+
+        var intermediateURLs: [URL] = []
+        defer {
+            for url in intermediateURLs {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        var intermediateItems: [ClipItem] = []
+        var disabledWatermark = watermarkSettings
+        disabledWatermark.isEnabled = false
+        disabledWatermark.logoEnabled = false
+
+        for chunkIndex in 0..<chunkCount {
+            try Task.checkCancellation()
+            let startIndex = chunkIndex * chunkSize
+            let endIndex = min(items.count, startIndex + chunkSize)
+            let chunkItems = Array(items[startIndex..<endIndex])
+            let phaseStart = Double(chunkIndex) / Double(chunkCount) * 0.78
+            let phaseLength = 0.78 / Double(chunkCount)
+
+            logger.info(
+                "중간 영상 생성: \(startIndex + 1)~\(endIndex)번째 미디어"
+            )
+            let generatedURL: URL
+            do {
+                generatedURL = try await compose(
+                    items: chunkItems,
+                    renderSize: renderSize,
+                    watermarkSettings: disabledWatermark,
+                    backgroundMusicSettings: .empty
+                ) { chunkProgress in
+                    await progressHandler(
+                        phaseStart + chunkProgress * phaseLength
+                    )
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                logger.error(
+                    "중간 영상 실패: \(startIndex + 1)~\(endIndex)번째, \(error.localizedDescription, privacy: .public)"
+                )
+                let recovered = try await recoverFailedGroup(
+                    items: chunkItems,
+                    originalStartIndex: startIndex,
+                    renderSize: renderSize,
+                    disabledWatermark: disabledWatermark
+                )
+                intermediateItems.append(contentsOf: recovered.map(\.item))
+                intermediateURLs.append(
+                    contentsOf: recovered.flatMap(\.cleanupURLs)
+                )
+                await progressHandler(phaseStart + phaseLength)
+                continue
+            }
+
+            let intermediateURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "HanClip-Chunk-\(chunkIndex + 1)-\(UUID().uuidString)"
+                )
+                .appendingPathExtension("mp4")
+            try? FileManager.default.removeItem(at: intermediateURL)
+            do {
+                try FileManager.default.moveItem(
+                    at: generatedURL,
+                    to: intermediateURL
+                )
+            } catch {
+                throw MediaError.exportFailed(
+                    "\(chunkIndex + 1)번째 중간 영상을 보관할 수 없습니다."
+                )
+            }
+            intermediateURLs.append(intermediateURL)
+
+            let asset = AVURLAsset(url: intermediateURL)
+            let duration = try await asset.load(.duration).seconds
+            guard duration.isFinite, duration > 0 else {
+                throw MediaError.exportFailed(
+                    "\(chunkIndex + 1)번째 중간 영상의 길이를 읽을 수 없습니다."
+                )
+            }
+            intermediateItems.append(
+                ClipItem(
+                    source: .videoFile(intermediateURL),
+                    thumbnail: chunkItems[0].thumbnail,
+                    duration: duration,
+                    mediaKind: .video,
+                    sourceDuration: duration,
+                    sourcePixelSize: renderSize
+                )
+            )
+        }
+
+        try Task.checkCancellation()
+        logger.info(
+            "중간 영상 결합 시작: \(intermediateItems.count)개"
+        )
+        do {
+            return try await compose(
+                items: intermediateItems,
+                renderSize: renderSize,
+                watermarkSettings: watermarkSettings,
+                backgroundMusicSettings: backgroundMusicSettings
+            ) { finalProgress in
+                await progressHandler(0.78 + finalProgress * 0.22)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            logger.error(
+                "중간 영상 결합 실패: \(error.localizedDescription, privacy: .public)"
+            )
+            throw MediaError.exportFailed(
+                "중간 영상을 결합하는 중 오류가 발생했습니다. "
+                    + error.localizedDescription
+            )
+        }
+    }
+
+    private func recoverFailedGroup(
+        items: [ClipItem],
+        originalStartIndex: Int,
+        renderSize: CGSize,
+        disabledWatermark: WatermarkSettings
+    ) async throws -> [RecoveredIntermediate] {
+        try Task.checkCancellation()
+        do {
+            let generatedURL = try await compose(
+                items: items,
+                renderSize: renderSize,
+                watermarkSettings: disabledWatermark,
+                backgroundMusicSettings: .empty
+            ) { _ in }
+            let result = try await storeRecoveredIntermediate(
+                generatedURL: generatedURL,
+                thumbnail: items[0].thumbnail,
+                renderSize: renderSize,
+                label: "\(originalStartIndex + 1)-\(items.count)"
+            )
+            return [result]
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard items.count == 1 else {
+                let leftCount = items.count / 2
+                let leftItems = Array(items[..<leftCount])
+                let rightItems = Array(items[leftCount...])
+                logger.info(
+                    "디코딩 실패 구간 재분할: \(originalStartIndex + 1)~\(originalStartIndex + items.count)번째"
+                )
+                let left = try await recoverFailedGroup(
+                    items: leftItems,
+                    originalStartIndex: originalStartIndex,
+                    renderSize: renderSize,
+                    disabledWatermark: disabledWatermark
+                )
+                let right = try await recoverFailedGroup(
+                    items: rightItems,
+                    originalStartIndex: originalStartIndex + leftCount,
+                    renderSize: renderSize,
+                    disabledWatermark: disabledWatermark
+                )
+                return left + right
+            }
+
+            let mediaNumber = originalStartIndex + 1
+            logger.error(
+                "\(mediaNumber)번째 미디어 디코딩 실패. 정지 화면으로 복구합니다: \(error.localizedDescription, privacy: .public)"
+            )
+            return [
+                try await recoverUndecodableItemAsStill(
+                    items[0],
+                    mediaNumber: mediaNumber,
+                    renderSize: renderSize,
+                    disabledWatermark: disabledWatermark
+                )
+            ]
+        }
+    }
+
+    private func recoverUndecodableItemAsStill(
+        _ item: ClipItem,
+        mediaNumber: Int,
+        renderSize: CGSize,
+        disabledWatermark: WatermarkSettings
+    ) async throws -> RecoveredIntermediate {
+        let imageURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "HanClip-Recovered-\(mediaNumber)-\(UUID().uuidString)"
+            )
+            .appendingPathExtension("jpg")
+        guard let imageData = item.thumbnail.jpegData(
+            compressionQuality: 0.95
+        ) else {
+            throw MediaError.exportFailed(
+                "\(mediaNumber)번째 미디어의 대체 화면을 만들 수 없습니다."
+            )
+        }
+        do {
+            try imageData.write(to: imageURL, options: .atomic)
+            let fallbackItem = ClipItem(
+                source: .imageFile(imageURL),
+                thumbnail: item.thumbnail,
+                duration: max(0.1, item.duration),
+                mediaKind: .photo,
+                sourcePixelSize: item.sourcePixelSize
+            )
+            let generatedURL = try await compose(
+                items: [fallbackItem],
+                renderSize: renderSize,
+                watermarkSettings: disabledWatermark,
+                backgroundMusicSettings: .empty
+            ) { _ in }
+            return try await storeRecoveredIntermediate(
+                generatedURL: generatedURL,
+                thumbnail: item.thumbnail,
+                renderSize: renderSize,
+                label: "fallback-\(mediaNumber)",
+                extraCleanupURLs: [imageURL]
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: imageURL)
+            throw MediaError.exportFailed(
+                "\(mediaNumber)번째 미디어를 정지 화면으로도 복구할 수 없습니다. "
+                    + error.localizedDescription
+            )
+        }
+    }
+
+    private func storeRecoveredIntermediate(
+        generatedURL: URL,
+        thumbnail: UIImage,
+        renderSize: CGSize,
+        label: String,
+        extraCleanupURLs: [URL] = []
+    ) async throws -> RecoveredIntermediate {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "HanClip-RecoveredChunk-\(label)-\(UUID().uuidString)"
+            )
+            .appendingPathExtension("mp4")
+        try? FileManager.default.removeItem(at: outputURL)
+        do {
+            try FileManager.default.moveItem(
+                at: generatedURL,
+                to: outputURL
+            )
+            let duration = try await AVURLAsset(url: outputURL)
+                .load(.duration).seconds
+            guard duration.isFinite, duration > 0 else {
+                throw MediaError.exportFailed(
+                    "복구 영상의 길이를 읽을 수 없습니다."
+                )
+            }
+            return RecoveredIntermediate(
+                item: ClipItem(
+                    source: .videoFile(outputURL),
+                    thumbnail: thumbnail,
+                    duration: duration,
+                    mediaKind: .video,
+                    sourceDuration: duration,
+                    sourcePixelSize: renderSize
+                ),
+                cleanupURLs: [outputURL] + extraCleanupURLs
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            for url in extraCleanupURLs {
+                try? FileManager.default.removeItem(at: url)
+            }
+            throw error
+        }
     }
 
     private func configureBackgroundMusic(

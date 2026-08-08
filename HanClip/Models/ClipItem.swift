@@ -296,7 +296,10 @@ enum VideoSegmentMode: String, CaseIterable, Identifiable {
 enum PhotoSimilarityFingerprint {
     private static let imageSampleCount = 16 * 16
 
-    static func make(from image: UIImage) -> [UInt8] {
+    static func make(
+        from image: UIImage,
+        detectFaces: Bool = true
+    ) -> [UInt8] {
         // 16×16 keeps enough spatial information to distinguish a changed
         // camera angle while remaining cheap to calculate during import.
         let dimension = 16
@@ -340,7 +343,9 @@ enum PhotoSimilarityFingerprint {
             luminance.append(UInt8(value.rounded()))
         }
 
-        luminance.append(UInt8(clamping: detectedFaceCount(in: image)))
+        if detectFaces {
+            luminance.append(UInt8(clamping: detectedFaceCount(in: image)))
+        }
         return luminance
     }
 

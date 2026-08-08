@@ -21,14 +21,7 @@
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<key>NSExtensionActivationRule</key>
-			<dict>
-				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
-				<integer>50</integer>
-				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>50</integer>
-				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-				<integer>50</integer>
-			</dict>
+			<string>SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data").@count == $extensionItem.attachments.@count).@count == extensionItems.@count AND extensionItems.@count &gt; 0</string>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>

@@ -43,7 +43,9 @@ struct ClipRow: View {
                                     .system(size: 12, weight: .semibold)
                                     .monospacedDigit()
                                 )
-                                .foregroundStyle(HanClipTheme.primaryText)
+                                .foregroundStyle(
+                                    HanClipTheme.secondaryText.opacity(0.82)
+                                )
                                 .padding(.leading, 8)
                             Spacer(minLength: 0)
                         }

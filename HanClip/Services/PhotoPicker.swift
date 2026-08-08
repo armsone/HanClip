@@ -1,53 +1,2064 @@
 import AVFoundation
+import AVKit
 import Photos
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
+private final class PhotoPickerGradientView: UIView {
+    private let gradientLayer = CAGradientLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.insertSublayer(gradientLayer, at: 0)
+        updateColors()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        gradientLayer.frame = bounds
+    }
+
+    override func traitCollectionDidChange(
+        _ previousTraitCollection: UITraitCollection?
+    ) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        updateColors()
+    }
+
+    private func updateColors() {
+        gradientLayer.colors = [
+            UIColor(HanClipTheme.backgroundWithBlack).cgColor,
+            UIColor(HanClipTheme.background).cgColor
+        ]
+        gradientLayer.startPoint = CGPoint(x: 0.12, y: 0)
+        gradientLayer.endPoint = CGPoint(x: 0.88, y: 1)
+    }
+}
+
 struct PhotoPicker: UIViewControllerRepresentable {
     let onComplete: ([ClipItem]) -> Void
     let onStart: () -> Void
+    let onDismiss: () -> Void
 
-    func makeUIViewController(context: Context) -> PHPickerViewController {
-        var configuration = PHPickerConfiguration(photoLibrary: .shared())
-        configuration.filter = .any(of: [.images, .videos])
-        configuration.selectionLimit = 0
-        configuration.selection = .ordered
-
-        let picker = PHPickerViewController(configuration: configuration)
-        picker.delegate = context.coordinator
-        return picker
+    func makeUIViewController(
+        context: Context
+    ) -> DragSelectionPhotoPickerViewController {
+        let container = DragSelectionPhotoPickerViewController(
+            onCancel: {
+                context.coordinator.cancelPicking()
+            },
+            onDone: { assetIdentifiers in
+                context.coordinator.finishPicking(
+                    assetIdentifiers: assetIdentifiers
+                )
+            }
+        )
+        return container
     }
 
     func updateUIViewController(
-        _ uiViewController: PHPickerViewController,
+        _ uiViewController: DragSelectionPhotoPickerViewController,
         context: Context
     ) {}
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             onStart: onStart,
-            onComplete: onComplete
+            onComplete: onComplete,
+            onDismiss: onDismiss
         )
+    }
+
+    final class DragSelectionPhotoPickerViewController: UIViewController,
+        UICollectionViewDataSource,
+        UICollectionViewDelegate,
+        UICollectionViewDelegateFlowLayout,
+        UIGestureRecognizerDelegate {
+        private let onCancel: () -> Void
+        private let onDone: ([String]) -> Void
+        private let imageManager = PHCachingImageManager()
+        private var assets: PHFetchResult<PHAsset>?
+        private var assetSections: [AssetDaySection] = []
+        private var selectedMediaFilters: Set<MediaFilter> = [
+            .photo,
+            .livePhoto,
+            .video
+        ]
+        private var selectedIdentifiers: [String] = []
+        private var selectedIdentifierSet: Set<String> = []
+        private var dragShouldSelect = true
+        private var lastDragIndexPath: IndexPath?
+        private var suppressNextTap = false
+        private var columnCount = 5
+        private var dragLocationInView: CGPoint?
+        private var autoScrollDisplayLink: CADisplayLink?
+        private var lastAutoScrollTimestamp: CFTimeInterval?
+        private var filterButtons: [UIButton] = []
+        private let clearSelectionButton = UIButton(type: .system)
+        private let doneButton = UIButton(type: .system)
+        private let previousDayButton = UIButton(type: .system)
+        private let todayButton = UIButton(type: .system)
+        private var isTodayButtonArmedForSelection = false
+        private let collectionView: UICollectionView
+
+        private enum MediaFilter: Int {
+            case photo = 0
+            case livePhoto = 1
+            case video = 2
+
+            var title: String {
+                switch self {
+                case .photo: "사진"
+                case .livePhoto: "Live"
+                case .video: "영상"
+                }
+            }
+
+            var symbolName: String {
+                switch self {
+                case .photo: "photo"
+                case .livePhoto: "livephoto"
+                case .video: "video.fill"
+                }
+            }
+        }
+
+        private struct AssetDaySection {
+            let date: Date
+            let assets: [PHAsset]
+        }
+
+        init(
+            onCancel: @escaping () -> Void,
+            onDone: @escaping ([String]) -> Void
+        ) {
+            self.onCancel = onCancel
+            self.onDone = onDone
+            let layout = UICollectionViewFlowLayout()
+            layout.minimumLineSpacing = 2
+            layout.minimumInteritemSpacing = 2
+            collectionView = UICollectionView(
+                frame: .zero,
+                collectionViewLayout: layout
+            )
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = UIColor(HanClipTheme.background)
+            let background = PhotoPickerGradientView()
+            background.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(background)
+            NSLayoutConstraint.activate([
+                background.topAnchor.constraint(equalTo: view.topAnchor),
+                background.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                background.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                background.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
+            configureHeader()
+            configureCollectionView()
+            configureToolbar()
+            configureDayNavigationButtons()
+            requestAccessAndLoadAssets()
+        }
+
+        private func configureHeader() {
+            let header = PhotoPickerGradientView()
+            header.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(header)
+
+            let titleIconContainer = UIView()
+            titleIconContainer.backgroundColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.14)
+            titleIconContainer.layer.cornerRadius = 9
+            titleIconContainer.layer.cornerCurve = .continuous
+            titleIconContainer.translatesAutoresizingMaskIntoConstraints = false
+
+            let titleIcon = UIImageView(
+                image: UIImage(systemName: "photo.on.rectangle.angled")
+            )
+            titleIcon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
+                pointSize: 13,
+                weight: .semibold
+            )
+            titleIcon.tintColor = HanClipTheme.primaryUIColor
+            titleIcon.contentMode = .scaleAspectFit
+            titleIcon.translatesAutoresizingMaskIntoConstraints = false
+            titleIconContainer.addSubview(titleIcon)
+
+            let titleLabel = UILabel()
+            titleLabel.text = "미디어 선택"
+            titleLabel.font = .systemFont(ofSize: 17, weight: .bold)
+            titleLabel.textColor = UIColor(HanClipTheme.text)
+            titleLabel.adjustsFontForContentSizeCategory = false
+
+            let titleStack = UIStackView(arrangedSubviews: [
+                titleIconContainer,
+                titleLabel
+            ])
+            titleStack.axis = .horizontal
+            titleStack.alignment = .center
+            titleStack.spacing = 7
+            titleStack.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(titleStack)
+
+            let cancelButton = UIButton(type: .system)
+            configureCompactButton(
+                cancelButton,
+                title: "취소",
+                symbolName: "xmark",
+                fontSize: 12,
+                foregroundColor: UIColor(HanClipTheme.text)
+                    .withAlphaComponent(0.78),
+                backgroundColor: HanClipTheme.secondaryUIColor
+                    .withAlphaComponent(0.09),
+                borderColor: HanClipTheme.secondaryUIColor
+                    .withAlphaComponent(0.28)
+            )
+            cancelButton.addTarget(
+                self,
+                action: #selector(cancelTapped),
+                for: .touchUpInside
+            )
+
+            configureCompactButton(
+                doneButton,
+                title: "0개 추가",
+                symbolName: "plus",
+                fontSize: 12,
+                foregroundColor: UIColor(HanClipTheme.background),
+                backgroundColor: HanClipTheme.primaryUIColor,
+                borderColor: HanClipTheme.primaryUIColor
+            )
+            doneButton.isEnabled = false
+            doneButton.alpha = 0.30
+            doneButton.addTarget(
+                self,
+                action: #selector(doneTapped),
+                for: .touchUpInside
+            )
+
+            cancelButton.translatesAutoresizingMaskIntoConstraints = false
+            doneButton.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(cancelButton)
+            header.addSubview(doneButton)
+
+            let filterStack = UIStackView()
+            filterStack.axis = .horizontal
+            filterStack.spacing = 3
+            filterStack.distribution = .fillEqually
+            filterStack.translatesAutoresizingMaskIntoConstraints = false
+
+            let filterContainer = UIView()
+            filterContainer.backgroundColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.07)
+            filterContainer.layer.cornerRadius = 18
+            filterContainer.layer.cornerCurve = .continuous
+            filterContainer.layer.borderWidth = 1
+            filterContainer.layer.borderColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.24).cgColor
+            filterContainer.translatesAutoresizingMaskIntoConstraints = false
+            filterContainer.addSubview(filterStack)
+            header.addSubview(filterContainer)
+
+            for filter in [
+                MediaFilter.photo,
+                MediaFilter.livePhoto,
+                MediaFilter.video
+            ] {
+                let button = UIButton(type: .system)
+                button.tag = filter.rawValue
+                button.addTarget(
+                    self,
+                    action: #selector(mediaFilterTapped(_:)),
+                    for: .touchUpInside
+                )
+                filterButtons.append(button)
+                filterStack.addArrangedSubview(button)
+            }
+            updateFilterButtonAppearance()
+
+            let separator = UIView()
+            separator.backgroundColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.22)
+            separator.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(separator)
+
+            NSLayoutConstraint.activate([
+                header.topAnchor.constraint(equalTo: view.topAnchor),
+                header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                header.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor,
+                    constant: 101
+                ),
+                cancelButton.leadingAnchor.constraint(
+                    equalTo: header.leadingAnchor,
+                    constant: 16
+                ),
+                cancelButton.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor,
+                    constant: 7
+                ),
+                cancelButton.widthAnchor.constraint(equalToConstant: 72),
+                cancelButton.heightAnchor.constraint(equalToConstant: 36),
+                doneButton.trailingAnchor.constraint(
+                    equalTo: header.trailingAnchor,
+                    constant: -16
+                ),
+                doneButton.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor,
+                    constant: 7
+                ),
+                doneButton.widthAnchor.constraint(equalToConstant: 104),
+                doneButton.heightAnchor.constraint(equalToConstant: 36),
+                titleStack.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+                titleStack.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
+                titleStack.leadingAnchor.constraint(
+                    greaterThanOrEqualTo: cancelButton.trailingAnchor,
+                    constant: 6
+                ),
+                titleStack.trailingAnchor.constraint(
+                    lessThanOrEqualTo: doneButton.leadingAnchor,
+                    constant: -6
+                ),
+                titleIconContainer.widthAnchor.constraint(equalToConstant: 30),
+                titleIconContainer.heightAnchor.constraint(equalToConstant: 30),
+                titleIcon.centerXAnchor.constraint(
+                    equalTo: titleIconContainer.centerXAnchor
+                ),
+                titleIcon.centerYAnchor.constraint(
+                    equalTo: titleIconContainer.centerYAnchor
+                ),
+                titleIcon.widthAnchor.constraint(equalToConstant: 17),
+                titleIcon.heightAnchor.constraint(equalToConstant: 17),
+                filterContainer.leadingAnchor.constraint(
+                    equalTo: header.leadingAnchor,
+                    constant: 16
+                ),
+                filterContainer.trailingAnchor.constraint(
+                    equalTo: header.trailingAnchor,
+                    constant: -16
+                ),
+                filterContainer.bottomAnchor.constraint(
+                    equalTo: header.bottomAnchor,
+                    constant: -10
+                ),
+                filterContainer.heightAnchor.constraint(equalToConstant: 36),
+                filterStack.leadingAnchor.constraint(
+                    equalTo: filterContainer.leadingAnchor,
+                    constant: 3
+                ),
+                filterStack.trailingAnchor.constraint(
+                    equalTo: filterContainer.trailingAnchor,
+                    constant: -3
+                ),
+                filterStack.topAnchor.constraint(
+                    equalTo: filterContainer.topAnchor,
+                    constant: 3
+                ),
+                filterStack.bottomAnchor.constraint(
+                    equalTo: filterContainer.bottomAnchor,
+                    constant: -3
+                ),
+                separator.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+                separator.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+                separator.bottomAnchor.constraint(equalTo: header.bottomAnchor),
+                separator.heightAnchor.constraint(equalToConstant: 0.5)
+            ])
+            header.tag = 101
+        }
+
+        private func configureCompactButton(
+            _ button: UIButton,
+            title: String,
+            symbolName: String,
+            fontSize: CGFloat,
+            foregroundColor: UIColor,
+            backgroundColor: UIColor,
+            borderColor: UIColor
+        ) {
+            button.configuration = nil
+            button.setTitle(title, for: .normal)
+            button.setImage(UIImage(systemName: symbolName), for: .normal)
+            button.tintColor = foregroundColor
+            button.setTitleColor(foregroundColor, for: .normal)
+            button.titleLabel?.font = .systemFont(
+                ofSize: fontSize,
+                weight: .semibold
+            )
+            button.titleLabel?.adjustsFontForContentSizeCategory = false
+            button.titleLabel?.adjustsFontSizeToFitWidth = true
+            button.titleLabel?.minimumScaleFactor = 0.82
+            button.titleLabel?.lineBreakMode = .byClipping
+            button.setPreferredSymbolConfiguration(
+                UIImage.SymbolConfiguration(
+                    pointSize: fontSize,
+                    weight: .semibold
+                ),
+                forImageIn: .normal
+            )
+            button.semanticContentAttribute = .forceLeftToRight
+            button.contentHorizontalAlignment = .center
+            button.backgroundColor = backgroundColor
+            button.layer.cornerRadius = 18
+            button.layer.cornerCurve = .continuous
+            button.layer.borderWidth = 1
+            button.layer.borderColor = borderColor.cgColor
+            button.imageEdgeInsets = UIEdgeInsets(
+                top: 0,
+                left: -3,
+                bottom: 0,
+                right: 3
+            )
+            button.titleEdgeInsets = UIEdgeInsets(
+                top: 0,
+                left: 3,
+                bottom: 0,
+                right: -3
+            )
+        }
+
+        private func configureCollectionView() {
+            collectionView.backgroundColor = .clear
+            collectionView.alwaysBounceVertical = true
+            collectionView.contentInset.bottom = 92
+            collectionView.verticalScrollIndicatorInsets.bottom = 92
+            collectionView.isDirectionalLockEnabled = true
+            collectionView.allowsMultipleSelection = true
+            collectionView.dataSource = self
+            collectionView.delegate = self
+            collectionView.register(
+                DragSelectionPhotoCell.self,
+                forCellWithReuseIdentifier: DragSelectionPhotoCell.reuseID
+            )
+            collectionView.register(
+                PhotoPickerDateHeader.self,
+                forSupplementaryViewOfKind:
+                    UICollectionView.elementKindSectionHeader,
+                withReuseIdentifier: PhotoPickerDateHeader.reuseID
+            )
+            collectionView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(collectionView)
+
+            let pan = UIPanGestureRecognizer(
+                target: self,
+                action: #selector(handleSelectionPan(_:))
+            )
+            pan.delegate = self
+            pan.cancelsTouchesInView = true
+            collectionView.addGestureRecognizer(pan)
+
+            let pinch = UIPinchGestureRecognizer(
+                target: self,
+                action: #selector(handleGridPinch(_:))
+            )
+            pinch.delegate = self
+            collectionView.addGestureRecognizer(pinch)
+
+            let previewLongPress = UILongPressGestureRecognizer(
+                target: self,
+                action: #selector(handleMediaPreviewLongPress(_:))
+            )
+            previewLongPress.minimumPressDuration = 0.45
+            previewLongPress.delegate = self
+            collectionView.addGestureRecognizer(previewLongPress)
+        }
+
+        private func configureToolbar() {
+            guard let header = view.viewWithTag(101) else { return }
+            NSLayoutConstraint.activate([
+                collectionView.topAnchor.constraint(
+                    equalTo: header.bottomAnchor
+                ),
+                collectionView.leadingAnchor.constraint(
+                    equalTo: view.leadingAnchor
+                ),
+                collectionView.trailingAnchor.constraint(
+                    equalTo: view.trailingAnchor
+                ),
+                collectionView.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor
+                )
+            ])
+        }
+
+        private func configureDayNavigationButtons() {
+            configureFloatingDayButton(
+                previousDayButton,
+                title: "어제",
+                accessibilityHint: "선택이 없으면 어제와 가까운 날짜를 선택하고, 선택이 있으면 선택된 날짜의 전날을 선택합니다."
+            )
+            previousDayButton.addTarget(
+                self,
+                action: #selector(previousDayTapped),
+                for: .touchUpInside
+            )
+
+            configureFloatingDayButton(
+                todayButton,
+                title: "오늘",
+                accessibilityHint: "한 번 누르면 오늘로 이동하고, 다시 누르면 오늘의 미디어를 선택합니다."
+            )
+            todayButton.addTarget(
+                self,
+                action: #selector(todayTapped),
+                for: .touchUpInside
+            )
+
+            configureFloatingDayButton(
+                clearSelectionButton,
+                title: "해제",
+                accessibilityHint: "현재 선택한 미디어를 모두 선택 해제합니다."
+            )
+            clearSelectionButton.accessibilityLabel = "선택 해제"
+            clearSelectionButton.isEnabled = false
+            clearSelectionButton.alpha = 0.34
+            clearSelectionButton.addTarget(
+                self,
+                action: #selector(clearSelectionTapped),
+                for: .touchUpInside
+            )
+
+            view.addSubview(previousDayButton)
+            view.addSubview(todayButton)
+            view.addSubview(clearSelectionButton)
+            NSLayoutConstraint.activate([
+                previousDayButton.leadingAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.leadingAnchor,
+                    constant: 18
+                ),
+                previousDayButton.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -16
+                ),
+                previousDayButton.widthAnchor.constraint(equalToConstant: 58),
+                previousDayButton.heightAnchor.constraint(equalToConstant: 58),
+                todayButton.centerXAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.centerXAnchor
+                ),
+                todayButton.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -16
+                ),
+                todayButton.widthAnchor.constraint(equalToConstant: 58),
+                todayButton.heightAnchor.constraint(equalToConstant: 58),
+                clearSelectionButton.trailingAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.trailingAnchor,
+                    constant: -18
+                ),
+                clearSelectionButton.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -16
+                ),
+                clearSelectionButton.widthAnchor.constraint(equalToConstant: 58),
+                clearSelectionButton.heightAnchor.constraint(equalToConstant: 58)
+            ])
+        }
+
+        private func configureFloatingDayButton(
+            _ button: UIButton,
+            title: String,
+            accessibilityHint: String
+        ) {
+            button.configuration = nil
+            button.setTitle(title, for: .normal)
+            button.setTitleColor(HanClipTheme.primaryUIColor, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
+            button.titleLabel?.adjustsFontForContentSizeCategory = false
+            button.backgroundColor = UIColor(HanClipTheme.background)
+                .withAlphaComponent(0.86)
+            button.layer.cornerRadius = 29
+            button.layer.cornerCurve = .continuous
+            button.layer.borderWidth = 1.25
+            button.layer.borderColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.34).cgColor
+            button.layer.shadowColor = HanClipTheme.secondaryUIColor.cgColor
+            button.layer.shadowOpacity = 0.18
+            button.layer.shadowRadius = 10
+            button.layer.shadowOffset = CGSize(width: 0, height: 5)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.accessibilityLabel = title
+            button.accessibilityHint = accessibilityHint
+        }
+
+        private func requestAccessAndLoadAssets() {
+            Task { @MainActor in
+                guard await PhotoLibraryService.requestReadAccess() else {
+                    updateDoneButtonTitle("권한 필요")
+                    return
+                }
+                let options = PHFetchOptions()
+                options.sortDescriptors = [
+                    // Match the iPhone Photos library: older items above and
+                    // the newest items at the bottom.
+                    NSSortDescriptor(key: "creationDate", ascending: true)
+                ]
+                options.predicate = NSPredicate(
+                    format: "mediaType == %d OR mediaType == %d",
+                    PHAssetMediaType.image.rawValue,
+                    PHAssetMediaType.video.rawValue
+                )
+                assets = PHAsset.fetchAssets(with: options)
+                rebuildAssetSections()
+                collectionView.reloadData()
+                collectionView.layoutIfNeeded()
+                if let lastSection = assetSections.indices.last,
+                   let lastItem = assetSections[lastSection].assets.indices.last {
+                    collectionView.scrollToItem(
+                        at: IndexPath(item: lastItem, section: lastSection),
+                        at: .bottom,
+                        animated: false
+                    )
+                }
+            }
+        }
+
+        @objc private func mediaFilterTapped(_ sender: UIButton) {
+            guard let filter = MediaFilter(rawValue: sender.tag) else { return }
+            resetTodayButtonState()
+            if selectedMediaFilters.contains(filter) {
+                guard selectedMediaFilters.count > 1 else { return }
+                selectedMediaFilters.remove(filter)
+            } else {
+                selectedMediaFilters.insert(filter)
+            }
+            updateFilterButtonAppearance()
+            rebuildAssetSections()
+            collectionView.reloadData()
+            collectionView.layoutIfNeeded()
+            if let lastSection = assetSections.indices.last,
+               let lastItem = assetSections[lastSection].assets.indices.last {
+                collectionView.scrollToItem(
+                    at: IndexPath(item: lastItem, section: lastSection),
+                    at: .bottom,
+                    animated: false
+                )
+            }
+        }
+
+        private func updateFilterButtonAppearance() {
+            for button in filterButtons {
+                guard let filter = MediaFilter(rawValue: button.tag) else {
+                    continue
+                }
+                let isSelected = selectedMediaFilters.contains(filter)
+                let foregroundColor = isSelected
+                    ? HanClipTheme.primaryUIColor
+                    : UIColor(HanClipTheme.text).withAlphaComponent(0.66)
+                configureCompactButton(
+                    button,
+                    title: filter.title,
+                    symbolName: filter.symbolName,
+                    fontSize: 11,
+                    foregroundColor: foregroundColor,
+                    backgroundColor: isSelected
+                        ? HanClipTheme.primaryUIColor.withAlphaComponent(0.13)
+                        : .clear,
+                    borderColor: isSelected
+                        ? HanClipTheme.primaryUIColor.withAlphaComponent(0.34)
+                        : .clear
+                )
+                button.layer.cornerRadius = 15
+                button.layer.borderColor = (
+                    isSelected
+                        ? HanClipTheme.primaryUIColor.withAlphaComponent(0.34)
+                        : UIColor.clear
+                ).cgColor
+                button.accessibilityValue = isSelected ? "선택됨" : "선택 안 됨"
+            }
+        }
+
+        private func rebuildAssetSections() {
+            guard let assets else {
+                assetSections = []
+                return
+            }
+            let calendar = Calendar.current
+            var dates: [Date] = []
+            var grouped: [Date: [PHAsset]] = [:]
+            assets.enumerateObjects { asset, _, _ in
+                guard self.includesAsset(asset),
+                      let creationDate = asset.creationDate else { return }
+                let day = calendar.startOfDay(for: creationDate)
+                if grouped[day] == nil {
+                    dates.append(day)
+                    grouped[day] = []
+                }
+                grouped[day]?.append(asset)
+            }
+            assetSections = dates.compactMap { date in
+                guard let dayAssets = grouped[date], !dayAssets.isEmpty else {
+                    return nil
+                }
+                return AssetDaySection(date: date, assets: dayAssets)
+            }
+        }
+
+        private func includesAsset(_ asset: PHAsset) -> Bool {
+            if asset.mediaType == .video {
+                return selectedMediaFilters.contains(.video)
+            }
+            if asset.mediaType == .image,
+               asset.mediaSubtypes.contains(.photoLive) {
+                return selectedMediaFilters.contains(.livePhoto)
+            }
+            return selectedMediaFilters.contains(.photo)
+        }
+
+        private func asset(at indexPath: IndexPath) -> PHAsset? {
+            guard assetSections.indices.contains(indexPath.section),
+                  assetSections[indexPath.section].assets.indices.contains(
+                    indexPath.item
+                  ) else { return nil }
+            return assetSections[indexPath.section].assets[indexPath.item]
+        }
+
+        func numberOfSections(in collectionView: UICollectionView) -> Int {
+            assetSections.count
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            numberOfItemsInSection section: Int
+        ) -> Int {
+            guard assetSections.indices.contains(section) else { return 0 }
+            return assetSections[section].assets.count
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            cellForItemAt indexPath: IndexPath
+        ) -> UICollectionViewCell {
+            guard let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: DragSelectionPhotoCell.reuseID,
+                for: indexPath
+            ) as? DragSelectionPhotoCell,
+                  let asset = asset(at: indexPath)
+            else { return UICollectionViewCell() }
+
+            cell.representedAssetIdentifier = asset.localIdentifier
+            cell.updateSelection(
+                selectedIdentifierSet.contains(asset.localIdentifier)
+            )
+            cell.updateMediaKind(
+                asset.mediaType == .video
+                    ? .video
+                    : asset.mediaSubtypes.contains(.photoLive)
+                        ? .livePhoto
+                        : .photo
+            )
+            imageManager.requestImage(
+                for: asset,
+                targetSize: CGSize(width: 240, height: 240),
+                contentMode: .aspectFill,
+                options: nil
+            ) { image, _ in
+                guard cell.representedAssetIdentifier
+                    == asset.localIdentifier else { return }
+                cell.imageView.image = image
+            }
+            return cell
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            viewForSupplementaryElementOfKind kind: String,
+            at indexPath: IndexPath
+        ) -> UICollectionReusableView {
+            guard kind == UICollectionView.elementKindSectionHeader,
+                  let header = collectionView.dequeueReusableSupplementaryView(
+                    ofKind: kind,
+                    withReuseIdentifier: PhotoPickerDateHeader.reuseID,
+                    for: indexPath
+                  ) as? PhotoPickerDateHeader,
+                  assetSections.indices.contains(indexPath.section)
+            else { return UICollectionReusableView() }
+            header.configure(date: assetSections[indexPath.section].date)
+            return header
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            layout collectionViewLayout: UICollectionViewLayout,
+            referenceSizeForHeaderInSection section: Int
+        ) -> CGSize {
+            CGSize(width: collectionView.bounds.width, height: 38)
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            didSelectItemAt indexPath: IndexPath
+        ) {
+            guard !suppressNextTap else { return }
+            collectionView.deselectItem(at: indexPath, animated: false)
+            toggleAsset(at: indexPath)
+        }
+
+        func collectionView(
+            _ collectionView: UICollectionView,
+            layout collectionViewLayout: UICollectionViewLayout,
+            sizeForItemAt indexPath: IndexPath
+        ) -> CGSize {
+            let spacing = CGFloat(max(0, columnCount - 1)) * 2
+            let width = floor(
+                (collectionView.bounds.width - spacing) / CGFloat(columnCount)
+            )
+            return CGSize(width: width, height: width)
+        }
+
+        func gestureRecognizerShouldBegin(
+            _ gestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else {
+                return true
+            }
+            let velocity = pan.velocity(in: collectionView)
+            return abs(velocity.x) > abs(velocity.y)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer:
+                UIGestureRecognizer
+        ) -> Bool {
+            gestureRecognizer is UIPinchGestureRecognizer
+                || otherGestureRecognizer is UIPinchGestureRecognizer
+        }
+
+        @objc private func handleSelectionPan(_ gesture: UIPanGestureRecognizer) {
+            dragLocationInView = gesture.location(in: view)
+            let point = gesture.location(in: collectionView)
+            switch gesture.state {
+            case .began:
+                guard let indexPath = collectionView.indexPathForItem(
+                    at: point
+                ), let asset = asset(at: indexPath) else { return }
+                dragShouldSelect = !selectedIdentifierSet.contains(
+                    asset.localIdentifier
+                )
+                lastDragIndexPath = indexPath
+                suppressNextTap = true
+                setAsset(at: indexPath, selected: dragShouldSelect)
+                startAutoScroll()
+
+            case .changed:
+                continueDragSelection(at: point)
+
+            case .ended, .cancelled, .failed:
+                stopAutoScroll()
+                dragLocationInView = nil
+                lastDragIndexPath = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    self.suppressNextTap = false
+                }
+
+            default:
+                break
+            }
+        }
+
+        private func continueDragSelection(at point: CGPoint) {
+            guard let indexPath = collectionView.indexPathForItem(at: point),
+                  indexPath != lastDragIndexPath else { return }
+            applyDragSelection(from: lastDragIndexPath, to: indexPath)
+            lastDragIndexPath = indexPath
+        }
+
+        private func startAutoScroll() {
+            guard autoScrollDisplayLink == nil else { return }
+            let link = CADisplayLink(
+                target: self,
+                selector: #selector(handleAutoScrollFrame(_:))
+            )
+            link.add(to: .main, forMode: .common)
+            autoScrollDisplayLink = link
+        }
+
+        private func stopAutoScroll() {
+            autoScrollDisplayLink?.invalidate()
+            autoScrollDisplayLink = nil
+            lastAutoScrollTimestamp = nil
+        }
+
+        @objc private func handleAutoScrollFrame(_ link: CADisplayLink) {
+            guard let location = dragLocationInView else { return }
+            let edgeZone: CGFloat = 105
+            let topEdge = collectionView.frame.minY + edgeZone
+            let bottomEdge = collectionView.frame.maxY - edgeZone
+            let direction: CGFloat
+            let edgeProgress: CGFloat
+
+            if location.y < topEdge {
+                direction = -1
+                edgeProgress = min(1, (topEdge - location.y) / edgeZone)
+            } else if location.y > bottomEdge {
+                direction = 1
+                edgeProgress = min(1, (location.y - bottomEdge) / edgeZone)
+            } else {
+                lastAutoScrollTimestamp = link.timestamp
+                return
+            }
+
+            let previousTimestamp = lastAutoScrollTimestamp ?? link.timestamp
+            lastAutoScrollTimestamp = link.timestamp
+            let elapsed = min(1.0 / 20.0, link.timestamp - previousTimestamp)
+            let pointsPerSecond = 120 + 1_180 * pow(edgeProgress, 2)
+            let proposedY = collectionView.contentOffset.y
+                + direction * pointsPerSecond * elapsed
+            let minimumY = -collectionView.adjustedContentInset.top
+            let maximumY = max(
+                minimumY,
+                collectionView.contentSize.height
+                    - collectionView.bounds.height
+                    + collectionView.adjustedContentInset.bottom
+            )
+            let clampedY = min(maximumY, max(minimumY, proposedY))
+            guard abs(clampedY - collectionView.contentOffset.y) > 0.01
+            else { return }
+
+            collectionView.contentOffset.y = clampedY
+            collectionView.layoutIfNeeded()
+
+            var collectionPoint = collectionView.convert(location, from: view)
+            collectionPoint.x = min(
+                collectionView.bounds.maxX - 1,
+                max(collectionView.bounds.minX + 1, collectionPoint.x)
+            )
+            collectionPoint.y = direction < 0
+                ? collectionView.bounds.minY + 2
+                : collectionView.bounds.maxY - 2
+            continueDragSelection(at: collectionPoint)
+        }
+
+        @objc private func handleGridPinch(_ gesture: UIPinchGestureRecognizer) {
+            guard gesture.state == .changed else { return }
+            if gesture.scale > 1.18 {
+                changeColumnCount(towardLargerItems: true)
+                gesture.scale = 1
+            } else if gesture.scale < 0.82 {
+                changeColumnCount(towardLargerItems: false)
+                gesture.scale = 1
+            }
+        }
+
+        @objc private func handleMediaPreviewLongPress(
+            _ gesture: UILongPressGestureRecognizer
+        ) {
+            guard gesture.state == .began,
+                  presentedViewController == nil else { return }
+            let point = gesture.location(in: collectionView)
+            guard let indexPath = collectionView.indexPathForItem(at: point),
+                  let asset = asset(at: indexPath) else { return }
+
+            let preview = MediaAssetPreviewViewController(
+                asset: asset,
+                imageManager: imageManager,
+                showsCloseButton: true
+            )
+            preview.modalPresentationStyle = .fullScreen
+            present(preview, animated: true)
+        }
+
+        private func changeColumnCount(towardLargerItems: Bool) {
+            let stops = [1, 3, 5, 8]
+            guard let currentIndex = stops.firstIndex(of: columnCount) else {
+                columnCount = 5
+                return
+            }
+            let nextIndex = towardLargerItems
+                ? max(0, currentIndex - 1)
+                : min(stops.count - 1, currentIndex + 1)
+            guard nextIndex != currentIndex else { return }
+
+            let centerPoint = CGPoint(
+                x: collectionView.bounds.midX,
+                y: collectionView.bounds.midY
+            )
+            let anchor = collectionView.indexPathForItem(at: centerPoint)
+            columnCount = stops[nextIndex]
+            collectionView.collectionViewLayout.invalidateLayout()
+            collectionView.layoutIfNeeded()
+            if let anchor {
+                collectionView.scrollToItem(
+                    at: anchor,
+                    at: .centeredVertically,
+                    animated: false
+                )
+            }
+        }
+
+        private func applyDragSelection(
+            from previous: IndexPath?,
+            to current: IndexPath
+        ) {
+            let startIndexPath = previous ?? current
+            guard let start = linearIndex(for: startIndexPath),
+                  let end = linearIndex(for: current) else { return }
+            let lower = min(start, end)
+            let upper = max(start, end)
+            for index in lower...upper {
+                guard let indexPath = indexPath(forLinearIndex: index) else {
+                    continue
+                }
+                setAsset(at: indexPath, selected: dragShouldSelect)
+            }
+        }
+
+        private func linearIndex(for indexPath: IndexPath) -> Int? {
+            guard assetSections.indices.contains(indexPath.section),
+                  assetSections[indexPath.section].assets.indices.contains(
+                    indexPath.item
+                  ) else { return nil }
+            let precedingCount = assetSections.prefix(indexPath.section)
+                .reduce(0) { $0 + $1.assets.count }
+            return precedingCount + indexPath.item
+        }
+
+        private func indexPath(forLinearIndex target: Int) -> IndexPath? {
+            guard target >= 0 else { return nil }
+            var offset = target
+            for (section, daySection) in assetSections.enumerated() {
+                if offset < daySection.assets.count {
+                    return IndexPath(item: offset, section: section)
+                }
+                offset -= daySection.assets.count
+            }
+            return nil
+        }
+
+        private func toggleAsset(at indexPath: IndexPath) {
+            guard let asset = asset(at: indexPath) else { return }
+            setAsset(
+                at: indexPath,
+                selected: !selectedIdentifierSet.contains(asset.localIdentifier)
+            )
+        }
+
+        private func setAsset(at indexPath: IndexPath, selected: Bool) {
+            guard let asset = asset(at: indexPath) else { return }
+            let identifier = asset.localIdentifier
+            if selected {
+                guard selectedIdentifierSet.insert(identifier).inserted else {
+                    return
+                }
+                selectedIdentifiers.append(identifier)
+            } else {
+                guard selectedIdentifierSet.remove(identifier) != nil else {
+                    return
+                }
+                selectedIdentifiers.removeAll { $0 == identifier }
+            }
+            (collectionView.cellForItem(at: indexPath)
+                as? DragSelectionPhotoCell)?.updateSelection(selected)
+            updateSelectionCount()
+        }
+
+        private func updateSelectionCount() {
+            let count = selectedIdentifiers.count
+            updateDoneButtonTitle("\(count)개 추가")
+            doneButton.isEnabled = count > 0
+            doneButton.alpha = count > 0 ? 1 : 0.30
+            clearSelectionButton.isEnabled = count > 0
+            clearSelectionButton.alpha = count > 0 ? 1 : 0.34
+        }
+
+        private func updateDoneButtonTitle(_ title: String) {
+            doneButton.setTitle(title, for: .normal)
+        }
+
+        @objc private func todayTapped() {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            guard let section = assetSections.firstIndex(where: {
+                calendar.isDate($0.date, inSameDayAs: today)
+            }) else {
+                resetTodayButtonState()
+                if let latestSection = assetSections.indices.last {
+                    scrollToSection(latestSection, animated: true)
+                }
+                return
+            }
+
+            if isTodayButtonArmedForSelection {
+                selectAllAssets(in: section)
+                resetTodayButtonState()
+            } else {
+                scrollToSection(section, animated: true)
+                isTodayButtonArmedForSelection = true
+                updateTodayButtonAppearance()
+            }
+        }
+
+        @objc private func previousDayTapped() {
+            resetTodayButtonState()
+            guard let section = previousDayTargetSection() else { return }
+            scrollToSection(section, animated: true)
+            selectAllAssets(in: section)
+        }
+
+        private func previousDayTargetSection() -> Int? {
+            let calendar = Calendar.current
+            if selectedIdentifiers.isEmpty {
+                let yesterday = calendar.date(
+                    byAdding: .day,
+                    value: -1,
+                    to: calendar.startOfDay(for: Date())
+                ) ?? Date()
+                return assetSections.indices.min { left, right in
+                    abs(assetSections[left].date.timeIntervalSince(yesterday))
+                        < abs(
+                            assetSections[right].date.timeIntervalSince(yesterday)
+                        )
+                }
+            }
+
+            let selectedAssets = PHAsset.fetchAssets(
+                withLocalIdentifiers: selectedIdentifiers,
+                options: nil
+            )
+            var earliestSelectedDate: Date?
+            selectedAssets.enumerateObjects { asset, _, _ in
+                guard let creationDate = asset.creationDate else { return }
+                if earliestSelectedDate == nil
+                    || creationDate < earliestSelectedDate! {
+                    earliestSelectedDate = creationDate
+                }
+            }
+            guard let earliestSelectedDate else { return nil }
+            let baseDay = calendar.startOfDay(for: earliestSelectedDate)
+            return assetSections.indices.last(where: {
+                assetSections[$0].date < baseDay
+            })
+        }
+
+        private func scrollToSection(_ section: Int, animated: Bool) {
+            guard assetSections.indices.contains(section) else { return }
+            collectionView.layoutIfNeeded()
+            let indexPath = IndexPath(item: 0, section: section)
+            if let attributes = collectionView.collectionViewLayout
+                .layoutAttributesForSupplementaryView(
+                    ofKind: UICollectionView.elementKindSectionHeader,
+                    at: indexPath
+                ) {
+                let minimumY = -collectionView.adjustedContentInset.top
+                let maximumY = max(
+                    minimumY,
+                    collectionView.contentSize.height
+                        - collectionView.bounds.height
+                        + collectionView.adjustedContentInset.bottom
+                )
+                let targetY = min(
+                    maximumY,
+                    max(
+                        minimumY,
+                        attributes.frame.minY
+                            - collectionView.adjustedContentInset.top
+                    )
+                )
+                collectionView.setContentOffset(
+                    CGPoint(x: 0, y: targetY),
+                    animated: animated
+                )
+            } else {
+                collectionView.scrollToItem(
+                    at: indexPath,
+                    at: .top,
+                    animated: animated
+                )
+            }
+        }
+
+        private func selectAllAssets(in section: Int) {
+            guard assetSections.indices.contains(section) else { return }
+            for asset in assetSections[section].assets {
+                let identifier = asset.localIdentifier
+                guard selectedIdentifierSet.insert(identifier).inserted else {
+                    continue
+                }
+                selectedIdentifiers.append(identifier)
+            }
+            for case let cell as DragSelectionPhotoCell
+                in collectionView.visibleCells {
+                guard let identifier = cell.representedAssetIdentifier else {
+                    continue
+                }
+                cell.updateSelection(selectedIdentifierSet.contains(identifier))
+            }
+            updateSelectionCount()
+        }
+
+        private func resetTodayButtonState() {
+            guard isTodayButtonArmedForSelection else { return }
+            isTodayButtonArmedForSelection = false
+            updateTodayButtonAppearance()
+        }
+
+        private func updateTodayButtonAppearance() {
+            if isTodayButtonArmedForSelection {
+                todayButton.backgroundColor = HanClipTheme.primaryUIColor
+                    .withAlphaComponent(0.18)
+                todayButton.layer.borderColor = HanClipTheme.primaryUIColor
+                    .withAlphaComponent(0.50).cgColor
+                todayButton.accessibilityValue = "오늘 미디어 선택 준비"
+            } else {
+                todayButton.backgroundColor = UIColor(HanClipTheme.background)
+                    .withAlphaComponent(0.86)
+                todayButton.layer.borderColor = HanClipTheme.secondaryUIColor
+                    .withAlphaComponent(0.34).cgColor
+                todayButton.accessibilityValue = nil
+            }
+        }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            resetTodayButtonState()
+        }
+
+        @objc private func cancelTapped() {
+            onCancel()
+        }
+
+        @objc private func clearSelectionTapped() {
+            guard !selectedIdentifiers.isEmpty else { return }
+            selectedIdentifiers.removeAll(keepingCapacity: true)
+            selectedIdentifierSet.removeAll(keepingCapacity: true)
+            for case let cell as DragSelectionPhotoCell
+                in collectionView.visibleCells {
+                cell.updateSelection(false)
+            }
+            updateSelectionCount()
+        }
+
+        @objc private func doneTapped() {
+            guard !selectedIdentifiers.isEmpty else { return }
+            onDone(selectedIdentifiers)
+        }
+
+        deinit {
+            autoScrollDisplayLink?.invalidate()
+        }
+    }
+
+    final class PhotoPickerDateHeader: UICollectionReusableView {
+        static let reuseID = "PhotoPickerDateHeader"
+        private let dateLabel = UILabel()
+        private static let formatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.dateFormat = "yyyy년 M월 d일 EEEE"
+            return formatter
+        }()
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = UIColor(HanClipTheme.background)
+            dateLabel.font = .systemFont(ofSize: 13, weight: .bold)
+            dateLabel.textColor = UIColor(HanClipTheme.text).withAlphaComponent(0.84)
+            dateLabel.backgroundColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.12)
+            dateLabel.layer.cornerRadius = 8
+            dateLabel.clipsToBounds = true
+            dateLabel.textAlignment = .center
+            dateLabel.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(dateLabel)
+            NSLayoutConstraint.activate([
+                dateLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+                dateLabel.topAnchor.constraint(equalTo: topAnchor, constant: 5),
+                dateLabel.bottomAnchor.constraint(
+                    equalTo: bottomAnchor,
+                    constant: -5
+                ),
+                dateLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 165)
+            ])
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        func configure(date: Date) {
+            dateLabel.text = "  \(Self.formatter.string(from: date))  "
+        }
+    }
+
+    final class MediaAssetPreviewViewController: UIViewController,
+        UIScrollViewDelegate {
+        private let asset: PHAsset
+        private let imageManager: PHImageManager
+        private let showsCloseButton: Bool
+        private let scrollView = UIScrollView()
+        private let imageView = UIImageView()
+        private let livePhotoView = PHLivePhotoView()
+        private let playerViewController = AVPlayerViewController()
+        private let videoControlsView = UIVisualEffectView(
+            effect: UIBlurEffect(style: .systemThinMaterialDark)
+        )
+        private let playPauseButton = UIButton(type: .system)
+        private let progressSlider = UISlider()
+        private let loopButton = UIButton(type: .system)
+        private var videoPlayer: AVPlayer?
+        private var videoEndObserver: NSObjectProtocol?
+        private var videoTimeObserver: Any?
+        private var isSeekingVideo = false
+        private var wasPlayingBeforeSeek = false
+        private var isVideoLooping = true
+
+        init(
+            asset: PHAsset,
+            imageManager: PHImageManager,
+            showsCloseButton: Bool = false
+        ) {
+            self.asset = asset
+            self.imageManager = imageManager
+            self.showsCloseButton = showsCloseButton
+            super.init(nibName: nil, bundle: nil)
+            preferredContentSize = CGSize(width: 360, height: 520)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            if asset.mediaType == .video {
+                configureVideoPreview()
+            } else if asset.mediaSubtypes.contains(.photoLive) {
+                configureLivePhotoPreview()
+            } else {
+                configureStillPhotoPreview()
+            }
+
+            if showsCloseButton {
+                configureCloseButton()
+            }
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            if asset.mediaType == .video {
+                videoPlayer?.play()
+                updatePlayPauseButton()
+            } else if asset.mediaSubtypes.contains(.photoLive) {
+                livePhotoView.startPlayback(with: .full)
+            }
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            livePhotoView.stopPlayback()
+            videoPlayer?.pause()
+            updatePlayPauseButton()
+        }
+
+        deinit {
+            if let videoTimeObserver {
+                videoPlayer?.removeTimeObserver(videoTimeObserver)
+            }
+            if let videoEndObserver {
+                NotificationCenter.default.removeObserver(videoEndObserver)
+            }
+        }
+
+        private func configureVideoPreview() {
+            addChild(playerViewController)
+            playerViewController.showsPlaybackControls = false
+            playerViewController.videoGravity = .resizeAspect
+            playerViewController.view.backgroundColor = .black
+            playerViewController.view.translatesAutoresizingMaskIntoConstraints =
+                false
+            view.addSubview(playerViewController.view)
+            NSLayoutConstraint.activate([
+                playerViewController.view.topAnchor.constraint(
+                    equalTo: view.topAnchor
+                ),
+                playerViewController.view.bottomAnchor.constraint(
+                    equalTo: view.bottomAnchor
+                ),
+                playerViewController.view.leadingAnchor.constraint(
+                    equalTo: view.leadingAnchor
+                ),
+                playerViewController.view.trailingAnchor.constraint(
+                    equalTo: view.trailingAnchor
+                )
+            ])
+            playerViewController.didMove(toParent: self)
+            configureVideoControls()
+
+            let options = PHVideoRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.version = .current
+            options.isNetworkAccessAllowed = true
+            imageManager.requestPlayerItem(
+                forVideo: asset,
+                options: options
+            ) { [weak self] playerItem, _ in
+                guard let self, let playerItem else { return }
+                DispatchQueue.main.async {
+                    let player = AVPlayer(playerItem: playerItem)
+                    self.videoPlayer = player
+                    self.playerViewController.player = player
+                    self.observeVideoProgress(player)
+                    self.videoEndObserver = NotificationCenter.default
+                        .addObserver(
+                            forName: .AVPlayerItemDidPlayToEndTime,
+                            object: playerItem,
+                            queue: .main
+                        ) { [weak self, weak player] _ in
+                            guard let self else { return }
+                            if self.isVideoLooping {
+                                player?.seek(to: .zero)
+                                player?.play()
+                            } else {
+                                self.progressSlider.value = 1
+                                self.updatePlayPauseButton()
+                            }
+                        }
+                    player.play()
+                    self.updatePlayPauseButton()
+                }
+            }
+        }
+
+        private func configureCloseButton() {
+            let closeButton = UIButton(type: .system)
+            closeButton.setImage(
+                UIImage(systemName: "xmark.circle.fill"),
+                for: .normal
+            )
+            closeButton.tintColor = .white
+            closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.32)
+            closeButton.layer.cornerRadius = 22
+            closeButton.accessibilityLabel = "미리보기 닫기"
+            closeButton.addTarget(
+                self,
+                action: #selector(closePreview),
+                for: .touchUpInside
+            )
+            closeButton.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(closeButton)
+            NSLayoutConstraint.activate([
+                closeButton.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor,
+                    constant: 12
+                ),
+                closeButton.trailingAnchor.constraint(
+                    equalTo: view.trailingAnchor,
+                    constant: -16
+                ),
+                closeButton.widthAnchor.constraint(equalToConstant: 44),
+                closeButton.heightAnchor.constraint(equalToConstant: 44)
+            ])
+        }
+
+        @objc private func closePreview() {
+            dismiss(animated: true)
+        }
+
+        private func configureVideoControls() {
+            videoControlsView.layer.cornerRadius = 18
+            videoControlsView.clipsToBounds = true
+            videoControlsView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(videoControlsView)
+
+            playPauseButton.tintColor = .white
+            playPauseButton.accessibilityLabel = "재생"
+            playPauseButton.addTarget(
+                self,
+                action: #selector(toggleVideoPlayback),
+                for: .touchUpInside
+            )
+
+            progressSlider.minimumValue = 0
+            progressSlider.maximumValue = 1
+            progressSlider.minimumTrackTintColor = UIColor(
+                HanClipTheme.primary
+            )
+            progressSlider.maximumTrackTintColor = UIColor.white.withAlphaComponent(
+                0.35
+            )
+            progressSlider.addTarget(
+                self,
+                action: #selector(beginVideoSeek),
+                for: .touchDown
+            )
+            progressSlider.addTarget(
+                self,
+                action: #selector(seekVideo),
+                for: .valueChanged
+            )
+            progressSlider.addTarget(
+                self,
+                action: #selector(endVideoSeek),
+                for: [.touchUpInside, .touchUpOutside, .touchCancel]
+            )
+
+            loopButton.setImage(UIImage(systemName: "infinity"), for: .normal)
+            loopButton.accessibilityLabel = "무한 재생"
+            loopButton.addTarget(
+                self,
+                action: #selector(toggleVideoLooping),
+                for: .touchUpInside
+            )
+            updateLoopButton()
+
+            let controls = UIStackView(arrangedSubviews: [
+                playPauseButton,
+                progressSlider,
+                loopButton
+            ])
+            controls.axis = .horizontal
+            controls.alignment = .center
+            controls.spacing = 10
+            controls.translatesAutoresizingMaskIntoConstraints = false
+            videoControlsView.contentView.addSubview(controls)
+
+            NSLayoutConstraint.activate([
+                videoControlsView.leadingAnchor.constraint(
+                    equalTo: view.leadingAnchor,
+                    constant: 12
+                ),
+                videoControlsView.trailingAnchor.constraint(
+                    equalTo: view.trailingAnchor,
+                    constant: -12
+                ),
+                videoControlsView.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -12
+                ),
+                videoControlsView.heightAnchor.constraint(equalToConstant: 56),
+                controls.leadingAnchor.constraint(
+                    equalTo: videoControlsView.contentView.leadingAnchor,
+                    constant: 8
+                ),
+                controls.trailingAnchor.constraint(
+                    equalTo: videoControlsView.contentView.trailingAnchor,
+                    constant: -8
+                ),
+                controls.topAnchor.constraint(
+                    equalTo: videoControlsView.contentView.topAnchor
+                ),
+                controls.bottomAnchor.constraint(
+                    equalTo: videoControlsView.contentView.bottomAnchor
+                ),
+                playPauseButton.widthAnchor.constraint(equalToConstant: 44),
+                playPauseButton.heightAnchor.constraint(equalToConstant: 44),
+                loopButton.widthAnchor.constraint(equalToConstant: 44),
+                loopButton.heightAnchor.constraint(equalToConstant: 44)
+            ])
+        }
+
+        private func observeVideoProgress(_ player: AVPlayer) {
+            videoTimeObserver = player.addPeriodicTimeObserver(
+                forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
+                queue: .main
+            ) { [weak self, weak player] time in
+                guard let self, let player else { return }
+                if !self.isSeekingVideo {
+                    let duration = player.currentItem?.duration.seconds ?? 0
+                    if duration.isFinite, duration > 0 {
+                        self.progressSlider.value = Float(time.seconds / duration)
+                    }
+                }
+                self.updatePlayPauseButton()
+            }
+        }
+
+        @objc private func toggleVideoPlayback() {
+            guard let videoPlayer else { return }
+            if videoPlayer.timeControlStatus == .playing {
+                videoPlayer.pause()
+            } else {
+                if progressSlider.value >= 0.999 {
+                    videoPlayer.seek(to: .zero)
+                }
+                videoPlayer.play()
+            }
+            updatePlayPauseButton()
+        }
+
+        @objc private func beginVideoSeek() {
+            isSeekingVideo = true
+            wasPlayingBeforeSeek = videoPlayer?.timeControlStatus == .playing
+            videoPlayer?.pause()
+        }
+
+        @objc private func seekVideo() {
+            guard let videoPlayer,
+                  let duration = videoPlayer.currentItem?.duration.seconds,
+                  duration.isFinite,
+                  duration > 0 else { return }
+            let target = duration * Double(progressSlider.value)
+            videoPlayer.seek(
+                to: CMTime(seconds: target, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
+        }
+
+        @objc private func endVideoSeek() {
+            seekVideo()
+            isSeekingVideo = false
+            if wasPlayingBeforeSeek {
+                videoPlayer?.play()
+            }
+            updatePlayPauseButton()
+        }
+
+        @objc private func toggleVideoLooping() {
+            isVideoLooping.toggle()
+            updateLoopButton()
+        }
+
+        private func updatePlayPauseButton() {
+            let isPlaying = videoPlayer?.timeControlStatus == .playing
+            let symbol = isPlaying ? "pause.fill" : "play.fill"
+            playPauseButton.setImage(UIImage(systemName: symbol), for: .normal)
+            playPauseButton.accessibilityLabel = isPlaying ? "일시 정지" : "재생"
+        }
+
+        private func updateLoopButton() {
+            loopButton.tintColor = isVideoLooping
+                ? UIColor(HanClipTheme.primary)
+                : UIColor.white.withAlphaComponent(0.55)
+            loopButton.accessibilityValue = isVideoLooping ? "켬" : "끔"
+        }
+
+        private func configureLivePhotoPreview() {
+            livePhotoView.contentMode = .scaleAspectFit
+            livePhotoView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(livePhotoView)
+            NSLayoutConstraint.activate([
+                livePhotoView.topAnchor.constraint(equalTo: view.topAnchor),
+                livePhotoView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                livePhotoView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                livePhotoView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            ])
+
+            let options = PHLivePhotoRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            imageManager.requestLivePhoto(
+                for: asset,
+                targetSize: CGSize(width: 1_800, height: 1_800),
+                contentMode: .aspectFit,
+                options: options
+            ) { [weak self] livePhoto, _ in
+                guard let self, let livePhoto else { return }
+                DispatchQueue.main.async {
+                    self.livePhotoView.livePhoto = livePhoto
+                    self.livePhotoView.startPlayback(with: .full)
+                }
+            }
+        }
+
+        private func configureStillPhotoPreview() {
+            scrollView.delegate = self
+            scrollView.minimumZoomScale = 1
+            scrollView.maximumZoomScale = 5
+            scrollView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(scrollView)
+
+            imageView.contentMode = .scaleAspectFit
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            scrollView.addSubview(imageView)
+
+            NSLayoutConstraint.activate([
+                scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+                scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                imageView.topAnchor.constraint(
+                    equalTo: scrollView.contentLayoutGuide.topAnchor
+                ),
+                imageView.bottomAnchor.constraint(
+                    equalTo: scrollView.contentLayoutGuide.bottomAnchor
+                ),
+                imageView.leadingAnchor.constraint(
+                    equalTo: scrollView.contentLayoutGuide.leadingAnchor
+                ),
+                imageView.trailingAnchor.constraint(
+                    equalTo: scrollView.contentLayoutGuide.trailingAnchor
+                ),
+                imageView.widthAnchor.constraint(
+                    equalTo: scrollView.frameLayoutGuide.widthAnchor
+                ),
+                imageView.heightAnchor.constraint(
+                    equalTo: scrollView.frameLayoutGuide.heightAnchor
+                )
+            ])
+
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = true
+            imageManager.requestImage(
+                for: asset,
+                targetSize: CGSize(width: 1_800, height: 1_800),
+                contentMode: .aspectFit,
+                options: options
+            ) { [weak self] image, _ in
+                self?.imageView.image = image
+            }
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            imageView
+        }
+    }
+
+    final class DragSelectionPhotoCell: UICollectionViewCell {
+        enum MediaKind {
+            case photo
+            case livePhoto
+            case video
+
+            var symbolName: String {
+                switch self {
+                case .photo: "photo.fill"
+                case .livePhoto: "livephoto"
+                case .video: "video.fill"
+                }
+            }
+        }
+
+        static let reuseID = "DragSelectionPhotoCell"
+        let imageView = UIImageView()
+        var representedAssetIdentifier: String?
+        private let selectionOverlay = UIView()
+        private let checkLabel = UILabel()
+        private let mediaKindBadge = UIImageView(
+            image: UIImage(systemName: "photo.fill")
+        )
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            contentView.layer.cornerRadius = 8
+            contentView.layer.cornerCurve = .continuous
+            contentView.clipsToBounds = true
+            imageView.contentMode = .scaleAspectFill
+            imageView.clipsToBounds = true
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(imageView)
+
+            selectionOverlay.backgroundColor = HanClipTheme.primaryUIColor
+                .withAlphaComponent(0.18)
+            selectionOverlay.layer.borderColor = HanClipTheme.primaryUIColor.cgColor
+            selectionOverlay.layer.borderWidth = 2.4
+            selectionOverlay.isHidden = true
+            selectionOverlay.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(selectionOverlay)
+
+            checkLabel.text = "✓"
+            checkLabel.textAlignment = .center
+            checkLabel.font = .systemFont(ofSize: 12, weight: .black)
+            checkLabel.textColor = UIColor(HanClipTheme.background)
+            checkLabel.backgroundColor = HanClipTheme.primaryUIColor
+            checkLabel.layer.cornerRadius = 9
+            checkLabel.clipsToBounds = true
+            checkLabel.isHidden = true
+            checkLabel.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(checkLabel)
+
+            mediaKindBadge.tintColor = UIColor(HanClipTheme.background)
+                .withAlphaComponent(0.80)
+            mediaKindBadge.backgroundColor = UIColor(HanClipTheme.text)
+                .withAlphaComponent(0.32)
+            mediaKindBadge.layer.cornerRadius = 7
+            mediaKindBadge.contentMode = .center
+            mediaKindBadge.preferredSymbolConfiguration =
+                UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+            mediaKindBadge.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(mediaKindBadge)
+
+            NSLayoutConstraint.activate([
+                imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
+                imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+                imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                selectionOverlay.topAnchor.constraint(equalTo: contentView.topAnchor),
+                selectionOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+                selectionOverlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                selectionOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                checkLabel.bottomAnchor.constraint(
+                    equalTo: contentView.bottomAnchor,
+                    constant: -5
+                ),
+                checkLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -6),
+                checkLabel.widthAnchor.constraint(equalToConstant: 18),
+                checkLabel.heightAnchor.constraint(equalToConstant: 18),
+                mediaKindBadge.leadingAnchor.constraint(
+                    equalTo: contentView.leadingAnchor,
+                    constant: 5
+                ),
+                mediaKindBadge.bottomAnchor.constraint(
+                    equalTo: contentView.bottomAnchor,
+                    constant: -5
+                ),
+                mediaKindBadge.widthAnchor.constraint(equalToConstant: 20),
+                mediaKindBadge.heightAnchor.constraint(equalToConstant: 18)
+            ])
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func prepareForReuse() {
+            super.prepareForReuse()
+            representedAssetIdentifier = nil
+            imageView.image = nil
+            updateSelection(false)
+        }
+
+        func updateSelection(_ isSelected: Bool) {
+            selectionOverlay.isHidden = !isSelected
+            checkLabel.isHidden = !isSelected
+        }
+
+        func updateMediaKind(_ mediaKind: MediaKind) {
+            mediaKindBadge.image = UIImage(systemName: mediaKind.symbolName)
+            mediaKindBadge.isHidden = false
+        }
+    }
+
+    final class PhotoPickerContainerViewController: UIViewController {
+        private let picker: PHPickerViewController
+        private let onCancel: () -> Void
+        private let onDone: () -> Void
+        private let selectionLabel = UILabel()
+        private let doneButton = UIButton(type: .system)
+
+        init(
+            picker: PHPickerViewController,
+            onCancel: @escaping () -> Void,
+            onDone: @escaping () -> Void
+        ) {
+            self.picker = picker
+            self.onCancel = onCancel
+            self.onDone = onDone
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .systemBackground
+
+            addChild(picker)
+            picker.view.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(picker.view)
+            picker.didMove(toParent: self)
+
+            let toolbar = UIView()
+            toolbar.backgroundColor = .secondarySystemBackground
+            toolbar.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(toolbar)
+
+            let cancelButton = UIButton(type: .system)
+            cancelButton.setTitle("취소", for: .normal)
+            cancelButton.titleLabel?.font = .systemFont(
+                ofSize: 17,
+                weight: .semibold
+            )
+            cancelButton.addTarget(
+                self,
+                action: #selector(cancelTapped),
+                for: .touchUpInside
+            )
+            cancelButton.translatesAutoresizingMaskIntoConstraints = false
+
+            selectionLabel.text = "사진을 누른 채 드래그 · 0개 선택"
+            selectionLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+            selectionLabel.textColor = .secondaryLabel
+            selectionLabel.textAlignment = .center
+            selectionLabel.adjustsFontSizeToFitWidth = true
+            selectionLabel.minimumScaleFactor = 0.72
+            selectionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+            doneButton.setTitle("추가", for: .normal)
+            doneButton.titleLabel?.font = .systemFont(
+                ofSize: 17,
+                weight: .bold
+            )
+            doneButton.isEnabled = false
+            doneButton.addTarget(
+                self,
+                action: #selector(doneTapped),
+                for: .touchUpInside
+            )
+            doneButton.translatesAutoresizingMaskIntoConstraints = false
+
+            toolbar.addSubview(cancelButton)
+            toolbar.addSubview(selectionLabel)
+            toolbar.addSubview(doneButton)
+
+            NSLayoutConstraint.activate([
+                toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                toolbar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                toolbar.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -58
+                ),
+                picker.view.topAnchor.constraint(equalTo: view.topAnchor),
+                picker.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                picker.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                picker.view.bottomAnchor.constraint(equalTo: toolbar.topAnchor),
+                cancelButton.leadingAnchor.constraint(
+                    equalTo: toolbar.safeAreaLayoutGuide.leadingAnchor,
+                    constant: 18
+                ),
+                cancelButton.centerYAnchor.constraint(
+                    equalTo: toolbar.topAnchor,
+                    constant: 29
+                ),
+                doneButton.trailingAnchor.constraint(
+                    equalTo: toolbar.safeAreaLayoutGuide.trailingAnchor,
+                    constant: -18
+                ),
+                doneButton.centerYAnchor.constraint(
+                    equalTo: toolbar.topAnchor,
+                    constant: 29
+                ),
+                selectionLabel.leadingAnchor.constraint(
+                    equalTo: cancelButton.trailingAnchor,
+                    constant: 8
+                ),
+                selectionLabel.trailingAnchor.constraint(
+                    equalTo: doneButton.leadingAnchor,
+                    constant: -8
+                ),
+                selectionLabel.centerYAnchor.constraint(
+                    equalTo: toolbar.topAnchor,
+                    constant: 29
+                )
+            ])
+        }
+
+        func updateSelectionCount(_ count: Int) {
+            selectionLabel.text = "사진을 누른 채 드래그 · \(count)개 선택"
+            doneButton.setTitle(count > 0 ? "추가 \(count)" : "추가", for: .normal)
+            doneButton.isEnabled = count > 0
+        }
+
+        @objc private func cancelTapped() {
+            onCancel()
+        }
+
+        @objc private func doneTapped() {
+            onDone()
+        }
     }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         private let onStart: () -> Void
         private let onComplete: ([ClipItem]) -> Void
+        private let onDismiss: () -> Void
+        private var selectedResults: [PHPickerResult] = []
+        weak var container: PhotoPickerContainerViewController?
 
         init(
             onStart: @escaping () -> Void,
-            onComplete: @escaping ([ClipItem]) -> Void
+            onComplete: @escaping ([ClipItem]) -> Void,
+            onDismiss: @escaping () -> Void
         ) {
             self.onStart = onStart
             self.onComplete = onComplete
+            self.onDismiss = onDismiss
         }
 
         func picker(
             _ picker: PHPickerViewController,
             didFinishPicking results: [PHPickerResult]
         ) {
-            picker.dismiss(animated: true)
+            selectedResults = results
+            container?.updateSelectionCount(results.count)
+        }
+
+        func cancelPicking() {
+            selectedResults = []
+            onDismiss()
+        }
+
+        func finishPicking(assetIdentifiers: [String]) {
+            guard !assetIdentifiers.isEmpty else { return }
+            onDismiss()
+            onStart()
+
+            Task { @MainActor in
+                var items: [ClipItem] = []
+                items.reserveCapacity(assetIdentifiers.count)
+                for identifier in assetIdentifiers {
+                    guard let asset = PhotoLibraryService.asset(
+                        localIdentifier: identifier
+                    ), let thumbnail = try? await PhotoLibraryService.thumbnail(
+                        for: asset
+                    ) else { continue }
+
+                    if asset.mediaType == .video,
+                       let videoItems = try? await Self.makeVideoItems(
+                        asset: asset,
+                        thumbnail: thumbnail
+                       ) {
+                        items.append(contentsOf: videoItems)
+                        continue
+                    }
+
+                    let isLive = asset.mediaSubtypes.contains(.photoLive)
+                    let duration = isLive
+                        ? (try? await PhotoLibraryService
+                            .livePhotoVideoDuration(for: asset)) ?? 4
+                        : 4
+                    items.append(
+                        ClipItem(
+                            source: .photoAsset(
+                                localIdentifier: identifier
+                            ),
+                            thumbnail: thumbnail,
+                            duration: duration,
+                            livePhotoDuration: isLive ? duration : nil,
+                            isLivePhoto: isLive,
+                            livePhotoMode: isLive ? .motion : .still,
+                            mediaKind: isLive ? .livePhoto : .photo,
+                            sourceDuration: isLive ? duration : nil,
+                            sourceCreatedAt: asset.creationDate,
+                            sourcePixelSize: CGSize(
+                                width: asset.pixelWidth,
+                                height: asset.pixelHeight
+                            )
+                        )
+                    )
+                }
+                onComplete(items)
+            }
+        }
+
+        func finishPicking() {
+            let results = selectedResults
+            guard !results.isEmpty else { return }
+            selectedResults = []
+            onDismiss()
             onStart()
 
             Task { @MainActor in
