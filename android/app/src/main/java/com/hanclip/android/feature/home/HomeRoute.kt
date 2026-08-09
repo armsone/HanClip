@@ -171,6 +171,7 @@ fun HomeRoute(
             Spacer(Modifier.height(8.dp))
         }
         savedProjectItems(
+            palette = palette,
             summaries = exportedMovieSummaries,
             recentlySavedMovieUriString = recentlySavedMovieUriString,
             hasDraftProject = hasDraftProject,
@@ -700,7 +701,9 @@ private fun HomeHeader(
     onQuickAdd: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(end = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1106,14 +1109,25 @@ private fun HomeSectionTitle(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
-            modifier = Modifier.size(24.dp),
-            shape = RoundedCornerShape(7.dp),
-            color = palette.secondary.copy(alpha = 0.14f)
+            modifier = Modifier.size(18.dp),
+            shape = RoundedCornerShape(5.dp),
+            color = palette.secondary.copy(alpha = 0.10f)
         ) {
-            Icon(icon, contentDescription = null, tint = palette.secondary, modifier = Modifier.padding(5.dp))
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = palette.primary.copy(alpha = 0.72f),
+                modifier = Modifier.padding(4.dp)
+            )
         }
         Spacer(Modifier.size(7.dp))
-        Text(title, color = palette.subText, fontWeight = FontWeight.Bold)
+        Text(
+            title,
+            color = palette.text.copy(alpha = 0.76f),
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Black
+        )
     }
 }
 
@@ -1136,6 +1150,7 @@ private fun PresetRecommendationBadge(palette: HanClipPalette) {
 }
 
 private fun LazyListScope.savedProjectItems(
+    palette: HanClipPalette,
     summaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
@@ -1157,12 +1172,18 @@ private fun LazyListScope.savedProjectItems(
         contentType = "saved-project-header"
     ) {
         SavedProjectHeader(
+            palette = palette,
             hasDraftProject = hasDraftProject,
             onOpenProject = onOpenProject
         )
     }
     item(key = "aishot-category-header", contentType = "saved-category-header") {
-        SavedProjectCategoryHeader(title = "AiShot", count = aiShotProjects.size, icon = null)
+        SavedProjectCategoryHeader(
+            title = "AiShot",
+            count = aiShotProjects.size,
+            icon = null,
+            palette = palette
+        )
     }
     item(key = "aishot-project-grid", contentType = "aishot-project-grid") {
         AiShotProjectGrid(
@@ -1174,7 +1195,12 @@ private fun LazyListScope.savedProjectItems(
         )
     }
     item(key = "standard-category-header", contentType = "saved-category-header") {
-        SavedProjectCategoryHeader(title = "일반 영화", count = standardProjects.size, icon = Icons.Outlined.Movie)
+        SavedProjectCategoryHeader(
+            title = "일반 영화",
+            count = standardProjects.size,
+            icon = Icons.Outlined.Movie,
+            palette = palette
+        )
     }
     items(
         items = standardProjects,
@@ -1198,7 +1224,12 @@ private fun LazyListScope.savedProjectItems(
     }
     if (summaries.isNotEmpty()) {
         item(key = "completed-mp4-header", contentType = "saved-category-header") {
-            SavedProjectCategoryHeader(title = "완성 MP4", count = summaries.size, icon = Icons.Outlined.Movie)
+            SavedProjectCategoryHeader(
+                title = "완성 MP4",
+                count = summaries.size,
+                icon = Icons.Outlined.Movie,
+                palette = palette
+            )
         }
         items(
             items = summaries,
@@ -1219,25 +1250,11 @@ private fun LazyListScope.savedProjectItems(
 
 @Composable
 private fun SavedProjectHeader(
+    palette: HanClipPalette,
     hasDraftProject: Boolean,
     onOpenProject: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Spacer(Modifier.weight(1f))
-        Surface(
-            modifier = Modifier.size(24.dp),
-            shape = RoundedCornerShape(7.dp),
-            color = Color(0xFFDCEDE9)
-        ) {
-            Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = HomeSubText, modifier = Modifier.padding(5.dp))
-        }
-        Spacer(Modifier.size(7.dp))
-        Text("영화 목록", color = HomeSubText, fontWeight = FontWeight.Bold)
-    }
+    HomeSectionTitle("영화 목록", Icons.Outlined.FolderOpen, palette)
 }
 
 @Composable
@@ -1543,7 +1560,8 @@ private fun MiniAiShotAction(
 private fun SavedProjectCategoryHeader(
     title: String,
     count: Int,
-    icon: ImageVector?
+    icon: ImageVector?,
+    palette: HanClipPalette
 ) {
     Row(
         modifier = Modifier
@@ -1555,41 +1573,53 @@ private fun SavedProjectCategoryHeader(
         Surface(
             modifier = Modifier.size(26.dp),
             shape = RoundedCornerShape(7.dp),
-            color = if (title == "AiShot") Color(0xFFE6F3EF) else HomePrimary,
-            border = if (title == "AiShot") BorderStroke(1.dp, HomeBorder) else null
+            color = Color.Transparent
         ) {
-            if (title == "AiShot") {
-                Image(
-                    painter = painterResource(R.drawable.aishot_icon),
-                    contentDescription = null,
-                    modifier = Modifier.padding(5.dp)
-                )
-            } else if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.padding(6.dp)
-                )
+            Box(
+                modifier = Modifier.background(
+                    Brush.linearGradient(listOf(palette.primary, palette.secondary))
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (title == "AiShot") {
+                    Image(
+                        painter = painterResource(R.drawable.aishot_icon),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(Color.White),
+                        modifier = Modifier.padding(5.dp)
+                    )
+                } else if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.padding(6.dp)
+                    )
+                }
             }
         }
         Text(
             text = title,
-            color = HomeText,
+            color = palette.text.copy(alpha = 0.88f),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.titleMedium
+            maxLines = 1
         )
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFFEAF5F0),
-            border = BorderStroke(1.dp, HomeBorder)
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(palette.secondary.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "$count",
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                color = HomePrimary,
+                color = palette.secondary,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.labelMedium
+                maxLines = 1
             )
         }
     }
