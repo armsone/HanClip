@@ -7,9 +7,11 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.hanclip.android.core.media.MediaImportReader
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.theme.HanClipPalette
@@ -321,7 +324,10 @@ fun CalendarMediaPickerSheet(
                     RecentSelectionPreview(
                         palette = palette,
                         items = recentKnownItems.values.toList(),
-                        selectedUris = selectedUris
+                        selectedUris = selectedUris,
+                        onRemove = { uri ->
+                            selectedUris = selectedUris.filterNot { it == uri }
+                        }
                     )
                     RecentDayActions(
                         palette = palette,
@@ -587,10 +593,12 @@ private fun RecentMonthNavigation(
 private fun RecentSelectionPreview(
     palette: HanClipPalette,
     items: List<CalendarMediaItem>,
-    selectedUris: List<Uri>
+    selectedUris: List<Uri>,
+    onRemove: (Uri) -> Unit
 ) {
     val selectedItems = selectedUris.mapNotNull { uri -> items.firstOrNull { it.uri == uri } }
     val date = selectedItems.firstOrNull()?.date ?: LocalDate.now()
+    var previewItem by remember { mutableStateOf<CalendarMediaItem?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
             shape = RoundedCornerShape(9.dp),
@@ -613,6 +621,7 @@ private fun RecentSelectionPreview(
                     item = item,
                     selectedOrder = index + 1,
                     onClick = {},
+                    onLongClick = { previewItem = item },
                     modifier = Modifier.size(76.dp)
                 )
             }
@@ -623,6 +632,106 @@ private fun RecentSelectionPreview(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.align(Alignment.CenterVertically)
                 )
+            }
+        }
+    }
+    previewItem?.let { item ->
+        CalendarMediaPreviewDialog(
+            palette = palette,
+            item = item,
+            onDismiss = { previewItem = null },
+            onRemove = {
+                onRemove(item.uri)
+                previewItem = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun CalendarMediaPreviewDialog(
+    palette: HanClipPalette,
+    item: CalendarMediaItem,
+    onDismiss: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val context = LocalContext.current
+    val thumbnail by produceState<Bitmap?>(null, item.uri) {
+        value = MediaImportReader.loadThumbnailBitmap(
+            context = context,
+            uri = item.uri,
+            mediaKind = item.kind,
+            targetSize = 1200
+        )
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = palette.solidPanel,
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(palette.chip),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (thumbnail == null) {
+                        CircularProgressIndicator(color = palette.primary)
+                    } else {
+                        Image(
+                            bitmap = thumbnail!!.asImageBitmap(),
+                            contentDescription = "${item.displayName} 크게 보기",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                    if (item.kind == ClipMediaKind.Video) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.58f)
+                        ) {
+                            Icon(
+                                Icons.Outlined.MovieCreation,
+                                contentDescription = "영상",
+                                modifier = Modifier.padding(12.dp).size(28.dp),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+                Text(
+                    item.displayName,
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        border = BorderStroke(1.dp, palette.border)
+                    ) {
+                        Text("닫기", color = palette.text)
+                    }
+                    Button(
+                        onClick = onRemove,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                    ) {
+                        Icon(Icons.Outlined.Delete, contentDescription = null)
+                        Spacer(Modifier.width(5.dp))
+                        Text("선택 제외")
+                    }
+                }
             }
         }
     }
@@ -1340,12 +1449,14 @@ private fun List<CalendarMediaItem>.sortedBySortOrder(sortOrder: MediaSortOrder)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CalendarMediaThumb(
     palette: HanClipPalette,
     item: CalendarMediaItem,
     selectedOrder: Int?,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1362,7 +1473,17 @@ private fun CalendarMediaThumb(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(16.dp))
             .background(palette.chip)
-            .clickable(onClick = onClick)
+            .then(
+                if (onLongClick == null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                        onLongClickLabel = "미디어 크게 보기"
+                    )
+                }
+            )
     ) {
         if (thumbnail == null) {
             CircularProgressIndicator(
