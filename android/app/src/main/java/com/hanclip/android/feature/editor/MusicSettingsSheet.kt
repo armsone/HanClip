@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -54,7 +56,6 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.hanclip.android.core.model.BackgroundMusicSample
 import com.hanclip.android.core.theme.HanClipPalette
-import kotlin.math.abs
 
 private val MusicPrimary = Color(0xFF0B7A4E)
 private val MusicText = Color(0xFF14221A)
@@ -170,158 +171,164 @@ fun MusicSettingsSheet(
                 }
             }
 
-            if (currentTitle != null && currentUri != null) {
-                SelectedMusicPreviewRow(
-                    title = currentTitle,
-                    isPlaying = previewTarget?.id == SelectedMusicPreviewId,
-                    palette = palette,
-                    onTogglePreview = {
-                        previewTarget = togglePreviewTarget(
-                            current = previewTarget,
-                            next = MusicPreviewTarget(
-                                id = SelectedMusicPreviewId,
-                                uri = currentUri
-                            )
-                        )
-                    }
-                )
-            }
-
-            BackgroundMusicSample.entries.chunked(2).forEach { rowSamples ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    rowSamples.forEach { sample ->
-                        SampleMusicButton(
-                            sample = sample,
-                            selected = currentSampleId == sample.id,
-                            isPreviewing = previewTarget?.id == sample.id,
+                    if (currentTitle != null && currentUri != null && currentSampleId == null) {
+                        SelectedMusicPreviewRow(
+                            title = currentTitle,
+                            isPlaying = previewTarget?.id == SelectedMusicPreviewId,
                             palette = palette,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onUseSample(sample) },
                             onTogglePreview = {
                                 previewTarget = togglePreviewTarget(
                                     current = previewTarget,
-                                    next = MusicPreviewTarget(
-                                        id = sample.id,
-                                        uri = sample.previewUri(context.packageName)
-                                    )
+                                    next = MusicPreviewTarget(SelectedMusicPreviewId, currentUri)
                                 )
                             }
                         )
                     }
+                    BackgroundMusicSample.entries.chunked(2).forEach { rowSamples ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowSamples.forEach { sample ->
+                                SampleMusicButton(
+                                    sample = sample,
+                                    selected = currentSampleId == sample.id,
+                                    isPreviewing = previewTarget?.id == sample.id,
+                                    palette = palette,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { onUseSample(sample) },
+                                    onTogglePreview = {
+                                        previewTarget = togglePreviewTarget(
+                                            current = previewTarget,
+                                            next = MusicPreviewTarget(
+                                                sample.id,
+                                                sample.previewUri(context.packageName)
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        onClick = onOpenBrowser,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, palette.border),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = palette.primary.copy(alpha = 0.10f),
+                            contentColor = palette.primary
+                        )
+                    ) {
+                        Icon(Icons.Outlined.Public, contentDescription = null)
+                        Text("브라우저")
+                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        onClick = onPickFile,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, palette.border),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = palette.primary.copy(alpha = 0.10f),
+                            contentColor = palette.primary
+                        )
+                    ) {
+                        Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                        Text("음악 파일 불러오기")
+                    }
+                    if (currentTitle != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedButton(
+                                onClick = {},
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = palette.primary,
+                                    contentColor = Color.White
+                                )
+                            ) { Text("사용") }
+                            OutlinedButton(
+                                onClick = onRemove,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = palette.chip,
+                                    contentColor = palette.text
+                                )
+                            ) { Text("안함") }
+                        }
+                    }
                 }
             }
 
-            OutlinedButton(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                onClick = onOpenBrowser,
-                border = BorderStroke(1.dp, palette.border),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.chip,
-                    contentColor = palette.text
-                )
+                shape = RoundedCornerShape(8.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
             ) {
-                Icon(Icons.Outlined.Public, contentDescription = null)
-                Text("브라우저")
-            }
-
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onPickFile,
-                border = BorderStroke(1.dp, palette.border),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.chip,
-                    contentColor = palette.text
-                )
-            ) {
-                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-                Text("음악 파일 불러오기")
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                OutlinedButton(
-                    onClick = {},
-                    enabled = currentTitle != null,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (currentTitle != null) palette.primary else palette.chip,
-                        contentColor = Color.White
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MusicVolumePanel(
+                        title = "음량",
+                        value = musicVolume,
+                        enabled = currentTitle != null,
+                        palette = palette,
+                        onValueChange = onMusicVolumeChange
                     )
-                ) { Text("사용") }
-                OutlinedButton(
-                    onClick = onRemove,
-                    enabled = true,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (currentTitle == null) palette.primary else palette.chip,
-                        contentColor = if (currentTitle == null) Color.White else palette.text
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                    MusicVolumePanel(
+                        title = "원본 소리",
+                        value = originalAudioVolume,
+                        enabled = true,
+                        palette = palette,
+                        onValueChange = onOriginalAudioVolumeChange
                     )
-                ) { Text("안함") }
+                }
             }
 
-            MusicMixSummaryPanel(
-                currentTitle = currentTitle,
-                musicVolume = musicVolume,
-                originalAudioVolume = originalAudioVolume,
-                palette = palette
-            )
-
-            MusicVolumePanel(
-                title = "배경음악",
-                subtitle = if (currentTitle == null) "음악을 선택하면 타격음을 해치지 않게 낮게 섞습니다." else currentTitle,
-                value = musicVolume,
-                enabled = currentTitle != null,
-                palette = palette,
-                resetLabel = "기본 35%",
-                resetValue = 0.35,
-                onValueChange = onMusicVolumeChange
-            )
-
-            MusicVolumePanel(
-                title = "원본 소리",
-                subtitle = "스윙 타격음과 현장 소리를 완성본에 남기는 비율입니다.",
-                value = originalAudioVolume,
-                enabled = true,
-                palette = palette,
-                resetLabel = "원본 100%",
-                resetValue = 1.0,
-                onValueChange = onOriginalAudioVolumeChange
-            )
-
-            MusicPlaybackOptionRow(
-                title = "영상 끝까지 반복",
-                detail = "음악이 짧으면 완성본 길이만큼 처음부터 반복합니다.",
-                checked = loopsToFillVideo,
-                enabled = currentTitle != null,
-                palette = palette,
-                onCheckedChange = onLoopingChange
-            )
-
-            Row(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                shape = RoundedCornerShape(8.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
             ) {
-                MusicPlaybackOptionRow(
-                    title = "페이드 인",
-                    detail = "0.3초",
-                    checked = fadeInEnabled,
-                    enabled = currentTitle != null,
-                    palette = palette,
-                    onCheckedChange = onFadeInChange,
-                    modifier = Modifier.weight(1f)
-                )
-                MusicPlaybackOptionRow(
-                    title = "페이드 아웃",
-                    detail = "1.0초",
-                    checked = fadeOutEnabled,
-                    enabled = currentTitle != null,
-                    palette = palette,
-                    onCheckedChange = onFadeOutChange,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MusicFadeToggle(
+                        title = "페이드 인",
+                        checked = fadeInEnabled,
+                        enabled = currentTitle != null,
+                        onCheckedChange = onFadeInChange,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(Modifier.width(1.dp).height(24.dp).background(palette.border))
+                    MusicFadeToggle(
+                        title = "페이드 아웃",
+                        checked = fadeOutEnabled,
+                        enabled = currentTitle != null,
+                        onCheckedChange = onFadeOutChange,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
             Text(
@@ -330,40 +337,6 @@ fun MusicSettingsSheet(
                 style = MaterialTheme.typography.bodySmall
             )
             Spacer(Modifier.height(6.dp))
-        }
-    }
-}
-
-@Composable
-private fun MusicPlaybackOptionRow(
-    title: String,
-    detail: String,
-    checked: Boolean,
-    enabled: Boolean,
-    palette: HanClipPalette,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = if (enabled) palette.chip else palette.chip.copy(alpha = 0.58f),
-        border = BorderStroke(1.dp, palette.border)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold, color = palette.text)
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = palette.subText)
-            }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                enabled = enabled
-            )
         }
     }
 }
@@ -408,156 +381,60 @@ private fun SelectedMusicPreviewRow(
 }
 
 @Composable
-private fun MusicMixSummaryPanel(
-    currentTitle: String?,
-    musicVolume: Double,
-    originalAudioVolume: Double,
-    palette: HanClipPalette
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = palette.chip,
-        border = BorderStroke(1.dp, palette.border)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text("소리 믹스", color = palette.text, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MusicMixChip(
-                    label = "배경음악 낮게",
-                    value = if (currentTitle == null) "꺼짐" else percentText(musicVolume),
-                    active = currentTitle != null,
-                    palette = palette,
-                    modifier = Modifier.weight(1f)
-                )
-                MusicMixChip(
-                    label = "타격음/원본",
-                    value = percentText(originalAudioVolume),
-                    active = originalAudioVolume > 0.0,
-                    palette = palette,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Text(
-                text = if (currentTitle == null) {
-                    "배경음악 없이 스윙 타격음과 원본 현장 소리를 그대로 사용합니다."
-                } else {
-                    "${currentTitle}은 낮게 얹고 스윙 타격음과 원본 현장 소리는 선명하게 남깁니다."
-                },
-                color = palette.subText,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun MusicMixChip(
-    label: String,
-    value: String,
-    active: Boolean,
-    palette: HanClipPalette,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = if (active) Color.White else palette.panel,
-        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.24f) else palette.border)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                label,
-                color = palette.subText,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.labelMedium
-            )
-            Text(
-                value,
-                color = if (active) palette.primary else palette.subText,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.labelMedium
-            )
-        }
-    }
-}
-
-@Composable
 private fun MusicVolumePanel(
     title: String,
-    subtitle: String,
     value: Double,
     enabled: Boolean,
     palette: HanClipPalette,
-    resetLabel: String,
-    resetValue: Double,
     onValueChange: (Double) -> Unit
 ) {
-    Surface(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = if (enabled) palette.chip else palette.chip.copy(alpha = 0.58f),
-        border = BorderStroke(1.dp, palette.border)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, color = palette.text, fontWeight = FontWeight.Bold)
-                    Text(
-                        subtitle,
-                        color = palette.subText,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    "${(value.coerceIn(0.0, 1.0) * 100).toInt()}%",
-                    color = if (enabled) palette.primary else palette.subText,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Slider(
-                value = value.toFloat().coerceIn(0f, 1f),
-                onValueChange = { onValueChange(it.toDouble()) },
-                enabled = enabled,
-                valueRange = 0f..1f,
-                steps = 19
+            Text(title, color = palette.text, fontWeight = FontWeight.SemiBold)
+            Text(
+                "${(value.coerceIn(0.0, 1.0) * 100).toInt()}%",
+                color = palette.subText,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodySmall
             )
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { onValueChange(resetValue) },
-                enabled = enabled && abs(value - resetValue) > 0.01,
-                border = BorderStroke(1.dp, palette.border),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = palette.text
-                )
-            ) {
-                Text(resetLabel)
-            }
         }
+        Slider(
+            value = value.toFloat().coerceIn(0f, 1f),
+            onValueChange = { onValueChange(it.toDouble()) },
+            enabled = enabled,
+            valueRange = 0f..1f,
+            steps = 19
+        )
     }
 }
 
-private fun percentText(value: Double): String {
-    return "${(value.coerceIn(0.0, 1.0) * 100).toInt()}%"
+@Composable
+private fun MusicFadeToggle(
+    title: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, fontWeight = FontWeight.SemiBold)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
 }
 
 @Composable
@@ -572,15 +449,19 @@ private fun SampleMusicButton(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) palette.primary else palette.chip,
-        contentColor = if (selected) Color.White else palette.text
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) palette.primary.copy(alpha = 0.08f) else palette.secondary.copy(alpha = 0.05f),
+        contentColor = palette.text,
+        border = BorderStroke(
+            1.dp,
+            if (selected) palette.primary.copy(alpha = 0.34f) else palette.border.copy(alpha = 0.70f)
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .height(74.dp)
+                .height(66.dp)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -589,11 +470,15 @@ private fun SampleMusicButton(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Text(sample.title, fontWeight = FontWeight.Bold)
+                Text(
+                    sample.title,
+                    color = if (selected) palette.primary else palette.text,
+                    fontWeight = FontWeight.Bold
+                )
                 Text(
                     sample.detail,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (selected) Color.White.copy(alpha = 0.86f) else palette.subText,
+                    color = palette.subText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -602,7 +487,7 @@ private fun SampleMusicButton(
                 Icon(
                     if (isPreviewing) Icons.Outlined.PauseCircle else Icons.Outlined.PlayCircle,
                     contentDescription = if (isPreviewing) "미리듣기 정지" else "미리듣기",
-                    tint = if (selected || isPreviewing) Color.White else palette.text
+                    tint = if (selected || isPreviewing) palette.primary else palette.text
                 )
             }
         }
