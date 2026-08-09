@@ -6,8 +6,9 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 
 11단계 기본 검증 완료: 실제 Android 폰 설치와 핵심 흐름 테스트
 
-현재 Android 버전: `1.0.1` (`versionCode=411`)
+현재 Android 버전: `1.0.1` (`versionCode=416`)
 
+- iOS `HanClipTheme`의 자동/밝은/어두운/블라썸/그레이스케일/픽셀팝 원색과 배경 방향·패널 투명도를 Android에 동기화하고 홈 프리셋 카드의 별도 흰색 내부 그라데이션 제거
 - 동일 applicationId·데이터와 디버그 서명을 유지하면서 `DEBUGGABLE`만 제거한 `releaseQa` 빌드 유형을 추가해 실기기 스크롤 성능 A/B 가능
 - `SM-F968N` 120Hz 홈 반복 스크롤에서 디버그 빌드 539프레임 jank 12.24%(p50 7ms·p90 15ms·p95 20ms) 대비 releaseQa 누적 1,411프레임 jank 3.12%(p50 5ms·p90 8ms·p95 9ms), 느린 비트맵 업로드 0 확인
 - 저장 영상 오디오 분석을 iOS와 같은 시간 버킷 내림·말소리 억제 조건으로 맞추고 Android 디코더에 16비트 PCM을 요청하되 float PCM 반환도 정확히 분석

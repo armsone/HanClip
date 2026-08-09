@@ -15,26 +15,26 @@ enum class HanClipThemeMode(
         HanClipPalette(
             primary = Color(0xFF072931),
             secondary = Color(0xFF007E81),
-            background = Brush.verticalGradient(listOf(Color(0xFFF8FBFA), Color(0xFFE7F0EE))),
+            background = Brush.verticalGradient(listOf(Color(0xFFE7F0EE), Color(0xFFF8FBFA))),
             text = Color(0xFF0F172A),
             subText = Color(0xFF52615D),
-            panel = Color.White,
-            chip = Color(0xFFE6F4F3),
-            border = Color(0xFFD3E3DF)
+            panel = Color(0x14007E81),
+            chip = Color(0x29007E81),
+            border = Color(0x2E072931)
         )
     ),
     Light(
         "light",
         "밝은 모드",
         HanClipPalette(
-            primary = Color(0xFF0B7A4E),
-            secondary = Color(0xFF29AB87),
-            background = Brush.verticalGradient(listOf(Color(0xFFFAFCFA), Color(0xFFF4F7F5))),
-            text = Color(0xFF14221A),
-            subText = Color(0xFF46564C),
-            panel = Color.White,
-            chip = Color(0xFFEAF5F0),
-            border = Color(0xFFD4DDD7)
+            primary = Color(0xFF002228),
+            secondary = Color(0xFF005C60),
+            background = Brush.verticalGradient(listOf(Color(0xFFD2E7E5), Color(0xFFFAFEFD))),
+            text = Color(0xFF00070C),
+            subText = Color(0x9400070C),
+            panel = Color(0x2E005C60),
+            chip = Color(0x47005C60),
+            border = Color(0x5C002228)
         )
     ),
     Dark(
@@ -43,40 +43,40 @@ enum class HanClipThemeMode(
         HanClipPalette(
             primary = Color(0xFF67E8F9),
             secondary = Color(0xFF527387),
-            background = Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF111827))),
-            text = Color(0xFFF8FAFC),
+            background = Brush.verticalGradient(listOf(Color(0xFF11181F), Color(0xFF0A0E12))),
+            text = Color(0xFFE8EEF2),
             subText = Color(0xFFC9D3DC),
-            panel = Color(0xFF1F2937),
-            chip = Color(0xFF233445),
-            border = Color(0xFF3F5262)
+            panel = Color(0x0FFFFFFF),
+            chip = Color(0x14FFFFFF),
+            border = Color(0x4D67E8F9)
         )
     ),
     BlossomGlow(
         "blossomGlow",
         "블라썸 글로우",
         HanClipPalette(
-            primary = Color(0xFFB9486A),
-            secondary = Color(0xFFF39B7D),
-            background = Brush.verticalGradient(listOf(Color(0xFFFFF7F8), Color(0xFFFFECE8))),
-            text = Color(0xFF331B23),
-            subText = Color(0xFF76515C),
-            panel = Color.White,
-            chip = Color(0xFFFFE6EA),
-            border = Color(0xFFF4C8D0)
+            primary = Color(0xFFD65E7A),
+            secondary = Color(0xFF8B6897),
+            background = Brush.verticalGradient(listOf(Color(0xFFF7EBF1), Color(0xFFFFF8FA))),
+            text = Color(0xFF2D1F28),
+            subText = Color(0xA62D1F28),
+            panel = Color(0x1A8B6897),
+            chip = Color(0x2E8B6897),
+            border = Color(0x33D65E7A)
         )
     ),
     GrayscalePlay(
         "grayscalePlay",
         "그레이스케일",
         HanClipPalette(
-            primary = Color(0xFF242424),
-            secondary = Color(0xFF8B8B8B),
-            background = Brush.verticalGradient(listOf(Color(0xFFFAFAFA), Color(0xFFEDEDED))),
-            text = Color(0xFF171717),
-            subText = Color(0xFF5F5F5F),
-            panel = Color.White,
-            chip = Color(0xFFE9E9E9),
-            border = Color(0xFFD2D2D2)
+            primary = Color(0xFF1C1C1E),
+            secondary = Color(0xFF787880),
+            background = Brush.verticalGradient(listOf(Color(0xFFE2E2E5), Color(0xFFF7F7F8))),
+            text = Color(0xFF121214),
+            subText = Color(0x99121214),
+            panel = Color(0x1F787880),
+            chip = Color(0x2E787880),
+            border = Color(0x3D1C1C1E)
         )
     ),
     PixelPop(
@@ -85,12 +85,12 @@ enum class HanClipThemeMode(
         HanClipPalette(
             primary = Color(0xFF2652FF),
             secondary = Color(0xFFDC2F65),
-            background = Brush.verticalGradient(listOf(Color(0xFFF9FBFF), Color(0xFFE8EFFF))),
+            background = Brush.verticalGradient(listOf(Color(0xFFE8EFFF), Color(0xFFF9FBFF))),
             text = Color(0xFF0F1630),
             subText = Color(0xFF56617F),
-            panel = Color.White,
-            chip = Color(0xFFE6EAFF),
-            border = Color(0xFFC9D3FF)
+            panel = Color(0x162652FF),
+            chip = Color(0x26DC2F65),
+            border = Color(0x3D2652FF)
         )
     );
 

@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -85,6 +87,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.hanclip.android.R
 import com.hanclip.android.core.model.MoviePreset
@@ -144,20 +147,12 @@ fun HomeRoute(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFF9FCFB),
-                        palette.panel,
-                        palette.secondary.copy(alpha = 0.10f)
-                    )
-                )
-            )
-            .padding(horizontal = 20.dp),
+            .background(palette.background)
+            .padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item(key = "home-header") {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             HomeHeader(
                 palette = palette,
                 onOpenTheme = { showThemeSelection = true },
@@ -739,20 +734,23 @@ fun HanClipBrandCapsule() {
         border = BorderStroke(1.dp, Color(0xFFD6E1DE))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+            modifier = Modifier
+                .padding(horizontal = 10.dp, vertical = 7.dp)
+                .width(154.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Image(
                 painter = painterResource(R.drawable.logo_mark),
                 contentDescription = null,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(35.2.dp),
                 contentScale = ContentScale.Fit,
                 colorFilter = ColorFilter.tint(brandColor)
             )
             Text(
                 text = "HanClip",
-                style = MaterialTheme.typography.headlineLarge,
+                fontSize = 26.sp,
+                lineHeight = 32.sp,
                 fontFamily = FontFamily(Font(R.font.pretendard_bold)),
                 fontWeight = FontWeight.Black,
                 color = brandColor,
@@ -994,10 +992,10 @@ private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPal
         MoviePreset.Travel,
         MoviePreset.Golf
     )
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HomeSectionTitle("영화 프리셋", Icons.Outlined.Collections, palette)
         orderedPresets.chunked(2).forEach { rowPresets ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 rowPresets.forEach { preset ->
                     PresetTile(
                         modifier = Modifier.weight(1f),
@@ -1028,29 +1026,19 @@ private fun PresetTile(
     palette: HanClipPalette,
     onClick: () -> Unit
 ) {
-    Surface(
+    val cardShape = RoundedCornerShape(8.dp)
+    Box(
         modifier = modifier
-            .height(132.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.32f)),
-        shadowElevation = 1.dp
+            .height(124.dp)
+            .clip(cardShape)
+            .background(palette.panel)
+            .border(1.dp, palette.border, cardShape)
+            .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            palette.panel.copy(alpha = 0.98f),
-                            palette.chip.copy(alpha = 0.72f),
-                            palette.secondary.copy(alpha = 0.08f)
-                        )
-                    )
-                )
-                .padding(horizontal = 10.dp, vertical = 15.dp),
-            verticalArrangement = Arrangement.Center,
+                .padding(start = 10.dp, top = 21.dp, end = 10.dp, bottom = 15.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -1082,7 +1070,8 @@ private fun PresetTile(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = preset.title,
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = palette.text,
                 maxLines = 1,
@@ -1090,7 +1079,8 @@ private fun PresetTile(
             )
             Text(
                 text = preset.detail,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
                 color = palette.subText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
