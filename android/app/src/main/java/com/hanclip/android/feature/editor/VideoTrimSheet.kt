@@ -75,6 +75,7 @@ fun VideoTrimSheet(
     onDismiss: () -> Unit,
     onApplyTrim: (startSeconds: Double, durationSeconds: Double) -> Unit
 ) {
+    FullScreenDialogSystemBars(palette.solidPanel)
     val sourceDuration = max(0.1, clip.sourceDurationSeconds ?: clip.durationSeconds)
     var startSeconds by remember(clip.id) {
         mutableDoubleStateOf(clip.trimStartSeconds.coerceIn(0.0, sourceDuration))

@@ -85,6 +85,7 @@ fun MusicSettingsSheet(
     onFadeOutChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
+    if (fullScreen) FullScreenDialogSystemBars(palette.solidPanel)
     val context = LocalContext.current
     val initialMusicVolume = remember { musicVolume }
     val initialOriginalAudioVolume = remember { originalAudioVolume }

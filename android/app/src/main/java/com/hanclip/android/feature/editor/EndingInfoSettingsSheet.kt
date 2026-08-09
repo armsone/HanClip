@@ -49,6 +49,7 @@ fun EndingInfoSettingsSheet(
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
 ) {
+    FullScreenDialogSystemBars(palette.solidPanel)
     var draft by remember(settings) { mutableStateOf(settings) }
     val previewStops = stops.ifEmpty {
         listOf(

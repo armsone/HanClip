@@ -1,5 +1,6 @@
 package com.hanclip.android.feature.editor
 
+import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,13 +16,60 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.hanclip.android.core.theme.HanClipPalette
+
+@Composable
+internal fun FullScreenDialogSystemBars(
+    background: Color,
+    navigationBackground: Color = background
+) {
+    val view = LocalView.current
+    DisposableEffect(view, background, navigationBackground) {
+        val window = ((view as? DialogWindowProvider)
+            ?: (view.parent as? DialogWindowProvider))?.window
+        if (window == null) {
+            onDispose { }
+        } else {
+            val oldStatusColor = window.statusBarColor
+            val oldNavigationColor = window.navigationBarColor
+            val oldDecorBackground = window.decorView.background
+            val hadDimBehind = window.attributes.flags and
+                WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0
+            val controller = WindowCompat.getInsetsController(window, view)
+            val oldLightStatusBars = controller.isAppearanceLightStatusBars
+            val oldLightNavigationBars = controller.isAppearanceLightNavigationBars
+            window.statusBarColor = background.toArgb()
+            window.navigationBarColor = navigationBackground.toArgb()
+            window.decorView.setBackgroundColor(background.toArgb())
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            controller.isAppearanceLightStatusBars = background.luminance() > 0.5f
+            controller.isAppearanceLightNavigationBars = navigationBackground.luminance() > 0.5f
+            onDispose {
+                window.statusBarColor = oldStatusColor
+                window.navigationBarColor = oldNavigationColor
+                window.decorView.background = oldDecorBackground
+                if (hadDimBehind) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                }
+                controller.isAppearanceLightStatusBars = oldLightStatusBars
+                controller.isAppearanceLightNavigationBars = oldLightNavigationBars
+            }
+        }
+    }
+}
 
 @Composable
 internal fun FullScreenSettingsHeader(

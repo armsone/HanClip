@@ -64,6 +64,7 @@ fun PhotoDurationSheet(
     onDismiss: () -> Unit,
     onApplyDuration: (Double) -> Unit
 ) {
+    FullScreenDialogSystemBars(palette.solidPanel)
     var duration by remember(clip.id) {
         mutableFloatStateOf(clip.durationSeconds.toFloat().coerceIn(0.1f, 30f))
     }

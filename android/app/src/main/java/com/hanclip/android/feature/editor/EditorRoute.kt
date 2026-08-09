@@ -1591,6 +1591,7 @@ private fun QuickDurationDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        FullScreenDialogSystemBars(palette.solidPanel)
         Box(
             modifier = Modifier.fillMaxSize().background(palette.background)
         ) {
@@ -3511,6 +3512,7 @@ private fun ClipPreviewDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        FullScreenDialogSystemBars(Color.Black)
         Surface(color = Color.Black) {
             Column(
                 modifier = Modifier

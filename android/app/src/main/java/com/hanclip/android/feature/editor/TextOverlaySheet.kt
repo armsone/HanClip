@@ -107,6 +107,7 @@ fun TextOverlaySheet(
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
 ) {
+    if (fullScreen) FullScreenDialogSystemBars(palette.solidPanel)
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var draft by remember(settings) { mutableStateOf(settings) }

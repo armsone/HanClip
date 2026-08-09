@@ -88,6 +88,7 @@ fun CalendarMediaPickerSheet(
     onDismiss: () -> Unit,
     onImport: (selectedUris: List<Uri>, deselectionScopeUris: Set<Uri>) -> Unit
 ) {
+    FullScreenDialogSystemBars(palette.solidPanel)
     val context = LocalContext.current
     val pickerMode = remember(title) {
         when (title) {
@@ -99,14 +100,33 @@ fun CalendarMediaPickerSheet(
     }
     var visibleMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDates by remember { mutableStateOf(setOf(LocalDate.now())) }
-    var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var hasAppliedInitialSelection by remember(title) { mutableStateOf(false) }
+    var selectedUris by remember(title, initialSelectedUris) {
+        mutableStateOf(
+            if (pickerMode == MediaPickerSheetMode.Recent) {
+                initialSelectedUris.distinctBy(Uri::toString)
+            } else {
+                emptyList()
+            }
+        )
+    }
+    var hasAppliedInitialSelection by remember(title) {
+        mutableStateOf(pickerMode == MediaPickerSheetMode.Recent)
+    }
+    var recentScopeUris by remember(title) { mutableStateOf<Set<Uri>>(emptySet()) }
+    var recentKnownItems by remember(title) {
+        mutableStateOf<Map<Uri, CalendarMediaItem>>(emptyMap())
+    }
+    var pendingRecentDate by remember(title) { mutableStateOf<LocalDate?>(null) }
     var pendingBulkImportUris by remember { mutableStateOf<List<Uri>?>(null) }
     var sortOrder by remember { mutableStateOf(MediaSortOrder.NewestFirst) }
     var recentFilter by remember { mutableStateOf(RecentMediaFilter.Photo) }
-    val monthItems by produceState<List<CalendarMediaItem>>(emptyList(), visibleMonth) {
-        value = CalendarMediaRepository.loadMonth(context, visibleMonth)
+    val loadedMonthItems by produceState<Pair<YearMonth, List<CalendarMediaItem>>?>(null, visibleMonth) {
+        value = visibleMonth to CalendarMediaRepository.loadMonth(context, visibleMonth)
     }
+    val monthItems = loadedMonthItems
+        ?.takeIf { (loadedMonth) -> loadedMonth == visibleMonth }
+        ?.second
+        .orEmpty()
     val itemsByDate = remember(monthItems) { monthItems.groupBy { it.date } }
     val selectedItems = remember(monthItems, selectedDates, sortOrder) {
         selectedDates
@@ -135,14 +155,32 @@ fun CalendarMediaPickerSheet(
             hasAppliedInitialSelection = true
         }
     }
+    LaunchedEffect(pickerMode, loadedMonthItems, recentFilter) {
+        if (pickerMode == MediaPickerSheetMode.Recent) {
+            recentScopeUris = recentScopeUris + visibleItems.map { it.uri }
+            recentKnownItems = recentKnownItems + visibleItems.associateBy { it.uri }
+            if (loadedMonthItems?.first == visibleMonth) {
+                pendingRecentDate?.let { targetDate ->
+                    selectedUris = visibleItems
+                        .filter { it.date == targetDate }
+                        .map { it.uri }
+                    pendingRecentDate = null
+                }
+            }
+        }
+    }
     fun deselectionScopeUris(): Set<Uri> = if (pickerMode == MediaPickerSheetMode.Recent) {
-        visibleItems.mapTo(linkedSetOf()) { it.uri }
+        recentScopeUris
     } else {
         emptySet()
     }
     fun requestImport() {
-        val orderedUris = selectedUris.mapNotNull { selectedUri ->
-            visibleItems.firstOrNull { it.uri == selectedUri }?.uri
+        val orderedUris = if (pickerMode == MediaPickerSheetMode.Recent) {
+            selectedUris
+        } else {
+            selectedUris.mapNotNull { selectedUri ->
+                visibleItems.firstOrNull { it.uri == selectedUri }?.uri
+            }
         }
         if (orderedUris.size >= BulkImportConfirmationThreshold) {
             pendingBulkImportUris = orderedUris
@@ -168,13 +206,13 @@ fun CalendarMediaPickerSheet(
                 val newMonth = visibleMonth.minusMonths(1)
                 visibleMonth = newMonth
                 selectedDates = setOf(newMonth.atDay(1))
-                selectedUris = emptyList()
+                if (pickerMode != MediaPickerSheetMode.Recent) selectedUris = emptyList()
             }
             val moveToNextMonth = {
                 val newMonth = visibleMonth.plusMonths(1)
                 visibleMonth = newMonth
                 selectedDates = setOf(newMonth.atDay(1))
-                selectedUris = emptyList()
+                if (pickerMode != MediaPickerSheetMode.Recent) selectedUris = emptyList()
             }
             if (pickerMode == MediaPickerSheetMode.Calendar) {
                 CalendarTopActions(
@@ -207,6 +245,12 @@ fun CalendarMediaPickerSheet(
                     },
                     onCancel = onDismiss,
                     onConfirm = ::requestImport
+                )
+                RecentMonthNavigation(
+                    palette = palette,
+                    visibleMonth = visibleMonth,
+                    onPrevious = moveToPreviousMonth,
+                    onNext = moveToNextMonth
                 )
             } else {
                 CalendarSheetHeader(
@@ -276,7 +320,7 @@ fun CalendarMediaPickerSheet(
                 MediaPickerSheetMode.Recent -> {
                     RecentSelectionPreview(
                         palette = palette,
-                        items = visibleItems,
+                        items = recentKnownItems.values.toList(),
                         selectedUris = selectedUris
                     )
                     RecentDayActions(
@@ -284,13 +328,26 @@ fun CalendarMediaPickerSheet(
                         canClear = selectedUris.isNotEmpty(),
                         onPreviousDay = {
                             val anchor = selectedUris.firstOrNull()
-                                ?.let { uri -> visibleItems.firstOrNull { it.uri == uri }?.date }
+                                ?.let { uri -> recentKnownItems[uri]?.date }
                                 ?: LocalDate.now()
                             val target = anchor.minusDays(1)
-                            selectedUris = visibleItems.filter { it.date == target }.map { it.uri }
+                            val targetMonth = YearMonth.from(target)
+                            if (targetMonth != visibleMonth) {
+                                pendingRecentDate = target
+                                visibleMonth = targetMonth
+                            } else {
+                                selectedUris = visibleItems.filter { it.date == target }.map { it.uri }
+                            }
                         },
                         onToday = {
-                            selectedUris = visibleItems.filter { it.date == LocalDate.now() }.map { it.uri }
+                            val today = LocalDate.now()
+                            val currentMonth = YearMonth.from(today)
+                            if (currentMonth != visibleMonth) {
+                                pendingRecentDate = today
+                                visibleMonth = currentMonth
+                            } else {
+                                selectedUris = visibleItems.filter { it.date == today }.map { it.uri }
+                            }
                         },
                         onClear = { selectedUris = emptyList() }
                     )
@@ -348,7 +405,14 @@ fun CalendarMediaPickerSheet(
             title = { Text("HanClip 클립 순서 확인") },
             text = {
                 Text(
-                    "${selectedMediaSummaryText(visibleItems, uris)}를 선택했습니다. " +
+                    "${selectedMediaSummaryText(
+                        if (pickerMode == MediaPickerSheetMode.Recent) {
+                            recentKnownItems.values.toList()
+                        } else {
+                            visibleItems
+                        },
+                        uris
+                    )}를 선택했습니다. " +
                         "기본 사진첩에서 고른 번호순 그대로 배치하고, 영상은 스윙 타격점 기준 자동 컷을 준비합니다."
                 )
             }
@@ -473,6 +537,48 @@ private fun RecentPickerHeader(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentMonthNavigation(
+    palette: HanClipPalette,
+    visibleMonth: YearMonth,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onPrevious, modifier = Modifier.size(34.dp)) {
+            Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                contentDescription = "이전 달",
+                tint = palette.primary
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = palette.chip,
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Text(
+                visibleMonth.format(DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREAN)),
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp),
+                color = palette.text,
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        IconButton(onClick = onNext, modifier = Modifier.size(34.dp)) {
+            Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = "다음 달",
+                tint = palette.primary
+            )
         }
     }
 }
