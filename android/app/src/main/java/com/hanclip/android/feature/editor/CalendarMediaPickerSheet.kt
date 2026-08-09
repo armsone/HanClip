@@ -1154,6 +1154,7 @@ private fun CalendarMediaStrip(
     onClearSelection: () -> Unit,
     onToggle: (Uri) -> Unit
 ) {
+    var previewItem by remember { mutableStateOf<CalendarMediaItem?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (mode != MediaPickerSheetMode.Calendar) Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1232,11 +1233,27 @@ private fun CalendarMediaStrip(
                         selectedOrder = selectedUris.indexOf(item.uri)
                             .takeIf { it >= 0 }
                             ?.plus(1),
-                        onClick = { onToggle(item.uri) }
+                        onClick = { onToggle(item.uri) },
+                        onLongClick = if (item.uri in selectedUris) {
+                            { previewItem = item }
+                        } else {
+                            null
+                        }
                     )
                 }
             }
         }
+    }
+    previewItem?.let { item ->
+        CalendarMediaPreviewDialog(
+            palette = palette,
+            item = item,
+            onDismiss = { previewItem = null },
+            onRemove = {
+                if (item.uri in selectedUris) onToggle(item.uri)
+                previewItem = null
+            }
+        )
     }
 }
 
