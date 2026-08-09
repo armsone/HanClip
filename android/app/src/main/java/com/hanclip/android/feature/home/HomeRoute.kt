@@ -121,6 +121,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -134,6 +135,7 @@ import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMovieSummary
 import com.hanclip.android.core.project.CollectedMovie
+import com.hanclip.android.core.project.CollectionVideoSizeOption
 import com.hanclip.android.core.project.MovieCollectionStore
 import com.hanclip.android.core.project.hanClipCompletionTitle
 import com.hanclip.android.core.settings.SleepPreventionMode
@@ -181,8 +183,7 @@ fun HomeRoute(
     onOpenCollectionMovie: (CollectedMovie) -> Unit,
     onSleepPreventionModeChange: (SleepPreventionMode) -> Unit,
     onWatermarkSettingsChange: (WatermarkSettings) -> Unit,
-    onOpenBrowser: () -> Unit,
-    onRestorePurchases: () -> Unit
+    onOpenBrowser: () -> Unit
 ) {
     val context = LocalContext.current
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
@@ -214,6 +215,54 @@ fun HomeRoute(
     var collectionError by remember { mutableStateOf<String?>(null) }
     var showCollectionImportSource by remember { mutableStateOf(false) }
     var collectionImportJob by remember { mutableStateOf<Job?>(null) }
+    var collectionCompressionCandidate by remember { mutableStateOf<CollectedMovie?>(null) }
+    var collectionCompressionMovieTitle by remember { mutableStateOf("") }
+    var collectionCompressionProgress by remember { mutableStateOf(0.0) }
+    var collectionCompressionJob by remember { mutableStateOf<Job?>(null) }
+    var collectionPosterRepairCompleted by remember { mutableStateOf(0) }
+    var collectionPosterRepairTotal by remember { mutableStateOf(0) }
+
+    val outdatedCollectionPosterIds = collectionMovies
+        .filter {
+            (it.posterSelectionVersion ?: 0) < MovieCollectionStore.CurrentPosterSelectionVersion
+        }
+        .map(CollectedMovie::id)
+    LaunchedEffect(outdatedCollectionPosterIds) {
+        if (outdatedCollectionPosterIds.isEmpty()) {
+            collectionPosterRepairCompleted = 0
+            collectionPosterRepairTotal = 0
+            return@LaunchedEffect
+        }
+        MovieCollectionStore.regenerateOutdatedPosters(context) { completed, total ->
+            withContext(Dispatchers.Main.immediate) {
+                collectionPosterRepairCompleted = completed
+                collectionPosterRepairTotal = total
+            }
+        }
+        onCollectionChanged()
+    }
+
+    fun beginCollectionCompression(movie: CollectedMovie, option: CollectionVideoSizeOption) {
+        collectionCompressionJob?.cancel()
+        collectionCompressionMovieTitle = movie.title
+        collectionCompressionProgress = 0.0
+        collectionCompressionJob = coroutineScope.launch {
+            try {
+                val result = MovieCollectionStore.reduceFileSize(context, movie, option) { progress ->
+                    collectionCompressionProgress = progress
+                }
+                onCollectionChanged()
+                collectionError = "파일 용량을 줄였습니다. ${collectionFileSize(result.originalBytes)} → ${collectionFileSize(result.compressedBytes)}"
+            } catch (cancelled: CancellationException) {
+                collectionError = "파일 용량 줄이기를 취소했습니다. 원본 파일은 그대로 유지됩니다."
+            } catch (error: Throwable) {
+                collectionError = error.message ?: "영상 용량을 줄이지 못했습니다."
+            } finally {
+                collectionCompressionJob = null
+                collectionCompressionProgress = 0.0
+            }
+        }
+    }
 
     fun importCollectionUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
@@ -347,9 +396,15 @@ fun HomeRoute(
             collectionImportTotal = collectionImportTotal,
             onImportCollection = { showCollectionImportSource = true },
             onCancelCollectionImport = { collectionImportJob?.cancel() },
+            collectionPosterRepairCompleted = collectionPosterRepairCompleted,
+            collectionPosterRepairTotal = collectionPosterRepairTotal,
             onOpenCollectionMovie = onOpenCollectionMovie,
             onToggleCollectionMoviePin = { movie ->
                 MovieCollectionStore.togglePin(context, movie.id)
+                onCollectionChanged()
+            },
+            onMovePinnedCollectionMovie = { source, target ->
+                MovieCollectionStore.movePinnedMovie(context, source.id, target.id)
                 onCollectionChanged()
             },
             onRenameCollectionMovie = { movie, title ->
@@ -360,6 +415,11 @@ fun HomeRoute(
                 MovieCollectionStore.remove(context, movie.id)
                 onCollectionChanged()
             },
+            isCompressingCollectionMovie = collectionCompressionJob != null,
+            collectionCompressionMovieTitle = collectionCompressionMovieTitle,
+            collectionCompressionProgress = collectionCompressionProgress,
+            onRequestCollectionCompression = { collectionCompressionCandidate = it },
+            onCancelCollectionCompression = { collectionCompressionJob?.cancel() },
             collectionColumnCount = collectionColumnCount
         )
         item(key = "home-bottom-space") {
@@ -396,7 +456,6 @@ fun HomeRoute(
                 watermarkSettings = watermarkSettings,
                 onSleepPreventionModeChange = onSleepPreventionModeChange,
                 onWatermarkSettingsChange = onWatermarkSettingsChange,
-                onRestorePurchases = onRestorePurchases,
                 onDismiss = { showSettingsInfo = false }
             )
         }
@@ -630,6 +689,17 @@ fun HomeRoute(
                     Text("사진")
                 }
             }
+        )
+    }
+    collectionCompressionCandidate?.let { movie ->
+        CollectionVideoSizeOptionsDialog(
+            movie = movie,
+            palette = palette,
+            onSelect = { option ->
+                collectionCompressionCandidate = null
+                beginCollectionCompression(movie, option)
+            },
+            onDismiss = { collectionCompressionCandidate = null }
         )
     }
 }
@@ -1060,7 +1130,6 @@ private fun SettingsInfoScreen(
     watermarkSettings: WatermarkSettings,
     onSleepPreventionModeChange: (SleepPreventionMode) -> Unit,
     onWatermarkSettingsChange: (WatermarkSettings) -> Unit,
-    onRestorePurchases: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var watermarkExpanded by remember { mutableStateOf(false) }
@@ -1136,8 +1205,7 @@ private fun SettingsInfoScreen(
                         settings = watermarkSettings,
                         expanded = watermarkExpanded,
                         onExpandedChange = { watermarkExpanded = it },
-                        onChange = onWatermarkSettingsChange,
-                        onRestorePurchases = onRestorePurchases
+                        onChange = onWatermarkSettingsChange
                     )
                 }
                 item {
@@ -1174,8 +1242,7 @@ private fun CopyrightWatermarkCard(
     settings: WatermarkSettings,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onChange: (WatermarkSettings) -> Unit,
-    onRestorePurchases: () -> Unit
+    onChange: (WatermarkSettings) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1245,7 +1312,7 @@ private fun CopyrightWatermarkCard(
                 }
                 Text(
                     if (settings.platform == WatermarkPlatform.HanClip) {
-                        "HanClip 로고는 완성본의 출처와 앱 브랜드를 표시합니다. 유료 워터마크 제거·복원 기능이 연결되는 기준 항목입니다."
+                        "HanClip 로고는 완성본의 출처와 앱 브랜드를 표시합니다. 테스트 기간에는 사용 여부와 위치를 제한 없이 선택할 수 있습니다."
                     } else {
                         "${settings.platform.title} 로고를 완성본 저작권 표시에 사용합니다."
                     },
@@ -1282,17 +1349,23 @@ private fun CopyrightWatermarkCard(
                     }
                 }
             }
-            Text(
-                "구매 복원",
+            Surface(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = onRestorePurchases)
-                    .padding(horizontal = 18.dp, vertical = 5.dp),
-                color = palette.primary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
+                    .fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = palette.secondary.copy(alpha = 0.14f),
+                border = BorderStroke(1.dp, palette.border.copy(alpha = 0.62f))
+            ) {
+                Text(
+                    "테스트 기간 · 전체 기능 사용 중",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    color = palette.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -1601,6 +1674,8 @@ private fun importantInfoIcon(title: String): ImageVector = when (title) {
     "워터마크" -> Icons.Outlined.Badge
     "첫 화면" -> Icons.Outlined.Home
     "영화 프리셋" -> Icons.Outlined.GridView
+    "영상 시간 필터" -> Icons.Outlined.Timelapse
+    "사진 정렬" -> Icons.Outlined.SwapHoriz
     "퀵모드" -> Icons.Outlined.Bolt
     "여행 영화" -> Icons.Outlined.Flight
     "Quick" -> Icons.Outlined.Bolt
@@ -1669,10 +1744,12 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
         감지 중, 감지 됨, 저장 중으로 상태를 보여주고 시끄러움, 일반, 조용함, 자동 감도를 선택합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 고릅니다. 전면·후면 카메라와 줌 배율을 선택하고 필요한 순간에는 촬영 버튼으로 수동 클립도 남길 수 있습니다.
     """.trimIndent(),
     "영화 목록" to "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽 숫자는 최대 10개 중 현재 저장 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋을 보여줍니다.",
-    "컬렉션" to "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 안에서 영상 여러 구간의 밝기·대비·선명도와 구도를 비교해 좋은 순간을 포스터로 고릅니다. 포스터를 길게 누른 뒤 썸네일 AI 재선택을 선택하면 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 실제 제목·제작·촬영·위치·재생시간이 적용된 모습으로 비교할 수 있습니다. 재생성은 앞서 본 장면과 다른 구간을 다시 찾습니다. 포스터 상단 중앙의 작은 구멍을 누르면 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 다시 누르면 해제됩니다.",
+    "컬렉션" to "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 안에서 영상 여러 구간의 밝기·대비·선명도와 구도를 비교해 좋은 순간을 포스터로 고릅니다. 예전 방식으로 만든 포스터는 컬렉션을 열었을 때 한 번만 순서대로 다시 고르며 진행 상태를 표시합니다. 포스터를 길게 누른 뒤 썸네일 AI 재선택을 선택하면 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 실제 제목·핀·제작·촬영·위치·재생시간이 적용된 모습으로 비교할 수 있습니다. 재생성은 앞서 본 장면과 다른 구간을 다시 찾습니다. 파일 용량 줄이기는 1080p 고화질, 720p 절약, 540p 최소 중 하나를 골라 예상 용량을 확인하고 원본보다 작은 경우에만 컬렉션 파일을 안전하게 바꿉니다. 포스터 상단 중앙의 작은 구멍을 누르면 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 다시 누르면 해제됩니다. 고정된 포스터의 메뉴에서 핀 앞으로·핀 뒤로를 선택해 순서를 바꿀 수 있습니다. 포스터를 열면 기기 방향에 맞춰 회전하는 전용 플레이어로 바로 재생합니다.",
     "테마 선택창" to "첫 화면 로고를 길게 눌렀을 때 테마를 직접 선택하는 플로팅 패널입니다. 로고를 짧게 누르면 테마가 순서대로 바뀝니다.",
-    "첫 화면 이동 팝업" to "편집 중 로고를 눌렀을 때 저장하고 첫 화면으로 이동하거나 저장 없이 이동하는 방법을 고르는 창입니다.",
+    "첫 화면 이동 팝업" to "편집 중 로고를 눌렀을 때 저장 후 홈, 저장, 홈을 고르는 창입니다. 홈은 이번 편집에서 바꾼 내용을 저장하지 않고 이전 상태로 돌아갑니다.",
     "영화 화면" to "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다.",
+    "영상 시간 필터" to "사진 화면의 필터에서 설정한 시간 이상 또는 이하인 영상을 찾는 기능입니다. 시간 필터를 적용하는 동안에는 사진과 Live Photo를 숨기고 영상만 표시합니다. 1분, 3분, 5분, 10분을 빠르게 고르거나 분과 초를 직접 선택할 수 있으며, 필터를 해제하면 이전에 선택했던 미디어 종류가 복원됩니다.",
+    "사진 정렬" to "사진 화면의 필터에서 날짜순 또는 추가순을 선택합니다. 선택된 정렬을 다시 누르면 오름차순과 내림차순이 전환됩니다. 날짜순은 촬영일을 사용하고 추가순은 사진 보관함의 추가·변경 시각을 사용합니다. 영화 제작, 퀵모드와 컬렉션의 공용 사진 화면에 동일하게 적용됩니다.",
     "영화 설정" to "영화 화면의 로고 아래에 있는 클립 설정 패널입니다. 처음에는 제목 행만 보이며 행 어디를 눌러도 펼치거나 접을 수 있습니다. 오른쪽 표시판은 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 시작 프리셋을 보여주고 프로젝트에 저장합니다. 영상 길이, 기본시간, 라이브포토, 영상 분할, 묶음사진, 자막, 음악과 엔딩을 설정합니다.",
     "클립목록" to "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 비슷한 사진들을 담는 행으로 표시하며, 아래 자사진에서 실제 사용할 컷을 확인합니다.",
     "묶음사진" to "연속 촬영 미디어 중 촬영 시각, 화면 비율, 밝기와 구도가 비슷한 장면을 하나로 담아 중복을 줄입니다. 묶음 숫자는 영상에 사용하기로 선택된 자사진 수입니다. 1/6은 6장마다 1장을 자동 선택한다는 뜻이며, 수동은 직접 고르고 전체는 모두 사용합니다.",
@@ -1694,12 +1771,12 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
     "영상 생성 진행창" to "영상을 만드는 동안 썸네일, 진행바, 진행률과 취소 버튼이 표시되는 창입니다.",
     "시사회" to "만들기 완료 후 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다.",
     "개봉하기 창" to "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다.",
-    "브라우저" to "외부 웹페이지를 이용하는 HanClip 내부 브라우저입니다. 상단 북마크 버튼을 짧게 누르면 즐겨찾기 패널을 열고, 길게 누르면 현재 주소를 즐겨찾기에 등록하거나 해제합니다. 즐겨찾기 패널의 주소 버튼을 누르면 페이지를 열고, 앞쪽 파비콘을 짧게 누르면 삭제하며 길게 누르면 첫 홈페이지로 지정합니다. 관리 화면에서는 순서 변경과 목록 파일 저장을 사용할 수 있습니다. 저장한 즐겨찾기 파일을 HanClip으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다.",
+    "브라우저" to "외부 웹페이지를 이용하는 HanClip 내부 브라우저입니다. 상단 북마크 버튼을 짧게 누르면 즐겨찾기 패널을 열고, 길게 누르면 현재 주소를 즐겨찾기에 등록하거나 해제합니다. 즐겨찾기 패널의 주소 버튼을 누르면 페이지를 열고, 앞쪽 파비콘을 짧게 누르면 삭제하며 길게 누르면 첫 홈페이지로 지정합니다. 관리 화면에서는 순서 변경과 목록 파일 저장을 사용할 수 있습니다. 저장한 즐겨찾기 파일을 HanClip으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다. 웹페이지의 직접 받을 수 있는 영상을 찾으면 영상 패널을 표시하며, 받기를 누른 뒤에는 앱 안에서 진행률을 확인하거나 취소할 수 있습니다.",
     "자막" to "영화 화면에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다. 자막 문구가 비어 있어도 사용 상태와 엔딩 설정은 따로 유지할 수 있습니다.",
     "촬영 기간 삽입" to "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣습니다.",
     "엔딩" to "클립 설정의 음악 아래 독립 행이며 기본값은 안함입니다. 현재 테마명, 1~10초 표시 시간과 사용 상태를 설정합니다. 위치가 없어도 미리 테마를 고를 수 있고, 날짜와 위치가 있는 영화에는 촬영기간과 도시 이동 경로를 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정이며 지역 이동은 차량, 국가 이동은 비행기로 연결합니다. 자막, 보물지도, 여행일정, 랜드마크, 오피스 5개 테마를 퀵모드에서도 그대로 사용합니다.",
     "엔딩 카드 테마" to "영화 마지막 여행 기록 카드의 디자인입니다. 자막은 현재 자막 스타일을 이어받고, 보물지도는 점선 경로, 여행일정은 실제 촬영 날짜, 랜드마크는 지역별 명소, 오피스는 문서번호·촬영기간·이동수단 보고서로 표시합니다.",
-    "컬렉션 포스터" to "컬렉션은 영화 포스터를 세로 2열로 보여주며 영화 추가 포스터는 마지막에 배치합니다. 넓은 Android 화면에서는 포스터 열을 늘려 한눈에 더 많이 비교합니다. 사진과 파일에서 동영상만 가져오고 진행률과 완료 개수를 표시합니다. 포스터를 길게 눌러 핀, 제목 수정, 썸네일 AI 재선택, 공유, 컬렉션 제거를 사용합니다.",
+    "컬렉션 포스터" to "컬렉션은 영화 포스터를 세로 2열로 보여주며 영화 추가 포스터는 마지막에 배치합니다. 넓은 Android 화면에서는 포스터 열을 늘려 한눈에 더 많이 비교합니다. 사진과 파일에서 동영상만 가져오고 진행률과 완료 개수를 표시합니다. 포스터를 길게 눌러 핀, 제목 수정, 썸네일 AI 재선택, 파일 용량 줄이기, 공유, 컬렉션 제거를 사용합니다.",
     "워터마크" to "카피라이터에서 설정합니다. HanClip 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다.",
     "외부 호출 주소" to "Ai  hanclip://aishot\n퀵모드  hanclip://quick\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open",
     "샘플 음악" to """
@@ -1988,10 +2065,18 @@ private fun LazyListScope.savedProjectItems(
     collectionImportTotal: Int,
     onImportCollection: () -> Unit,
     onCancelCollectionImport: () -> Unit,
+    collectionPosterRepairCompleted: Int,
+    collectionPosterRepairTotal: Int,
     onOpenCollectionMovie: (CollectedMovie) -> Unit,
     onToggleCollectionMoviePin: (CollectedMovie) -> Unit,
+    onMovePinnedCollectionMovie: (CollectedMovie, CollectedMovie) -> Unit,
     onRenameCollectionMovie: (CollectedMovie, String) -> Unit,
     onRemoveCollectionMovie: (CollectedMovie) -> Unit,
+    isCompressingCollectionMovie: Boolean,
+    collectionCompressionMovieTitle: String,
+    collectionCompressionProgress: Double,
+    onRequestCollectionCompression: (CollectedMovie) -> Unit,
+    onCancelCollectionCompression: () -> Unit,
     collectionColumnCount: Int
 ) {
     val aiShotProjects = editableProjectSummaries.filter { it.preset == MoviePreset.AiShot }
@@ -2060,10 +2145,18 @@ private fun LazyListScope.savedProjectItems(
         importTotalCount = collectionImportTotal,
         onImport = onImportCollection,
         onCancelImport = onCancelCollectionImport,
+        posterRepairCompleted = collectionPosterRepairCompleted,
+        posterRepairTotal = collectionPosterRepairTotal,
         onOpen = onOpenCollectionMovie,
         onTogglePin = onToggleCollectionMoviePin,
+        onMovePinned = onMovePinnedCollectionMovie,
         onRename = onRenameCollectionMovie,
         onRemove = onRemoveCollectionMovie,
+        isCompressing = isCompressingCollectionMovie,
+        compressionMovieTitle = collectionCompressionMovieTitle,
+        compressionProgress = collectionCompressionProgress,
+        onRequestCompression = onRequestCollectionCompression,
+        onCancelCompression = onCancelCollectionCompression,
         columnCount = collectionColumnCount
     )
 }

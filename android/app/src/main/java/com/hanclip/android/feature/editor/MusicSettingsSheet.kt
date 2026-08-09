@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.MusicNote
@@ -51,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -462,33 +466,45 @@ private fun SampleMusicButton(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .height(66.dp)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .height(58.dp)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Icon(
+                if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.GraphicEq,
+                contentDescription = if (selected) "선택됨" else null,
+                tint = if (selected) palette.primary else palette.subText,
+                modifier = Modifier.size(16.dp)
+            )
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(1.dp)
             ) {
                 Text(
                     sample.title,
                     color = if (selected) palette.primary else palette.text,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.5.sp,
+                    lineHeight = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     sample.detail,
-                    style = MaterialTheme.typography.bodySmall,
                     color = palette.subText,
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = onTogglePreview) {
+            IconButton(onClick = onTogglePreview, modifier = Modifier.size(32.dp)) {
                 Icon(
                     if (isPreviewing) Icons.Outlined.PauseCircle else Icons.Outlined.PlayCircle,
                     contentDescription = if (isPreviewing) "미리듣기 정지" else "미리듣기",
-                    tint = if (selected || isPreviewing) palette.primary else palette.text
+                    tint = if (selected || isPreviewing) palette.primary else palette.text,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }

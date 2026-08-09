@@ -342,14 +342,7 @@ fun HanClipApp(
                     SleepPreventionStore.save(context, mode)
                 },
                 onWatermarkSettingsChange = editorViewModel::updateWatermark,
-                onOpenBrowser = { navController.navigate(HanClipDestination.Browser.route) },
-                onRestorePurchases = {
-                    Toast.makeText(
-                        context,
-                        "Google Play 구매 복원은 유료 워터마크 상품 출시와 함께 연결됩니다.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                onOpenBrowser = { navController.navigate(HanClipDestination.Browser.route) }
             )
         }
         composable(
@@ -407,6 +400,7 @@ fun HanClipApp(
                     watermarkSettings = editorState.watermarkSettings
                 ),
                 canReturnToEditor = previewHistorySummary == null && previewCollectionMovie == null,
+                collectionPlaybackOnly = previewCollectionMovie != null,
                 onEdit = {
                     if (previewHistorySummary == null && previewCollectionMovie == null) {
                         navController.popBackStack()

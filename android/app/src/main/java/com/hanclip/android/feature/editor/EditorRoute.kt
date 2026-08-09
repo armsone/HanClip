@@ -277,6 +277,7 @@ fun EditorRoute(
         if (state.preset == MoviePreset.Quick &&
             state.clips.any { !it.isVideoSegmentChild } &&
             !state.isImportingMedia &&
+            viewModel.isNewEditingSession() &&
             quickDurationShownProjectId != state.activeProjectId
         ) {
             quickDurationShownProjectId = state.activeProjectId
@@ -553,6 +554,7 @@ fun EditorRoute(
                     onPreviewClip = { previewClipID = clip.id },
                     onToggleSimilarPhotoGroup = { viewModel.toggleSimilarPhotoGroup(clip.id) },
                     onIncludeSimilarPhoto = { viewModel.includeSimilarPhoto(clip.id) },
+                    onToggleVideoSegmentSelection = { viewModel.toggleVideoSegmentSelection(clip.id) },
                     isReorderMode = isReorderMode
                 )
             }
@@ -684,18 +686,47 @@ fun EditorRoute(
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            isExitConfirmationVisible = false
-                            viewModel.saveDraft(context)
-                            onBackHome()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = palette.primary,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("홈으로")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                isExitConfirmationVisible = false
+                                viewModel.discardEditingSessionChanges(context)
+                                onBackHome()
+                            },
+                            border = BorderStroke(1.dp, palette.border),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.solidPanel,
+                                contentColor = palette.text
+                            )
+                        ) {
+                            Text("홈")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.saveEditingSession(context)
+                                isExitConfirmationVisible = false
+                            },
+                            border = BorderStroke(1.dp, palette.border),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.solidPanel,
+                                contentColor = palette.text
+                            )
+                        ) {
+                            Text("저장")
+                        }
+                        Button(
+                            onClick = {
+                                isExitConfirmationVisible = false
+                                viewModel.saveEditingSession(context)
+                                onBackHome()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = palette.primary,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("저장 후 홈")
+                        }
                     }
                 },
                 shape = RoundedCornerShape(16.dp),
@@ -703,7 +734,7 @@ fun EditorRoute(
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
                 title = { Text("편집을 닫을까요?") },
-                text = { Text("현재 작업과 저장 시각이 자동 저장됩니다. 홈의 `편집 이어가기`에서 바로 계속할 수 있습니다.") }
+                text = { Text("저장 후 홈은 현재 작업을 저장하고 이동합니다. 저장은 편집 화면에 남고, 홈은 이번에 바꾼 내용을 되돌린 뒤 이동합니다.") }
             )
         }
         if (isExportConfirmationVisible) {
@@ -3090,6 +3121,7 @@ private fun CompactClipRow(
     onPreviewClip: () -> Unit,
     onToggleSimilarPhotoGroup: () -> Unit,
     onIncludeSimilarPhoto: () -> Unit,
+    onToggleVideoSegmentSelection: () -> Unit,
     isReorderMode: Boolean
 ) {
     Surface(
@@ -3162,6 +3194,14 @@ private fun CompactClipRow(
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     when {
+                        clip.isVideoSegmentChild -> {
+                            ClipControlPill(
+                                palette = palette,
+                                text = if (clip.isVideoSegmentSelected) "제외" else "사용",
+                                active = clip.isVideoSegmentSelected,
+                                onClick = onToggleVideoSegmentSelection
+                            )
+                        }
                         clip.isSimilarPhotoGroupChild -> {
                             ClipControlPill(
                                 palette = palette,
@@ -3220,7 +3260,7 @@ private fun CompactClipRow(
                         Icon(Icons.Outlined.Delete, contentDescription = "삭제", tint = palette.secondary)
                     }
                 }
-            } else if (!clip.isVideoSegmentParent && !clip.isHiddenSimilarPhotoGroupMember) {
+            } else if (!clip.isVideoSegmentParent && !clip.isHiddenSimilarPhotoGroupMember && !clip.isHiddenVideoSegmentChild) {
                 CompactDurationStepper(
                     palette = palette,
                     onDecrease = onDecreaseDuration,
@@ -3743,6 +3783,7 @@ private fun ClipControlPill(
 private fun clipRowFill(clip: ClipItem, palette: HanClipPalette): Color {
     return when {
         clip.isVideoSegmentParent -> palette.chip
+        clip.isHiddenVideoSegmentChild -> palette.chip.copy(alpha = 0.42f)
         clip.isSimilarPhotoGroupChild -> palette.chip.copy(alpha = 0.58f)
         clip.isVideoSegmentChild -> palette.chip.copy(alpha = 0.72f)
         else -> palette.panel
@@ -3752,6 +3793,7 @@ private fun clipRowFill(clip: ClipItem, palette: HanClipPalette): Color {
 private fun clipRowBorder(clip: ClipItem, palette: HanClipPalette): Color {
     return when {
         clip.isVideoSegmentParent -> palette.primary.copy(alpha = 0.45f)
+        clip.isHiddenVideoSegmentChild -> palette.border.copy(alpha = 0.55f)
         clip.isSimilarPhotoGroupChild -> palette.secondary.copy(alpha = 0.28f)
         clip.isVideoSegmentChild -> palette.secondary.copy(alpha = 0.35f)
         else -> palette.border
@@ -3771,6 +3813,7 @@ private fun clipFallbackBrush(clip: ClipItem, palette: HanClipPalette): Brush {
 private fun clipTitle(clip: ClipItem, position: Int?): String {
     if (clip.isVideoSegmentParent) return "원본 영상 보관"
     if (clip.isVideoSegmentChild) {
+        if (clip.isHiddenVideoSegmentChild) return "선택하지 않은 자클립"
         return position?.let { "완성본 자동 컷 ${it}번" } ?: "완성본 자동 컷"
     }
     if (clip.isHiddenSimilarPhotoGroupMember) return "완성본 제외 후보"
@@ -3804,6 +3847,7 @@ private fun clipPrimaryTimeText(clip: ClipItem, childSegmentCount: Int): String 
 private fun clipModeText(clip: ClipItem, childSegmentCount: Int): String {
     return when {
         clip.isVideoSegmentParent -> "원본은 보관하고 타격점 기준 자동 컷만 완성본에 넣습니다"
+        clip.isHiddenVideoSegmentChild -> "타격점 중심 구간 · 완성본 제외 중 · 사용하면 다시 포함됩니다"
         clip.isVideoSegmentChild -> "타격점 중심 구간 · 완성본 번호순 포함"
         clip.isHiddenSimilarPhotoGroupMember -> "비슷한 사진 묶음에서 제외 중 · 사용하면 완성본에 포함됩니다"
         clip.isSimilarPhotoGroupChild -> "비슷한 사진 묶음에서 완성본에 포함 중"
@@ -3837,7 +3881,7 @@ private fun clipInfoChips(clip: ClipItem, childSegmentCount: Int): List<String> 
             add("시작 ${formatClipSeconds(clip.trimStartSeconds)}")
         }
         if (clip.isVideoSegmentChild) {
-            add("완성본 포함")
+            add(if (clip.isVideoSegmentSelected) "완성본 포함" else "완성본 제외")
         }
         if (clip.isVideoSegmentParent) {
             add("원본 보관")

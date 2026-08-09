@@ -135,6 +135,11 @@ struct EditorView: View {
     @State private var collectionImportCompletedCount = 0
     @State private var collectionImportTotalCount = 0
     @State private var collectionMovieBeingRenamed: CollectedMovie?
+    @State private var collectionMovieBeingCompressed: CollectedMovie?
+    @State private var isCompressingCollectionMovie = false
+    @State private var collectionCompressionProgress = 0.0
+    @State private var collectionCompressionMovieTitle = ""
+    @State private var collectionCompressionTask: Task<Void, Never>?
     @State private var collectionTitleDraft = ""
     @State private var isCollectionTitleEditorPresented = false
     @State private var collectionTitleEditorHeight: CGFloat = 56
@@ -696,6 +701,7 @@ struct EditorView: View {
                 onSelectMusic: openQuickMusicSettings,
                 onAddPhoto: openQuickMediaPicker,
                 onAddFile: openQuickFilePicker,
+                onAddGooglePhotos: openQuickGooglePhotosPicker,
                 onMake: model.confirmQuickMovieDuration,
                 onCancel: model.cancelQuickMovieDurationSelection
             )
@@ -731,6 +737,15 @@ struct EditorView: View {
         .sheet(isPresented: $isCollectionTitleEditorPresented) {
             collectionTitleEditorSheet
         }
+        .sheet(item: $collectionMovieBeingCompressed) { movie in
+            CollectionVideoSizeOptionsSheet(
+                movie: movie,
+                onSelect: { option in
+                    collectionMovieBeingCompressed = nil
+                    beginCollectionCompression(movie, option: option)
+                }
+            )
+        }
         .fullScreenCover(item: $collectionPosterCandidateMovie) { movie in
             collectionPosterCandidateSheet(movie)
         }
@@ -752,6 +767,26 @@ struct EditorView: View {
                 }
             }
             .ignoresSafeArea()
+        }
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { model.googlePhotosPickerURL != nil },
+                set: { isPresented in
+                    if !isPresented, model.googlePhotosPickerURL != nil {
+                        model.cancelGooglePhotosImport()
+                    }
+                }
+            )
+        ) {
+            if let url = model.googlePhotosPickerURL {
+                GooglePhotosPickerWebView(url: url) {
+                    model.cancelGooglePhotosImport()
+                    if isAddingQuickMedia {
+                        restoreQuickDurationPickerAfterMediaCancellation()
+                    }
+                }
+                .ignoresSafeArea()
+            }
         }
         .fullScreenCover(
             isPresented: $model.isBackgroundMusicImporterPresented
@@ -2095,6 +2130,14 @@ struct EditorView: View {
                 Label("파일", systemImage: "folder")
             }
 
+            Button {
+                selectMediaImportSource("Google 포토") {
+                    model.openGooglePhotosPicker()
+                }
+            } label: {
+                Label("Google 포토", systemImage: "cloud.fill")
+            }
+
         } label: {
             label()
         }
@@ -3347,6 +3390,14 @@ struct EditorView: View {
         }
     }
 
+    private func openQuickGooglePhotosPicker() {
+        isAddingQuickMedia = true
+        model.isQuickDurationPickerPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            model.openGooglePhotosPicker()
+        }
+    }
+
     private func cancelMediaPicker() {
         guard isAddingQuickMedia else {
             model.cancelMediaPicker()
@@ -3544,6 +3595,11 @@ struct EditorView: View {
                     .padding(.horizontal, 18)
             }
 
+            if isCompressingCollectionMovie {
+                collectionCompressionProgressPanel
+                    .padding(.horizontal, 18)
+            }
+
             if movieCollection.aiPosterTotalCount > 0 {
                 collectionAIPosterProgressPanel
                     .padding(.horizontal, 18)
@@ -3709,6 +3765,13 @@ struct EditorView: View {
                 Label("썸네일 AI 재선택", systemImage: "sparkles")
             }
 
+            Button {
+                collectionMovieBeingCompressed = movie
+            } label: {
+                Label("파일 용량 줄이기", systemImage: "arrow.down.right.and.arrow.up.left")
+            }
+            .disabled(isCompressingCollectionMovie)
+
             ShareLink(item: movieCollection.videoURL(for: movie)) {
                 Label("공유", systemImage: "square.and.arrow.up")
             }
@@ -3738,6 +3801,42 @@ struct EditorView: View {
             }
 
             ProgressView(value: collectionImportProgress)
+                .tint(HanClipTheme.primary)
+        }
+        .padding(11)
+        .background(
+            HanClipTheme.panelFill,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HanClipTheme.panelStroke.opacity(0.62), lineWidth: 1)
+        }
+    }
+
+    private var collectionCompressionProgressPanel: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(HanClipTheme.primary)
+                Text("\(collectionCompressionMovieTitle) 용량 줄이는 중")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primaryText)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text("\(Int((collectionCompressionProgress * 100).rounded()))%")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                Button("취소") {
+                    collectionCompressionTask?.cancel()
+                }
+                .font(.system(size: 10, weight: .bold))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            ProgressView(value: collectionCompressionProgress)
                 .tint(HanClipTheme.primary)
         }
         .padding(11)
@@ -3915,17 +4014,23 @@ struct EditorView: View {
 
                 Spacer(minLength: 24)
 
+                if let location = movie.locationName, !location.isEmpty {
+                    collectionPosterMetadata(
+                        location,
+                        systemImage: "mappin.and.ellipse",
+                        lineLimit: 2
+                    )
+                }
                 if let text = collectionMadeAtText(movie) {
                     collectionPosterMetadata(text, systemImage: "sparkles")
                 }
                 if let text = collectionShootingPeriodText(movie) {
                     collectionPosterMetadata(text, systemImage: "calendar")
                 }
-                if let location = movie.locationName, !location.isEmpty {
+                if let fileSize = collectionFileSize(movie) {
                     collectionPosterMetadata(
-                        location,
-                        systemImage: "mappin.and.ellipse",
-                        lineLimit: 2
+                        fileSize,
+                        systemImage: "internaldrive.fill"
                     )
                 }
                 collectionPosterMetadata(
@@ -4221,6 +4326,13 @@ struct EditorView: View {
     ) -> String? {
         guard let start = movie.shootingStartAt else { return nil }
         let end = movie.shootingEndAt ?? start
+        if let madeAt = movie.madeAt {
+            let calendar = Calendar.current
+            if calendar.isDate(start, inSameDayAs: madeAt),
+               calendar.isDate(end, inSameDayAs: madeAt) {
+                return nil
+            }
+        }
         let startText = Self.collectionDateFormatter.string(from: start)
         let endText = Self.collectionDateFormatter.string(from: end)
         return startText == endText
@@ -4316,6 +4428,51 @@ struct EditorView: View {
     private func collectionDuration(_ duration: Double) -> String {
         let seconds = max(0, Int(duration.rounded()))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func collectionFileSize(_ movie: CollectedMovie) -> String? {
+        guard let bytes = movieCollection.fileSizeInBytes(for: movie) else {
+            return nil
+        }
+        return collectionByteCount(bytes)
+    }
+
+    private func collectionByteCount(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = bytes >= 1_000_000_000 ? [.useGB] : [.useMB]
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    private func beginCollectionCompression(
+        _ movie: CollectedMovie,
+        option: CollectionVideoSizeOption
+    ) {
+        collectionCompressionTask?.cancel()
+        collectionCompressionMovieTitle = movie.title
+        collectionCompressionProgress = 0
+        isCompressingCollectionMovie = true
+
+        collectionCompressionTask = Task { @MainActor in
+            defer {
+                isCompressingCollectionMovie = false
+                collectionCompressionTask = nil
+            }
+            do {
+                let result = try await movieCollection.reduceFileSize(
+                    for: movie,
+                    option: option
+                ) { progress in
+                    collectionCompressionProgress = progress
+                }
+                model.alertMessage = "파일 용량을 줄였습니다. \(collectionByteCount(result.originalBytes)) → \(collectionByteCount(result.compressedBytes))"
+            } catch is CancellationError {
+                return
+            } catch {
+                model.alertMessage = error.localizedDescription
+            }
+        }
     }
 
     private func importCollectionFiles(_ urls: [URL]) {
@@ -7372,6 +7529,13 @@ struct EditorView: View {
                             ProgressView(value: model.calendarImportProgress, total: 1)
                                 .progressViewStyle(.linear)
                                 .tint(HanClipTheme.primary)
+                        } else if model.isImportingGooglePhotos {
+                            ProgressView(
+                                value: model.googlePhotosImportProgress,
+                                total: 1
+                            )
+                            .progressViewStyle(.linear)
+                            .tint(HanClipTheme.primary)
                         } else {
                             ProgressView()
                                 .progressViewStyle(.linear)
@@ -7429,6 +7593,7 @@ struct EditorView: View {
                     || model.isImportingCalendarMedia
                     || model.isImportingPhotoLibraryMedia
                     || model.isImportingSharedItems
+                    || model.isImportingGooglePhotos
                     || model.isSavingProject
                     || model.isLoadingProject {
                     Button(role: .cancel) {
@@ -7442,6 +7607,8 @@ struct EditorView: View {
                             model.cancelSharedItemImport()
                         } else if model.isImportingPhotoLibraryMedia {
                             model.cancelPhotoLibraryImport()
+                        } else if model.isImportingGooglePhotos {
+                            model.cancelGooglePhotosImport()
                         } else {
                             model.cancelCalendarMediaImport()
                         }
@@ -7495,6 +7662,9 @@ struct EditorView: View {
         if model.isImportingCalendarMedia {
             return model.calendarImportProgress
         }
+        if model.isImportingGooglePhotos {
+            return model.googlePhotosImportProgress
+        }
         return 0
     }
 
@@ -7503,6 +7673,7 @@ struct EditorView: View {
             || model.isLoadingProject
             || model.isImportingPhotoLibraryMedia
             || model.isImportingSharedItems
+            || model.isImportingGooglePhotos
             || model.isLoadingCalendarPicker
             || model.isImportingCalendarMedia
     }
@@ -7893,6 +8064,141 @@ private extension Color {
     }
 }
 
+private struct CollectionVideoSizeOptionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let movie: CollectedMovie
+    let onSelect: (CollectionVideoSizeOption) -> Void
+    @State private var compressionInfo: CollectionVideoCompressionInfo?
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(movie.title)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(HanClipTheme.primaryText)
+                        .lineLimit(2)
+                    if let compressionInfo {
+                        Text(currentVideoDescription(compressionInfo))
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(HanClipTheme.secondaryText)
+                    } else {
+                        HStack(spacing: 7) {
+                            ProgressView().controlSize(.small)
+                            Text("현재 영상 정보를 확인하는 중")
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.secondaryText)
+                    }
+                }
+                .padding(.bottom, 2)
+
+                ForEach(CollectionVideoSizeOption.allCases) { option in
+                    Button {
+                        onSelect(option)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: optionIcon(option))
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(HanClipTheme.primary)
+                                .frame(width: 38, height: 38)
+                                .background(
+                                    HanClipTheme.primary.opacity(0.10),
+                                    in: Circle()
+                                )
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(option.title)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(HanClipTheme.primaryText)
+                                Text(option.detail)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(HanClipTheme.secondaryText)
+                            }
+
+                            Spacer(minLength: 8)
+                            VStack(alignment: .trailing, spacing: 4) {
+                                if let compressionInfo {
+                                    Text(
+                                        "예상 약 \(byteCount(compressionInfo.estimatedBytes(for: option)))"
+                                    )
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundStyle(HanClipTheme.primary)
+                                    .lineLimit(1)
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(HanClipTheme.secondary)
+                            }
+                        }
+                        .padding(11)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            HanClipTheme.panelFill,
+                            in: RoundedRectangle(
+                                cornerRadius: 14,
+                                style: .continuous
+                            )
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(HanClipTheme.panelStroke, lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(compressionInfo == nil)
+                }
+
+                Text("예상 용량은 영상 장면에 따라 달라질 수 있습니다. 결과가 원본보다 크면 원본을 유지합니다.")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 2)
+            }
+            .padding(18)
+            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
+            .navigationTitle("파일 용량 줄이기")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .task(id: movie.id) {
+            compressionInfo = await MovieCollectionStore.shared
+                .compressionInfo(for: movie)
+        }
+    }
+
+    private func optionIcon(_ option: CollectionVideoSizeOption) -> String {
+        switch option {
+        case .high1080: return "rectangle.inset.filled"
+        case .saver720: return "rectangle.compress.vertical"
+        case .minimum540: return "arrow.down.right.and.arrow.up.left"
+        }
+    }
+
+    private func currentVideoDescription(
+        _ info: CollectionVideoCompressionInfo
+    ) -> String {
+        let seconds = max(Int(info.duration.rounded()), 0)
+        let duration = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        return "현재  \(info.width)×\(info.height) · \(duration) · \(byteCount(info.fileSizeBytes))"
+    }
+
+    private func byteCount(_ bytes: Int64) -> String {
+        guard bytes > 0 else { return "알 수 없음" }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = bytes >= 1_000_000_000 ? [.useGB] : [.useMB]
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
 private struct ImportantInfoSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(WatermarkSettings.customCopyrightIconPathStorageKey)
@@ -7945,6 +8251,7 @@ private struct ImportantInfoSheet: View {
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
         ("영상 시간 필터", "사진 화면의 필터에서 설정한 시간 이상 또는 이하인 영상을 찾는 기능입니다. 시간 필터를 적용하는 동안에는 사진과 라이브포토를 숨기고 영상만 표시합니다. 1분, 3분, 5분, 10분을 빠르게 고르거나 분과 초를 직접 선택할 수 있으며, 필터를 해제하면 이전에 선택했던 미디어 종류가 복원됩니다."),
         ("사진 정렬", "사진 화면의 필터에서 날짜순 또는 추가순을 선택합니다. 선택된 정렬을 다시 누르면 글자 옆 화살표가 바뀌며 오름차순과 내림차순이 전환됩니다. 날짜순은 촬영일을 사용하고, 추가순은 사진 보관함의 추가·변경 시각을 사용합니다. 영화 제작, 퀵모드와 컬렉션의 공용 사진 화면에 동일하게 적용됩니다."),
+        ("Google 포토", "미디어 추가 메뉴의 파일 바로 아래에서 Google 계정을 연결하고 Google Photos Picker로 고른 사진과 영상을 가져옵니다. 전체 보관함 권한을 요구하지 않고 사용자가 Google 화면에서 선택한 항목만 내려받으며, 가져오는 동안 진행률과 취소 버튼을 표시합니다."),
         ("영화 설정", "영화 화면의 로고 아래에 있는 클립 설정 패널입니다. 처음에는 제목 행만 보이도록 접혀 있으며, 클립 설정 행 어디를 눌러도 펼치거나 다시 접을 수 있습니다. 오른쪽 표시판은 이 영화가 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화 또는 골프 영화 중 어떤 프리셋으로 시작했는지 보여주며 프로젝트를 다시 불러와도 유지됩니다. 기존 버전에서 저장해 시작 프리셋 정보가 없는 영화는 기존 영화로 표시합니다. 영상 길이, 기본시간, 라이브포토, 영상 분할, 묶음사진, 자막, 음악과 엔딩을 설정합니다."),
         ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시되며, 아래에 들어 있는 자사진에서 실제 사용할 컷을 확인합니다."),
         ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 촬영 시각, 화면 비율, 밝기와 화면 구도가 모두 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 클립설정의 ‘1/6’은 6장마다 1장을 자동으로 고른다는 뜻이며, −와 +로 비율을 조절할 수 있습니다. 수동은 묶음을 펼쳐 사용할 사진을 직접 고르며, 전체는 모든 사진을 사용합니다."),
@@ -15432,6 +15739,7 @@ private struct QuickMovieDurationPicker: View {
     let onSelectMusic: () -> Void
     let onAddPhoto: () -> Void
     let onAddFile: () -> Void
+    let onAddGooglePhotos: () -> Void
     let onMake: (Double?) -> Void
     let onCancel: () -> Void
 
@@ -15455,6 +15763,7 @@ private struct QuickMovieDurationPicker: View {
         onSelectMusic: @escaping () -> Void,
         onAddPhoto: @escaping () -> Void,
         onAddFile: @escaping () -> Void,
+        onAddGooglePhotos: @escaping () -> Void,
         onMake: @escaping (Double?) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -15472,6 +15781,7 @@ private struct QuickMovieDurationPicker: View {
         self.onSelectMusic = onSelectMusic
         self.onAddPhoto = onAddPhoto
         self.onAddFile = onAddFile
+        self.onAddGooglePhotos = onAddGooglePhotos
         self.onMake = onMake
         self.onCancel = onCancel
         _selectedDuration = State(initialValue: max(1, recommendedDuration))
@@ -15506,6 +15816,10 @@ private struct QuickMovieDurationPicker: View {
 
                         Button(action: onAddFile) {
                             Label("파일", systemImage: "folder")
+                        }
+
+                        Button(action: onAddGooglePhotos) {
+                            Label("Google 포토", systemImage: "cloud.fill")
                         }
                     } label: {
                         HanClipHeaderActionCluster {
@@ -17363,6 +17677,8 @@ private struct CollectionMoviePlayerView: View {
     @State private var dragStartSeconds = 0.0
     @State private var dragPreviewSeconds: Double?
     @State private var downwardDragOffset = 0.0
+    @State private var arePlayerControlsVisible = true
+    @State private var playerControlsHideTask: Task<Void, Never>?
 
     init(movie: CollectedMovie, url: URL) {
         self.movie = movie
@@ -17373,8 +17689,11 @@ private struct CollectionMoviePlayerView: View {
     var body: some View {
         GeometryReader { proxy in
             let displaySize = collectionDisplaySize(for: proxy.size)
+            let topPadding = collectionPlayerTopPadding(
+                geometrySafeArea: proxy.safeAreaInsets
+            )
 
-            collectionPlayerContent
+            collectionPlayerContent(topPadding: topPadding)
                 .frame(width: displaySize.width, height: displaySize.height)
                 .rotationEffect(.degrees(displayRotationDegrees))
                 .position(
@@ -17394,21 +17713,26 @@ private struct CollectionMoviePlayerView: View {
             installPlaybackObserver()
             player.play()
             isPlaying = true
+            showPlayerControlsTemporarily()
         }
         .onDisappear {
+            playerControlsHideTask?.cancel()
             player.pause()
             removePlaybackObserver()
             removeOrientationObserver()
         }
     }
 
-    private var collectionPlayerContent: some View {
+    private func collectionPlayerContent(topPadding: CGFloat) -> some View {
         ZStack {
             Color.black
 
             GeometryReader { proxy in
                 PreviewPlayerSurface(player: player, videoGravity: .resizeAspect)
                     .contentShape(Rectangle())
+                    .onTapGesture {
+                        togglePlayerControlsVisibility()
+                    }
                     .simultaneousGesture(
                         collectionPlaybackGesture(viewportSize: proxy.size)
                     )
@@ -17446,7 +17770,7 @@ private struct CollectionMoviePlayerView: View {
                     .accessibilityLabel("컬렉션 영화 공유")
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 18)
+                .padding(.top, topPadding)
 
                 Spacer(minLength: 16)
 
@@ -17463,7 +17787,25 @@ private struct CollectionMoviePlayerView: View {
                 .padding(.horizontal, 18)
                 .padding(.bottom, 24)
             }
+            .opacity(arePlayerControlsVisible ? 1 : 0)
+            .allowsHitTesting(arePlayerControlsVisible)
+            .animation(
+                .easeInOut(duration: 0.20),
+                value: arePlayerControlsVisible
+            )
         }
+    }
+
+    private func collectionPlayerTopPadding(
+        geometrySafeArea: EdgeInsets
+    ) -> CGFloat {
+        guard !deviceOrientation.isLandscape else { return 18 }
+        let windowTopInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top ?? 0
+        return max(18, max(geometrySafeArea.top, windowTopInset) + 8)
     }
 
     private func playerCircleButton(
@@ -17500,6 +17842,7 @@ private struct CollectionMoviePlayerView: View {
     }
 
     private func togglePlayback() {
+        showPlayerControlsTemporarily()
         if player.timeControlStatus == .playing {
             player.pause()
             isPlaying = false
@@ -17519,9 +17862,13 @@ private struct CollectionMoviePlayerView: View {
     ) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
             .onChanged { value in
+                let translation = collectionScreenTranslation(
+                    value.translation
+                )
                 if playerDragAxis == nil {
-                    let horizontalDistance = abs(value.translation.width)
-                    let verticalDistance = abs(value.translation.height)
+                    playerControlsHideTask?.cancel()
+                    let horizontalDistance = abs(translation.width)
+                    let verticalDistance = abs(translation.height)
                     playerDragAxis = horizontalDistance >= verticalDistance
                         ? .horizontal
                         : .vertical
@@ -17537,7 +17884,7 @@ private struct CollectionMoviePlayerView: View {
                           duration > 0
                     else { return }
                     let width = max(viewportSize.width, 1)
-                    let delta = Double(value.translation.width / width) * duration
+                    let delta = Double(translation.width / width) * duration
                     let target = min(max(dragStartSeconds + delta, 0), duration)
                     dragPreviewSeconds = target
                     player.seek(
@@ -17547,16 +17894,19 @@ private struct CollectionMoviePlayerView: View {
                     )
 
                 case .vertical:
-                    downwardDragOffset = max(value.translation.height, 0)
+                    downwardDragOffset = max(translation.height, 0)
 
                 case nil:
                     break
                 }
             }
             .onEnded { value in
+                let translation = collectionScreenTranslation(
+                    value.translation
+                )
                 let shouldDismiss = playerDragAxis == .vertical
-                    && value.translation.height
-                        > max(110, viewportSize.height * 0.18)
+                    && translation.height
+                        > max(55, viewportSize.height * 0.08)
 
                 playerDragAxis = nil
                 dragPreviewSeconds = nil
@@ -17568,8 +17918,53 @@ private struct CollectionMoviePlayerView: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                         downwardDragOffset = 0
                     }
+                    showPlayerControlsTemporarily()
                 }
             }
+    }
+
+    private func togglePlayerControlsVisibility() {
+        if arePlayerControlsVisible {
+            playerControlsHideTask?.cancel()
+            withAnimation(.easeInOut(duration: 0.20)) {
+                arePlayerControlsVisible = false
+            }
+        } else {
+            showPlayerControlsTemporarily()
+        }
+    }
+
+    private func showPlayerControlsTemporarily() {
+        playerControlsHideTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.20)) {
+            arePlayerControlsVisible = true
+        }
+        playerControlsHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled,
+                  playerDragAxis == nil
+            else { return }
+            withAnimation(.easeInOut(duration: 0.20)) {
+                arePlayerControlsVisible = false
+            }
+        }
+    }
+
+    private func collectionScreenTranslation(_ translation: CGSize) -> CGSize {
+        switch deviceOrientation {
+        case .landscapeLeft:
+            return CGSize(
+                width: -translation.height,
+                height: translation.width
+            )
+        case .landscapeRight:
+            return CGSize(
+                width: translation.height,
+                height: -translation.width
+            )
+        default:
+            return translation
+        }
     }
 
     private func dismissDragOpacity(for height: CGFloat) -> Double {

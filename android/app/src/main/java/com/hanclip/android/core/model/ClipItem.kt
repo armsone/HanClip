@@ -41,6 +41,7 @@ data class ClipItem(
     val videoSegmentMode: VideoSegmentMode = VideoSegmentMode.Single,
     val isVideoSegmentParent: Boolean = false,
     val videoSegmentParentId: String? = null,
+    val isVideoSegmentSelected: Boolean = true,
     val photoSimilarityFingerprint: List<Int> = emptyList(),
     val sourceCreatedAtMillis: Long? = null,
     val originalSourceUriString: String? = null,
@@ -59,6 +60,9 @@ data class ClipItem(
 
     val isVideoSegmentChild: Boolean
         get() = videoSegmentParentId != null
+
+    val isHiddenVideoSegmentChild: Boolean
+        get() = isVideoSegmentChild && !isVideoSegmentSelected
 
     val isSimilarPhotoGroupMember: Boolean
         get() = similarPhotoGroupId != null
@@ -84,7 +88,7 @@ data class ClipItem(
         get() = similarPhotoGroupId != null && !isSimilarPhotoGroupRepresentative
 
     val isRenderableClip: Boolean
-        get() = !isVideoSegmentParent && !isHiddenSimilarPhotoGroupMember
+        get() = !isVideoSegmentParent && !isHiddenVideoSegmentChild && !isHiddenSimilarPhotoGroupMember
 
     val sourceAspectRatio: Double
         get() = sourceWidth.toDouble() / max(1, sourceHeight).toDouble()

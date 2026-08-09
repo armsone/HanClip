@@ -8,9 +8,29 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import androidx.annotation.OptIn
+import androidx.media3.common.Effect
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.Presentation
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultEncoderFactory
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.ProgressHolder
+import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.VideoEncoderSettings
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,7 +44,10 @@ import java.time.Instant
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.Collections
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.abs
@@ -42,7 +65,9 @@ data class CollectedMovie(
     val shootingEndAtMillis: Long?,
     val locationName: String?,
     val contentSha256: String? = null,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val pinnedAtMillis: Long? = null,
+    val posterSelectionVersion: Int? = null
 )
 
 data class CollectionMigrationResult(
@@ -67,6 +92,55 @@ data class CollectionPosterCandidate(
     val timeSeconds: Double
 )
 
+enum class CollectionVideoSizeOption(
+    val title: String,
+    val detail: String,
+    val shortSidePixels: Int,
+    val targetBitsPerSecond: Int
+) {
+    High1080("1080p 고화질", "화질을 우선하면서 용량을 줄입니다.", 1080, 8_500_000),
+    Saver720("720p 절약", "화질과 저장 공간의 균형을 맞춥니다.", 720, 5_000_000),
+    Minimum540("540p 최소", "저장 공간을 가장 많이 절약합니다.", 540, 2_500_000);
+
+    val resolutionLabel: String
+        get() = when (this) {
+            High1080 -> "1920×1080"
+            Saver720 -> "1280×720"
+            Minimum540 -> "960×540"
+        }
+}
+
+data class CollectionVideoCompressionInfo(
+    val width: Int,
+    val height: Int,
+    val durationSeconds: Double,
+    val fileSizeBytes: Long
+) {
+    fun estimatedBytes(option: CollectionVideoSizeOption): Long {
+        if (durationSeconds <= 0 || fileSizeBytes <= 0) return 0
+        val sourceBitsPerSecond = fileSizeBytes * 8.0 / durationSeconds
+        val sourcePixels = max(width.toDouble() * height.toDouble(), 1.0)
+        val targetPixels = when (option) {
+            CollectionVideoSizeOption.High1080 -> 1_920.0 * 1_080.0
+            CollectionVideoSizeOption.Saver720 -> 1_280.0 * 720.0
+            CollectionVideoSizeOption.Minimum540 -> 960.0 * 540.0
+        }
+        val pixelRatio = min(targetPixels / sourcePixels, 1.0)
+        val adjustedRate = sourceBitsPerSecond * Math.pow(max(pixelRatio, 0.08), 0.72)
+        val estimatedRate = min(
+            sourceBitsPerSecond * 0.94,
+            min(adjustedRate, option.targetBitsPerSecond.toDouble())
+        )
+        val estimated = (max(estimatedRate, 320_000.0) * durationSeconds / 8.0).toLong()
+        return min(estimated, (fileSizeBytes * 0.98).toLong())
+    }
+}
+
+data class CollectionVideoCompressionResult(
+    val originalBytes: Long,
+    val compressedBytes: Long
+)
+
 object MovieCollectionStore {
     const val MaximumMovieCount = 30
     private const val DirectoryName = "movie-collection"
@@ -74,7 +148,8 @@ object MovieCollectionStore {
     private const val MigrationPreferences = "hanclip_movie_collection_migration"
     private const val LegacyMigrationCompletedKey = "export_history_v1_completed"
     private const val MigratedLegacyUrisKey = "export_history_v1_imported_uris"
-    private const val SchemaVersion = 3
+    private const val SchemaVersion = 4
+    const val CurrentPosterSelectionVersion = 2
     private val collectionWriteLock = Any()
 
     fun list(context: Context): List<CollectedMovie> {
@@ -95,6 +170,150 @@ object MovieCollectionStore {
 
     fun fileSizeInBytes(context: Context, movie: CollectedMovie): Long? =
         videoFile(context, movie).takeIf(File::isFile)?.length()?.takeIf { it > 0L }
+
+    suspend fun compressionInfo(
+        context: Context,
+        movie: CollectedMovie
+    ): CollectionVideoCompressionInfo? = withContext(Dispatchers.IO) {
+        val file = videoFile(context.applicationContext, movie)
+        if (!file.isFile || file.length() <= 0L) return@withContext null
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(file.absolutePath)
+            val rawWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+            val rawHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+            val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                ?.toIntOrNull()?.mod(360) ?: 0
+            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()?.div(1000.0) ?: movie.durationSeconds
+            CollectionVideoCompressionInfo(
+                width = if (rotation == 90 || rotation == 270) rawHeight else rawWidth,
+                height = if (rotation == 90 || rotation == 270) rawWidth else rawHeight,
+                durationSeconds = max(duration, 0.0),
+                fileSizeBytes = file.length()
+            )
+        } finally {
+            retriever.release()
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    suspend fun reduceFileSize(
+        context: Context,
+        movie: CollectedMovie,
+        option: CollectionVideoSizeOption,
+        onProgress: (Double) -> Unit
+    ): CollectionVideoCompressionResult = withContext(Dispatchers.Main.immediate) {
+        val appContext = context.applicationContext
+        val currentMovie = withContext(Dispatchers.IO) {
+            list(appContext).firstOrNull { it.id == movie.id }
+        } ?: error("컬렉션에서 영상을 찾을 수 없습니다.")
+        val sourceFile = videoFile(appContext, currentMovie)
+        val originalBytes = sourceFile.length()
+        require(originalBytes > 0L) { "컬렉션 영상을 읽을 수 없습니다." }
+        val sourceInfo = compressionInfo(appContext, currentMovie)
+            ?: error("컬렉션 영상 정보를 읽을 수 없습니다.")
+        // Presentation can upscale a smaller source. iOS export presets keep smaller
+        // originals at their native size, so cap the requested short side as well.
+        val targetShortSide = min(
+            min(sourceInfo.width, sourceInfo.height),
+            option.shortSidePixels
+        ).coerceAtLeast(1)
+        val compressedFilename = "${movie.id}-compressed-${UUID.randomUUID()}.mp4"
+        val outputFile = File(collectionDirectory(appContext), compressedFilename)
+        outputFile.delete()
+
+        val editedItem = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(sourceFile)))
+            .setEffects(
+                Effects(
+                    Collections.emptyList(),
+                    listOf<Effect>(Presentation.createForShortSide(targetShortSide))
+                )
+            )
+            .build()
+        val encoderFactory = DefaultEncoderFactory.Builder(appContext)
+            .setEnableFallback(true)
+            .setRequestedVideoEncoderSettings(
+                VideoEncoderSettings.Builder()
+                    .setBitrate(option.targetBitsPerSecond)
+                    .build()
+            )
+            .build()
+
+        suspendCancellableCoroutine { continuation ->
+            var progressJob: Job? = null
+            val transformer = Transformer.Builder(appContext)
+                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                .setEncoderFactory(encoderFactory)
+                .addListener(object : Transformer.Listener {
+                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                        progressJob?.cancel()
+                        if (continuation.isActive) continuation.resume(Unit)
+                    }
+
+                    override fun onError(
+                        composition: Composition,
+                        exportResult: ExportResult,
+                        exportException: ExportException
+                    ) {
+                        progressJob?.cancel()
+                        outputFile.delete()
+                        if (continuation.isActive) continuation.resumeWithException(exportException)
+                    }
+                })
+                .build()
+            continuation.invokeOnCancellation {
+                progressJob?.cancel()
+                transformer.cancel()
+                outputFile.delete()
+            }
+            onProgress(0.01)
+            transformer.start(editedItem, outputFile.absolutePath)
+            progressJob = CoroutineScope(Dispatchers.Main.immediate).launch {
+                val holder = ProgressHolder()
+                while (true) {
+                    if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) {
+                        onProgress(holder.progress.coerceIn(0, 99) / 100.0)
+                    }
+                    delay(250)
+                }
+            }
+        }
+
+        val compressedBytes = outputFile.length()
+        if (compressedBytes <= 0L || compressedBytes >= originalBytes) {
+            outputFile.delete()
+            error("변환 결과가 원본보다 작지 않아 원본 파일을 유지했습니다.")
+        }
+        withContext(Dispatchers.IO) {
+            synchronized(collectionWriteLock) {
+                val movies = list(appContext)
+                val index = movies.indexOfFirst { it.id == movie.id }
+                if (index < 0 || movies[index].videoFilename != currentMovie.videoFilename) {
+                    outputFile.delete()
+                    error("컬렉션 영상이 변경되어 원본을 유지했습니다.")
+                }
+                val updated = movies.toMutableList().apply {
+                    this[index] = this[index].copy(
+                        videoFilename = compressedFilename,
+                        contentSha256 = sha256(outputFile)
+                    )
+                }
+                try {
+                    save(appContext, updated)
+                    sourceFile.delete()
+                } catch (error: Throwable) {
+                    outputFile.delete()
+                    throw error
+                }
+            }
+        }
+        onProgress(1.0)
+        CollectionVideoCompressionResult(originalBytes, compressedBytes)
+    }
 
     suspend fun posterCandidatesWithAI(
         context: Context,
@@ -169,7 +388,68 @@ object MovieCollectionStore {
                 error("선택한 썸네일을 저장하지 못했습니다.")
             }
             backup.delete()
+            val updated = list(context).map { stored ->
+                if (stored.id == movie.id) {
+                    stored.copy(posterSelectionVersion = CurrentPosterSelectionVersion)
+                } else {
+                    stored
+                }
+            }
+            save(context, updated)
         }
+    }
+
+    suspend fun regenerateOutdatedPosters(
+        context: Context,
+        onProgress: suspend (completed: Int, total: Int) -> Unit
+    ): Int = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val outdated = list(appContext).filter {
+            (it.posterSelectionVersion ?: 0) < CurrentPosterSelectionVersion
+        }
+        if (outdated.isEmpty()) return@withContext 0
+        onProgress(0, outdated.size)
+        var completed = 0
+        outdated.forEach { movie ->
+            currentCoroutineContext().ensureActive()
+            val video = videoFile(appContext, movie)
+            val target = posterFile(appContext, movie)
+            val temporary = File(target.parentFile, "${target.name}.ai.tmp")
+            temporary.delete()
+            runCatching {
+                writePoster(video, temporary, movie.durationSeconds)
+                check(temporary.isFile && temporary.length() > 0L)
+                synchronized(collectionWriteLock) {
+                    val current = list(appContext)
+                    val stored = current.firstOrNull { it.id == movie.id }
+                        ?: return@synchronized
+                    val backup = File(target.parentFile, "${target.name}.ai.bak")
+                    backup.delete()
+                    if (target.exists() && !target.renameTo(backup)) {
+                        error("기존 썸네일을 안전하게 보관하지 못했습니다.")
+                    }
+                    if (!temporary.renameTo(target)) {
+                        backup.renameTo(target)
+                        error("AI 썸네일을 저장하지 못했습니다.")
+                    }
+                    backup.delete()
+                    save(
+                        appContext,
+                        current.map {
+                            if (it.id == stored.id) {
+                                it.copy(posterSelectionVersion = CurrentPosterSelectionVersion)
+                            } else {
+                                it
+                            }
+                        }
+                    )
+                }
+            }
+            temporary.delete()
+            completed += 1
+            onProgress(completed, outdated.size)
+        }
+        completed
     }
 
     suspend fun importMovie(
@@ -253,7 +533,8 @@ object MovieCollectionStore {
                     locationName = locationName?.trim()?.takeIf(String::isNotEmpty)
                         ?: metadata.locationName,
                     contentSha256 = sourceHash,
-                    isPinned = false
+                    isPinned = false,
+                    posterSelectionVersion = CurrentPosterSelectionVersion
                 )
                 save(appContext, existingWithHashes + movie)
                 CollectionImportOutcome(movie, wasDuplicate = false)
@@ -324,9 +605,43 @@ object MovieCollectionStore {
     fun togglePin(context: Context, movieId: String) {
         synchronized(collectionWriteLock) {
             val updated = list(context).map { movie ->
-                if (movie.id == movieId) movie.copy(isPinned = !movie.isPinned) else movie
+                if (movie.id == movieId) {
+                    val willPin = !movie.isPinned
+                    movie.copy(
+                        isPinned = willPin,
+                        pinnedAtMillis = if (willPin) System.currentTimeMillis() else null
+                    )
+                } else movie
             }
             save(context, updated)
+        }
+    }
+
+    fun movePinnedMovie(context: Context, sourceId: String, targetId: String) {
+        if (sourceId == targetId) return
+        synchronized(collectionWriteLock) {
+            val movies = list(context)
+            val pinned = movies.filter(CollectedMovie::isPinned).toMutableList()
+            val sourceIndex = pinned.indexOfFirst { it.id == sourceId }
+            val targetIndex = pinned.indexOfFirst { it.id == targetId }
+            if (sourceIndex < 0 || targetIndex < 0) return
+            val moved = pinned.removeAt(sourceIndex)
+            val insertionIndex = if (sourceIndex < targetIndex) {
+                targetIndex.coerceAtMost(pinned.size)
+            } else {
+                targetIndex
+            }
+            pinned.add(insertionIndex, moved)
+            val reference = System.currentTimeMillis()
+            val pinnedTimes = pinned.mapIndexed { index, movie ->
+                movie.id to reference - index
+            }.toMap()
+            save(
+                context,
+                movies.map { movie ->
+                    pinnedTimes[movie.id]?.let { movie.copy(pinnedAtMillis = it) } ?: movie
+                }
+            )
         }
     }
 
@@ -775,6 +1090,8 @@ object MovieCollectionStore {
         .putNullable("locationName", locationName)
         .putNullable("contentSha256", contentSha256)
         .put("isPinned", isPinned)
+        .putNullable("pinnedAtMillis", pinnedAtMillis)
+        .putNullable("posterSelectionVersion", posterSelectionVersion)
 
     private fun JSONObject.toCollectedMovie(): CollectedMovie = CollectedMovie(
         id = getString("id"),
@@ -794,12 +1111,18 @@ object MovieCollectionStore {
             null
         },
         contentSha256 = optionalString("contentSha256"),
-        isPinned = optBoolean("isPinned", false)
+        isPinned = optBoolean("isPinned", false),
+        pinnedAtMillis = optionalLong("pinnedAtMillis"),
+        posterSelectionVersion = optionalInt("posterSelectionVersion")
     )
+
+    private fun JSONObject.optionalInt(key: String): Int? =
+        if (has(key) && !isNull(key)) optInt(key).takeIf { it >= 0 } else null
 
     private fun List<CollectedMovie>.sortedForDisplay(): List<CollectedMovie> =
         sortedWith(
             compareByDescending<CollectedMovie> { it.isPinned }
+                .thenByDescending { if (it.isPinned) it.pinnedAtMillis ?: it.createdAtMillis else Long.MIN_VALUE }
                 .thenByDescending { it.createdAtMillis }
         )
 

@@ -9,9 +9,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -28,6 +30,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -41,6 +45,9 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Compress
+import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Sd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,9 +61,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -68,6 +77,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,10 +90,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import com.hanclip.android.core.project.CollectedMovie
 import com.hanclip.android.core.project.CollectionPosterCandidate
 import com.hanclip.android.core.project.CollectionPosterEngine
+import com.hanclip.android.core.project.CollectionVideoCompressionInfo
+import com.hanclip.android.core.project.CollectionVideoSizeOption
 import com.hanclip.android.core.project.MovieCollectionStore
 import com.hanclip.android.core.theme.HanClipPalette
 import java.text.SimpleDateFormat
@@ -91,6 +105,8 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
@@ -102,14 +118,34 @@ internal fun LazyListScope.movieCollectionItems(
     importTotalCount: Int,
     onImport: () -> Unit,
     onCancelImport: () -> Unit,
+    posterRepairCompleted: Int,
+    posterRepairTotal: Int,
     onOpen: (CollectedMovie) -> Unit,
     onTogglePin: (CollectedMovie) -> Unit,
+    onMovePinned: (CollectedMovie, CollectedMovie) -> Unit,
     onRename: (CollectedMovie, String) -> Unit,
     onRemove: (CollectedMovie) -> Unit,
+    isCompressing: Boolean,
+    compressionMovieTitle: String,
+    compressionProgress: Double,
+    onRequestCompression: (CollectedMovie) -> Unit,
+    onCancelCompression: () -> Unit,
     columnCount: Int = 2
 ) {
+    val pinnedMovies = movies.filter(CollectedMovie::isPinned)
     item(key = "collection-header", contentType = "collection-header") {
         CollectionHeader(movies.size, palette)
+    }
+
+    if (isCompressing) {
+        item(key = "collection-compression-progress", contentType = "collection-progress") {
+            CollectionCompressionProgress(
+                movieTitle = compressionMovieTitle,
+                progress = compressionProgress,
+                onCancel = onCancelCompression,
+                palette = palette
+            )
+        }
     }
 
     val cells = buildList<CollectedMovie?> {
@@ -142,8 +178,27 @@ internal fun LazyListScope.movieCollectionItems(
                         movie = movie,
                         onOpen = { onOpen(movie) },
                         onTogglePin = { onTogglePin(movie) },
+                        onMovePinnedEarlier = pinnedMovies.indexOfFirst { it.id == movie.id }
+                            .takeIf { it > 0 }
+                            ?.let { index -> { onMovePinned(movie, pinnedMovies[index - 1]) } },
+                        onMovePinnedLater = pinnedMovies.indexOfFirst { it.id == movie.id }
+                            .takeIf { it >= 0 && it < pinnedMovies.lastIndex }
+                            ?.let { index -> { onMovePinned(movie, pinnedMovies[index + 1]) } },
+                        onMovePinnedByOffset = { offset ->
+                            val sourceIndex = pinnedMovies.indexOfFirst { it.id == movie.id }
+                            if (sourceIndex >= 0) {
+                                val targetIndex = (sourceIndex + offset)
+                                    .coerceIn(0, pinnedMovies.lastIndex)
+                                if (targetIndex != sourceIndex) {
+                                    onMovePinned(movie, pinnedMovies[targetIndex])
+                                }
+                            }
+                        },
+                        pinnedColumnCount = columnCount,
                         onRename = { onRename(movie, it) },
                         onRemove = { onRemove(movie) },
+                        isCompressing = isCompressing,
+                        onRequestCompression = { onRequestCompression(movie) },
                         palette = palette
                     )
                 }
@@ -157,6 +212,16 @@ internal fun LazyListScope.movieCollectionItems(
                 completed = importCompletedCount,
                 total = importTotalCount,
                 onCancel = onCancelImport,
+                palette = palette
+            )
+        }
+    }
+
+    if (posterRepairTotal > 0) {
+        item(key = "collection-poster-repair-progress", contentType = "collection-progress") {
+            CollectionPosterRepairProgress(
+                completed = posterRepairCompleted,
+                total = posterRepairTotal,
                 palette = palette
             )
         }
@@ -179,6 +244,54 @@ internal fun LazyListScope.movieCollectionItems(
                     )
                 )
         )
+    }
+}
+
+@Composable
+private fun CollectionPosterRepairProgress(
+    completed: Int,
+    total: Int,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = palette.solidPanel,
+        border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.32f))
+    ) {
+        Column(
+            modifier = Modifier.padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = palette.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "AI가 컬렉션의 최고 순간을 고르는 중",
+                    modifier = Modifier.weight(1f),
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+                Text(
+                    "$completed/${total.coerceAtLeast(1)}",
+                    color = palette.subText,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp
+                )
+            }
+            LinearProgressIndicator(
+                progress = { completed.toFloat() / total.coerceAtLeast(1) },
+                modifier = Modifier.fillMaxWidth(),
+                color = palette.primary,
+                trackColor = palette.secondary.copy(alpha = 0.24f)
+            )
+        }
     }
 }
 
@@ -306,8 +419,14 @@ private fun CollectionMovieCard(
     movie: CollectedMovie,
     onOpen: () -> Unit,
     onTogglePin: () -> Unit,
+    onMovePinnedEarlier: (() -> Unit)?,
+    onMovePinnedLater: (() -> Unit)?,
+    onMovePinnedByOffset: (Int) -> Unit,
+    pinnedColumnCount: Int,
     onRename: (String) -> Unit,
     onRemove: () -> Unit,
+    isCompressing: Boolean,
+    onRequestCompression: () -> Unit,
     palette: HanClipPalette
 ) {
     val context = LocalContext.current
@@ -317,6 +436,8 @@ private fun CollectionMovieCard(
         }.getOrNull()
     }
     var showActions by remember { mutableStateOf(false) }
+    var pinDragX by remember(movie.id) { mutableFloatStateOf(0f) }
+    var pinDragY by remember(movie.id) { mutableFloatStateOf(0f) }
     var showRename by remember { mutableStateOf(false) }
     var showRemove by remember { mutableStateOf(false) }
     var showPosterPicker by remember { mutableStateOf(false) }
@@ -328,6 +449,8 @@ private fun CollectionMovieCard(
     var titleDraft by remember(movie.id, movie.title) { mutableStateOf(movie.title) }
     val posterFile = MovieCollectionStore.posterFile(context, movie)
     val targetLongEdgePx = with(LocalDensity.current) { 240.dp.roundToPx() }
+    val pinDragThresholdPx = with(LocalDensity.current) { 22.dp.toPx() }
+    val pinDragStepPx = with(LocalDensity.current) { 86.dp.toPx() }
     val poster by produceState<android.graphics.Bitmap?>(
         initialValue = null,
         movie.id,
@@ -348,8 +471,15 @@ private fun CollectionMovieCard(
             .clip(shape)
             .background(palette.solidPanel)
             .border(1.dp, Color.White.copy(alpha = 0.34f), shape)
-            .combinedClickable(onClick = onOpen, onLongClick = { showActions = true })
     ) {
+        // 카드 전체 제스처를 부모에 두면 상단 핀의 탭·롱드래그와 같은
+        // 포인터 체인에서 경쟁한다. 배경 전용 터치 레이어로 분리해
+        // 핀/메뉴가 항상 우선 입력을 받도록 한다.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .combinedClickable(onClick = onOpen, onLongClick = { showActions = true })
+        )
         poster?.let { posterBitmap ->
             androidx.compose.foundation.Image(
                 bitmap = posterBitmap.asImageBitmap(),
@@ -390,21 +520,19 @@ private fun CollectionMovieCard(
                 overflow = TextOverflow.Ellipsis
             )
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                movie.locationName?.takeIf(String::isNotBlank)?.let {
+                    PosterMetadata(Icons.Outlined.LocationOn, it, maxLines = 2)
+                }
                 movie.madeAtMillis?.let {
                     PosterMetadata(Icons.Outlined.AutoAwesome, "제작 ${collectionDateTime(it)}")
                 }
                 shootingPeriod(movie)?.let {
                     PosterMetadata(Icons.Outlined.CalendarMonth, it)
                 }
-                movie.locationName?.takeIf(String::isNotBlank)?.let {
-                    PosterMetadata(Icons.Outlined.LocationOn, it, maxLines = 2)
+                MovieCollectionStore.fileSizeInBytes(context, movie)?.let { bytes ->
+                    PosterMetadata(Icons.Outlined.FolderOpen, collectionFileSize(bytes))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PosterMetadata(Icons.Outlined.PlayArrow, collectionDuration(movie.durationSeconds))
-                    MovieCollectionStore.fileSizeInBytes(context, movie)?.let { bytes ->
-                        PosterMetadata(Icons.Outlined.FolderOpen, collectionFileSize(bytes))
-                    }
-                }
+                PosterMetadata(Icons.Outlined.PlayArrow, collectionDuration(movie.durationSeconds))
             }
         }
         IconButton(
@@ -413,15 +541,65 @@ private fun CollectionMovieCard(
         ) {
             Icon(Icons.Outlined.MoreVert, contentDescription = "컬렉션 메뉴", tint = Color.White)
         }
-        Box(
+        IconButton(
+            onClick = onTogglePin,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .size(56.dp)
-                .semantics {
-                    contentDescription = if (movie.isPinned) "컬렉션 핀 해제" else "컬렉션 핀 고정"
+                .zIndex(if (pinDragX != 0f || pinDragY != 0f) 3f else 1f)
+                .graphicsLayer {
+                    translationX = pinDragX
+                    translationY = pinDragY
+                    if (pinDragX != 0f || pinDragY != 0f) {
+                        scaleX = 1.08f
+                        scaleY = 1.08f
+                    }
                 }
-                .clickable(onClick = onTogglePin),
-            contentAlignment = Alignment.Center
+                .then(
+                    if (movie.isPinned) {
+                        Modifier.pointerInput(movie.id, pinnedColumnCount) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    pinDragX = 0f
+                                    pinDragY = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    pinDragX += dragAmount.x
+                                    pinDragY += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    val horizontal = abs(pinDragX) >= abs(pinDragY)
+                                    val primaryDistance = if (horizontal) pinDragX else pinDragY
+                                    if (abs(primaryDistance) >= pinDragThresholdPx) {
+                                        val steps = (abs(primaryDistance) / pinDragStepPx)
+                                            .roundToInt()
+                                            .coerceAtLeast(1)
+                                        val direction = if (primaryDistance < 0f) -1 else 1
+                                        onMovePinnedByOffset(
+                                            direction * steps * if (horizontal) 1 else pinnedColumnCount
+                                        )
+                                    }
+                                    pinDragX = 0f
+                                    pinDragY = 0f
+                                },
+                                onDragCancel = {
+                                    pinDragX = 0f
+                                    pinDragY = 0f
+                                }
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .semantics {
+                    contentDescription = if (movie.isPinned) {
+                        "컬렉션 핀 해제, 길게 끌어 핀 순서 변경"
+                    } else {
+                        "컬렉션 핀 고정"
+                    }
+                }
         ) {
             if (movie.isPinned) {
                 if (collectionPinBitmap != null) {
@@ -459,6 +637,20 @@ private fun CollectionMovieCard(
                 leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
                 onClick = { showActions = false; onTogglePin() }
             )
+            if (movie.isPinned) {
+                DropdownMenuItem(
+                    text = { Text("핀 앞으로") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = null) },
+                    enabled = onMovePinnedEarlier != null,
+                    onClick = { showActions = false; onMovePinnedEarlier?.invoke() }
+                )
+                DropdownMenuItem(
+                    text = { Text("핀 뒤로") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
+                    enabled = onMovePinnedLater != null,
+                    onClick = { showActions = false; onMovePinnedLater?.invoke() }
+                )
+            }
             DropdownMenuItem(
                 text = { Text("제목 수정") },
                 leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
@@ -474,6 +666,12 @@ private fun CollectionMovieCard(
                     posterCandidateError = null
                     showPosterPicker = true
                 }
+            )
+            DropdownMenuItem(
+                text = { Text("파일 용량 줄이기") },
+                leadingIcon = { Icon(Icons.Outlined.Compress, contentDescription = null) },
+                enabled = !isCompressing,
+                onClick = { showActions = false; onRequestCompression() }
             )
             DropdownMenuItem(
                 text = { Text("공유") },
@@ -704,6 +902,141 @@ private fun CollectionPosterCandidateDialog(
 }
 
 @Composable
+internal fun CollectionVideoSizeOptionsDialog(
+    movie: CollectedMovie,
+    palette: HanClipPalette,
+    onSelect: (CollectionVideoSizeOption) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val compressionInfo by produceState<CollectionVideoCompressionInfo?>(null, movie.id) {
+        value = MovieCollectionStore.compressionInfo(context, movie)
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = palette.solidPanel,
+            border = BorderStroke(1.dp, palette.border),
+            shadowElevation = 12.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(palette.background)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "취소", tint = palette.text)
+                    }
+                    Text(
+                        "파일 용량 줄이기",
+                        modifier = Modifier.weight(1f),
+                        color = palette.text,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.size(48.dp))
+                }
+                Text(
+                    movie.title,
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (compressionInfo == null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = palette.primary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("현재 영상 정보를 확인하는 중", color = palette.subText, fontSize = 12.sp)
+                    }
+                } else {
+                    val info = compressionInfo!!
+                    Text(
+                        "현재  ${info.width}×${info.height} · ${collectionDuration(info.durationSeconds)} · ${collectionFileSize(info.fileSizeBytes)}",
+                        color = palette.subText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                CollectionVideoSizeOption.entries.forEach { option ->
+                    CollectionVideoSizeOptionRow(
+                        option = option,
+                        estimatedBytes = compressionInfo?.estimatedBytes(option),
+                        enabled = compressionInfo != null,
+                        palette = palette,
+                        onClick = { onSelect(option) }
+                    )
+                }
+                Text(
+                    "예상 용량은 영상 장면에 따라 달라질 수 있습니다. 결과가 원본보다 크면 원본을 유지합니다.",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = palette.subText,
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollectionVideoSizeOptionRow(
+    option: CollectionVideoSizeOption,
+    estimatedBytes: Long?,
+    enabled: Boolean,
+    palette: HanClipPalette,
+    onClick: () -> Unit
+) {
+    val icon = when (option) {
+        CollectionVideoSizeOption.High1080 -> Icons.Outlined.HighQuality
+        CollectionVideoSizeOption.Saver720 -> Icons.Outlined.Sd
+        CollectionVideoSizeOption.Minimum540 -> Icons.Outlined.Compress
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border),
+        enabled = enabled,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(shape = RoundedCornerShape(19.dp), color = palette.primary.copy(alpha = 0.10f)) {
+                Icon(icon, contentDescription = null, tint = palette.primary, modifier = Modifier.padding(9.dp).size(20.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(option.title, color = palette.text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(option.detail, color = palette.subText, fontSize = 11.sp)
+            }
+            estimatedBytes?.takeIf { it > 0L }?.let {
+                Text(
+                    "예상 약\n${collectionFileSize(it)}",
+                    color = palette.primary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.End
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun CollectionPosterEngineHeader(
     modifier: Modifier,
     title: String,
@@ -808,6 +1141,12 @@ private fun CollectionPosterCandidateCard(
             )
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 movie.locationName?.let { PosterMetadata(Icons.Outlined.LocationOn, it) }
+                movie.madeAtMillis?.let {
+                    PosterMetadata(Icons.Outlined.AutoAwesome, "제작 ${collectionDateTime(it)}")
+                }
+                shootingPeriod(movie)?.let {
+                    PosterMetadata(Icons.Outlined.CalendarMonth, it)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PosterMetadata(Icons.Outlined.PlayArrow, collectionDuration(movie.durationSeconds))
                     fileSizeText?.let { PosterMetadata(Icons.Outlined.FolderOpen, it) }
@@ -928,6 +1267,54 @@ private fun CollectionImportProgress(
     }
 }
 
+@Composable
+private fun CollectionCompressionProgress(
+    movieTitle: String,
+    progress: Double,
+    onCancel: () -> Unit,
+    palette: HanClipPalette
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = palette.solidPanel,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = palette.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "$movieTitle 용량 줄이는 중",
+                    modifier = Modifier.weight(1f),
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text("${(progress * 100).toInt()}%", color = palette.subText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(6.dp))
+                OutlinedButton(
+                    onClick = onCancel,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                ) { Text("취소", fontSize = 10.sp) }
+            }
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progress.toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth(),
+                color = palette.primary,
+                trackColor = palette.chip
+            )
+        }
+    }
+}
+
 private fun shareMovie(context: Context, movie: CollectedMovie) {
     val file = MovieCollectionStore.videoUri(context, movie).path?.let(::File) ?: return
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -948,6 +1335,10 @@ private fun shootingPeriod(movie: CollectedMovie): String? {
     val formatter = SimpleDateFormat("yy.M.d", Locale.KOREAN)
     val startText = formatter.format(Date(start))
     val endText = formatter.format(Date(end))
+    movie.madeAtMillis?.let { madeAt ->
+        val madeAtText = formatter.format(Date(madeAt))
+        if (startText == madeAtText && endText == madeAtText) return null
+    }
     return if (startText == endText) "촬영 $startText" else "촬영 $startText–$endText"
 }
 
@@ -956,7 +1347,7 @@ private fun collectionDuration(durationSeconds: Double): String {
     return "%d:%02d".format(Locale.US, seconds / 60, seconds % 60)
 }
 
-private fun collectionFileSize(bytes: Long): String {
+internal fun collectionFileSize(bytes: Long): String {
     val value = if (bytes >= 1_000_000_000L) bytes / 1_000_000_000.0 else bytes / 1_000_000.0
     val unit = if (bytes >= 1_000_000_000L) "GB" else "MB"
     return if (value >= 10) "%.0f %s".format(Locale.US, value, unit)

@@ -110,17 +110,22 @@ class EditorViewModel : ViewModel() {
     private var exportJob: Job? = null
     private var importJob: Job? = null
     private var lastUndoSnapshot: EditorUndoSnapshot? = null
+    private var editingSessionBaseline: DraftProject? = null
 
     fun openPreset(context: Context, preset: MoviePreset) {
+        var startedNewSession = false
         _uiState.update {
             if (it.preset == preset && it.clips.isNotEmpty()) {
                 return@update it
             }
+            startedNewSession = true
             presetInitialState(context.applicationContext, preset)
         }
+        if (startedNewSession) editingSessionBaseline = null
     }
 
     fun startNewPreset(context: Context, preset: MoviePreset) {
+        editingSessionBaseline = null
         _uiState.value = presetInitialState(context.applicationContext, preset)
     }
 
@@ -737,24 +742,7 @@ class EditorViewModel : ViewModel() {
 
     fun saveDraft(context: Context) {
         val state = _uiState.value
-        val project = DraftProject(
-                projectId = state.activeProjectId,
-                clips = state.clips,
-                preset = state.preset,
-                defaultDurationSeconds = state.defaultDurationSeconds,
-                defaultVideoSegmentMode = state.defaultVideoSegmentMode,
-                outputAspectRatio = state.outputAspectRatio,
-                outputQualityPreset = state.outputQualityPreset,
-                watermarkSettings = state.watermarkSettings,
-                backgroundMusicUri = state.backgroundMusicUri,
-                backgroundMusicTitle = state.backgroundMusicTitle,
-                backgroundMusicSampleId = state.backgroundMusicSampleId,
-                backgroundMusicVolume = state.backgroundMusicVolume,
-                originalAudioVolume = state.originalAudioVolume,
-                backgroundMusicLoopsToFillVideo = state.backgroundMusicLoopsToFillVideo,
-                backgroundMusicFadeInEnabled = state.backgroundMusicFadeInEnabled,
-                backgroundMusicFadeOutEnabled = state.backgroundMusicFadeOutEnabled
-            )
+        val project = state.toDraftProject()
         val persistedProject = EditableProjectStore.upsert(context.applicationContext, project)
         DraftProjectStore.save(context.applicationContext, persistedProject)
         if (persistedProject.clips != state.clips ||
@@ -773,6 +761,29 @@ class EditorViewModel : ViewModel() {
         }
     }
 
+    fun saveEditingSession(context: Context) {
+        saveDraft(context)
+        editingSessionBaseline = EditableProjectStore.load(
+            context.applicationContext,
+            _uiState.value.activeProjectId
+        )
+    }
+
+    fun isNewEditingSession(): Boolean = editingSessionBaseline == null
+
+    fun discardEditingSessionChanges(context: Context) {
+        val appContext = context.applicationContext
+        val currentProjectId = _uiState.value.activeProjectId
+        val baseline = editingSessionBaseline
+        if (baseline == null) {
+            DraftProjectStore.clear(appContext)
+            EditableProjectStore.remove(appContext, currentProjectId)
+        } else {
+            val restored = EditableProjectStore.restoreWithoutUpdatingSavedAt(appContext, baseline)
+            DraftProjectStore.save(appContext, restored)
+        }
+    }
+
     fun discardPersistedProjectIfEmpty(context: Context) {
         val state = _uiState.value
         if (state.clips.isNotEmpty()) return
@@ -782,6 +793,7 @@ class EditorViewModel : ViewModel() {
 
     fun openDraft(context: Context): Boolean {
         val draft = DraftProjectStore.load(context.applicationContext) ?: return false
+        editingSessionBaseline = draft
         _uiState.update {
             it.copy(
                 clips = draft.clips,
@@ -809,6 +821,7 @@ class EditorViewModel : ViewModel() {
 
     fun openEditableProject(context: Context, projectId: String): Boolean {
         val project = EditableProjectStore.load(context.applicationContext, projectId) ?: return false
+        editingSessionBaseline = project
         DraftProjectStore.save(context.applicationContext, project)
         _uiState.update {
             it.copy(
@@ -835,6 +848,25 @@ class EditorViewModel : ViewModel() {
         }
         return true
     }
+
+    private fun EditorUiState.toDraftProject(): DraftProject = DraftProject(
+        projectId = activeProjectId,
+        clips = clips,
+        preset = preset,
+        defaultDurationSeconds = defaultDurationSeconds,
+        defaultVideoSegmentMode = defaultVideoSegmentMode,
+        outputAspectRatio = outputAspectRatio,
+        outputQualityPreset = outputQualityPreset,
+        watermarkSettings = watermarkSettings,
+        backgroundMusicUri = backgroundMusicUri,
+        backgroundMusicTitle = backgroundMusicTitle,
+        backgroundMusicSampleId = backgroundMusicSampleId,
+        backgroundMusicVolume = backgroundMusicVolume,
+        originalAudioVolume = originalAudioVolume,
+        backgroundMusicLoopsToFillVideo = backgroundMusicLoopsToFillVideo,
+        backgroundMusicFadeInEnabled = backgroundMusicFadeInEnabled,
+        backgroundMusicFadeOutEnabled = backgroundMusicFadeOutEnabled
+    )
 
     fun clearAlert() {
         _uiState.update { it.copy(alertMessage = null, undoDeleteMessage = null) }
@@ -1148,6 +1180,21 @@ class EditorViewModel : ViewModel() {
         _uiState.update { state ->
             val removedClip = state.clips.firstOrNull { it.id == id }
                 ?: return@update state
+            if (removedClip.isVideoSegmentChild) {
+                lastUndoSnapshot = EditorUndoSnapshot(
+                    state = state,
+                    restoredMessage = "자클립 제외를 되돌렸습니다."
+                )
+                val updated = state.clips.map { clip ->
+                    if (clip.id == id) clip.copy(isVideoSegmentSelected = false) else clip
+                }
+                return@update state.copy(
+                    clips = updated,
+                    importedMediaCount = updated.count { it.isRenderableClip },
+                    alertMessage = "자클립을 완성본에서 제외했습니다. 원본은 유지되며 다시 사용할 수 있습니다.",
+                    undoDeleteMessage = "방금 제외한 자클립을 되돌릴 수 있습니다."
+                )
+            }
             val removedGroupId = removedClip.similarPhotoGroupId
             val nextClips = state.clips.filterNot { clip ->
                 clip.id == id || clip.videoSegmentParentId == id
@@ -1170,6 +1217,35 @@ class EditorViewModel : ViewModel() {
                     "MP4 완성본 번호순에서 클립을 제외했습니다. 현재 작업도 자동 저장됩니다."
                 },
                 undoDeleteMessage = "방금 제외한 클립을 되돌릴 수 있습니다."
+            )
+        }
+    }
+
+    fun toggleVideoSegmentSelection(id: String) {
+        _uiState.update { state ->
+            val target = state.clips.firstOrNull { it.id == id && it.isVideoSegmentChild }
+                ?: return@update state
+            val shouldInclude = !target.isVideoSegmentSelected
+            lastUndoSnapshot = EditorUndoSnapshot(
+                state = state,
+                restoredMessage = if (shouldInclude) "자클립 사용을 되돌렸습니다." else "자클립 제외를 되돌렸습니다."
+            )
+            val updated = state.clips.map { clip ->
+                if (clip.id == id) clip.copy(isVideoSegmentSelected = shouldInclude) else clip
+            }
+            state.copy(
+                clips = updated,
+                importedMediaCount = updated.count { it.isRenderableClip },
+                alertMessage = if (shouldInclude) {
+                    "자클립을 완성본에 다시 포함했습니다."
+                } else {
+                    "자클립을 완성본에서 제외했습니다. 원본은 유지됩니다."
+                },
+                undoDeleteMessage = if (shouldInclude) {
+                    "방금 포함한 자클립을 다시 제외할 수 있습니다."
+                } else {
+                    "방금 제외한 자클립을 되돌릴 수 있습니다."
+                }
             )
         }
     }

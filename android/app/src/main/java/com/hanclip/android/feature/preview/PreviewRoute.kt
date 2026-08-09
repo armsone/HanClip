@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.view.OrientationEventListener
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,6 +17,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -134,6 +137,7 @@ fun PreviewRoute(
     exportedVideoUri: Uri?,
     movieSummary: PreviewMovieSummary,
     canReturnToEditor: Boolean = true,
+    collectionPlaybackOnly: Boolean = false,
     onEdit: () -> Unit,
     onDone: () -> Unit,
     onSavingStateChanged: (Boolean) -> Unit = {},
@@ -157,6 +161,15 @@ fun PreviewRoute(
         onDispose {
             onSavingStateChanged(false)
         }
+    }
+
+    if (collectionPlaybackOnly && exportedVideoUri != null) {
+        FullscreenPreviewDialog(
+            uri = exportedVideoUri,
+            followDeviceOrientation = true,
+            onClose = onDone
+        )
+        return
     }
 
     fun performGallerySave() {
@@ -371,6 +384,7 @@ fun PreviewRoute(
     if (showFullscreenPreview && exportedVideoUri != null) {
         FullscreenPreviewDialog(
             uri = exportedVideoUri,
+            followDeviceOrientation = false,
             onClose = { showFullscreenPreview = false }
         )
     }
@@ -1004,10 +1018,31 @@ private fun SaveDestinationCard(
 @Composable
 private fun FullscreenPreviewDialog(
     uri: Uri,
+    followDeviceOrientation: Boolean,
     onClose: () -> Unit
 ) {
+    val context = LocalContext.current
     var isLooping by remember { mutableStateOf(true) }
     var isFillMode by remember { mutableStateOf(false) }
+    var verticalDragPx by remember { mutableFloatStateOf(0f) }
+    var deviceRotationDegrees by remember { mutableFloatStateOf(0f) }
+    val dismissThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
+    DisposableEffect(followDeviceOrientation, context) {
+        if (!followDeviceOrientation) return@DisposableEffect onDispose { }
+        val listener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                deviceRotationDegrees = when (orientation) {
+                    in 45..134 -> -90f
+                    in 135..224 -> 180f
+                    in 225..314 -> 90f
+                    else -> 0f
+                }
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose { listener.disable() }
+    }
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(
@@ -1015,49 +1050,80 @@ private fun FullscreenPreviewDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-        ) {
-            ExportedVideoPlayer(
-                uri = uri,
-                repeatMode = if (isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF,
-                resizeMode = if (isFillMode) {
-                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                } else {
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                .graphicsLayer {
+                    translationY = verticalDragPx
+                    alpha = (1f - verticalDragPx / (dismissThresholdPx * 3f))
+                        .coerceIn(0.72f, 1f)
                 }
-            )
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(18.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FullscreenCircleButton(
-                    onClick = { isLooping = !isLooping },
-                    active = isLooping,
-                    contentDescription = if (isLooping) "반복 재생 끄기" else "반복 재생 켜기"
-                ) {
-                    Icon(Icons.Outlined.Repeat, contentDescription = null, tint = Color.White)
-                }
-                FullscreenCircleButton(
-                    onClick = { isFillMode = !isFillMode },
-                    active = isFillMode,
-                    contentDescription = if (isFillMode) "화면에 맞추기" else "화면 채우기"
-                ) {
-                    Icon(
-                        if (isFillMode) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
-                        contentDescription = null,
-                        tint = Color.White
+                .pointerInput(dismissThresholdPx) {
+                    detectVerticalDragGestures(
+                        onVerticalDrag = { change, dragAmount ->
+                            if (dragAmount > 0f || verticalDragPx > 0f) {
+                                change.consume()
+                                verticalDragPx = (verticalDragPx + dragAmount).coerceAtLeast(0f)
+                            }
+                        },
+                        onDragEnd = {
+                            if (verticalDragPx >= dismissThresholdPx) onClose()
+                            else verticalDragPx = 0f
+                        },
+                        onDragCancel = { verticalDragPx = 0f }
                     )
                 }
-                FullscreenCircleButton(
-                    onClick = onClose,
-                    contentDescription = "닫기"
+        ) {
+            val isQuarterTurn = deviceRotationDegrees == 90f || deviceRotationDegrees == -90f
+            Box(
+                modifier = Modifier
+                    .requiredSize(
+                        width = if (isQuarterTurn) maxHeight else maxWidth,
+                        height = if (isQuarterTurn) maxWidth else maxHeight
+                    )
+                    .align(Alignment.Center)
+                    .graphicsLayer { rotationZ = deviceRotationDegrees }
+            ) {
+                ExportedVideoPlayer(
+                    uri = uri,
+                    repeatMode = if (isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF,
+                    resizeMode = if (isFillMode) {
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    } else {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
+                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Outlined.Close, contentDescription = null, tint = Color.White)
+                    FullscreenCircleButton(
+                        onClick = { isLooping = !isLooping },
+                        active = isLooping,
+                        contentDescription = if (isLooping) "반복 재생 끄기" else "반복 재생 켜기"
+                    ) {
+                        Icon(Icons.Outlined.Repeat, contentDescription = null, tint = Color.White)
+                    }
+                    FullscreenCircleButton(
+                        onClick = { isFillMode = !isFillMode },
+                        active = isFillMode,
+                        contentDescription = if (isFillMode) "화면에 맞추기" else "화면 채우기"
+                    ) {
+                        Icon(
+                            if (isFillMode) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                    }
+                    FullscreenCircleButton(
+                        onClick = onClose,
+                        contentDescription = "닫기"
+                    ) {
+                        Icon(Icons.Outlined.Close, contentDescription = null, tint = Color.White)
+                    }
                 }
             }
         }
@@ -1165,6 +1231,7 @@ private fun ExportedVideoPlayer(
             PlayerView(viewContext).apply {
                 this.player = player
                 useController = true
+                controllerShowTimeoutMs = 3_000
                 this.resizeMode = resizeMode
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,

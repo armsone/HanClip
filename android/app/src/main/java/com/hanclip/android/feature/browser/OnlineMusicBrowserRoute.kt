@@ -7,7 +7,10 @@ import android.content.ClipboardManager
 import android.app.DownloadManager
 import android.net.Uri
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -61,12 +64,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +96,7 @@ import com.hanclip.android.core.theme.HanClipThemeStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import kotlinx.coroutines.delay
 
 private const val PixabayMusicUrl = "https://pixabay.com/music/"
 private const val MixkitMusicUrl = "https://mixkit.co/free-stock-music/"
@@ -112,6 +118,66 @@ fun OnlineMusicBrowserRoute(
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var isPageLoading by remember { mutableStateOf(false) }
+    var detectedVideoUrl by remember { mutableStateOf<String?>(null) }
+    var dismissedVideoUrl by remember { mutableStateOf<String?>(null) }
+    var activeDownload by remember { mutableStateOf<BrowserDownloadTicket?>(null) }
+    var downloadProgress by remember { mutableStateOf<BrowserDownloadProgress?>(null) }
+
+    fun beginDownload(
+        url: String,
+        userAgent: String? = webView?.settings?.userAgentString,
+        contentDisposition: String? = null,
+        mimeType: String? = null
+    ) {
+        runCatching {
+            enqueueBrowserDownload(
+                context = context,
+                url = url,
+                userAgent = userAgent,
+                contentDisposition = contentDisposition,
+                mimeType = mimeType
+            )
+        }.onSuccess { ticket ->
+            activeDownload = ticket
+            downloadProgress = BrowserDownloadProgress(
+                title = ticket.filename,
+                downloadedBytes = 0L,
+                totalBytes = null,
+                status = DownloadManager.STATUS_PENDING
+            )
+        }.onFailure {
+            Toast.makeText(
+                context,
+                "다운로드를 시작하지 못했습니다. 사이트에서 저장한 뒤 음악/원본 소리의 내 음악 파일 선택을 사용하세요.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    LaunchedEffect(activeDownload?.id) {
+        val ticket = activeDownload ?: return@LaunchedEffect
+        val manager = context.getSystemService(DownloadManager::class.java)
+            ?: return@LaunchedEffect
+        while (activeDownload?.id == ticket.id) {
+            val progress = queryBrowserDownload(manager, ticket)
+            if (progress != null) downloadProgress = progress
+            when (progress?.status) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    Toast.makeText(
+                        context,
+                        "Downloads/HanClip에 ${ticket.filename} 저장을 마쳤습니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    activeDownload = null
+                }
+                DownloadManager.STATUS_FAILED -> {
+                    Toast.makeText(context, "다운로드하지 못했습니다.", Toast.LENGTH_LONG).show()
+                    activeDownload = null
+                }
+                else -> delay(300)
+            }
+        }
+    }
 
     fun loadAddress() {
         targetUrl = normalizedBrowserUrl(addressText)
@@ -299,6 +365,34 @@ fun OnlineMusicBrowserRoute(
                 }
             }
 
+            detectedVideoUrl?.let { videoUrl ->
+                BrowserDetectedVideoPanel(
+                    palette = palette,
+                    onDownload = {
+                        beginDownload(videoUrl, mimeType = "video/mp4")
+                        detectedVideoUrl = null
+                    },
+                    onDismiss = {
+                        dismissedVideoUrl = videoUrl
+                        detectedVideoUrl = null
+                    }
+                )
+            }
+            activeDownload?.let { ticket ->
+                BrowserDownloadPanel(
+                    title = downloadProgress?.title ?: ticket.filename,
+                    downloadedBytes = downloadProgress?.downloadedBytes ?: 0L,
+                    totalBytes = downloadProgress?.totalBytes,
+                    palette = palette,
+                    onCancel = {
+                        context.getSystemService(DownloadManager::class.java)?.remove(ticket.id)
+                        activeDownload = null
+                        downloadProgress = null
+                        Toast.makeText(context, "다운로드를 취소했습니다.", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
             AndroidView(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -309,6 +403,14 @@ fun OnlineMusicBrowserRoute(
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.mediaPlaybackRequiresUserGesture = false
+                        addJavascriptInterface(
+                            BrowserVideoBridge { source ->
+                                if (source != dismissedVideoUrl && isDownloadableVideoUrl(source)) {
+                                    detectedVideoUrl = source
+                                }
+                            },
+                            "HanClipVideo"
+                        )
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(
                                 view: WebView,
@@ -333,28 +435,14 @@ fun OnlineMusicBrowserRoute(
                                 }
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
+                                installBrowserVideoDetection(view)
                             }
                         }
                         setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                            runCatching {
-                                enqueueBrowserDownload(
-                                    context = context,
-                                    url = url,
-                                    userAgent = userAgent,
-                                    contentDisposition = contentDisposition,
-                                    mimeType = mimeType
-                                )
-                                Toast.makeText(
-                                    context,
-                                    "Downloads/HanClip 폴더에 저장을 시작했습니다. 완료 후 음악/원본 소리에서 내 음악 파일 선택으로 적용하세요.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }.onFailure {
-                                Toast.makeText(
-                                    context,
-                                    "다운로드를 시작하지 못했습니다. 사이트에서 저장한 뒤 음악/원본 소리의 내 음악 파일 선택을 사용하세요.",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                            if (isDownloadableVideo(url, mimeType)) {
+                                if (url != dismissedVideoUrl) detectedVideoUrl = url
+                            } else {
+                                beginDownload(url, userAgent, contentDisposition, mimeType)
                             }
                         }
                         loadUrl(targetUrl)
@@ -537,13 +625,182 @@ private fun BrowserFavoritesScrollbar(
     }
 }
 
+private data class BrowserDownloadTicket(
+    val id: Long,
+    val filename: String
+)
+
+private data class BrowserDownloadProgress(
+    val title: String,
+    val downloadedBytes: Long,
+    val totalBytes: Long?,
+    val status: Int
+)
+
+private class BrowserVideoBridge(
+    private val onDetected: (String) -> Unit
+) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun report(source: String) {
+        val normalized = source.trim()
+        if (normalized.isNotEmpty()) mainHandler.post { onDetected(normalized) }
+    }
+}
+
+private fun installBrowserVideoDetection(webView: WebView) {
+    webView.evaluateJavascript(
+        """
+        (() => {
+          const report = () => {
+            const videos = Array.from(document.querySelectorAll('video'));
+            const video = videos.find(item =>
+              item.currentSrc || item.src || item.querySelector('source')?.src
+            );
+            if (!video) return;
+            const source = video.currentSrc || video.src ||
+              video.querySelector('source')?.src || '';
+            if (source) HanClipVideo.report(source);
+          };
+          report();
+          document.addEventListener('loadedmetadata', report, true);
+          if (!window.__hanclipVideoObserver) {
+            window.__hanclipVideoObserver = new MutationObserver(report);
+            window.__hanclipVideoObserver.observe(document.documentElement, {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: ['src']
+            });
+          }
+        })();
+        """.trimIndent(),
+        null
+    )
+}
+
+private fun isDownloadableVideo(url: String, mimeType: String?): Boolean =
+    mimeType?.lowercase()?.let { it.startsWith("video/") && !it.contains("mpegurl") } == true ||
+        isDownloadableVideoUrl(url)
+
+private fun isDownloadableVideoUrl(url: String): Boolean {
+    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+    if (uri.scheme !in setOf("http", "https")) return false
+    return uri.lastPathSegment
+        ?.substringBefore('?')
+        ?.substringAfterLast('.', "")
+        ?.lowercase() in setOf("mp4", "mov", "m4v", "webm")
+}
+
+private fun queryBrowserDownload(
+    manager: DownloadManager,
+    ticket: BrowserDownloadTicket
+): BrowserDownloadProgress? {
+    return manager.query(DownloadManager.Query().setFilterById(ticket.id))?.use { cursor ->
+        if (!cursor.moveToFirst()) return@use null
+        val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+        val downloaded = cursor.getLong(
+            cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+        ).coerceAtLeast(0L)
+        val rawTotal = cursor.getLong(
+            cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+        )
+        BrowserDownloadProgress(
+            title = ticket.filename,
+            downloadedBytes = downloaded,
+            totalBytes = rawTotal.takeIf { it > 0L },
+            status = status
+        )
+    }
+}
+
+@Composable
+private fun BrowserDetectedVideoPanel(
+    palette: com.hanclip.android.core.theme.HanClipPalette,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        color = palette.solidPanel,
+        border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.22f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp).height(52.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(Icons.Outlined.Download, contentDescription = null, tint = palette.text)
+            Text("영상", color = palette.text, fontWeight = FontWeight.Black)
+            Spacer(Modifier.weight(1f))
+            Button(onClick = onDownload, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
+                Text("받기")
+            }
+            OutlinedButton(onClick = onDismiss, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
+                Text("닫기")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowserDownloadPanel(
+    title: String,
+    downloadedBytes: Long,
+    totalBytes: Long?,
+    palette: com.hanclip.android.core.theme.HanClipPalette,
+    onCancel: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        color = palette.solidPanel,
+        border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.32f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "가져오는 중 · $title",
+                    modifier = Modifier.weight(1f),
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                IconButton(onClick = onCancel, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Outlined.Close, contentDescription = "다운로드 취소", tint = palette.primary)
+                }
+            }
+            if (totalBytes != null) {
+                LinearProgressIndicator(
+                    progress = { (downloadedBytes.toFloat() / totalBytes).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = palette.primary,
+                    trackColor = palette.secondary.copy(alpha = 0.24f)
+                )
+            } else {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = palette.primary,
+                    trackColor = palette.secondary.copy(alpha = 0.24f)
+                )
+            }
+        }
+    }
+}
+
 private fun enqueueBrowserDownload(
     context: Context,
     url: String,
     userAgent: String?,
     contentDisposition: String?,
     mimeType: String?
-) {
+): BrowserDownloadTicket {
     val uri = Uri.parse(url)
     val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
         .ifBlank { "HanClip-download" }
@@ -568,7 +825,10 @@ private fun enqueueBrowserDownload(
         ?.let { request.addRequestHeader("Cookie", it) }
     val manager = context.getSystemService(DownloadManager::class.java)
         ?: error("다운로드 관리자를 사용할 수 없습니다.")
-    manager.enqueue(request)
+    return BrowserDownloadTicket(
+        id = manager.enqueue(request),
+        filename = filename
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

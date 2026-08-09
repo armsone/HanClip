@@ -1,5 +1,6 @@
 package com.hanclip.android.core.media
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -19,6 +20,7 @@ object MediaSelectionContract {
         )
     }
 
+    @SuppressLint("WrongConstant")
     fun fromResultIntent(context: Context, intent: Intent?): MediaSelectionBatch {
         if (intent == null) return MediaSelectionBatch(emptyList(), 0)
         val selected = buildList {

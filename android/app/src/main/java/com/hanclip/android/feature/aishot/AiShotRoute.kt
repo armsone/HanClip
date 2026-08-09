@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -27,6 +29,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,11 +75,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.hanclip.android.R
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -883,13 +889,10 @@ private fun AiShotFloatingControls(
                                 CircleShape
                             )
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(if (isRecording) 42.dp else 62.dp)
-                            .background(
-                                if (isRecording) Color(0xFFE45D42) else Color(0xFFE94A3F),
-                                if (isRecording) RoundedCornerShape(10.dp) else CircleShape
-                            )
+                    GolfSwingSpriteIndicator(
+                        isAnimating = isRecording,
+                        playbackDurationSeconds = shotLength.fullSeconds,
+                        modifier = Modifier.size(62.dp)
                     )
                 }
             }
@@ -900,6 +903,50 @@ private fun AiShotFloatingControls(
             )
         }
     }
+}
+
+@Composable
+private fun GolfSwingSpriteIndicator(
+    isAnimating: Boolean,
+    playbackDurationSeconds: Double,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val frames = remember(context) {
+        val sheet = BitmapFactory.decodeResource(context.resources, R.drawable.golf_swing_frames)
+        val cellWidth = sheet.width / 6
+        val cellHeight = sheet.height / 6
+        List(36) { index ->
+            Bitmap.createBitmap(
+                sheet,
+                (index % 6) * cellWidth,
+                (index / 6) * cellHeight,
+                cellWidth,
+                cellHeight
+            ).asImageBitmap()
+        }
+    }
+    var frameIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isAnimating, playbackDurationSeconds) {
+        frameIndex = 0
+        if (!isAnimating) return@LaunchedEffect
+        val motionDurationMillis = (playbackDurationSeconds * 0.8 * 1_000.0)
+            .toLong()
+            .coerceAtLeast(100L)
+        val frameDelayMillis = (motionDurationMillis / 35L).coerceAtLeast(16L)
+        for (index in 0 until frames.lastIndex) {
+            frameIndex = index
+            delay(frameDelayMillis)
+        }
+        frameIndex = frames.lastIndex
+    }
+    Image(
+        bitmap = frames[frameIndex],
+        contentDescription = null,
+        modifier = modifier
+            .background(Color.Black, CircleShape),
+        contentScale = ContentScale.Crop
+    )
 }
 
 @Composable

@@ -19,7 +19,7 @@ struct HanClipPlace: Equatable, Sendable {
 struct CollectedMovie: Codable, Identifiable, Equatable {
     let id: UUID
     var title: String
-    let videoFilename: String
+    var videoFilename: String
     let posterFilename: String
     let createdAt: Date
     let duration: Double
@@ -30,6 +30,78 @@ struct CollectedMovie: Codable, Identifiable, Equatable {
     var isPinned: Bool?
     var pinnedAt: Date?
     var posterSelectionVersion: Int?
+}
+
+enum CollectionVideoSizeOption: String, CaseIterable, Identifiable {
+    case high1080
+    case saver720
+    case minimum540
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .high1080: return "1080p 고화질"
+        case .saver720: return "720p 절약"
+        case .minimum540: return "540p 최소"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .high1080: return "화질을 우선하면서 용량을 줄입니다."
+        case .saver720: return "화질과 저장 공간의 균형을 맞춥니다."
+        case .minimum540: return "저장 공간을 가장 많이 절약합니다."
+        }
+    }
+
+    fileprivate var exportPreset: String {
+        switch self {
+        case .high1080: return AVAssetExportPreset1920x1080
+        case .saver720: return AVAssetExportPreset1280x720
+        case .minimum540: return AVAssetExportPreset960x540
+        }
+    }
+
+    var outputResolution: (width: Int, height: Int) {
+        switch self {
+        case .high1080: return (1_920, 1_080)
+        case .saver720: return (1_280, 720)
+        case .minimum540: return (960, 540)
+        }
+    }
+
+    fileprivate var targetBitsPerSecond: Double {
+        switch self {
+        case .high1080: return 8_500_000
+        case .saver720: return 5_000_000
+        case .minimum540: return 2_500_000
+        }
+    }
+}
+
+struct CollectionVideoCompressionInfo: Sendable {
+    let width: Int
+    let height: Int
+    let duration: Double
+    let fileSizeBytes: Int64
+
+    func estimatedBytes(for option: CollectionVideoSizeOption) -> Int64 {
+        guard duration > 0, fileSizeBytes > 0 else { return 0 }
+        let sourceBitsPerSecond = Double(fileSizeBytes) * 8 / duration
+        let sourcePixels = max(Double(width * height), 1)
+        let target = option.outputResolution
+        let targetPixels = Double(target.width * target.height)
+        let pixelRatio = min(targetPixels / sourcePixels, 1)
+        let resolutionAdjustedRate = sourceBitsPerSecond
+            * pow(max(pixelRatio, 0.08), 0.72)
+        let estimatedRate = min(
+            sourceBitsPerSecond * 0.94,
+            min(resolutionAdjustedRate, option.targetBitsPerSecond)
+        )
+        let estimated = Int64(max(estimatedRate, 320_000) * duration / 8)
+        return min(estimated, Int64(Double(fileSizeBytes) * 0.98))
+    }
 }
 
 enum CollectionPosterEngine: String, Sendable {
@@ -76,6 +148,133 @@ final class MovieCollectionStore: ObservableObject {
 
     func videoURL(for movie: CollectedMovie) -> URL {
         collectionDirectory.appendingPathComponent(movie.videoFilename)
+    }
+
+    func fileSizeInBytes(for movie: CollectedMovie) -> Int64? {
+        let values = try? videoURL(for: movie).resourceValues(
+            forKeys: [.fileSizeKey]
+        )
+        guard let fileSize = values?.fileSize, fileSize > 0 else { return nil }
+        return Int64(fileSize)
+    }
+
+    func compressionInfo(
+        for movie: CollectedMovie
+    ) async -> CollectionVideoCompressionInfo? {
+        let url = videoURL(for: movie)
+        guard let fileSizeBytes = fileSizeInBytes(for: movie) else { return nil }
+        let asset = AVURLAsset(url: url)
+        let loadedDuration = try? await asset.load(.duration).seconds
+        let tracks = try? await asset.loadTracks(withMediaType: .video)
+        guard let track = tracks?.first else { return nil }
+        let naturalSize = (try? await track.load(.naturalSize)) ?? .zero
+        let transform = (try? await track.load(.preferredTransform)) ?? .identity
+        let transformedSize = naturalSize.applying(transform)
+        let width = Int(abs(transformedSize.width).rounded())
+        let height = Int(abs(transformedSize.height).rounded())
+        return CollectionVideoCompressionInfo(
+            width: max(width, 1),
+            height: max(height, 1),
+            duration: max(loadedDuration ?? movie.duration, 0),
+            fileSizeBytes: fileSizeBytes
+        )
+    }
+
+    func reduceFileSize(
+        for movie: CollectedMovie,
+        option: CollectionVideoSizeOption,
+        progressHandler: @escaping @MainActor (Double) -> Void
+    ) async throws -> (originalBytes: Int64, compressedBytes: Int64) {
+        guard let movieIndex = movies.firstIndex(where: { $0.id == movie.id })
+        else { throw MovieCollectionStoreError.movieNotFound }
+
+        let sourceURL = videoURL(for: movies[movieIndex])
+        let originalBytes = fileSizeInBytes(for: movies[movieIndex]) ?? 0
+        let asset = AVURLAsset(url: sourceURL)
+        let compatiblePresets = AVAssetExportSession.exportPresets(
+            compatibleWith: asset
+        )
+        guard compatiblePresets.contains(option.exportPreset) else {
+            throw MovieCollectionStoreError.compressionUnavailable
+        }
+        guard let exporter = AVAssetExportSession(
+            asset: asset,
+            presetName: option.exportPreset
+        ) else {
+            throw MovieCollectionStoreError.compressionUnavailable
+        }
+
+        let compressedFilename = "\(movie.id.uuidString)-compressed-\(UUID().uuidString).mp4"
+        let outputURL = collectionDirectory.appendingPathComponent(
+            compressedFilename
+        )
+        try? fileManager.removeItem(at: outputURL)
+        exporter.outputURL = outputURL
+        exporter.outputFileType = .mp4
+        exporter.shouldOptimizeForNetworkUse = true
+        let exportReference = CollectionExportSessionReference(exporter)
+
+        do {
+            try await withTaskCancellationHandler {
+                let exportTask = Task {
+                    await withCheckedContinuation { continuation in
+                        exporter.exportAsynchronously {
+                            continuation.resume()
+                        }
+                    }
+                }
+
+                while exporter.status == .unknown
+                    || exporter.status == .waiting
+                    || exporter.status == .exporting {
+                    try Task.checkCancellation()
+                    await progressHandler(
+                        min(0.99, max(0, Double(exporter.progress)))
+                    )
+                    try await Task.sleep(for: .milliseconds(250))
+                }
+                await exportTask.value
+            } onCancel: {
+                exportReference.value.cancelExport()
+            }
+        } catch {
+            exporter.cancelExport()
+            try? fileManager.removeItem(at: outputURL)
+            throw error
+        }
+
+        guard exporter.status == .completed else {
+            try? fileManager.removeItem(at: outputURL)
+            if exporter.status == .cancelled { throw CancellationError() }
+            throw MovieCollectionStoreError.compressionFailed(
+                exporter.error?.localizedDescription
+            )
+        }
+
+        let outputValues = try? outputURL.resourceValues(forKeys: [.fileSizeKey])
+        let compressedBytes = Int64(outputValues?.fileSize ?? 0)
+        guard compressedBytes > 0,
+              originalBytes <= 0 || compressedBytes < originalBytes
+        else {
+            try? fileManager.removeItem(at: outputURL)
+            throw MovieCollectionStoreError.compressedFileNotSmaller
+        }
+
+        let previousFilename = movies[movieIndex].videoFilename
+        movies[movieIndex].videoFilename = compressedFilename
+        do {
+            try save()
+            if sourceURL != outputURL {
+                try? fileManager.removeItem(at: sourceURL)
+            }
+            await progressHandler(1)
+            objectWillChange.send()
+            return (originalBytes, compressedBytes)
+        } catch {
+            movies[movieIndex].videoFilename = previousFilename
+            try? fileManager.removeItem(at: outputURL)
+            throw error
+        }
     }
 
     func poster(for movie: CollectedMovie) -> UIImage? {
@@ -973,13 +1172,33 @@ final class MovieCollectionStore: ObservableObject {
     }
 }
 
+private final class CollectionExportSessionReference: @unchecked Sendable {
+    let value: AVAssetExportSession
+
+    init(_ value: AVAssetExportSession) {
+        self.value = value
+    }
+}
+
 private enum MovieCollectionStoreError: LocalizedError {
     case collectionFull
+    case movieNotFound
+    case compressionUnavailable
+    case compressionFailed(String?)
+    case compressedFileNotSmaller
 
     var errorDescription: String? {
         switch self {
         case .collectionFull:
             return "컬렉션에는 영화를 최대 30개까지 보관할 수 있습니다."
+        case .movieNotFound:
+            return "컬렉션에서 영상을 찾을 수 없습니다."
+        case .compressionUnavailable:
+            return "이 영상은 선택한 크기로 줄일 수 없습니다."
+        case .compressionFailed(let message):
+            return "영상 용량을 줄이지 못했습니다. \(message ?? "다시 시도해 주세요.")"
+        case .compressedFileNotSmaller:
+            return "변환 결과가 원본보다 작지 않아 원본 파일을 유지했습니다."
         }
     }
 }

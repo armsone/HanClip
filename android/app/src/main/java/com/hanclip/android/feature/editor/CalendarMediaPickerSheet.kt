@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.annotation.OptIn as AndroidXOptIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -40,12 +41,16 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.MovieCreation
 import androidx.compose.material.icons.outlined.Photo
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +95,10 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONArray
+import org.json.JSONObject
 
 @Composable
 fun CalendarMediaPickerSheet(
@@ -129,8 +138,11 @@ fun CalendarMediaPickerSheet(
     }
     var pendingRecentDate by remember(title) { mutableStateOf<LocalDate?>(null) }
     var pendingBulkImportUris by remember { mutableStateOf<List<Uri>?>(null) }
-    var sortOrder by remember { mutableStateOf(MediaSortOrder.NewestFirst) }
+    var sortOrder by remember { mutableStateOf(MediaSortOrder.TakenNewest) }
     var recentFilter by remember { mutableStateOf(RecentMediaFilter.Photo) }
+    var recentFilterBeforeDuration by remember { mutableStateOf(RecentMediaFilter.Photo) }
+    var videoDurationFilter by remember { mutableStateOf<VideoDurationFilter?>(null) }
+    var showVideoDurationFilter by remember { mutableStateOf(false) }
     val loadedMonthItems by produceState<Pair<YearMonth, List<CalendarMediaItem>>?>(null, visibleMonth) {
         value = visibleMonth to CalendarMediaRepository.loadMonth(context, visibleMonth)
     }
@@ -144,8 +156,15 @@ fun CalendarMediaPickerSheet(
             .flatMap { date -> itemsByDate[date].orEmpty() }
             .sortedBySortOrder(sortOrder)
     }
-    val visibleItems = remember(pickerMode, monthItems, selectedItems, sortOrder, recentFilter) {
-        when (pickerMode) {
+    val visibleItems = remember(
+        pickerMode,
+        monthItems,
+        selectedItems,
+        sortOrder,
+        recentFilter,
+        videoDurationFilter
+    ) {
+        val baseItems = when (pickerMode) {
             MediaPickerSheetMode.Recent -> monthItems
                 .filter(recentFilter::accepts)
                 .sortedBySortOrder(sortOrder)
@@ -154,6 +173,7 @@ fun CalendarMediaPickerSheet(
                 .sortedBySortOrder(sortOrder)
             MediaPickerSheetMode.Calendar -> selectedItems
         }
+        baseItems.filterByVideoDuration(videoDurationFilter)
     }
     LaunchedEffect(pickerMode, visibleItems, initialSelectedUris) {
         if (pickerMode == MediaPickerSheetMode.Calendar) {
@@ -251,6 +271,7 @@ fun CalendarMediaPickerSheet(
                     filter = recentFilter,
                     onFilterChange = {
                         recentFilter = it
+                        if (it != RecentMediaFilter.Video) videoDurationFilter = null
                         selectedUris = emptyList()
                         hasAppliedInitialSelection = false
                     },
@@ -309,9 +330,9 @@ fun CalendarMediaPickerSheet(
                 selectedUris = selectedUris,
                 sortOrder = sortOrder,
                 recentFilter = recentFilter,
-                onToggleSortOrder = {
-                    sortOrder = sortOrder.next()
-                },
+                videoDurationFilter = videoDurationFilter,
+                onSortOrderChange = { sortOrder = it },
+                onOpenVideoDurationFilter = { showVideoDurationFilter = true },
                 onSelectAll = {
                     selectedUris = visibleItems.map { it.uri }
                 },
@@ -432,6 +453,24 @@ fun CalendarMediaPickerSheet(
             }
         )
     }
+    if (showVideoDurationFilter) {
+        VideoDurationFilterDialog(
+            current = videoDurationFilter,
+            palette = palette,
+            onApply = { filter ->
+                if (videoDurationFilter == null && pickerMode == MediaPickerSheetMode.Recent) {
+                    recentFilterBeforeDuration = recentFilter
+                }
+                videoDurationFilter = filter
+                if (pickerMode == MediaPickerSheetMode.Recent) {
+                    recentFilter = if (filter == null) recentFilterBeforeDuration else RecentMediaFilter.Video
+                }
+                selectedUris = emptyList()
+                showVideoDurationFilter = false
+            },
+            onDismiss = { showVideoDurationFilter = false }
+        )
+    }
 }
 
 private const val BulkImportConfirmationThreshold = 10
@@ -454,13 +493,24 @@ private enum class RecentMediaFilter(val title: String) {
     }
 }
 
-private enum class MediaSortOrder(val label: String) {
-    NewestFirst("최신순"),
-    OldestFirst("오래된순");
+private enum class MediaSortOrder(val label: String, val usesAddedDate: Boolean, val ascending: Boolean) {
+    TakenNewest("날짜순 ↓", false, false),
+    TakenOldest("날짜순 ↑", false, true),
+    AddedNewest("추가순 ↓", true, false),
+    AddedOldest("추가순 ↑", true, true)
+}
 
-    fun next(): MediaSortOrder {
-        return if (this == NewestFirst) OldestFirst else NewestFirst
-    }
+private enum class VideoDurationComparison(val title: String) {
+    AtLeast("이상"),
+    AtMost("이하")
+}
+
+private data class VideoDurationFilter(
+    val comparison: VideoDurationComparison,
+    val seconds: Int
+) {
+    val label: String
+        get() = "${seconds / 60}분 ${seconds % 60}초 ${comparison.title}"
 }
 
 @Composable
@@ -656,7 +706,7 @@ private fun RecentSelectionPreview(
     }
 }
 
-@UnstableApi
+@AndroidXOptIn(UnstableApi::class)
 @Composable
 private fun CalendarMediaPreviewDialog(
     palette: HanClipPalette,
@@ -1001,6 +1051,10 @@ private fun CalendarMonthGrid(
     itemCountsByDate: Map<LocalDate, Int>,
     onToggleDate: (LocalDate) -> Unit
 ) {
+    val context = LocalContext.current
+    val holidayNames by produceState<Map<LocalDate, String>>(emptyMap(), visibleMonth.year) {
+        value = KoreanHolidayRepository.loadYear(context, visibleMonth.year)
+    }
     val firstDayOffset = (visibleMonth.atDay(1).dayOfWeek.value % 7)
     val days = buildList {
         repeat(firstDayOffset) { add(null) }
@@ -1032,20 +1086,21 @@ private fun CalendarMonthGrid(
         }
         LazyVerticalGrid(
             columns = GridCells.Fixed(7),
-            modifier = Modifier.height((rowCount * 34).dp),
+            modifier = Modifier.height((rowCount * 42).dp),
             userScrollEnabled = false,
             verticalArrangement = Arrangement.spacedBy(0.dp),
             horizontalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             items(days) { date ->
                 if (date == null) {
-                    Spacer(Modifier.height(34.dp))
+                    Spacer(Modifier.height(42.dp))
                 } else {
                     CalendarDayCell(
                         palette = palette,
                         date = date,
                         selected = date in selectedDates,
                         count = itemCountsByDate[date] ?: 0,
+                        holidayName = holidayNames[date],
                         onClick = { onToggleDate(date) }
                     )
                 }
@@ -1060,11 +1115,12 @@ private fun CalendarDayCell(
     date: LocalDate,
     selected: Boolean,
     count: Int,
+    holidayName: String?,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
-            .height(34.dp)
+            .height(42.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(0.dp),
         color = if (selected) palette.primary else palette.panel,
@@ -1082,9 +1138,25 @@ private fun CalendarDayCell(
             ) {}
             Text(
                 text = date.dayOfMonth.toString(),
-                color = if (selected) Color.White else palette.text,
+                modifier = Modifier.align(if (holidayName == null) Alignment.Center else Alignment.TopCenter).padding(top = if (holidayName == null) 0.dp else 3.dp),
+                color = when {
+                    selected -> Color.White
+                    holidayName != null || date.dayOfWeek.value == 7 -> palette.primary
+                    date.dayOfWeek.value == 6 -> palette.secondary
+                    else -> palette.text
+                },
                 fontWeight = if (count > 0 || date == LocalDate.now()) FontWeight.Black else FontWeight.Medium
             )
+            holidayName?.let {
+                Text(
+                    text = it.take(7),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
+                    color = if (selected) Color.White.copy(alpha = 0.88f) else palette.primary,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1150,12 +1222,15 @@ private fun CalendarMediaStrip(
     selectedUris: List<Uri>,
     sortOrder: MediaSortOrder,
     recentFilter: RecentMediaFilter,
-    onToggleSortOrder: () -> Unit,
+    videoDurationFilter: VideoDurationFilter?,
+    onSortOrderChange: (MediaSortOrder) -> Unit,
+    onOpenVideoDurationFilter: () -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onToggle: (Uri) -> Unit
 ) {
     var previewItem by remember { mutableStateOf<CalendarMediaItem?>(null) }
+    var showSortMenu by remember { mutableStateOf(false) }
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val mediaColumnCount = when {
         screenWidthDp >= 1_200 -> 12
@@ -1164,7 +1239,7 @@ private fun CalendarMediaStrip(
         else -> 5
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (mode != MediaPickerSheetMode.Calendar) Row(
+        Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -1180,23 +1255,66 @@ private fun CalendarMediaStrip(
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall
             )
-            if (items.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box {
                     OutlinedButton(
                         modifier = Modifier.height(34.dp),
-                        onClick = onToggleSortOrder,
+                        onClick = { showSortMenu = true },
                         border = BorderStroke(1.dp, palette.border),
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = palette.solidPanel,
                             contentColor = palette.text
                         )
                     ) {
+                        Icon(Icons.Outlined.SwapVert, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(3.dp))
                         Text(
                             sortOrder.label,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
                     }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        shape = RoundedCornerShape(14.dp),
+                        containerColor = palette.solidPanel
+                    ) {
+                        listOf(
+                            if (sortOrder == MediaSortOrder.TakenNewest) MediaSortOrder.TakenOldest else MediaSortOrder.TakenNewest,
+                            if (sortOrder == MediaSortOrder.AddedNewest) MediaSortOrder.AddedOldest else MediaSortOrder.AddedNewest
+                        ).forEach { candidate ->
+                            DropdownMenuItem(
+                                text = { Text(candidate.label) },
+                                leadingIcon = { Icon(Icons.Outlined.SwapVert, contentDescription = null) },
+                                onClick = {
+                                    showSortMenu = false
+                                    onSortOrderChange(candidate)
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(
+                    modifier = Modifier.height(34.dp),
+                    onClick = onOpenVideoDurationFilter,
+                    border = BorderStroke(
+                        1.dp,
+                        if (videoDurationFilter == null) palette.border else palette.primary
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (videoDurationFilter == null) palette.solidPanel else palette.chip,
+                        contentColor = if (videoDurationFilter == null) palette.text else palette.primary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Outlined.FilterAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                    videoDurationFilter?.let {
+                        Spacer(Modifier.width(3.dp))
+                        Text(it.label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (items.isNotEmpty()) {
                     OutlinedButton(
                         modifier = Modifier.height(34.dp),
                         onClick = if (selectedUris.size == items.size) onClearSelection else onSelectAll,
@@ -1207,7 +1325,7 @@ private fun CalendarMediaStrip(
                         )
                     ) {
                         Text(
-                            if (selectedUris.size == items.size) "전체 해제" else "전체 ${items.size}개 선택",
+                            if (selectedUris.size == items.size) "해제" else "전체 ${items.size}",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -1262,6 +1380,121 @@ private fun CalendarMediaStrip(
                 previewItem = null
             }
         )
+    }
+}
+
+@Composable
+private fun VideoDurationFilterDialog(
+    current: VideoDurationFilter?,
+    palette: HanClipPalette,
+    onApply: (VideoDurationFilter?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var comparison by remember(current) {
+        mutableStateOf(current?.comparison ?: VideoDurationComparison.AtLeast)
+    }
+    var seconds by remember(current) { mutableStateOf(current?.seconds ?: 60) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = palette.solidPanel,
+        title = { Text("영상 시간 필터") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VideoDurationComparison.entries.forEach { candidate ->
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (comparison == candidate) palette.primary else palette.chip,
+                            onClick = { comparison = candidate }
+                        ) {
+                            Text(
+                                candidate.title,
+                                modifier = Modifier.padding(vertical = 9.dp),
+                                color = if (comparison == candidate) Color.White else palette.text,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(60, 180, 300, 600).forEach { presetSeconds ->
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = { seconds = presetSeconds },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(
+                                1.dp,
+                                if (seconds == presetSeconds) palette.primary else palette.border
+                            ),
+                            contentPadding = PaddingValues(vertical = 7.dp)
+                        ) {
+                            Text("${presetSeconds / 60}분", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DurationValueStepper(
+                        label = "분",
+                        value = seconds / 60,
+                        onMinus = { seconds = (seconds - 60).coerceAtLeast(0) },
+                        onPlus = { seconds = (seconds + 60).coerceAtMost(3_599) },
+                        palette = palette
+                    )
+                    DurationValueStepper(
+                        label = "초",
+                        value = seconds % 60,
+                        onMinus = { seconds = (seconds - 5).coerceAtLeast(1) },
+                        onPlus = { seconds = (seconds + 5).coerceAtMost(3_599) },
+                        palette = palette
+                    )
+                }
+                Text(
+                    "${seconds / 60}분 ${seconds % 60}초 ${comparison.title}인 영상만 표시합니다.",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = palette.subText,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = { onApply(null) }) { Text("필터 해제") }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onApply(VideoDurationFilter(comparison, seconds.coerceAtLeast(1))) },
+                colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+            ) { Text("적용") }
+        }
+    )
+}
+
+@Composable
+private fun DurationValueStepper(
+    label: String,
+    value: Int,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    palette: HanClipPalette
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onMinus, contentPadding = PaddingValues(horizontal = 11.dp, vertical = 6.dp)) {
+            Text("−", fontWeight = FontWeight.Black)
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value.toString(), color = palette.text, fontWeight = FontWeight.Black)
+            Text(label, color = palette.subText, style = MaterialTheme.typography.labelSmall)
+        }
+        OutlinedButton(onClick = onPlus, contentPadding = PaddingValues(horizontal = 11.dp, vertical = 6.dp)) {
+            Text("+", fontWeight = FontWeight.Black)
+        }
     }
 }
 
@@ -1475,9 +1708,26 @@ private fun mediaCountText(prefix: String, photoCount: Int, videoCount: Int): St
 }
 
 private fun List<CalendarMediaItem>.sortedBySortOrder(sortOrder: MediaSortOrder): List<CalendarMediaItem> {
-    return when (sortOrder) {
-        MediaSortOrder.NewestFirst -> sortedByDescending { it.takenMillis }
-        MediaSortOrder.OldestFirst -> sortedBy { it.takenMillis }
+    val timestamp: (CalendarMediaItem) -> Long = if (sortOrder.usesAddedDate) {
+        { it.addedMillis }
+    } else {
+        { it.takenMillis }
+    }
+    return if (sortOrder.ascending) sortedBy(timestamp) else sortedByDescending(timestamp)
+}
+
+private fun List<CalendarMediaItem>.filterByVideoDuration(
+    durationFilter: VideoDurationFilter?
+): List<CalendarMediaItem> {
+    if (durationFilter == null) return this
+    val thresholdMillis = durationFilter.seconds * 1_000L
+    return filter { item ->
+        if (item.kind != ClipMediaKind.Video) return@filter false
+        val duration = item.durationMillis ?: return@filter false
+        when (durationFilter.comparison) {
+            VideoDurationComparison.AtLeast -> duration >= thresholdMillis
+            VideoDurationComparison.AtMost -> duration <= thresholdMillis
+        }
     }
 }
 
@@ -1596,6 +1846,7 @@ data class CalendarMediaItem(
     val date: LocalDate,
     val kind: ClipMediaKind,
     val takenMillis: Long,
+    val addedMillis: Long,
     val displayName: String,
     val durationMillis: Long? = null
 )
@@ -1674,6 +1925,9 @@ private object CalendarMediaRepository {
                                 ?: cursor.getLong(addedColumn).takeIf { it > 0L }?.times(1000)
                                 ?: cursor.getLong(modifiedColumn).takeIf { it > 0L }?.times(1000)
                                 ?: continue
+                            val addedMillis = cursor.getLong(addedColumn).takeIf { it > 0L }?.times(1000)
+                                ?: cursor.getLong(modifiedColumn).takeIf { it > 0L }?.times(1000)
+                                ?: takenMillis
                             if (takenMillis !in startMillis until endMillis) continue
                             val date = Instant.ofEpochMilli(takenMillis)
                                 .atZone(ZoneId.systemDefault())
@@ -1693,6 +1947,7 @@ private object CalendarMediaRepository {
                                     date = date,
                                     kind = resolvedKind,
                                     takenMillis = takenMillis,
+                                    addedMillis = addedMillis,
                                     displayName = cursor.getString(nameColumn)
                                         ?.takeIf { it.isNotBlank() }
                                         ?: if (kind == ClipMediaKind.Video) "영상" else "사진",
@@ -1708,4 +1963,72 @@ private object CalendarMediaRepository {
                 }.orEmpty()
         }.getOrDefault(emptyList())
     }
+}
+
+private object KoreanHolidayRepository {
+    private const val PreferencesName = "hanclip_korean_holidays"
+    private const val CachedJsonKey = "holiday_json"
+    private const val CachedAtKey = "holiday_cached_at"
+    private const val RefreshIntervalMillis = 24L * 60L * 60L * 1_000L
+    private const val Endpoint = "https://holidays.hyunbin.page/basic.json"
+
+    suspend fun loadYear(context: Context, year: Int): Map<LocalDate, String> =
+        withContext(Dispatchers.IO) {
+            val preferences = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            val cachedJson = preferences.getString(CachedJsonKey, null)
+            val cached = cachedJson?.let { parseYear(it, year) }.orEmpty()
+            val cacheAge = System.currentTimeMillis() - preferences.getLong(CachedAtKey, 0L)
+            if (cached.isNotEmpty() && cacheAge in 0 until RefreshIntervalMillis) {
+                return@withContext cached
+            }
+            val refreshedJson = runCatching {
+                val connection = (URL(Endpoint).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 4_000
+                    readTimeout = 5_000
+                    requestMethod = "GET"
+                }
+                try {
+                    require(connection.responseCode in 200..299)
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+            if (!refreshedJson.isNullOrBlank()) {
+                preferences.edit()
+                    .putString(CachedJsonKey, refreshedJson)
+                    .putLong(CachedAtKey, System.currentTimeMillis())
+                    .apply()
+                parseYear(refreshedJson, year).ifEmpty { cached }
+            } else {
+                cached
+            }
+        }
+
+    private fun parseYear(json: String, year: Int): Map<LocalDate, String> = runCatching {
+        val root = JSONObject(json)
+        val dateEntries = mutableMapOf<String, Any?>()
+        fun collect(objectValue: JSONObject) {
+            objectValue.keys().forEach { key ->
+                val value = objectValue.opt(key)
+                if (key.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+                    dateEntries[key] = value
+                } else if (value is JSONObject) {
+                    collect(value)
+                }
+            }
+        }
+        collect(root)
+        dateEntries.mapNotNull { (dateText, value) ->
+            val date = runCatching { LocalDate.parse(dateText) }.getOrNull()
+                ?.takeIf { it.year == year }
+                ?: return@mapNotNull null
+            val name = when (value) {
+                is JSONArray -> value.optString(0)
+                is String -> value
+                else -> value?.toString().orEmpty()
+            }.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            date to name
+        }.toMap()
+    }.getOrDefault(emptyMap())
 }

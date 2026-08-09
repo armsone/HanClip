@@ -222,6 +222,20 @@ object EditableProjectStore {
         saveRecords(context, loadRecords(context).filterNot { it.project.projectId == projectId })
     }
 
+    fun restoreWithoutUpdatingSavedAt(context: Context, project: DraftProject): DraftProject {
+        val records = loadRecords(context).toMutableList()
+        val index = records.indexOfFirst { it.project.projectId == project.projectId }
+        val existing = records.getOrNull(index)
+        val restored = EditableProjectRecord(
+            project = persistProjectMedia(context, project),
+            isPinned = existing?.isPinned ?: false,
+            memo = existing?.memo.orEmpty()
+        )
+        if (index >= 0) records[index] = restored else records += restored
+        saveRecords(context, records)
+        return load(context, project.projectId) ?: restored.project
+    }
+
     fun updateMemo(context: Context, projectId: String, memo: String) {
         saveRecords(
             context,
@@ -522,6 +536,7 @@ private fun ClipItem.toJson(): JSONObject {
         .put("videoSegmentMode", videoSegmentMode.name)
         .put("isVideoSegmentParent", isVideoSegmentParent)
         .put("videoSegmentParentId", videoSegmentParentId)
+        .put("isVideoSegmentSelected", isVideoSegmentSelected)
         .put("photoSimilarityFingerprint", JSONArray().also { array ->
             photoSimilarityFingerprint.forEach(array::put)
         })
@@ -563,6 +578,7 @@ private fun JSONObject.toClipItem(): ClipItem {
         isVideoSegmentParent = optBoolean("isVideoSegmentParent", false),
         videoSegmentParentId = optString("videoSegmentParentId")
             .takeIf { it.isNotBlank() && it != "null" },
+        isVideoSegmentSelected = optBoolean("isVideoSegmentSelected", true),
         photoSimilarityFingerprint = optIntList("photoSimilarityFingerprint"),
         sourceCreatedAtMillis = optNullableLong("sourceCreatedAtMillis"),
         originalSourceUriString = optString("originalSourceUriString")

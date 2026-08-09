@@ -274,7 +274,17 @@ fun TextOverlaySheet(
                     shadow = previewTextShadow(draft)
                 ),
                 shape = RoundedCornerShape(12.dp),
-                label = { Text("여기에 글을 넣으세요") },
+                placeholder = {
+                    Text(
+                        "여기에 글을 넣으세요\nI Love you ♡\n+82 10-0000-0000",
+                        color = parseHexColor(draft.textColorHex),
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = fontFamilyForName(context, draft.fontName),
+                            fontWeight = FontWeight.Medium,
+                            shadow = previewTextShadow(draft)
+                        )
+                    )
+                },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = SheetText,
                     unfocusedTextColor = SheetText,
@@ -282,6 +292,8 @@ fun TextOverlaySheet(
                     unfocusedBorderColor = palette.border,
                     focusedLabelColor = palette.primary,
                     unfocusedLabelColor = SheetSubText,
+                    focusedPlaceholderColor = parseHexColor(draft.textColorHex),
+                    unfocusedPlaceholderColor = parseHexColor(draft.textColorHex),
                     focusedContainerColor = captionPreviewBackground.copy(alpha = 0.72f),
                     unfocusedContainerColor = captionPreviewBackground.copy(alpha = 0.72f),
                     disabledContainerColor = captionPreviewBackground.copy(alpha = 0.72f)
