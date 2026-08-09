@@ -721,7 +721,7 @@ private fun HomeHeader(
             Icon(
                 imageVector = Icons.Outlined.AddPhotoAlternate,
                 contentDescription = "미디어 추가",
-                tint = Color(0xFF07323A),
+                tint = palette.primary,
                 modifier = Modifier.padding(15.dp)
             )
         }
@@ -730,7 +730,7 @@ private fun HomeHeader(
 
 @Composable
 fun HanClipBrandCapsule(palette: HanClipPalette? = null) {
-    val brandColor = Color(0xFF07323A)
+    val brandColor = palette?.primary ?: Color(0xFF07323A)
     Surface(
         shape = RoundedCornerShape(34.dp),
         color = palette?.panel?.copy(alpha = palette.panel.alpha * 0.72f)
@@ -1187,6 +1187,7 @@ private fun LazyListScope.savedProjectItems(
     }
     item(key = "aishot-project-grid", contentType = "aishot-project-grid") {
         AiShotProjectGrid(
+            palette = palette,
             summaries = aiShotProjects,
             onOpenProject = onOpenEditableProject,
             onRemoveProject = onRemoveEditableProject,
@@ -1208,6 +1209,7 @@ private fun LazyListScope.savedProjectItems(
         contentType = { "editable-project" }
     ) { project ->
         DraftProjectRow(
+            palette = palette,
             summary = project,
             onClick = { onOpenEditableProject(project) },
             onRemove = { onRemoveEditableProject(project) },
@@ -1220,7 +1222,7 @@ private fun LazyListScope.savedProjectItems(
         key = { index -> "empty-standard-project:$index" },
         contentType = { "empty-standard-project" }
     ) {
-        EmptyStandardMovieRow()
+        EmptyStandardMovieRow(palette)
     }
     if (summaries.isNotEmpty()) {
         item(key = "completed-mp4-header", contentType = "saved-category-header") {
@@ -1237,6 +1239,7 @@ private fun LazyListScope.savedProjectItems(
             contentType = { "saved-movie" }
         ) { summary ->
             SavedProjectRow(
+                palette = palette,
                 summary = summary,
                 isRecentlySaved = summary.uriString == recentlySavedMovieUriString,
                 onClick = { onOpenExportedMovie(summary) },
@@ -1259,6 +1262,7 @@ private fun SavedProjectHeader(
 
 @Composable
 private fun AiShotMovieGrid(
+    palette: HanClipPalette,
     summaries: List<ExportedMovieSummary>,
     recentlySavedMovieUriString: String?,
     onOpenExportedMovie: (ExportedMovieSummary) -> Unit,
@@ -1274,7 +1278,7 @@ private fun AiShotMovieGrid(
     ) {
         cells.forEach { summary ->
             if (summary == null) {
-                EmptyAiShotMovieCard(Modifier.weight(1f))
+                EmptyAiShotMovieCard(palette, Modifier.weight(1f))
             } else {
                 AiShotMovieCard(
                     summary = summary,
@@ -1292,6 +1296,7 @@ private fun AiShotMovieGrid(
 
 @Composable
 private fun AiShotProjectGrid(
+    palette: HanClipPalette,
     summaries: List<DraftProjectSummary>,
     onOpenProject: (DraftProjectSummary) -> Unit,
     onRemoveProject: (DraftProjectSummary) -> Unit,
@@ -1303,9 +1308,10 @@ private fun AiShotProjectGrid(
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         cells.forEach { summary ->
             if (summary == null) {
-                EmptyAiShotMovieCard(Modifier.weight(1f))
+                EmptyAiShotMovieCard(palette, Modifier.weight(1f))
             } else {
                 AiShotProjectCard(
+                    palette = palette,
                     summary = summary,
                     modifier = Modifier.weight(1f),
                     onClick = { onOpenProject(summary) },
@@ -1321,6 +1327,7 @@ private fun AiShotProjectGrid(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AiShotProjectCard(
+    palette: HanClipPalette,
     summary: DraftProjectSummary,
     modifier: Modifier,
     onClick: () -> Unit,
@@ -1334,8 +1341,8 @@ private fun AiShotProjectCard(
             .height(76.dp)
             .combinedClickable(onClick = onClick, onLongClick = { showActions = true }),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, HomeBorder)
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border)
     ) {
         Box {
             Row(
@@ -1347,7 +1354,7 @@ private fun AiShotProjectCard(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         homeAiShotDateText(summary.savedAtMillis),
-                        color = HomeText,
+                        color = palette.text.copy(alpha = 0.88f),
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
@@ -1355,7 +1362,7 @@ private fun AiShotProjectCard(
                     )
                     Text(
                         editableProjectDetailText(summary, includeByteCount = false),
-                        color = HomeSubText,
+                        color = palette.subText,
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1483,13 +1490,19 @@ private fun AiShotMovieCard(
 }
 
 @Composable
-private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
-    val placeholder = HomePrimary.copy(alpha = 0.10f)
+private fun EmptyAiShotMovieCard(
+    palette: HanClipPalette,
+    modifier: Modifier = Modifier
+) {
+    val placeholder = palette.secondary.copy(alpha = 0.12f)
     Surface(
         modifier = modifier.height(76.dp),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, HomeBorder.copy(alpha = 0.72f))
+        color = palette.panel.copy(alpha = palette.panel.alpha * 0.72f),
+        border = BorderStroke(
+            1.dp,
+            palette.border.copy(alpha = palette.border.alpha * 0.68f)
+        )
     ) {
         Row(
             modifier = Modifier.padding(9.dp),
@@ -1518,7 +1531,7 @@ private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
                         .fillMaxWidth(0.56f)
                         .height(8.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(HomePrimary.copy(alpha = 0.07f))
+                        .background(palette.secondary.copy(alpha = 0.086f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     repeat(3) {
@@ -1526,7 +1539,7 @@ private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
                             modifier = Modifier
                                 .size(width = 20.dp, height = 18.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(HomePrimary.copy(alpha = 0.06f))
+                                .background(palette.secondary.copy(alpha = 0.078f))
                         )
                     }
                 }
@@ -1628,6 +1641,7 @@ private fun SavedProjectCategoryHeader(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DraftProjectRow(
+    palette: HanClipPalette,
     summary: DraftProjectSummary,
     onClick: () -> Unit,
     onRemove: () -> Unit,
@@ -1639,8 +1653,8 @@ private fun DraftProjectRow(
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onRemove),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, HomeBorder)
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
@@ -1653,14 +1667,14 @@ private fun DraftProjectRow(
                     homeProjectDateText(summary.savedAtMillis),
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium,
-                    color = HomeText,
+                    color = palette.text.copy(alpha = 0.88f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     editableProjectDetailText(summary, includeByteCount = true),
                     style = MaterialTheme.typography.bodySmall,
-                    color = HomeSubText,
+                    color = palette.subText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1672,7 +1686,7 @@ private fun DraftProjectRow(
                 Icon(
                     Icons.Outlined.Edit,
                     contentDescription = if (summary.memo.isBlank()) "메모 추가" else "메모 편집",
-                    tint = HomeSubText,
+                    tint = palette.subText,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1682,7 +1696,7 @@ private fun DraftProjectRow(
                 Icon(
                     Icons.Outlined.PushPin,
                     contentDescription = if (summary.isPinned) "핀 해제" else "핀 고정",
-                    tint = if (summary.isPinned) HomePrimary else HomeSubText,
+                    tint = if (summary.isPinned) palette.primary else palette.subText,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1849,13 +1863,16 @@ private fun EmptySavedProjectRow() {
 }
 
 @Composable
-private fun EmptyStandardMovieRow() {
-    val placeholder = HomePrimary.copy(alpha = 0.10f)
+private fun EmptyStandardMovieRow(palette: HanClipPalette) {
+    val placeholder = palette.secondary.copy(alpha = 0.085f)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, HomeBorder.copy(alpha = 0.72f))
+        color = palette.panel.copy(alpha = palette.panel.alpha * 0.72f),
+        border = BorderStroke(
+            1.dp,
+            palette.border.copy(alpha = palette.border.alpha * 0.68f)
+        )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
@@ -1882,7 +1899,7 @@ private fun EmptyStandardMovieRow() {
                     modifier = Modifier
                         .size(width = 154.dp, height = 10.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(HomePrimary.copy(alpha = 0.08f))
+                        .background(palette.secondary.copy(alpha = 0.066f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     repeat(3) {
@@ -1890,7 +1907,7 @@ private fun EmptyStandardMovieRow() {
                             modifier = Modifier
                                 .size(width = 18.dp, height = 18.dp)
                                 .clip(RoundedCornerShape(3.dp))
-                                .background(HomePrimary.copy(alpha = 0.07f))
+                                .background(palette.secondary.copy(alpha = 0.058f))
                         )
                     }
                 }
@@ -1898,13 +1915,13 @@ private fun EmptyStandardMovieRow() {
             Icon(
                 imageVector = Icons.Outlined.Edit,
                 contentDescription = null,
-                tint = HomeSubText.copy(alpha = 0.28f),
+                tint = palette.subText.copy(alpha = palette.subText.alpha * 0.42f),
                 modifier = Modifier.size(22.dp)
             )
             Icon(
                 imageVector = Icons.Outlined.PushPin,
                 contentDescription = null,
-                tint = HomeSubText.copy(alpha = 0.26f),
+                tint = palette.subText.copy(alpha = palette.subText.alpha * 0.38f),
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -1914,6 +1931,7 @@ private fun EmptyStandardMovieRow() {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SavedProjectRow(
+    palette: HanClipPalette,
     summary: ExportedMovieSummary,
     isRecentlySaved: Boolean,
     onClick: () -> Unit,
@@ -1926,10 +1944,10 @@ private fun SavedProjectRow(
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onRemove),
         shape = RoundedCornerShape(8.dp),
-        color = Color.White,
+        color = palette.panel,
         border = BorderStroke(
             width = if (isRecentlySaved) 1.5.dp else 1.dp,
-            color = if (isRecentlySaved) HomePrimary.copy(alpha = 0.52f) else HomeBorder
+            color = if (isRecentlySaved) palette.primary.copy(alpha = 0.52f) else palette.border
         )
     ) {
         Row(
@@ -1952,7 +1970,7 @@ private fun SavedProjectRow(
                         modifier = Modifier.weight(1f, fill = false),
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
-                        color = HomeText,
+                        color = palette.text.copy(alpha = 0.88f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1966,7 +1984,7 @@ private fun SavedProjectRow(
                 Text(
                     compactSavedMovieDetailText(summary, includeByteCount = true),
                     style = MaterialTheme.typography.bodySmall,
-                    color = HomeSubText,
+                    color = palette.subText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1981,7 +1999,7 @@ private fun SavedProjectRow(
                     Text(
                         summary.memo,
                         style = MaterialTheme.typography.bodySmall,
-                        color = HomePrimary,
+                        color = palette.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1989,7 +2007,7 @@ private fun SavedProjectRow(
                     Text(
                         "방금 만든 완성본 · HanClip 앨범 저장 · 탭해서 시사회 열기",
                         style = MaterialTheme.typography.bodySmall,
-                        color = HomePrimary,
+                        color = palette.primary,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -2000,7 +2018,7 @@ private fun SavedProjectRow(
                 Icon(
                     imageVector = Icons.Outlined.Edit,
                     contentDescription = if (summary.memo.isBlank()) "메모 추가" else "메모 편집",
-                    tint = if (summary.memo.isBlank()) HomeSubText else HomePrimary,
+                    tint = if (summary.memo.isBlank()) palette.subText else palette.primary,
                     modifier = Modifier.size(19.dp)
                 )
             }
@@ -2008,7 +2026,7 @@ private fun SavedProjectRow(
                 Icon(
                     imageVector = Icons.Outlined.PushPin,
                     contentDescription = if (summary.isPinned) "핀 해제" else "핀 고정",
-                    tint = if (summary.isPinned) HomePrimary else HomeSubText,
+                    tint = if (summary.isPinned) palette.primary else palette.subText,
                     modifier = Modifier.size(19.dp)
                 )
             }
