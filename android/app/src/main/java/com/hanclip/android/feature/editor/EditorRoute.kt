@@ -41,6 +41,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -107,6 +111,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -153,6 +158,7 @@ fun EditorRoute(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val editorColumnCount = if (LocalConfiguration.current.screenWidthDp >= 600) 2 else 1
     val palette = remember { HanClipThemeStore.load(context).palette }
     var trimmingClipID by remember { mutableStateOf<String?>(null) }
     var photoDurationClipID by remember { mutableStateOf<String?>(null) }
@@ -318,15 +324,17 @@ fun EditorRoute(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        LazyColumn(
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(editorColumnCount),
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(bottom = 104.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Spacer(Modifier.height(18.dp))
                 EditorHeader(
                     palette = palette,
@@ -335,7 +343,7 @@ fun EditorRoute(
                 )
             }
             if (state.clips.isEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     ImportActionRow(
                         palette = palette,
                         onPickMedia = { openCalendarPicker("기본 사진첩") },
@@ -352,11 +360,11 @@ fun EditorRoute(
                 }
             }
             if (state.isImportingMedia || state.progressMessage.isNotBlank()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     ImportStatusPanel(state.progressMessage)
                 }
             }
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 ProjectControls(
                     defaultDuration = state.defaultDurationSeconds,
                     preset = state.preset,
@@ -447,7 +455,7 @@ fun EditorRoute(
                 )
             }
             if (isReorderMode && state.clips.isNotEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     ReorderStrip(
                         clips = state.visibleClips,
                         palette = palette,
@@ -459,7 +467,7 @@ fun EditorRoute(
                 }
             }
             if (state.clips.any { it.isVideoSegmentParent }) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     AutoSegmentStatusPanel(
                         sourceCount = state.clips.count { it.isVideoSegmentParent },
                         segmentCount = state.clips.count { it.isVideoSegmentChild },
@@ -469,7 +477,7 @@ fun EditorRoute(
                 }
             }
             if (state.clips.isEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     EmptyClipPanel(
                         preset = state.preset,
                         palette = palette,
@@ -483,7 +491,7 @@ fun EditorRoute(
                 }
             }
             if (state.clips.isNotEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -513,7 +521,7 @@ fun EditorRoute(
                     }
                 }
             }
-            itemsIndexed(state.visibleClips, key = { _, clip -> clip.id }) { _, clip ->
+            gridItemsIndexed(state.visibleClips, key = { _, clip -> clip.id }) { _, clip ->
                 val displayPosition = state.clips
                     .takeWhile { it.id != clip.id }
                     .count { it.isRenderableClip }
@@ -547,7 +555,7 @@ fun EditorRoute(
                     isReorderMode = isReorderMode
                 )
             }
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Spacer(Modifier.height(if (isReorderMode) 24.dp else 88.dp))
             }
         }
