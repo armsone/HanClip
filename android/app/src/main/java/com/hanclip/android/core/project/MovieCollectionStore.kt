@@ -19,6 +19,7 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -377,6 +378,7 @@ object MovieCollectionStore {
 
     private fun readHanClipMetadata(file: File): EmbeddedHanClipMetadata? = runCatching {
         val marker = "\"marker\":\"HANCLIP_METADATA\"".toByteArray(Charsets.UTF_8)
+        val iosPrefix = "HANCLIP_METADATA:".toByteArray(Charsets.UTF_8)
         val readBuffer = ByteArray(64 * 1024)
         var carry = ByteArray(0)
         RandomAccessFile(file, "r").use { source ->
@@ -400,6 +402,35 @@ object MovieCollectionStore {
                                 locationName = json.optionalString("locationName")
                             )
                         }
+                    }
+                }
+                val iosPrefixIndex = window.indexOfSequence(iosPrefix)
+                if (iosPrefixIndex >= 0) {
+                    val jsonStart = iosPrefixIndex + iosPrefix.size
+                    val jsonEnd = window.indexOfByte('}'.code.toByte(), jsonStart)
+                    if (jsonEnd > jsonStart) {
+                        val json = JSONObject(
+                            window.copyOfRange(jsonStart, jsonEnd + 1).toString(Charsets.UTF_8)
+                        )
+                        val routeNames = json.optJSONArray("routeLocationNames")
+                            ?.let { routes ->
+                                buildList {
+                                    repeat(routes.length()) { index ->
+                                        routes.optString(index)
+                                            .trim()
+                                            .takeIf(String::isNotEmpty)
+                                            ?.let(::add)
+                                    }
+                                }
+                            }
+                            .orEmpty()
+                        return@runCatching EmbeddedHanClipMetadata(
+                            madeAtMillis = null,
+                            shootingStartAtMillis = json.optionalIsoInstantMillis("shootingStartAt"),
+                            shootingEndAtMillis = json.optionalIsoInstantMillis("shootingEndAt"),
+                            locationName = json.optionalString("locationName")
+                                ?: routeNames.takeIf(List<String>::isNotEmpty)?.joinToString(" → ")
+                        )
                     }
                 }
                 carry = window.copyOfRange(
@@ -632,6 +663,11 @@ object MovieCollectionStore {
 
     private fun JSONObject.optionalLong(key: String): Long? =
         if (!has(key) || isNull(key)) null else optLong(key).takeIf { it > 0L }
+
+    private fun JSONObject.optionalIsoInstantMillis(key: String): Long? =
+        optionalString(key)?.let { value ->
+            runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
+        }
 
     private fun JSONObject.putNullable(key: String, value: Any?): JSONObject =
         put(key, value ?: JSONObject.NULL)

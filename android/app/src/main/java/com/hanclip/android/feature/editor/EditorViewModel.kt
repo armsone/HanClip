@@ -38,6 +38,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.io.File
 import java.util.Locale
@@ -352,6 +354,11 @@ class EditorViewModel : ViewModel() {
             val representativeLocation = clips.firstOrNull { clip ->
                 clip.sourceLatitude != null && clip.sourceLongitude != null
             }
+            val routeLocationNames = exportRouteLocationNames(clips)
+            val exportedLocationName = routeLocationNames
+                .takeIf(List<String>::isNotEmpty)
+                ?.joinToString(" → ")
+                ?: representativeLocation?.sourceLocationName
             runCatching {
                 val exportService = Media3TransformerExportService(context.applicationContext)
                 val exportRequest = VideoExportRequest(
@@ -369,7 +376,8 @@ class EditorViewModel : ViewModel() {
                     madeAtMillis = madeAtMillis,
                     shootingStartAtMillis = shootingStartAtMillis,
                     shootingEndAtMillis = shootingEndAtMillis,
-                    locationName = representativeLocation?.sourceLocationName,
+                    locationName = exportedLocationName,
+                    routeLocationNames = routeLocationNames,
                     latitude = representativeLocation?.sourceLatitude,
                     longitude = representativeLocation?.sourceLongitude
                 )
@@ -432,7 +440,7 @@ class EditorViewModel : ViewModel() {
                         madeAtMillis = madeAtMillis,
                         shootingStartAtMillis = shootingStartAtMillis,
                         shootingEndAtMillis = shootingEndAtMillis,
-                        locationName = representativeLocation?.sourceLocationName
+                        locationName = exportedLocationName
                     )
                 }
                 _uiState.update {
@@ -2006,6 +2014,27 @@ class EditorViewModel : ViewModel() {
             listOf(sourceDuration / 2.0)
         }
     }
+}
+
+private fun exportRouteLocationNames(clips: List<ClipItem>): List<String> {
+    data class RouteKey(val label: String, val day: LocalDate?)
+
+    val zone = ZoneId.systemDefault()
+    val names = mutableListOf<String>()
+    var previous: RouteKey? = null
+    clips.forEach { clip ->
+        val label = clip.sourceLocationName?.trim()?.takeIf(String::isNotEmpty)
+            ?: return@forEach
+        val day = clip.sourceCreatedAtMillis?.let { millis ->
+            Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+        }
+        val key = RouteKey(label, day)
+        if (key != previous) {
+            names += label
+            previous = key
+        }
+    }
+    return names
 }
 
 private data class EditorUndoSnapshot(

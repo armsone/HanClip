@@ -63,6 +63,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Collections
 import java.nio.ByteBuffer
 import java.io.File
+import java.time.Instant
 import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -84,6 +85,7 @@ data class VideoExportRequest(
     val shootingStartAtMillis: Long? = null,
     val shootingEndAtMillis: Long? = null,
     val locationName: String? = null,
+    val routeLocationNames: List<String> = emptyList(),
     val latitude: Double? = null,
     val longitude: Double? = null,
     val embedHanClipMetadata: Boolean = true
@@ -223,16 +225,39 @@ class Media3TransformerExportService(
             .put("shootingStartAtMillis", request.shootingStartAtMillis ?: JSONObject.NULL)
             .put("shootingEndAtMillis", request.shootingEndAtMillis ?: JSONObject.NULL)
             .put("locationName", request.locationName ?: JSONObject.NULL)
+            .put("routeLocationNames", request.routeLocationNames)
             .put("latitude", request.latitude ?: JSONObject.NULL)
             .put("longitude", request.longitude ?: JSONObject.NULL)
             .toString()
+        val iosCompatibleMetadata = JSONObject()
+            .put(
+                "shootingStartAt",
+                request.shootingStartAtMillis?.let { Instant.ofEpochMilli(it).toString() }
+                    ?: JSONObject.NULL
+            )
+            .put(
+                "shootingEndAt",
+                request.shootingEndAtMillis?.let { Instant.ofEpochMilli(it).toString() }
+                    ?: JSONObject.NULL
+            )
+            .put("latitude", request.latitude ?: JSONObject.NULL)
+            .put("longitude", request.longitude ?: JSONObject.NULL)
+            .put("locationName", request.locationName ?: JSONObject.NULL)
+            .put("routeLocationNames", request.routeLocationNames)
+            .toString()
         return InAppMp4Muxer.Factory { entries ->
             entries.removeAll { entry ->
-                entry is MdtaMetadataEntry && entry.key == HanClipMetadataKey
+                entry is MdtaMetadataEntry &&
+                    (entry.key == HanClipMetadataKey || entry.key == QuickTimeDescriptionKey)
             }
             entries += MdtaMetadataEntry(
                 HanClipMetadataKey,
                 metadataJson.toByteArray(Charsets.UTF_8),
+                MdtaMetadataEntry.TYPE_INDICATOR_STRING
+            )
+            entries += MdtaMetadataEntry(
+                QuickTimeDescriptionKey,
+                (HanClipPayloadPrefix + iosCompatibleMetadata).toByteArray(Charsets.UTF_8),
                 MdtaMetadataEntry.TYPE_INDICATOR_STRING
             )
             val unixSeconds = request.madeAtMillis / 1_000L
@@ -320,6 +345,8 @@ class Media3TransformerExportService(
 
     private companion object {
         const val HanClipMetadataKey = "HANCLIP_METADATA"
+        const val HanClipPayloadPrefix = "HANCLIP_METADATA:"
+        const val QuickTimeDescriptionKey = "com.apple.quicktime.description"
     }
 
     private fun effectsForRequest(request: VideoExportRequest): Effects {

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
@@ -1581,8 +1582,7 @@ private fun QuickDurationDialog(
     val recommendedDuration = sourceMediaCount.toDouble()
     val minimumDuration = (sourceMediaCount * 0.2).coerceAtLeast(0.2)
     var mediaMenuExpanded by remember { mutableStateOf(false) }
-    val perMediaDuration = (targetDurationSeconds / sourceMediaCount.coerceAtLeast(1))
-        .coerceAtLeast(0.2)
+    var usesRecommendedDuration by remember { mutableStateOf(true) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -1655,46 +1655,57 @@ private fun QuickDurationDialog(
                 }
                 item {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(51.dp),
                         shape = RoundedCornerShape(26.dp),
-                        color = palette.panel,
+                        color = palette.secondary.copy(alpha = 0.08f),
                         border = BorderStroke(1.dp, palette.border)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        onTargetDurationChange((targetDurationSeconds - 5.0).coerceAtLeast(minimumDuration))
+                            Box(
+                                modifier = Modifier
+                                    .width(72.dp)
+                                    .fillMaxHeight()
+                                    .clickable {
+                                        usesRecommendedDuration = false
+                                        onTargetDurationChange(
+                                            (targetDurationSeconds - 5.0)
+                                                .coerceAtLeast(minimumDuration)
+                                        )
                                     },
-                                    shape = RoundedCornerShape(18.dp)
-                                ) { Icon(Icons.Outlined.Remove, contentDescription = "5초 줄이기") }
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("선택시간", color = palette.subText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        formatQuickDuration(targetDurationSeconds),
-                                        color = palette.primary,
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 22.sp
-                                    )
-                                }
-                                OutlinedButton(
-                                    onClick = { onTargetDurationChange((targetDurationSeconds + 5.0).coerceAtMost(3600.0)) },
-                                    shape = RoundedCornerShape(18.dp)
-                                ) { Icon(Icons.Outlined.Add, contentDescription = "5초 늘리기") }
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Outlined.Remove, contentDescription = "5초 줄이기", tint = palette.primary)
                             }
-                            Text(
-                                "원본 ${sourceMediaCount}개 · 한 개당 ${formatQuickDuration(perMediaDuration)} · 최소 ${formatQuickDuration(minimumDuration)}",
-                                color = palette.subText,
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("선택시간", color = palette.subText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    formatQuickDuration(targetDurationSeconds),
+                                    color = palette.primary,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 20.sp
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .width(72.dp)
+                                    .fillMaxHeight()
+                                    .clickable {
+                                        usesRecommendedDuration = false
+                                        onTargetDurationChange(
+                                            (targetDurationSeconds + 5.0).coerceAtMost(3600.0)
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Outlined.Add, contentDescription = "5초 늘리기", tint = palette.primary)
+                            }
                         }
                     }
                 }
@@ -1719,7 +1730,7 @@ private fun QuickDurationDialog(
                         "추천시간" to recommendedDuration,
                         "최소시간" to minimumDuration
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         choices.chunked(2).forEachIndexed { rowIndex, pair ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1728,16 +1739,28 @@ private fun QuickDurationDialog(
                                 pair.forEachIndexed { columnIndex, (label, rawSeconds) ->
                                     val choiceIndex = rowIndex * 2 + columnIndex
                                     val seconds = rawSeconds.coerceAtLeast(minimumDuration)
-                                    val selected = kotlin.math.abs(targetDurationSeconds - seconds) < 0.01
+                                    val selected = when (choiceIndex) {
+                                        6 -> usesRecommendedDuration &&
+                                            kotlin.math.abs(targetDurationSeconds - seconds) < 0.01
+                                        else -> !usesRecommendedDuration &&
+                                            kotlin.math.abs(targetDurationSeconds - seconds) < 0.01
+                                    }
                                     Button(
                                         modifier = Modifier.weight(1f).height(54.dp),
-                                        onClick = { onTargetDurationChange(seconds) },
+                                        onClick = {
+                                            usesRecommendedDuration = choiceIndex == 6
+                                            onTargetDurationChange(seconds)
+                                        },
                                         shape = RoundedCornerShape(27.dp),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (selected) palette.primary else palette.panel,
+                                            containerColor = if (selected) {
+                                                palette.primary
+                                            } else {
+                                                palette.secondary.copy(alpha = 0.08f)
+                                            },
                                             contentColor = if (selected) Color.White else palette.text
                                         ),
-                                        border = if (selected) null else BorderStroke(1.dp, palette.border)
+                                        border = null
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(label, fontWeight = FontWeight.Bold)
@@ -1761,7 +1784,7 @@ private fun QuickDurationDialog(
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = palette.panel,
                         border = BorderStroke(1.dp, palette.border)
                     ) {
@@ -1833,9 +1856,9 @@ private fun QuickDurationDialog(
                 }
                 item {
                     Button(
-                        modifier = Modifier.fillMaxWidth().height(78.dp),
+                        modifier = Modifier.fillMaxWidth().height(93.dp),
                         onClick = onConfirm,
-                        shape = RoundedCornerShape(39.dp),
+                        shape = RoundedCornerShape(47.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
                     ) {
                         Text("이 시간으로 만들기", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
