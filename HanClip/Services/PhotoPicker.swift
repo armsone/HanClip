@@ -1230,7 +1230,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             doneButton.accessibilityValue = "\(count)개 선택"
             doneButton.setTitleColor(
                 count > 0
-                    ? HanClipTheme.secondaryUIColor
+                    ? HanClipTheme.primaryUIColor
                     : UIColor(HanClipTheme.text).withAlphaComponent(0.35),
                 for: .normal
             )
