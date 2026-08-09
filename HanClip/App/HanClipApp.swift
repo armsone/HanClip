@@ -767,6 +767,14 @@ final class HanClipQuickActionRouter: ObservableObject {
 
 final class HanClipAppDelegate: NSObject, UIApplicationDelegate {
     let quickActionRouter = HanClipQuickActionRouter.shared
+    var supportedOrientationMask: UIInterfaceOrientationMask = .portrait
+
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        supportedOrientationMask
+    }
 
     func application(
         _ application: UIApplication,

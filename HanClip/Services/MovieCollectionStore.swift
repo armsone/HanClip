@@ -2,6 +2,7 @@ import AVFoundation
 import Combine
 import CoreLocation
 import Foundation
+import QuickLookThumbnailing
 import UIKit
 
 struct HanClipPlace: Equatable, Sendable {
@@ -26,6 +27,7 @@ struct CollectedMovie: Codable, Identifiable, Equatable {
     let shootingEndAt: Date?
     let locationName: String?
     var isPinned: Bool?
+    var pinnedAt: Date?
 }
 
 @MainActor
@@ -36,6 +38,7 @@ final class MovieCollectionStore: ObservableObject {
     @Published private(set) var movies: [CollectedMovie] = []
 
     private let fileManager = FileManager.default
+    private var attemptedPosterRepairs: Set<UUID> = []
 
     private init() {
         load()
@@ -46,10 +49,15 @@ final class MovieCollectionStore: ObservableObject {
     }
 
     func poster(for movie: CollectedMovie) -> UIImage? {
-        UIImage(
-            contentsOfFile: collectionDirectory
-                .appendingPathComponent(movie.posterFilename).path
-        )
+        let posterURL = collectionDirectory
+            .appendingPathComponent(movie.posterFilename)
+        guard let image = UIImage(contentsOfFile: posterURL.path),
+              Self.posterScore(for: image) > 4
+        else {
+            repairPosterIfNeeded(for: movie, at: posterURL)
+            return nil
+        }
+        return image
     }
 
     @discardableResult
@@ -116,23 +124,12 @@ final class MovieCollectionStore: ObservableObject {
             let duration = loadedDuration?.isFinite == true
                 ? max(0, loadedDuration ?? 0)
                 : 0
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 720, height: 1_080)
-            let candidateSeconds = [
-                min(max(duration * 0.12, 0), 2),
-                min(max(duration * 0.03, 0), 0.5),
-                0
-            ]
-            for seconds in candidateSeconds {
-                guard let image = try? await generator.image(
-                    at: CMTime(seconds: seconds, preferredTimescale: 600)
-                ).image else { continue }
-                let poster = UIImage(cgImage: image)
-                if let data = poster.jpegData(compressionQuality: 0.84) {
-                    try? data.write(to: posterURL, options: .atomic)
-                }
-                break
+            if let data = await Self.makePosterData(
+                from: asset,
+                sourceURL: destination,
+                duration: duration
+            ) {
+                try? data.write(to: posterURL, options: .atomic)
             }
             return CollectedMovie(
                 id: id,
@@ -145,7 +142,8 @@ final class MovieCollectionStore: ObservableObject {
                 shootingStartAt: resolvedShootingStart,
                 shootingEndAt: resolvedShootingEnd,
                 locationName: resolvedLocationName,
-                isPinned: false
+                isPinned: false,
+                pinnedAt: nil
             )
         }.value
         movies.append(movie)
@@ -159,6 +157,139 @@ final class MovieCollectionStore: ObservableObject {
             try? fileManager.removeItem(at: posterURL)
             throw error
         }
+    }
+
+    private func repairPosterIfNeeded(
+        for movie: CollectedMovie,
+        at posterURL: URL
+    ) {
+        guard attemptedPosterRepairs.insert(movie.id).inserted else { return }
+        let videoURL = videoURL(for: movie)
+        Task { [weak self] in
+            let data = await Task.detached(priority: .utility) {
+                let asset = AVURLAsset(url: videoURL)
+                let loadedDuration = try? await asset.load(.duration).seconds
+                let duration = loadedDuration?.isFinite == true
+                    ? max(0, loadedDuration ?? 0)
+                    : 0
+                return await Self.makePosterData(
+                    from: asset,
+                    sourceURL: videoURL,
+                    duration: duration
+                )
+            }.value
+            guard let data else { return }
+            do {
+                try data.write(to: posterURL, options: .atomic)
+                self?.objectWillChange.send()
+            } catch {
+                return
+            }
+        }
+    }
+
+    private nonisolated static func makePosterData(
+        from asset: AVAsset,
+        sourceURL: URL,
+        duration: Double
+    ) async -> Data? {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 720, height: 1_080)
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+
+        let safeDuration = max(duration, 0)
+        let rawCandidates = safeDuration > 0
+            ? [
+                min(0.5, safeDuration * 0.02),
+                safeDuration * 0.10,
+                safeDuration * 0.30,
+                safeDuration * 0.55,
+                safeDuration * 0.80
+            ]
+            : [0]
+        var visitedTimes: Set<Int64> = []
+        var bestPoster: (data: Data, score: Double)?
+
+        for seconds in rawCandidates {
+            let time = CMTime(
+                seconds: max(0, seconds),
+                preferredTimescale: 600
+            )
+            guard visitedTimes.insert(time.value).inserted,
+                  let cgImage = try? await generator.image(at: time).image,
+                  let data = UIImage(cgImage: cgImage)
+                    .jpegData(compressionQuality: 0.84)
+            else { continue }
+
+            let score = posterScore(for: cgImage)
+            if bestPoster == nil || score > bestPoster?.score ?? 0 {
+                bestPoster = (data, score)
+            }
+            if score >= 54 { break }
+        }
+        if let bestPoster, bestPoster.score > 4 {
+            return bestPoster.data
+        }
+
+        let request = QLThumbnailGenerator.Request(
+            fileAt: sourceURL,
+            size: CGSize(width: 720, height: 1_080),
+            scale: 1,
+            representationTypes: .thumbnail
+        )
+        guard let representation = try? await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request)
+        else { return bestPoster?.data }
+        return representation.uiImage.jpegData(compressionQuality: 0.84)
+    }
+
+    private nonisolated static func posterScore(for image: UIImage) -> Double {
+        guard let cgImage = image.cgImage else { return 0 }
+        return posterScore(for: cgImage)
+    }
+
+    private nonisolated static func posterScore(for cgImage: CGImage) -> Double {
+        let width = 12
+        let height = 12
+        let bytesPerPixel = 4
+        var pixels = [UInt8](
+            repeating: 0,
+            count: width * height * bytesPerPixel
+        )
+        let rendered = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * bytesPerPixel,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .low
+            context.draw(
+                cgImage,
+                in: CGRect(x: 0, y: 0, width: width, height: height)
+            )
+            return true
+        }
+        guard rendered else { return 0 }
+
+        var luminances: [Double] = []
+        luminances.reserveCapacity(width * height)
+        for index in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+            let red = Double(pixels[index])
+            let green = Double(pixels[index + 1])
+            let blue = Double(pixels[index + 2])
+            luminances.append(0.2126 * red + 0.7152 * green + 0.0722 * blue)
+        }
+        let mean = luminances.reduce(0, +) / Double(luminances.count)
+        let variance = luminances.reduce(0) {
+            $0 + pow($1 - mean, 2)
+        } / Double(luminances.count)
+        return mean + sqrt(variance) * 0.55
     }
 
     private nonisolated static func collectionDateTitle(_ date: Date) -> String {
@@ -191,7 +322,49 @@ final class MovieCollectionStore: ObservableObject {
     func togglePin(for movie: CollectedMovie) {
         guard let index = movies.firstIndex(where: { $0.id == movie.id })
         else { return }
-        movies[index].isPinned = !(movies[index].isPinned == true)
+        let willPin = !(movies[index].isPinned == true)
+        movies[index].isPinned = willPin
+        movies[index].pinnedAt = willPin ? Date() : nil
+        sortMovies()
+        try? save()
+    }
+
+    func movePinnedMovie(sourceID: UUID, onto targetID: UUID) {
+        guard sourceID != targetID,
+              movies.contains(where: {
+                  $0.id == sourceID && $0.isPinned == true
+              }),
+              movies.contains(where: {
+                  $0.id == targetID && $0.isPinned == true
+              })
+        else { return }
+
+        var pinnedMovies = movies.filter { $0.isPinned == true }
+        guard let pinnedSourceIndex = pinnedMovies.firstIndex(where: {
+            $0.id == sourceID
+        }),
+        let pinnedTargetIndex = pinnedMovies.firstIndex(where: {
+            $0.id == targetID
+        }) else { return }
+
+        let movedMovie = pinnedMovies.remove(at: pinnedSourceIndex)
+        let insertionIndex: Int
+        if pinnedSourceIndex < pinnedTargetIndex {
+            insertionIndex = min(pinnedTargetIndex, pinnedMovies.count)
+        } else {
+            insertionIndex = pinnedTargetIndex
+        }
+        pinnedMovies.insert(movedMovie, at: insertionIndex)
+
+        let referenceDate = Date()
+        for (offset, pinnedMovie) in pinnedMovies.enumerated() {
+            guard let index = movies.firstIndex(where: {
+                $0.id == pinnedMovie.id
+            }) else { continue }
+            movies[index].pinnedAt = referenceDate.addingTimeInterval(
+                -Double(offset)
+            )
+        }
         sortMovies()
         try? save()
     }
@@ -358,6 +531,13 @@ final class MovieCollectionStore: ObservableObject {
         movies.sort {
             if ($0.isPinned == true) != ($1.isPinned == true) {
                 return $0.isPinned == true
+            }
+            if $0.isPinned == true, $1.isPinned == true {
+                let firstPinnedAt = $0.pinnedAt ?? $0.createdAt
+                let secondPinnedAt = $1.pinnedAt ?? $1.createdAt
+                if firstPinnedAt != secondPinnedAt {
+                    return firstPinnedAt > secondPinnedAt
+                }
             }
             return $0.createdAt > $1.createdAt
         }

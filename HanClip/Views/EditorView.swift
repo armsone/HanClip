@@ -3542,14 +3542,32 @@ struct EditorView: View {
     private func collectionPosterGridCell(
         _ movie: CollectedMovie
     ) -> some View {
-        GeometryReader { proxy in
+        let posterCell = GeometryReader { proxy in
+            let cardWidth = proxy.size.width
+            let cardHeight = cardWidth * 1.38
             ZStack(alignment: .top) {
+                collectionMovieCard(movie, width: cardWidth)
+                    .allowsHitTesting(false)
+
                 Button {
-                    selectedCollectionMovie = movie
+                    guard let currentMovie = movieCollection.movies.first(
+                        where: { $0.id == movie.id }
+                    ) else { return }
+                    selectedCollectionMovie = currentMovie
                 } label: {
-                    collectionMovieCard(movie, width: proxy.size.width)
+                    Color.clear
+                        .frame(width: cardWidth, height: cardHeight)
+                        .contentShape(
+                            RoundedRectangle(
+                                cornerRadius: 12,
+                                style: .continuous
+                            )
+                        )
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    collectionMovieContextMenu(movie)
+                }
 
                 Button {
                     withAnimation(.snappy) {
@@ -3609,9 +3627,47 @@ struct EditorView: View {
                     movie.isPinned == true ? "컬렉션 핀 해제" : "컬렉션 핀 고정"
                 )
             }
+            .frame(width: cardWidth, height: cardHeight, alignment: .top)
+            .contentShape(Rectangle())
+        }
+
+        return Group {
+            if movie.isPinned == true {
+                posterCell
+                    .draggable(movie.id.uuidString) {
+                        collectionMovieCard(movie, width: 132)
+                            .frame(width: 132, height: 182)
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: 12,
+                                    style: .continuous
+                                )
+                            )
+                    }
+                    .dropDestination(for: String.self) { identifiers, _ in
+                        guard let value = identifiers.first,
+                              let sourceID = UUID(uuidString: value)
+                        else { return false }
+                        withAnimation(.snappy) {
+                            movieCollection.movePinnedMovie(
+                                sourceID: sourceID,
+                                onto: movie.id
+                            )
+                        }
+                        return true
+                    }
+            } else {
+                posterCell
+            }
         }
         .aspectRatio(1 / 1.38, contentMode: .fit)
-        .contextMenu {
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func collectionMovieContextMenu(
+        _ movie: CollectedMovie
+    ) -> some View {
             Button {
                 withAnimation(.snappy) {
                     movieCollection.togglePin(for: movie)
@@ -3640,7 +3696,6 @@ struct EditorView: View {
             } label: {
                 Label("컬렉션에서 제거", systemImage: "trash")
             }
-        }
     }
 
     private var collectionImportProgressPanel: some View {
@@ -7575,7 +7630,7 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 왼쪽 숫자는 현재 보관 수를 뜻합니다. 포스터 상단 중앙의 작은 검정 구멍을 누르면 빨간 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 압정을 다시 누르면 해제됩니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 영상 여러 구간과 시스템 썸네일을 이용해 포스터를 만들고, 생성되지 않은 기존 포스터도 자동으로 복구합니다. 왼쪽 숫자는 현재 보관 수를 뜻합니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 고정 영역의 순서를 바꿀 수 있으며 변경한 순서는 저장됩니다. 포스터를 누르면 전체화면으로 재생하며 가로 보기에도 대응합니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
@@ -17031,11 +17086,32 @@ private struct CollectionMoviePlayerView: View {
             }
         }
         .onAppear {
+            updateCollectionPlayerOrientation(.allButUpsideDown)
             HanClipAudioSession.activatePlayback()
             player.play()
         }
         .onDisappear {
             player.pause()
+            updateCollectionPlayerOrientation(.portrait)
+        }
+    }
+
+    private func updateCollectionPlayerOrientation(
+        _ mask: UIInterfaceOrientationMask
+    ) {
+        guard let delegate = UIApplication.shared.delegate
+                as? HanClipAppDelegate,
+              let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+        delegate.supportedOrientationMask = mask
+        windowScene.requestGeometryUpdate(
+            .iOS(interfaceOrientations: mask)
+        ) { _ in }
+        windowScene.windows.forEach {
+            $0.rootViewController?
+                .setNeedsUpdateOfSupportedInterfaceOrientations()
         }
     }
 }
