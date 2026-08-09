@@ -118,6 +118,7 @@ struct EditorView: View {
     @State private var showThemeSelection = false
     @State private var showImportantInfo = false
     @State private var showTextOverlaySettings = false
+    @State private var showEndingInfoSettings = false
     @State private var showBackgroundMusicSettings = false
     @State private var shouldReturnToQuickDurationPicker = false
     @State private var isAddingQuickMedia = false
@@ -142,6 +143,7 @@ struct EditorView: View {
     @State private var isSharedInboxBannerDismissed = false
     @State private var bulkLivePhotoMode = LivePhotoMode.motion
     @State private var bulkSimilarPhotoGroupMode = VideoSegmentMode.single
+    @State private var isClipSettingsExpanded = false
     @State private var selectAllSnapshot: [UUID: SelectAllClipSnapshot] = [:]
     @State private var selectAllAppliedSignature: [SelectAllClipSnapshot] = []
     @State private var isSelectAllChecked = false
@@ -693,6 +695,12 @@ struct EditorView: View {
                 mediaCount: model.selectedSourceMediaCount,
                 textSettings: model.textOverlaySettings,
                 textEnabled: textOverlayBinding(\.isEnabled),
+                endingInfoEnabled: textOverlayBinding(
+                    \.includesEndingInfoCard
+                ),
+                endingInfoDuration: textOverlayBinding(
+                    \.endingInfoCardDuration
+                ),
                 musicSettings: model.backgroundMusicSettings,
                 musicEnabled: backgroundMusicBinding(\.isEnabled),
                 aspectRatio: Binding(
@@ -700,6 +708,7 @@ struct EditorView: View {
                     set: { model.selectOutputAspectRatio($0) }
                 ),
                 onSelectText: openQuickTextSettings,
+                onSelectEndingInfo: openQuickEndingInfoSettings,
                 onSelectMusic: openQuickMusicSettings,
                 onAddPhoto: openQuickMediaPicker,
                 onAddFile: openQuickFilePicker,
@@ -1000,6 +1009,31 @@ struct EditorView: View {
                 }
             )
         }
+        .fullScreenCover(
+            isPresented: $showEndingInfoSettings,
+            onDismiss: restoreQuickDurationPickerIfNeeded
+        ) {
+            EndingInfoSettingsSheet(
+                isEnabled: textOverlayBinding(\.includesEndingInfoCard),
+                duration: textOverlayBinding(\.endingInfoCardDuration),
+                theme: textOverlayBinding(\.endingInfoCardTheme),
+                variation: textOverlayBinding(\.endingInfoCardVariation),
+                fontName: textOverlayBinding(\.fontName),
+                textColorHex: textOverlayBinding(\.textColorHex),
+                shadowEnabled: textOverlayBinding(\.shadowEnabled),
+                shadowOpacity: textOverlayBinding(\.shadowOpacity),
+                shadowColorHex: textOverlayBinding(\.shadowColorHex),
+                fontSize: textOverlayBinding(\.fontSize),
+                lineSpacing: textOverlayBinding(\.lineSpacing),
+                lineSpacingScale: textOverlayBinding(\.lineSpacingScale),
+                loadPreview: {
+                    await model.endingInfoPreviewData()
+                },
+                renderPreview: { data, theme in
+                    model.endingInfoPreviewImage(data, theme: theme)
+                }
+            )
+        }
     }
 
     private var lifecycleConfiguredView: some View {
@@ -1255,7 +1289,10 @@ struct EditorView: View {
         )
     }
 
-    private func handlePhotoPickerComplete(_ items: [ClipItem]) {
+    private func handlePhotoPickerComplete(
+        _ items: [ClipItem],
+        selectedIdentifiers: [String]
+    ) {
         model.mediaPickerSelectionIdentifiers = []
         let importedIDs = Set(items.map(\.id))
         let thumbnailRefreshTask = model.addPickedItems(items)
@@ -1264,6 +1301,9 @@ struct EditorView: View {
                 await thumbnailRefreshTask.value
             }
             guard !Task.isCancelled else { return }
+            model.retainPhotoLibraryItems(
+                selectedIdentifiers: selectedIdentifiers
+            )
             await model.refreshPresetCaptionAfterMediaImport()
             guard !Task.isCancelled else { return }
             model.finishPhotoLibraryImport()
@@ -1298,6 +1338,9 @@ struct EditorView: View {
             openAiShot()
         case .photo:
             model.openPicker()
+        case .quick:
+            model.reset()
+            model.openMoviePreset(.quick)
         case .calendar:
             model.openCalendarPicker()
         case .files:
@@ -3031,7 +3074,8 @@ struct EditorView: View {
                 subtitle: "고르면 바로 영화로",
                 systemImage: "bolt.fill",
                 accent: HanClipTheme.secondary,
-                secondaryAccent: HanClipTheme.primary
+                secondaryAccent: HanClipTheme.primary,
+                backgroundAccentOpacity: 0.12
             ) {
                 model.openMoviePreset(.quick)
             }
@@ -3087,6 +3131,7 @@ struct EditorView: View {
         badgeSystemImage: String? = nil,
         accent: Color,
         secondaryAccent: Color,
+        backgroundAccentOpacity: Double = 0.07,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -3160,7 +3205,7 @@ struct EditorView: View {
                     colors: [
                         HanClipTheme.background.opacity(0.97),
                         HanClipTheme.panelFill.opacity(0.84),
-                        accent.opacity(0.07)
+                        accent.opacity(backgroundAccentOpacity)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -3215,6 +3260,14 @@ struct EditorView: View {
         model.isQuickDurationPickerPresented = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
             showBackgroundMusicSettings = true
+        }
+    }
+
+    private func openQuickEndingInfoSettings() {
+        shouldReturnToQuickDurationPicker = true
+        model.isQuickDurationPickerPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            showEndingInfoSettings = true
         }
     }
 
@@ -3338,6 +3391,10 @@ struct EditorView: View {
     private var savedProjectList: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
+                Text("\(model.savedProjects.count)/\(ProjectStore.maximumProjectCount)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+
                 Spacer()
 
                 Image(systemName: "rectangle.stack.fill")
@@ -3359,32 +3416,39 @@ struct EditorView: View {
             }
             .padding(.horizontal, 18)
 
-            projectCategoryHeader(
-                title: "AiShot",
-                count: aiShotProjects.count,
-                systemImage: "camera.fill",
-                assetImage: "AiShotIcon"
-            )
-
-            aiShotProjectGrid(aiShotProjects)
-
-            projectCategoryHeader(
-                title: "일반 영화",
-                count: standardProjects.count,
-                systemImage: "film.stack"
-            )
-            .padding(.top, 8)
-
-            savedProjectRows(standardProjects)
+            savedProjectRows(model.savedProjects)
             standardEmptyProjectRows(
-                count: max(0, 2 - standardProjects.count)
+                count: max(0, 2 - model.savedProjects.count)
             )
 
-            projectCategoryHeader(
-                title: "컬렉션",
-                count: movieCollection.movies.count,
-                systemImage: "books.vertical.fill"
-            )
+            HStack(spacing: 7) {
+                Text(
+                    "\(movieCollection.movies.count)/"
+                        + "\(MovieCollectionStore.maximumMovieCount)"
+                )
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(HanClipTheme.secondaryText)
+
+                Spacer()
+
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(HanClipTheme.primary.opacity(0.72))
+                    .frame(width: 18, height: 18)
+                    .background(
+                        HanClipTheme.secondary.opacity(0.10),
+                        in: RoundedRectangle(
+                            cornerRadius: 5,
+                            style: .continuous
+                        )
+                    )
+                    .accessibilityHidden(true)
+
+                Text("컬렉션")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(HanClipTheme.primaryText.opacity(0.76))
+            }
+            .padding(.horizontal, 18)
             .padding(.top, 10)
 
             movieCollectionShelf
@@ -3405,10 +3469,13 @@ struct EditorView: View {
                     collectionPosterGridCell(movie)
                 }
 
-                GeometryReader { proxy in
-                    collectionImportCard(width: proxy.size.width)
+                if movieCollection.movies.count
+                    < MovieCollectionStore.maximumMovieCount {
+                    GeometryReader { proxy in
+                        collectionImportCard(width: proxy.size.width)
+                    }
+                    .aspectRatio(1 / 1.38, contentMode: .fit)
                 }
-                .aspectRatio(1 / 1.38, contentMode: .fit)
             }
             .padding(.horizontal, 18)
             .padding(.top, 6)
@@ -3426,15 +3493,86 @@ struct EditorView: View {
         _ movie: CollectedMovie
     ) -> some View {
         GeometryReader { proxy in
-            Button {
-                selectedCollectionMovie = movie
-            } label: {
-                collectionMovieCard(movie, width: proxy.size.width)
+            ZStack(alignment: .top) {
+                Button {
+                    selectedCollectionMovie = movie
+                } label: {
+                    collectionMovieCard(movie, width: proxy.size.width)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.snappy) {
+                        movieCollection.togglePin(for: movie)
+                    }
+                } label: {
+                    if movie.isPinned == true {
+                        Image("CollectionPin")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 51, height: 51)
+                            .brightness(0.10)
+                            .saturation(1.10)
+                            .shadow(
+                                color: Color.black.opacity(0.34),
+                                radius: 4,
+                                y: 3
+                            )
+                            .frame(width: 64, height: 64)
+                            .contentShape(Rectangle())
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [
+                                            Color.black.opacity(0.98),
+                                            Color.black.opacity(0.82),
+                                            Color.black.opacity(0.58)
+                                        ],
+                                        center: .center,
+                                        startRadius: 1,
+                                        endRadius: 9
+                                    )
+                                )
+
+                            Circle()
+                                .stroke(
+                                    Color.white.opacity(0.32),
+                                    lineWidth: 0.8
+                                )
+                                .padding(1)
+                        }
+                        .frame(width: 18, height: 18)
+                        .shadow(
+                            color: Color.black.opacity(0.30),
+                            radius: 2,
+                            y: 1
+                        )
+                        .frame(width: 44, height: 44, alignment: .top)
+                        .contentShape(Rectangle())
+                    }
+                }
+                .buttonStyle(.plain)
+                .offset(y: movie.isPinned == true ? -26 : 12)
+                .accessibilityLabel(
+                    movie.isPinned == true ? "컬렉션 핀 해제" : "컬렉션 핀 고정"
+                )
             }
-            .buttonStyle(.plain)
         }
         .aspectRatio(1 / 1.38, contentMode: .fit)
         .contextMenu {
+            Button {
+                withAnimation(.snappy) {
+                    movieCollection.togglePin(for: movie)
+                }
+            } label: {
+                Label(
+                    movie.isPinned == true ? "핀 해제" : "핀 고정",
+                    systemImage: movie.isPinned == true ? "pin.slash" : "pin"
+                )
+            }
+
             Button {
                 beginRenamingCollectionMovie(movie)
             } label: {
@@ -3609,7 +3747,7 @@ struct EditorView: View {
                     .minimumScaleFactor(0.62)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 12)
+                    .padding(.top, 34)
 
                 Spacer(minLength: 24)
 
@@ -4298,16 +4436,30 @@ struct EditorView: View {
                         }
                     }
 
-                    Text(
-                        "클립 \(project.clipCount)개 · "
-                            + projectDurationText(project.totalDuration)
-                            + projectFileSizeSuffix(
-                                project.storedByteCount
-                            )
-                    )
+                    HStack(spacing: 4) {
+                        Text("클립 \(project.clipCount)개 ·")
+
+                        Image(
+                            systemName: project.initialMoviePreset?.systemImage
+                                ?? (project.kind == .aiShot
+                                    ? "camera.fill"
+                                    : "film")
+                        )
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(HanClipTheme.primary.opacity(0.78))
+                        .accessibilityHidden(true)
+
+                        Text(
+                            projectDurationText(project.totalDuration)
+                                + projectFileSizeSuffix(
+                                    project.storedByteCount
+                                )
+                        )
+                    }
                     .font(.system(size: 12))
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.78)
 
                     projectThumbnailStrip(project)
                 }
@@ -4941,14 +5093,20 @@ struct EditorView: View {
             clipSettingsHeader
 
             clipSettingsSectionTitle
-            .padding(.top, 2)
-            .padding(.bottom, 4)
+                .padding(.top, 2)
+                .padding(.bottom, isClipSettingsExpanded ? 4 : 10)
 
-            defaultDurationPanel
-                .padding(.horizontal, 14)
-                .padding(.top, 0)
-                .padding(.bottom, 10)
+            if isClipSettingsExpanded {
+                defaultDurationPanel
+                    .padding(.horizontal, 14)
+                    .padding(.top, 0)
+                    .padding(.bottom, 10)
+                    .transition(
+                        .opacity.combined(with: .move(edge: .top))
+                    )
+            }
         }
+        .animation(.snappy, value: isClipSettingsExpanded)
     }
 
     private var clipSettingsHeader: some View {
@@ -4963,29 +5121,84 @@ struct EditorView: View {
     }
 
     private var clipSettingsSectionTitle: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(HanClipTheme.primary.opacity(0.86))
-                .frame(width: 28, height: 28)
-                .background(
-                    HanClipTheme.secondary.opacity(0.10),
-                    in: RoundedRectangle(
-                        cornerRadius: 8,
-                        style: .continuous
+        Button {
+            isClipSettingsExpanded.toggle()
+        } label: {
+            ZStack {
+                HStack(spacing: 9) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(HanClipTheme.primary.opacity(0.86))
+                        .frame(width: 28, height: 28)
+                        .background(
+                            HanClipTheme.secondary.opacity(0.10),
+                            in: RoundedRectangle(
+                                cornerRadius: 8,
+                                style: .continuous
+                            )
+                        )
+                        .accessibilityHidden(true)
+
+                    Text("클립 설정")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(
+                            HanClipTheme.secondaryText.opacity(0.90)
+                        )
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Image(
+                            systemName: model.activeMoviePreset?.systemImage
+                                ?? "film"
+                        )
+                        .accessibilityHidden(true)
+
+                        Text(
+                            model.activeMoviePreset?.displayTitle
+                                ?? "기존 영화"
+                        )
+                        .lineLimit(1)
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .padding(.horizontal, 12)
+                    .frame(width: 112, height: 34)
+                    .background(
+                        HanClipTheme.secondary.opacity(0.10),
+                        in: Capsule()
                     )
+                    .overlay {
+                        Capsule()
+                            .stroke(
+                                HanClipTheme.secondary.opacity(0.28),
+                                lineWidth: 1
+                            )
+                    }
+                }
+
+                Image(
+                    systemName: isClipSettingsExpanded
+                        ? "chevron.up"
+                        : "chevron.down"
                 )
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
+                .frame(width: 32, height: 48, alignment: .center)
                 .accessibilityHidden(true)
-
-            Text("클립 설정")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(HanClipTheme.primaryText)
-
-            Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48, alignment: .center)
+            .padding(.horizontal, 14)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .buttonStyle(.plain)
+        .accessibilityLabel("클립 설정")
+        .accessibilityValue(
+            "\(model.activeMoviePreset?.displayTitle ?? "기존 영화"), "
+                + (isClipSettingsExpanded ? "펼쳐짐" : "접힘")
+        )
+        .accessibilityHint("두 번 탭하여 클립 설정을 펼치거나 접습니다.")
     }
 
     private var clipListFooterControls: some View {
@@ -5106,7 +5319,7 @@ struct EditorView: View {
                     Text(isReordering ? "완료" : "순서 변경")
                 }
                 .padding(.horizontal, 12)
-                .frame(height: 34)
+                .frame(width: 112, height: 34)
                 .background(
                     isReordering
                         ? HanClipTheme.primary
@@ -5188,7 +5401,7 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 42)
+            .frame(height: 48)
 
             settingsPanelDivider
 
@@ -5204,6 +5417,7 @@ struct EditorView: View {
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+                    .frame(width: 52, alignment: .leading)
 
                 HStack(spacing: 0) {
                         Button {
@@ -5344,7 +5558,7 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 42)
+            .frame(height: 48)
 
             settingsPanelDivider
 
@@ -5391,7 +5605,7 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 42)
+            .frame(height: 48)
 
             settingsPanelDivider
 
@@ -5405,6 +5619,7 @@ struct EditorView: View {
                 Text("묶음사진")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(HanClipTheme.secondaryText)
+                    .frame(width: 52, alignment: .leading)
 
                 HStack(spacing: 0) {
                     Button {
@@ -5550,6 +5765,25 @@ struct EditorView: View {
                 isEnabled: backgroundMusicBinding(\.isEnabled),
                 onSelect: {
                     showBackgroundMusicSettings = true
+                }
+            )
+            .padding(
+                EdgeInsets(
+                    top: 0,
+                    leading: 16,
+                    bottom: 0,
+                    trailing: 12
+                )
+            )
+
+            settingsPanelDivider
+
+            EndingInfoSummaryRow(
+                isEnabled: textOverlayBinding(\.includesEndingInfoCard),
+                duration: textOverlayBinding(\.endingInfoCardDuration),
+                theme: model.textOverlaySettings.endingInfoCardTheme,
+                onSelect: {
+                    showEndingInfoSettings = true
                 }
             )
             .padding(
@@ -7283,8 +7517,8 @@ private struct ImportantInfoSheet: View {
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다."),
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
         ("영화 프리셋", "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
-        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 정해진 시간보다 최소시간이 길 때 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 퀵모드 영상 길이 화면으로 돌아갑니다."),
-        ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 정보 카드는 보물지도를 기본으로 사용합니다."),
+        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 정해진 시간보다 최소시간이 길 때 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 퀵모드 영상 길이 화면으로 돌아갑니다. 외부 주소 hanclip://quick으로 바로 실행할 수 있습니다."),
+        ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 엔딩 카드는 보물지도를 기본으로 사용합니다."),
         ("인생 영화", "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다."),
         ("Ai", """
         한클립 안에서 가장 행복하고, 가장 흥분되고, 꼭 기억하고 싶은 순간을 더 잘 찾기 위해 계속 개발하고 있는 판단 능력입니다.
@@ -7302,11 +7536,12 @@ private struct ImportantInfoSheet: View {
         새 Ai가 마음에 들지 않으면 이전 Ai 버전으로 되돌릴 수 있도록 버전별 특징을 남겨 둡니다.
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
-        ("영화 목록", "첫 화면에 저장된 영화들이 표시되는 영역입니다."),
+        ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 왼쪽 숫자는 현재 보관 수를 뜻합니다. 포스터 상단 중앙의 작은 검정 구멍을 누르면 빨간 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 압정을 다시 누르면 해제됩니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
-        ("영화 설정", "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다."),
+        ("영화 설정", "영화 화면의 로고 아래에 있는 클립 설정 패널입니다. 처음에는 제목 행만 보이도록 접혀 있으며, 클립 설정 행 어디를 눌러도 펼치거나 다시 접을 수 있습니다. 오른쪽 표시판은 이 영화가 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화 또는 골프 영화 중 어떤 프리셋으로 시작했는지 보여주며 프로젝트를 다시 불러와도 유지됩니다. 기존 버전에서 저장해 시작 프리셋 정보가 없는 영화는 기존 영화로 표시합니다. 영상 길이, 기본시간, 라이브포토, 영상 분할, 묶음사진, 자막, 음악과 엔딩을 설정합니다."),
         ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시되며, 아래에 들어 있는 자사진에서 실제 사용할 컷을 확인합니다."),
         ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 촬영 시각, 화면 비율, 밝기와 화면 구도가 모두 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 클립설정의 ‘1/6’은 6장마다 1장을 자동으로 고른다는 뜻이며, −와 +로 비율을 조절할 수 있습니다. 수동은 묶음을 펼쳐 사용할 사진을 직접 고르며, 전체는 모든 사진을 사용합니다."),
         ("자동 / 수동 / 전체", "묶음사진에서 사용할 사진을 Ai가 고르게 할지, 사용자가 직접 고를지, 모든 사진을 사용할지 정하는 선택입니다."),
@@ -7328,13 +7563,13 @@ private struct ImportantInfoSheet: View {
         ("시사회", "만들기 완료 후, 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다."),
         ("개봉하기 창", "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다."),
         ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
-        ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
+        ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다. 자막 문구가 비어 있어도 사용을 선택할 수 있어 마지막 엔딩 카드만 넣는 방식으로도 사용할 수 있습니다."),
         ("촬영 기간 삽입", "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣는 기능입니다. 기본 자막이면 기존 문구를 바꾸고, 사용자가 편집한 자막이면 현재 커서 위치에 삽입합니다."),
-        ("정보 삽입", "촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣는 기능입니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 정보 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다."),
-        ("정보 카드 테마", "영화 마지막 여행 기록 카드의 디자인입니다. 설정 위쪽에서 테마와 표시 시간을 고르고 현재 영화 화면 비율 그대로 실제 결과를 미리 봅니다. 자막은 현재 자막 서체·글자색·그림자를 이어받습니다. 보물지도는 고전 서체와 점선 경로를 사용하며 선택된 보물지도를 다시 누르면 새 경로로 재생성합니다. 여행일정은 DAY 번호 대신 각 지역의 실제 촬영 날짜를 표시합니다. 랜드마크는 국내외 주요 도시의 대표 명소와 iPhone 기본 그림문자를 자동 조합하고 미등록 지역에는 대표 여행 아이콘을 사용합니다. 오피스는 문서번호, 촬영기간, 날짜·지역·이동수단 표가 있는 정형 보고서입니다."),
+        ("엔딩", "클립 설정의 음악 아래에 독립된 행으로 표시되며 기본값은 안함입니다. 지도 아이콘과 현재 테마명, 표시 시간 조절, 사용·안함 상태를 한 행에서 설정합니다. 현재 위치 정보가 없어도 사용과 테마를 미리 설정할 수 있고, 이후 위치 정보가 있는 미디어를 추가하면 저장된 설정이 적용됩니다. 촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 엔딩 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다. 퀵모드에서도 같은 행과 설정 화면을 사용합니다."),
+        ("엔딩 카드 테마", "영화 마지막 여행 기록 카드의 디자인입니다. 설정 위쪽에서 테마와 표시 시간을 고르고 현재 영화 화면 비율 그대로 실제 결과를 미리 봅니다. 자막은 현재 자막 서체·글자색·그림자를 이어받습니다. 보물지도는 고전 서체와 점선 경로를 사용하며 선택된 보물지도를 다시 누르면 새 경로로 재생성합니다. 여행일정은 DAY 번호 대신 각 지역의 실제 촬영 날짜를 표시합니다. 랜드마크는 국내외 주요 도시의 대표 명소와 iPhone 기본 그림문자를 자동 조합하고 미등록 지역에는 대표 여행 아이콘을 사용합니다. 오피스는 문서번호, 촬영기간, 날짜·지역·이동수단 표가 있는 정형 보고서입니다."),
         ("컬렉션 포스터", "컬렉션은 영화 포스터를 세로로 이어지는 2열 배열로 보여주며 영화 추가 포스터는 목록의 마지막에 배치합니다. 사진에서는 영상만 선택할 수 있고 파일에서도 동영상만 가져옵니다. 가져오는 동안 진행바와 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용하며 제목 수정 입력창은 글의 줄 수에 맞춰 커지고 키보드 위 가용 높이를 넘으면 내부에서 스크롤합니다."),
         ("워터마크", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다."),
-        ("외부 호출 주소", "Ai  hanclip://aishot\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
+        ("외부 호출 주소", "Ai  hanclip://aishot\n퀵모드  hanclip://quick\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
         ("샘플 음악", """
         HanClip에 포함된 샘플 음악 \(BackgroundMusicSettings.sampleDisplayName)은 앱 기능 검증과 사용자의 일상 영상 배경음악을 위해 인공지능 생성 및 합성 방식으로 만든 샘플 음악입니다.
 
@@ -8355,6 +8590,7 @@ private struct ImportantInfoSheet: View {
         case "자동 진행": "repeat"
         case "달력 썸네일 버튼": "calendar"
         case "자막": "captions.bubble.fill"
+        case "엔딩": "map.fill"
         case "브라우저": "globe"
         case "외부 호출 주소": "link"
         case "샘플 음악": "music.note.list"
@@ -8618,17 +8854,11 @@ private struct TextOverlaySettingsSheet: View {
             }
         }
         .onAppear {
-            if !hasEndingInfo {
-                includesEndingInfoCard = false
-            }
             applyDefaultSettingsIfNeeded()
             normalizeSelectedFont()
             beginEditingSessionIfNeeded()
             hasUserEditedCaptionText = !isBasicDateCaptionText
             refreshTextInputBackground()
-        }
-        .onDisappear {
-            restoreDisabledStateIfUnchanged()
         }
         .onChange(of: textColorHex) { _, _ in
             refreshTextInputBackground()
@@ -8660,33 +8890,6 @@ private struct TextOverlaySettingsSheet: View {
                 WatermarkSettings.normalizedLineSpacingScale(newValue)
             rememberActiveFontPresetAppearance()
         }
-        .task(id: includesEndingInfoCard) {
-            guard includesEndingInfoCard, hasEndingInfo else {
-                endingInfoPreview = nil
-                return
-            }
-            endingInfoPreview = await loadEndingInfoPreview()
-            if endingInfoPreview == nil {
-                includesEndingInfoCard = false
-            } else {
-                refreshRenderedEndingInfoPreview()
-            }
-        }
-        .onChange(of: endingInfoCardTheme) { _, _ in
-            refreshRenderedEndingInfoPreview()
-        }
-        .onChange(of: endingInfoCardVariation) { _, _ in
-            refreshRenderedEndingInfoPreview()
-        }
-        .onChange(of: fontName) { _, _ in
-            refreshRenderedEndingInfoPreview()
-        }
-        .onChange(of: textColorHex) { _, _ in
-            refreshRenderedEndingInfoPreview()
-        }
-        .onChange(of: shadowColorHex) { _, _ in
-            refreshRenderedEndingInfoPreview()
-        }
     }
 
     private var textInputSection: some View {
@@ -8697,28 +8900,18 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private var dateCaptionSettings: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 6) {
-                dateCaptionButton(
-                    title: "오늘 날짜 삽입",
-                    value: WatermarkSettings.dateCaptionText()
-                )
+        HStack(spacing: 6) {
+            dateCaptionButton(
+                title: "오늘 날짜 삽입",
+                value: WatermarkSettings.dateCaptionText()
+            )
 
-                dateCaptionButton(
-                    title: "촬영 기간 삽입",
-                    value: mediaDateCaptionText
-                )
-
-                endingInfoButton
-            }
-
-            if includesEndingInfoCard {
-                endingInfoCardPreview
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-            }
+            dateCaptionButton(
+                title: "촬영 기간 삽입",
+                value: mediaDateCaptionText
+            )
         }
         .padding(.horizontal, 8)
-        .animation(.snappy, value: includesEndingInfoCard)
     }
 
     @ViewBuilder
@@ -8755,7 +8948,7 @@ private struct TextOverlaySettingsSheet: View {
                             y: 3
                         )
                         .accessibilityLabel(
-                            "\(endingInfoCardTheme.title) 정보 카드 실제 미리보기"
+                            "\(endingInfoCardTheme.title) 엔딩 카드 실제 미리보기"
                         )
                 } else {
                     ProgressView()
@@ -8892,7 +9085,6 @@ private struct TextOverlaySettingsSheet: View {
 
     private var endingInfoButton: some View {
         Button {
-            guard hasEndingInfo else { return }
             includesEndingInfoCard.toggle()
         } label: {
             HStack(spacing: 4) {
@@ -8902,7 +9094,7 @@ private struct TextOverlaySettingsSheet: View {
                         : "circle"
                 )
                 .font(.system(size: 9.5, weight: .bold))
-                Text("정보 삽입")
+                Text("엔딩")
                     .font(.system(size: 10.5, weight: .bold))
             }
             .foregroundStyle(
@@ -8928,9 +9120,7 @@ private struct TextOverlaySettingsSheet: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(!hasEndingInfo)
-        .opacity(hasEndingInfo ? 1 : 0.36)
-        .accessibilityLabel("마지막 정보 카드 삽입")
+        .accessibilityLabel("마지막 엔딩 카드 삽입")
         .accessibilityValue(includesEndingInfoCard ? "선택됨" : "선택 안 됨")
     }
 
@@ -10246,20 +10436,7 @@ private struct TextOverlaySettingsSheet: View {
 
     private func beginEditingSessionIfNeeded() {
         guard originalSessionState == nil else { return }
-        let state = currentSessionState()
-        originalSessionState = state
-        if !state.isEnabled {
-            textEnabled = true
-        }
-    }
-
-    private func restoreDisabledStateIfUnchanged() {
-        guard let originalSessionState,
-              !originalSessionState.isEnabled,
-              currentSessionState().matchesContent(of: originalSessionState)
-        else { return }
-
-        textEnabled = false
+        originalSessionState = currentSessionState()
     }
 
     private func discardChangesAndDismiss() {
@@ -10289,13 +10466,7 @@ private struct TextOverlaySettingsSheet: View {
 
     private var hasSessionChanges: Bool {
         guard let originalSessionState else { return false }
-        let currentState = currentSessionState()
-        if !originalSessionState.isEnabled,
-           currentState.isEnabled,
-           currentState.matchesContent(of: originalSessionState) {
-            return false
-        }
-        return currentState != originalSessionState
+        return currentSessionState() != originalSessionState
     }
 
     private func currentSessionState() -> SessionState {
@@ -10945,6 +11116,360 @@ private struct ThemeOrderDropDelegate: DropDelegate {
     }
 }
 
+private struct EndingInfoSettingsSheet: View {
+    private struct CaptionPreset: Identifiable {
+        let id: String
+        let title: String
+        let preferredFontIDs: [String]
+        let textColor: String
+        let shadowColor: String
+        let fontSize: WatermarkFontSize
+        let shadowOpacity: Double
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @Binding var isEnabled: Bool
+    @Binding var duration: Double
+    @Binding var theme: EndingInfoCardTheme
+    @Binding var variation: Int
+    @Binding var fontName: String
+    @Binding var textColorHex: String
+    @Binding var shadowEnabled: Bool
+    @Binding var shadowOpacity: Double
+    @Binding var shadowColorHex: String
+    @Binding var fontSize: WatermarkFontSize
+    @Binding var lineSpacing: WatermarkLineSpacing
+    @Binding var lineSpacingScale: Double
+    let loadPreview: () async -> EndingInfoPreviewData?
+    let renderPreview: (
+        EndingInfoPreviewData,
+        EndingInfoCardTheme
+    ) -> UIImage
+
+    @State private var previewData: EndingInfoPreviewData?
+    @State private var previewImage: UIImage?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HanClipTitleLine(
+                        "엔딩",
+                        systemImage: "map.fill",
+                        leadingInset: 0,
+                        trailingInset: 0
+                    )
+
+                    WatermarkModeSegmentedControl(isEnabled: $isEnabled)
+
+                    themePicker
+                    durationControl
+
+                    previewPanel
+
+                    if theme == .caption {
+                        captionPresetGrid
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
+            }
+            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(HanClipTheme.primary)
+                    }
+                    .accessibilityLabel("닫기")
+                }
+            }
+        }
+        .task {
+            previewData = await loadPreview() ?? samplePreviewData
+            refreshPreviewImage()
+        }
+        .onChange(of: theme) { _, newTheme in
+            if newTheme == .treasureMap {
+                variation += 1
+            }
+            refreshPreviewImage()
+        }
+        .onChange(of: variation) { _, _ in
+            refreshPreviewImage()
+        }
+        .onChange(of: fontName) { _, _ in refreshPreviewImage() }
+        .onChange(of: textColorHex) { _, _ in refreshPreviewImage() }
+        .onChange(of: shadowOpacity) { _, _ in refreshPreviewImage() }
+        .onChange(of: shadowColorHex) { _, _ in refreshPreviewImage() }
+        .onChange(of: fontSize) { _, _ in refreshPreviewImage() }
+        .onChange(of: lineSpacing) { _, _ in refreshPreviewImage() }
+        .onChange(of: lineSpacingScale) { _, _ in refreshPreviewImage() }
+    }
+
+    private var themePicker: some View {
+        HStack(spacing: 5) {
+            ForEach(EndingInfoCardTheme.allCases) { candidate in
+                Button {
+                    if candidate == .treasureMap,
+                       theme == .treasureMap {
+                        variation += 1
+                    } else {
+                        theme = candidate
+                    }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: candidate.systemImage)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(candidate.title)
+                            .font(.system(size: 8.5, weight: .bold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(
+                        theme == candidate
+                            ? HanClipTheme.primary
+                            : HanClipTheme.secondaryText
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(
+                        theme == candidate
+                            ? HanClipTheme.primary.opacity(0.14)
+                            : HanClipTheme.panelFill,
+                        in: RoundedRectangle(cornerRadius: 9)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9)
+                            .stroke(
+                                theme == candidate
+                                    ? HanClipTheme.primary.opacity(0.42)
+                                    : HanClipTheme.panelStroke.opacity(0.62),
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var durationControl: some View {
+        HStack(spacing: 0) {
+            Button {
+                duration = WatermarkSettings.normalizedEndingInfoCardDuration(
+                    duration - 0.5
+                )
+            } label: {
+                Image(systemName: "minus")
+                    .frame(width: 52, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(duration <= 1)
+
+            Text(String(format: "%.1f초", duration))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity)
+
+            Button {
+                duration = WatermarkSettings.normalizedEndingInfoCardDuration(
+                    duration + 0.5
+                )
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 52, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(duration >= 10)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(HanClipTheme.primary)
+        .frame(height: 44)
+        .background(HanClipTheme.secondary.opacity(0.09), in: Capsule())
+        .overlay {
+            Capsule().stroke(
+                HanClipTheme.secondary.opacity(0.20),
+                lineWidth: 1
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var previewPanel: some View {
+        if let previewImage {
+            Image(uiImage: previewImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(
+                            HanClipTheme.primary.opacity(0.34),
+                            lineWidth: 1
+                        )
+                }
+                .accessibilityLabel("\(theme.title) 엔딩 카드 미리보기")
+        } else {
+            ProgressView("정보를 확인하는 중…")
+                .font(.system(size: 11, weight: .medium))
+                .tint(HanClipTheme.primary)
+                .frame(maxWidth: .infinity, minHeight: 130)
+        }
+    }
+
+    private var samplePreviewData: EndingInfoPreviewData {
+        EndingInfoPreviewData(
+            dateText: "2026. 8. 7. – 2026. 8. 9.",
+            stops: [
+                EndingInfoRouteStop(
+                    countryCode: "KR",
+                    label: "서울",
+                    dateText: "8. 7."
+                ),
+                EndingInfoRouteStop(
+                    countryCode: "KR",
+                    label: "덕양구",
+                    dateText: "8. 8."
+                ),
+                EndingInfoRouteStop(
+                    countryCode: "PH",
+                    label: "Philippines Clark",
+                    dateText: "8. 9."
+                )
+            ]
+        )
+    }
+
+    private var captionPresetGrid: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ],
+            spacing: 8
+        ) {
+            ForEach(captionPresets) { preset in
+                captionPresetButton(preset)
+            }
+        }
+        .padding(10)
+        .background(
+            HanClipTheme.panelFill,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(HanClipTheme.panelStroke.opacity(0.62), lineWidth: 1)
+        }
+    }
+
+    private var captionPresets: [CaptionPreset] {
+        [
+            CaptionPreset(id: "readable", title: "가독성", preferredFontIDs: ["pretendard"], textColor: "#FFFFFF", shadowColor: "#000000", fontSize: .large, shadowOpacity: 0.5),
+            CaptionPreset(id: "lovely", title: "러블리", preferredFontIDs: ["ddulgi_mayo"], textColor: "#FF6FAE", shadowColor: "#7A3FFF", fontSize: .large, shadowOpacity: 0.5),
+            CaptionPreset(id: "strong_hya", title: "강력햐", preferredFontIDs: ["tenada"], textColor: "#FFE600", shadowColor: "#000000", fontSize: .extraLarge, shadowOpacity: 0.5),
+            CaptionPreset(id: "fresh", title: "청량", preferredFontIDs: ["gowun_dodum", "pretendard"], textColor: "#FFFFFF", shadowColor: "#18A8FF", fontSize: .large, shadowOpacity: 0.5),
+            CaptionPreset(id: "travel", title: "여행", preferredFontIDs: WatermarkSettings.travelPreferredFontIDs, textColor: WatermarkSettings.travelTextColor, shadowColor: WatermarkSettings.travelShadowColor, fontSize: WatermarkSettings.travelFontSize, shadowOpacity: WatermarkSettings.travelShadowOpacity),
+            CaptionPreset(id: "cinema", title: "시네마", preferredFontIDs: ["black_han_sans", "tenada"], textColor: "#F8F3E7", shadowColor: "#141414", fontSize: .extraLarge, shadowOpacity: 0.5),
+            CaptionPreset(id: "daily", title: "데일리", preferredFontIDs: ["do_hyeon", "cafe24_ssurround"], textColor: "#FFFFFF", shadowColor: "#FF7A3D", fontSize: .large, shadowOpacity: 0.5),
+            CaptionPreset(id: "sentimental", title: "감성", preferredFontIDs: ["gowun_batang", "maruburi"], textColor: "#FFE9F0", shadowColor: "#6E5BFF", fontSize: .normal, shadowOpacity: 0.5),
+            CaptionPreset(id: "green_golf", title: "그린골프", preferredFontIDs: WatermarkSettings.greenGolfPreferredFontIDs, textColor: WatermarkSettings.greenGolfTextColor, shadowColor: WatermarkSettings.greenGolfShadowColor, fontSize: WatermarkSettings.greenGolfFontSize, shadowOpacity: WatermarkSettings.greenGolfShadowOpacity),
+            CaptionPreset(id: "paperlogy_magazine", title: "매거진", preferredFontIDs: ["paperlogy_bold", "black_han_sans"], textColor: "#FFF4D6", shadowColor: "#D94A32", fontSize: .extraLarge, shadowOpacity: 0.55),
+            CaptionPreset(id: "paperlogy_sports", title: "스포츠", preferredFontIDs: ["paperlogy_bold", "tenada"], textColor: "#D8FF3E", shadowColor: "#10223A", fontSize: .extraLarge, shadowOpacity: 0.7),
+            CaptionPreset(id: "nexon_clean", title: "클린", preferredFontIDs: ["nexon_lv1_gothic", "pretendard"], textColor: "#FFFFFF", shadowColor: "#1B4D89", fontSize: .large, shadowOpacity: 0.35),
+            CaptionPreset(id: "nexon_neon", title: "네온", preferredFontIDs: ["nexon_lv1_gothic", "pretendard_bold"], textColor: "#7DF9FF", shadowColor: "#6C2BFF", fontSize: .large, shadowOpacity: 0.8),
+            CaptionPreset(id: "poppins_vlog", title: "VLOG", preferredFontIDs: ["poppins", "pretendard"], textColor: "#FFFFFF", shadowColor: "#FF6B5E", fontSize: .large, shadowOpacity: 0.55),
+            CaptionPreset(id: "poppins_pop", title: "POP", preferredFontIDs: ["poppins", "pretendard_bold"], textColor: "#FFE45C", shadowColor: "#642BFF", fontSize: .extraLarge, shadowOpacity: 0.75)
+        ]
+    }
+
+    private func captionPresetButton(_ preset: CaptionPreset) -> some View {
+        let resolvedFontID = preset.preferredFontIDs.first {
+            availableFontIDs.contains($0)
+        } ?? FontRegistry.systemFontID
+        let isSelected = fontName == resolvedFontID
+            && textColorHex.uppercased() == preset.textColor.uppercased()
+            && shadowColorHex.uppercased() == preset.shadowColor.uppercased()
+            && abs(shadowOpacity - preset.shadowOpacity) < 0.001
+            && fontSize == preset.fontSize
+
+        return Button {
+            fontName = resolvedFontID
+            textColorHex = preset.textColor
+            shadowColorHex = preset.shadowColor
+            shadowOpacity = WatermarkSettings.normalizedShadowOpacity(
+                preset.shadowOpacity
+            )
+            shadowEnabled = shadowOpacity > 0
+            fontSize = preset.fontSize
+            lineSpacing = .normal
+            lineSpacingScale = WatermarkLineSpacing.defaultMultiplier
+            refreshPreviewImage()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isSelected ? "circle.inset.filled" : "circle")
+                    .font(.system(size: 12, weight: .bold))
+                Text(preset.title)
+                    .font(
+                        FontRegistry.resolvedSwiftUIFont(
+                            for: resolvedFontID,
+                            size: 11,
+                            weight: .bold
+                        )
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Spacer(minLength: 0)
+                Text("Aa")
+                    .font(
+                        FontRegistry.resolvedSwiftUIFont(
+                            for: resolvedFontID,
+                            size: 11,
+                            weight: .bold
+                        )
+                    )
+                    .foregroundStyle(Color(hexString: preset.textColor) ?? .white)
+            }
+            .foregroundStyle(
+                isSelected ? HanClipTheme.primary : HanClipTheme.secondaryText
+            )
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .background(
+                isSelected
+                    ? HanClipTheme.primary.opacity(0.14)
+                    : Color.white.opacity(0.22),
+                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(preset.title) 위치 자막 프리셋")
+    }
+
+    private var availableFontIDs: Set<String> {
+        Set(FontRegistry.availableFonts.map(\.id))
+    }
+
+    private func refreshPreviewImage() {
+        guard let previewData else {
+            previewImage = nil
+            return
+        }
+        previewImage = renderPreview(previewData, theme)
+    }
+}
+
 private struct TextOverlaySummaryRow: View {
     let settings: WatermarkSettings
     @Binding var isEnabled: Bool
@@ -10996,20 +11521,129 @@ private struct TextOverlaySummaryRow: View {
                         .minimumScaleFactor(0.82)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 42, alignment: .center)
+                .frame(height: 48, alignment: .center)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             InlineStatusSegmentedControl(
                 isOn: $isEnabled,
-                isEnabled: !settings.displayText.isEmpty
+                isEnabled: true
             )
         }
-        .frame(height: 42)
+        .frame(height: 48)
         .contentShape(Rectangle())
         .accessibilityLabel("자막")
         .accessibilityHint("자막 편집 화면을 엽니다.")
+    }
+}
+
+private struct EndingInfoSummaryRow: View {
+    @Binding var isEnabled: Bool
+    @Binding var duration: Double
+    let theme: EndingInfoCardTheme
+    let onSelect: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
+                    Image(systemName: "map.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(
+                            HanClipTheme.secondaryText.opacity(0.78)
+                        )
+                        .frame(width: 24, alignment: .center)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("엔딩 :")
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundStyle(
+                                HanClipTheme.secondaryText.opacity(0.82)
+                            )
+                            .lineLimit(1)
+
+                        Text(theme.title)
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundStyle(
+                                HanClipTheme.secondaryText.opacity(0.82)
+                            )
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                }
+                .frame(width: 84, alignment: .leading)
+                .frame(height: 44, alignment: .center)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            endingInfoDurationStepper
+
+            Spacer(minLength: 4)
+
+            InlineStatusSegmentedControl(
+                isOn: $isEnabled,
+                isEnabled: true
+            )
+        }
+        .frame(height: 48)
+        .contentShape(Rectangle())
+        .accessibilityLabel("엔딩, \(theme.title) 테마")
+        .accessibilityHint("엔딩 카드 설정 화면을 엽니다.")
+        .accessibilityElement(children: .contain)
+    }
+
+    private var endingInfoDurationStepper: some View {
+        HStack(spacing: 0) {
+            Button {
+                duration = WatermarkSettings.normalizedEndingInfoCardDuration(
+                    duration - 0.5
+                )
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(duration <= 1)
+            .accessibilityLabel("엔딩 표시 시간 줄이기")
+
+            Text(String(format: "%.1f초", duration))
+                .font(.system(size: 10, weight: .semibold))
+                .monospacedDigit()
+                .frame(width: 38)
+
+            Button {
+                duration = WatermarkSettings.normalizedEndingInfoCardDuration(
+                    duration + 0.5
+                )
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(duration >= 10)
+            .accessibilityLabel("엔딩 표시 시간 늘리기")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(HanClipTheme.secondaryText)
+        .frame(width: 118, height: 44)
+        .background {
+            Capsule()
+                .fill(HanClipTheme.secondary.opacity(0.09))
+                .frame(height: 24)
+        }
+        .overlay {
+            Capsule()
+                .stroke(
+                    HanClipTheme.secondary.opacity(0.20),
+                    lineWidth: 1
+                )
+                .frame(height: 24)
+        }
     }
 }
 
@@ -11070,7 +11704,7 @@ private struct BackgroundMusicSummaryRow: View {
                         .minimumScaleFactor(0.78)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 42, alignment: .center)
+                .frame(height: 48, alignment: .center)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -11080,7 +11714,7 @@ private struct BackgroundMusicSummaryRow: View {
                 isEnabled: settings.hasMusicFile
             )
         }
-        .frame(height: 42)
+        .frame(height: 48)
         .contentShape(Rectangle())
         .accessibilityLabel("음악")
         .accessibilityHint("음악 설정 화면을 엽니다.")
@@ -14384,10 +15018,13 @@ private struct QuickMovieDurationPicker: View {
     let mediaCount: Int
     let textSettings: WatermarkSettings
     @Binding var textEnabled: Bool
+    @Binding var endingInfoEnabled: Bool
+    @Binding var endingInfoDuration: Double
     let musicSettings: BackgroundMusicSettings
     @Binding var musicEnabled: Bool
     @Binding var aspectRatio: OutputAspectRatio?
     let onSelectText: () -> Void
+    let onSelectEndingInfo: () -> Void
     let onSelectMusic: () -> Void
     let onAddPhoto: () -> Void
     let onAddFile: () -> Void
@@ -14404,10 +15041,13 @@ private struct QuickMovieDurationPicker: View {
         mediaCount: Int,
         textSettings: WatermarkSettings,
         textEnabled: Binding<Bool>,
+        endingInfoEnabled: Binding<Bool>,
+        endingInfoDuration: Binding<Double>,
         musicSettings: BackgroundMusicSettings,
         musicEnabled: Binding<Bool>,
         aspectRatio: Binding<OutputAspectRatio?>,
         onSelectText: @escaping () -> Void,
+        onSelectEndingInfo: @escaping () -> Void,
         onSelectMusic: @escaping () -> Void,
         onAddPhoto: @escaping () -> Void,
         onAddFile: @escaping () -> Void,
@@ -14418,10 +15058,13 @@ private struct QuickMovieDurationPicker: View {
         self.mediaCount = mediaCount
         self.textSettings = textSettings
         _textEnabled = textEnabled
+        _endingInfoEnabled = endingInfoEnabled
+        _endingInfoDuration = endingInfoDuration
         self.musicSettings = musicSettings
         _musicEnabled = musicEnabled
         _aspectRatio = aspectRatio
         self.onSelectText = onSelectText
+        self.onSelectEndingInfo = onSelectEndingInfo
         self.onSelectMusic = onSelectMusic
         self.onAddPhoto = onAddPhoto
         self.onAddFile = onAddFile
@@ -14558,6 +15201,18 @@ private struct QuickMovieDurationPicker: View {
                     onSelect: onSelectMusic
                 )
                 .padding(.horizontal, 12)
+
+                Rectangle()
+                    .fill(HanClipTheme.secondary.opacity(0.16))
+                    .frame(height: 0.8)
+
+                EndingInfoSummaryRow(
+                    isEnabled: $endingInfoEnabled,
+                    duration: $endingInfoDuration,
+                    theme: textSettings.endingInfoCardTheme,
+                    onSelect: onSelectEndingInfo
+                )
+                .padding(.horizontal, 8)
             }
             .background(
                 HanClipTheme.panelFill,

@@ -616,6 +616,7 @@ enum HanClipQuickAction: Equatable {
     case open
     case aiShot
     case photo
+    case quick
     case calendar
     case files
     case search
@@ -631,6 +632,8 @@ enum HanClipQuickAction: Equatable {
             self = .aiShot
         case "photo":
             self = .photo
+        case "quick":
+            self = .quick
         case "calendar":
             self = .calendar
         case "files":
@@ -648,6 +651,8 @@ enum HanClipQuickAction: Equatable {
             self = .aiShot
         case "com.intosharp.hanclip.photo":
             self = .photo
+        case "com.intosharp.hanclip.quick":
+            self = .quick
         case "com.intosharp.hanclip.calendar":
             self = .calendar
         case "com.intosharp.hanclip.files":

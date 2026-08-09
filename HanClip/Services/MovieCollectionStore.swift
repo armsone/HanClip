@@ -25,11 +25,13 @@ struct CollectedMovie: Codable, Identifiable, Equatable {
     let shootingStartAt: Date?
     let shootingEndAt: Date?
     let locationName: String?
+    var isPinned: Bool?
 }
 
 @MainActor
 final class MovieCollectionStore: ObservableObject {
     static let shared = MovieCollectionStore()
+    static let maximumMovieCount = 20
 
     @Published private(set) var movies: [CollectedMovie] = []
 
@@ -60,6 +62,9 @@ final class MovieCollectionStore: ObservableObject {
         locationName: String? = nil
     ) async throws
         -> CollectedMovie {
+        guard movies.count < Self.maximumMovieCount else {
+            throw MovieCollectionStoreError.collectionFull
+        }
         let id = UUID()
         let sourceExtension = sourceURL.pathExtension.isEmpty
             ? "mov"
@@ -139,10 +144,12 @@ final class MovieCollectionStore: ObservableObject {
                 madeAt: resolvedMadeAt,
                 shootingStartAt: resolvedShootingStart,
                 shootingEndAt: resolvedShootingEnd,
-                locationName: resolvedLocationName
+                locationName: resolvedLocationName,
+                isPinned: false
             )
         }.value
-        movies.insert(movie, at: 0)
+        movies.append(movie)
+        sortMovies()
         do {
             try save()
             return movie
@@ -178,6 +185,14 @@ final class MovieCollectionStore: ObservableObject {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         movies[index].title = trimmed
+        try? save()
+    }
+
+    func togglePin(for movie: CollectedMovie) {
+        guard let index = movies.firstIndex(where: { $0.id == movie.id })
+        else { return }
+        movies[index].isPinned = !(movies[index].isPinned == true)
+        sortMovies()
         try? save()
     }
 
@@ -336,6 +351,16 @@ final class MovieCollectionStore: ObservableObject {
         movies = decoded.filter {
             fileManager.fileExists(atPath: videoURL(for: $0).path)
         }
+        sortMovies()
+    }
+
+    private func sortMovies() {
+        movies.sort {
+            if ($0.isPinned == true) != ($1.isPinned == true) {
+                return $0.isPinned == true
+            }
+            return $0.createdAt > $1.createdAt
+        }
     }
 
     private func save() throws {
@@ -345,6 +370,17 @@ final class MovieCollectionStore: ObservableObject {
         )
         let data = try JSONEncoder().encode(movies)
         try data.write(to: metadataURL, options: .atomic)
+    }
+}
+
+private enum MovieCollectionStoreError: LocalizedError {
+    case collectionFull
+
+    var errorDescription: String? {
+        switch self {
+        case .collectionFull:
+            return "컬렉션에는 영화를 최대 20개까지 보관할 수 있습니다."
+        }
     }
 }
 

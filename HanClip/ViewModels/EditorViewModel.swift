@@ -44,18 +44,41 @@ private struct ProjectEditSignature: Equatable {
     let backgroundMusicSettings: BackgroundMusicSettings
 }
 
-enum MoviePreset {
+enum MoviePreset: String, Codable, Sendable {
     case newMovie
     case quick
     case aiShot
     case travel
     case life
     case golf
+
+    var displayTitle: String {
+        switch self {
+        case .newMovie: "새 영화"
+        case .quick: "퀵모드"
+        case .aiShot: "AiShot"
+        case .travel: "여행 영화"
+        case .life: "인생 영화"
+        case .golf: "골프 영화"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .newMovie: "film"
+        case .quick: "bolt.fill"
+        case .aiShot: "camera.fill"
+        case .travel: "airplane"
+        case .life: "heart.fill"
+        case .golf: "figure.golf"
+        }
+    }
 }
 
-    private struct ClipEditSignature: Equatable {
+private struct ClipEditSignature: Equatable {
     let id: UUID
     let source: String
+    let photoLibraryAssetIdentifier: String?
     let duration: Double
     let photoDuration: Double
     let livePhotoDuration: Double?
@@ -626,11 +649,34 @@ final class EditorViewModel: ObservableObject {
     var currentPhotoAssetIdentifiers: [String] {
         var seen: Set<String> = []
         return clips.compactMap { clip in
-            guard case .photoAsset(let identifier) = clip.source,
+            guard let identifier = clip.photoLibraryAssetIdentifier,
                   seen.insert(identifier).inserted
             else { return nil }
             return identifier
         }
+    }
+
+    func retainPhotoLibraryItems(
+        selectedIdentifiers: [String]
+    ) {
+        let selectedIdentifierSet = Set(selectedIdentifiers)
+        let removedClips = clips.filter { clip in
+            guard let identifier = clip.photoLibraryAssetIdentifier else {
+                return false
+            }
+            return !selectedIdentifierSet.contains(identifier)
+        }
+        let affectedSimilarPhotoGroupIDs = Set(
+            removedClips.compactMap(\.similarPhotoGroupID)
+        )
+        removedClips.forEach { WorkingClipSourceStore.remove($0.source) }
+        clips.removeAll { clip in
+            guard let identifier = clip.photoLibraryAssetIdentifier else {
+                return false
+            }
+            return !selectedIdentifierSet.contains(identifier)
+        }
+        affectedSimilarPhotoGroupIDs.forEach(rebalanceSimilarPhotoGroup)
     }
 
     func prepareCurrentMediaPickerSelection() {
@@ -733,7 +779,6 @@ final class EditorViewModel: ObservableObject {
             defaultVideoSegmentMode = .multiple
             setSimilarPhotoRepresentativeInterval(6)
             overlay = .travelPreset(text: Self.movieDateCaptionText())
-            overlay.includesEndingInfoCard = true
             overlay.endingInfoCardTheme = .treasureMap
             musicTrackID = "travel-joy"
         case .life:
@@ -1064,6 +1109,8 @@ final class EditorViewModel: ObservableObject {
                 )
                 return ClipItem(
                     source: sourceClip.source,
+                    photoLibraryAssetIdentifier:
+                        sourceClip.photoLibraryAssetIdentifier,
                     thumbnail: sourceClip.thumbnail,
                     duration: duration,
                     photoDuration: duration,
@@ -1469,6 +1516,7 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
+                initialMoviePreset: activeMoviePreset,
                 activeProjectID: activeProjectID,
                 kind: .aiShot
             )
@@ -1703,6 +1751,7 @@ final class EditorViewModel: ObservableObject {
         let sourceSize = automaticSourceSize
         let overlaySettings = textOverlaySettings
         let musicSettings = backgroundMusicSettings
+        let moviePreset = activeMoviePreset
         let projectID = activeProjectID
 
         projectSaveTask = Task { [weak self] in
@@ -1716,6 +1765,7 @@ final class EditorViewModel: ObservableObject {
                     automaticSourceSize: sourceSize,
                     textOverlaySettings: overlaySettings,
                     backgroundMusicSettings: musicSettings,
+                    initialMoviePreset: moviePreset,
                     activeProjectID: projectID,
                     projectKindOverride: .standard
                 ) { [self] progress in
@@ -1777,6 +1827,7 @@ final class EditorViewModel: ObservableObject {
                     automaticSourceSize: automaticSourceSize,
                     textOverlaySettings: textOverlaySettings,
                     backgroundMusicSettings: backgroundMusicSettings,
+                    initialMoviePreset: activeMoviePreset,
                     activeProjectID: activeProjectID
                 ) { [self] progress in
                     Task { @MainActor in
@@ -1792,6 +1843,7 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize = savedProject.automaticSourceSize
                 textOverlaySettings = savedProject.textOverlaySettings
                 backgroundMusicSettings = savedProject.backgroundMusicSettings
+                activeMoviePreset = savedProject.initialMoviePreset
                 reloadProjects()
                 activeProjectID = savedProjects.contains {
                     $0.id == savedID
@@ -3483,6 +3535,8 @@ final class EditorViewModel: ObservableObject {
         automaticSourceSize = project.automaticSourceSize
         textOverlaySettings = project.textOverlaySettings
         backgroundMusicSettings = project.backgroundMusicSettings
+        activeMoviePreset = project.initialMoviePreset
+        isQuickModeProject = false
         exportedURL = nil
         showPreview = false
         activeProjectID = project.id
@@ -3598,6 +3652,8 @@ final class EditorViewModel: ObservableObject {
         ClipEditSignature(
             id: clip.id,
             source: sourceSignature(clip.source),
+            photoLibraryAssetIdentifier:
+                clip.photoLibraryAssetIdentifier,
             duration: roundedSignatureValue(clip.duration),
             photoDuration: roundedSignatureValue(clip.photoDuration),
             livePhotoDuration: clip.livePhotoDuration.map(roundedSignatureValue),
@@ -3710,6 +3766,7 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
+                initialMoviePreset: activeMoviePreset,
                 activeProjectID: activeProjectID
             )
             reset()
@@ -4315,6 +4372,7 @@ final class EditorViewModel: ObservableObject {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
+                initialMoviePreset: activeMoviePreset,
                 activeProjectID: activeProjectID
             )
         }
@@ -5033,6 +5091,7 @@ final class EditorViewModel: ObservableObject {
             let analysis = try? await AudioAnalysisService.analyze(url: url)
             return VideoClipSegmenter.makeClips(
                 source: .videoFile(url),
+                photoLibraryAssetIdentifier: asset.localIdentifier,
                 thumbnail: thumbnail,
                 sourceDuration: duration,
                 selectedDuration: min(defaultDuration, duration),

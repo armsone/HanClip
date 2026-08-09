@@ -11,6 +11,7 @@ struct SavedProjectSummary: Identifiable, Equatable {
     let createdAt: Date
     let updatedAt: Date
     let kind: ProjectKind
+    let initialMoviePreset: MoviePreset?
     let isPinned: Bool
     let clipCount: Int
     let totalDuration: Double
@@ -31,6 +32,7 @@ struct LoadedProject {
     let automaticSourceSize: CGSize
     let textOverlaySettings: WatermarkSettings
     let backgroundMusicSettings: BackgroundMusicSettings
+    let initialMoviePreset: MoviePreset?
 }
 
 enum ProjectStore {
@@ -94,6 +96,7 @@ enum ProjectStore {
         automaticSourceSize: CGSize,
         textOverlaySettings: WatermarkSettings,
         backgroundMusicSettings: BackgroundMusicSettings,
+        initialMoviePreset: MoviePreset? = nil,
         activeProjectID: UUID?,
         kind: ProjectKind = .standard,
         projectKindOverride: ProjectKind? = nil,
@@ -142,6 +145,8 @@ enum ProjectStore {
                     StoredClip(
                         id: clip.id,
                         source: storedSource,
+                        photoLibraryAssetIdentifier:
+                            clip.photoLibraryAssetIdentifier,
                         thumbnailFilename: thumbnailFilename,
                         duration: clip.duration,
                         photoDuration: clip.photoDuration,
@@ -220,6 +225,8 @@ enum ProjectStore {
                 automaticSourceHeight: automaticSourceSize.height,
                 textOverlaySettings: textOverlaySettings.withLogoEnabled(false),
                 backgroundMusicSettings: storedBackgroundMusicSettings,
+                initialMoviePreset: initialMoviePreset
+                    ?? existing?.initialMoviePreset,
                 clips: storedClips,
                 renderedVideoFilename: renderedVideoFilename,
                 renderedVideoByteCount: renderedVideoByteCount
@@ -251,6 +258,7 @@ enum ProjectStore {
         automaticSourceSize: CGSize,
         textOverlaySettings: WatermarkSettings,
         backgroundMusicSettings: BackgroundMusicSettings,
+        initialMoviePreset: MoviePreset? = nil,
         activeProjectID: UUID?,
         kind: ProjectKind = .standard,
         projectKindOverride: ProjectKind? = nil,
@@ -265,6 +273,7 @@ enum ProjectStore {
                 automaticSourceSize: automaticSourceSize,
                 textOverlaySettings: textOverlaySettings,
                 backgroundMusicSettings: backgroundMusicSettings,
+                initialMoviePreset: initialMoviePreset,
                 activeProjectID: activeProjectID,
                 kind: kind,
                 projectKindOverride: projectKindOverride,
@@ -371,6 +380,8 @@ enum ProjectStore {
                 return ClipItem(
                     id: storedClip.id,
                     source: restoredSource,
+                    photoLibraryAssetIdentifier:
+                        storedClip.photoLibraryAssetIdentifier,
                     thumbnail: thumbnail,
                     duration: activeDuration,
                     photoDuration: photoDuration,
@@ -434,7 +445,9 @@ enum ProjectStore {
                 stored.backgroundMusicSettings,
                 in: directory,
                 fallback: stored.kind == .aiShot ? .empty : .projectDefault
-            )
+            ),
+            initialMoviePreset: stored.initialMoviePreset
+                ?? (stored.kind == .aiShot ? .aiShot : nil)
         )
     }
 
@@ -819,6 +832,7 @@ private struct StoredProject: Codable {
     let automaticSourceHeight: Double
     let textOverlaySettings: WatermarkSettings?
     let backgroundMusicSettings: BackgroundMusicSettings?
+    let initialMoviePreset: MoviePreset?
     let clips: [StoredClip]
     var renderedVideoFilename: String?
     var renderedVideoByteCount: Int64?
@@ -829,6 +843,8 @@ private struct StoredProject: Codable {
             createdAt: createdAt,
             updatedAt: updatedAt,
             kind: kind ?? .standard,
+            initialMoviePreset: initialMoviePreset
+                ?? ((kind ?? .standard) == .aiShot ? .aiShot : nil),
             isPinned: isPinned,
             clipCount: clips
                 .filter {
@@ -870,6 +886,7 @@ private struct StoredProject: Codable {
 private struct StoredClip: Codable {
     let id: UUID
     let source: StoredSource
+    let photoLibraryAssetIdentifier: String?
     let thumbnailFilename: String
     let duration: Double
     let photoDuration: Double?

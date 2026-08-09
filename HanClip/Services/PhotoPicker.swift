@@ -88,7 +88,7 @@ private final class PhotoPickerGlassButton: UIButton {
 struct PhotoPicker: UIViewControllerRepresentable {
     let initialSelectionIdentifiers: [String]
     let excludedImportIdentifiers: Set<String>
-    let onComplete: ([ClipItem]) -> Void
+    let onComplete: ([ClipItem], [String]) -> Void
     let onStart: () -> Void
     let onProgress: (Double, String) -> Void
     let onRegisterCancellation: (@escaping () -> Void) -> Void
@@ -2472,7 +2472,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private let onStart: () -> Void
         private let onProgress: (Double, String) -> Void
         private let onRegisterCancellation: (@escaping () -> Void) -> Void
-        private let onComplete: ([ClipItem]) -> Void
+        private let onComplete: ([ClipItem], [String]) -> Void
         private let onCancel: () -> Void
         private let onDismiss: () -> Void
         private var selectedResults: [PHPickerResult] = []
@@ -2486,7 +2486,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             onRegisterCancellation: @escaping (
                 @escaping () -> Void
             ) -> Void,
-            onComplete: @escaping ([ClipItem]) -> Void,
+            onComplete: @escaping ([ClipItem], [String]) -> Void,
             onCancel: @escaping () -> Void,
             onDismiss: @escaping () -> Void
         ) {
@@ -2513,13 +2513,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
 
         func finishPicking(assetIdentifiers: [String]) {
-            guard !assetIdentifiers.isEmpty else { return }
             let identifiersToImport = assetIdentifiers.filter {
                 !excludedImportIdentifiers.contains($0)
             }
             onDismiss()
             guard !identifiersToImport.isEmpty else {
-                onComplete([])
+                onComplete([], assetIdentifiers)
                 return
             }
             onStart()
@@ -2579,7 +2578,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     )
                 }
                 guard !Task.isCancelled else { return }
-                onComplete(items)
+                onComplete(items, assetIdentifiers)
                 importTask = nil
             }
             onRegisterCancellation { [weak self] in
@@ -2653,7 +2652,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     }
                 }
                 guard !Task.isCancelled else { return }
-                onComplete(items)
+                onComplete(
+                    items,
+                    results.compactMap(\.assetIdentifier)
+                )
                 importTask = nil
             }
             onRegisterCancellation { [weak self] in
@@ -2717,6 +2719,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             let analysis = try? await AudioAnalysisService.analyze(url: url)
             return VideoClipSegmenter.makeClips(
                 source: .videoFile(url),
+                photoLibraryAssetIdentifier: asset.localIdentifier,
                 thumbnail: thumbnail,
                 sourceDuration: duration,
                 selectedDuration: min(4, duration),

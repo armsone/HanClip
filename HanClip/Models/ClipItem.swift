@@ -469,6 +469,7 @@ private extension UIImage {
 struct ClipItem: Identifiable {
     let id: UUID
     let source: ClipSource
+    let photoLibraryAssetIdentifier: String?
     var thumbnail: UIImage
     var duration: Double
     var photoDuration: Double
@@ -500,6 +501,7 @@ struct ClipItem: Identifiable {
     init(
         id: UUID = UUID(),
         source: ClipSource,
+        photoLibraryAssetIdentifier: String? = nil,
         thumbnail: UIImage,
         duration: Double = 4,
         photoDuration: Double? = nil,
@@ -526,6 +528,13 @@ struct ClipItem: Identifiable {
     ) {
         self.id = id
         self.source = source
+        if let photoLibraryAssetIdentifier {
+            self.photoLibraryAssetIdentifier = photoLibraryAssetIdentifier
+        } else if case .photoAsset(let localIdentifier) = source {
+            self.photoLibraryAssetIdentifier = localIdentifier
+        } else {
+            self.photoLibraryAssetIdentifier = nil
+        }
         self.thumbnail = thumbnail
         self.duration = duration
         self.photoDuration = photoDuration
@@ -602,6 +611,7 @@ struct ClipItem: Identifiable {
         ClipItem(
             id: id,
             source: source,
+            photoLibraryAssetIdentifier: photoLibraryAssetIdentifier,
             thumbnail: thumbnail,
             duration: duration,
             photoDuration: photoDuration,
@@ -641,6 +651,7 @@ enum VideoClipSegmenter {
 
     static func makeClips(
         source: ClipSource,
+        photoLibraryAssetIdentifier: String? = nil,
         thumbnail: UIImage,
         sourceDuration: Double,
         selectedDuration: Double,
@@ -668,6 +679,7 @@ enum VideoClipSegmenter {
             )
             return ClipItem(
                 source: source,
+                photoLibraryAssetIdentifier: photoLibraryAssetIdentifier,
                 thumbnail: thumbnail,
                 duration: safeDuration,
                 photoDuration: safeDuration,
