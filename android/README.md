@@ -43,6 +43,7 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 - iOS 앱도 계속 변경되므로 Android 작업 중 하루에 한 번 최신 iOS 소스를 읽어 플랫폼 차이점 확인
 - Android 개발 중에는 소스 수정 열 번마다 한 번 커밋하고 푸시
 - Mac과 휴대폰이 `zangzip` 네트워크에 연결되어 있으면 무선 디버깅을 우선 사용하고, 연결할 수 없을 때만 USB 사용
+- Android 실기기 작업을 시작하면 화면 자동 꺼짐과 충전 중 절전을 해제해 작업 도중 화면이 잠기지 않게 유지
 - iOS 테마 선택 흐름을 참고한 홈 테마 선택 팝업과 선택값 저장
 - iOS 최신 `Pixel Pop` 테마 팔레트를 Android 테마 선택지 색상과 동기화
 - Android 홈과 테마 선택 팝업에서 `HanClip` 외 주요 영어 표시(`Automatic Mode`, `SELECT THEME`, `COLOR SYSTEM`)를 한글 중심 문구로 정리

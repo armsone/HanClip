@@ -117,7 +117,8 @@ fun EndingInfoSettingsSheet(
             EndingInfoCardPreview(
                 theme = draft.endingInfoCardTheme,
                 stops = previewStops,
-                palette = palette
+                palette = palette,
+                settings = draft
             )
             if (draft.endingInfoCardTheme == EndingInfoCardTheme.Caption) {
                 EndingCaptionPresetGrid(

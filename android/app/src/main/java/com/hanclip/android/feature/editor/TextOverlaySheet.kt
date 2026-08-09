@@ -746,7 +746,12 @@ internal fun EndingInfoCardSettings(
                     }
                 }
 
-                EndingInfoCardPreview(settings.endingInfoCardTheme, previewStops, palette)
+                EndingInfoCardPreview(
+                    theme = settings.endingInfoCardTheme,
+                    stops = previewStops,
+                    palette = palette,
+                    settings = settings
+                )
             }
         }
     }
@@ -756,9 +761,21 @@ internal fun EndingInfoCardSettings(
 internal fun EndingInfoCardPreview(
     theme: EndingInfoCardTheme,
     stops: List<EndingInfoStop>,
-    palette: HanClipPalette
+    palette: HanClipPalette,
+    settings: WatermarkSettings? = null
 ) {
     val colors = endingPreviewColors(theme)
+    val context = LocalContext.current
+    val previewFont = remember(settings?.fontName, theme) {
+        fontFamilyForName(
+            context,
+            when (theme) {
+                EndingInfoCardTheme.TreasureMap -> "gowun_batang"
+                EndingInfoCardTheme.Landmark -> "maruburi"
+                else -> settings?.fontName ?: "pretendard"
+            }
+        )
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -778,9 +795,10 @@ internal fun EndingInfoCardPreview(
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             Text(
-                endingThemeHeading(theme),
+                endingThemeHeading(theme, stops),
                 color = colors[3],
-                fontWeight = FontWeight.ExtraBold
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = previewFont
             )
             Text(
                 stops.map { it.dateText }.filter { it.isNotBlank() }.let { dates ->
@@ -793,8 +811,7 @@ internal fun EndingInfoCardPreview(
                 color = colors[4],
                 style = MaterialTheme.typography.bodySmall
             )
-            EndingPreviewBody(theme = theme, stops = stops, colors = colors)
-            Text("HANCLIP", color = colors[4], style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            EndingPreviewBody(theme = theme, stops = stops, colors = colors, fontFamily = previewFont)
         }
     }
 }
@@ -803,14 +820,47 @@ internal fun EndingInfoCardPreview(
 private fun EndingPreviewBody(
     theme: EndingInfoCardTheme,
     stops: List<EndingInfoStop>,
-    colors: List<Color>
+    colors: List<Color>,
+    fontFamily: androidx.compose.ui.text.font.FontFamily
 ) {
     when (theme) {
-        EndingInfoCardTheme.Caption -> EndingPreviewRoute(stops, colors, treasureMap = false)
-        EndingInfoCardTheme.TreasureMap -> EndingPreviewRoute(stops, colors, treasureMap = true)
+        EndingInfoCardTheme.Caption -> EndingPreviewCaption(stops, colors, fontFamily)
+        EndingInfoCardTheme.TreasureMap -> EndingPreviewRoute(
+            stops,
+            colors,
+            treasureMap = true,
+            fontFamily = fontFamily
+        )
         EndingInfoCardTheme.Itinerary -> EndingPreviewItinerary(stops, colors)
-        EndingInfoCardTheme.Landmark -> EndingPreviewLandmarks(stops, colors)
+        EndingInfoCardTheme.Landmark -> EndingPreviewLandmarks(stops, colors, fontFamily)
         EndingInfoCardTheme.Office -> EndingPreviewOffice(stops, colors)
+    }
+}
+
+@Composable
+private fun EndingPreviewCaption(
+    stops: List<EndingInfoStop>,
+    colors: List<Color>,
+    fontFamily: androidx.compose.ui.text.font.FontFamily
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        stops.take(4).forEachIndexed { index, stop ->
+            if (index > 0) {
+                Text(if (index % 2 == 0) "  ✈  " else "  ◈  ", color = colors[4], fontSize = 10.sp)
+            }
+            Text(
+                stop.location,
+                color = colors[3],
+                fontFamily = fontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -818,7 +868,8 @@ private fun EndingPreviewBody(
 private fun EndingPreviewRoute(
     stops: List<EndingInfoStop>,
     colors: List<Color>,
-    treasureMap: Boolean
+    treasureMap: Boolean,
+    fontFamily: androidx.compose.ui.text.font.FontFamily
 ) {
     stops.take(3).forEachIndexed { index, stop ->
         Row(
@@ -849,7 +900,8 @@ private fun EndingPreviewRoute(
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = fontFamily
             )
             Text(stop.dateText, color = colors[4], fontSize = 9.sp)
         }
@@ -858,45 +910,45 @@ private fun EndingPreviewRoute(
 
 @Composable
 private fun EndingPreviewItinerary(stops: List<EndingInfoStop>, colors: List<Color>) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-        Text("DATE", modifier = Modifier.width(50.dp), color = colors[4], fontSize = 8.sp, fontWeight = FontWeight.Black)
-        Text("PLACE", modifier = Modifier.weight(1f), color = colors[4], fontSize = 8.sp, fontWeight = FontWeight.Black)
-        Text("MOVE", color = colors[4], fontSize = 8.sp, fontWeight = FontWeight.Black)
-    }
-    stops.take(3).forEachIndexed { index, stop ->
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(7.dp),
-            color = colors[0].copy(alpha = 0.045f)
-        ) {
-            Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stop.dateText, modifier = Modifier.width(50.dp), color = colors[4], fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text(stop.location, modifier = Modifier.weight(1f), color = colors[3], fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(if (index == 0) "—" else if (index % 2 == 0) "✈" else "◈", color = colors[4], fontSize = 10.sp)
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        stops.take(3).forEachIndexed { index, stop ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(if (index % 2 == 0) "●" else "◆", color = colors[3], fontSize = 10.sp)
+                Surface(shape = RoundedCornerShape(50), color = colors[4]) {
+                    Text(
+                        stop.dateText,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        color = Color.White,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(stop.location, color = colors[3], fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
     }
 }
 
 @Composable
-private fun EndingPreviewLandmarks(stops: List<EndingInfoStop>, colors: List<Color>) {
+private fun EndingPreviewLandmarks(
+    stops: List<EndingInfoStop>,
+    colors: List<Color>,
+    fontFamily: androidx.compose.ui.text.font.FontFamily
+) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         stops.take(3).forEach { stop ->
-            Surface(
-                modifier = Modifier.weight(1f).height(62.dp),
-                shape = RoundedCornerShape(9.dp),
-                color = colors[0].copy(alpha = 0.06f),
-                border = BorderStroke(1.dp, colors[4].copy(alpha = 0.22f))
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Column(
-                    modifier = Modifier.padding(5.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(landmarkEmoji(stop.location), fontSize = 18.sp)
-                    Text(stop.location, color = colors[3], fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text(stop.dateText, color = colors[4], fontSize = 7.sp)
-                }
+                Text(landmarkEmoji(stop.location), fontSize = 22.sp)
+                Text("●", color = colors[4], fontSize = 9.sp)
+                Text(stop.location, color = colors[3], fontFamily = fontFamily, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
     }
@@ -907,6 +959,12 @@ private fun EndingPreviewOffice(stops: List<EndingInfoStop>, colors: List<Color>
     Row(Modifier.fillMaxWidth()) {
         Text("DOC. HAN-${stops.size.toString().padStart(2, '0')}", modifier = Modifier.weight(1f), color = colors[4], fontSize = 8.sp, fontWeight = FontWeight.Black)
         Text("TRAVEL LOG", color = colors[4], fontSize = 8.sp, fontWeight = FontWeight.Black)
+    }
+    Row(Modifier.fillMaxWidth().background(colors[4])) {
+        Text("NO.", modifier = Modifier.width(24.dp), color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+        Text("DATE", modifier = Modifier.width(50.dp), color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+        Text("REGION", modifier = Modifier.weight(1f), color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+        Text("MOVE", color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold)
     }
     stops.take(3).forEachIndexed { index, stop ->
         Row(
@@ -940,12 +998,16 @@ internal fun endingThemeMark(theme: EndingInfoCardTheme): String = when (theme) 
     EndingInfoCardTheme.Office -> "▦"
 }
 
-private fun endingThemeHeading(theme: EndingInfoCardTheme): String = when (theme) {
-    EndingInfoCardTheme.Caption -> "여행의 기록"
-    EndingInfoCardTheme.TreasureMap -> "TREASURE MAP"
-    EndingInfoCardTheme.Itinerary -> "TRAVEL ITINERARY"
-    EndingInfoCardTheme.Landmark -> "MEMORIES"
-    EndingInfoCardTheme.Office -> "TRIP REPORT"
+private fun endingThemeHeading(theme: EndingInfoCardTheme, stops: List<EndingInfoStop>): String = when (theme) {
+    EndingInfoCardTheme.Caption -> "여행 기록"
+    EndingInfoCardTheme.TreasureMap -> "여행 기록"
+    EndingInfoCardTheme.Itinerary -> "여행 일정표"
+    EndingInfoCardTheme.Landmark -> {
+        val first = stops.firstOrNull()?.location ?: "여행"
+        val last = stops.lastOrNull()?.location ?: first
+        if (first == last) "$first 여행" else "$first · $last 여행"
+    }
+    EndingInfoCardTheme.Office -> "여행 기록 보고서"
 }
 
 private fun endingPreviewColors(theme: EndingInfoCardTheme): List<Color> = when (theme) {

@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.location.Geocoder
+import android.location.Location
 import android.net.Uri
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.EndingInfoCardTheme
@@ -41,7 +42,7 @@ internal object EndingInfoCardRenderer {
         val theme = settings.endingInfoCardTheme
         val colors = colors(theme, settings)
         drawBackground(context, canvas, bitmap, clips, theme, colors)
-        drawCard(context, canvas, bitmap, located, settings, colors)
+        drawCard(context, canvas, bitmap, clips, settings, colors)
         val output = File(
             context.cacheDir,
             "ending-info/hanclip-ending-${System.currentTimeMillis()}.jpg"
@@ -65,6 +66,7 @@ internal object EndingInfoCardRenderer {
     ) {
         val bounds = RectF(0f, 0f, target.width.toFloat(), target.height.toFloat())
         if (theme == EndingInfoCardTheme.Caption) {
+            canvas.drawColor(Color.BLACK)
             loadFirstThumbnail(context, clips)?.let { source ->
                 val scale = max(
                     target.width.toFloat() / source.width,
@@ -78,10 +80,22 @@ internal object EndingInfoCardRenderer {
                     (target.width + drawWidth) / 2f,
                     (target.height + drawHeight) / 2f
                 )
-                canvas.drawBitmap(source, null, destination, Paint(Paint.ANTI_ALIAS_FLAG))
+                canvas.drawBitmap(source, null, destination, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    alpha = (0.46f * 255).toInt()
+                })
                 source.recycle()
             }
-            canvas.drawRect(bounds, Paint().apply { color = Color.argb(150, 0, 0, 0) })
+            canvas.drawRect(bounds, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = LinearGradient(
+                    0f,
+                    0f,
+                    target.width.toFloat(),
+                    target.height.toFloat(),
+                    Color.argb((0.56f * 255).toInt(), 0, 0, 0),
+                    (colors.secondary and 0x00FFFFFF) or ((0.48f * 255).toInt() shl 24),
+                    Shader.TileMode.CLAMP
+                )
+            })
         } else {
             canvas.drawRect(bounds, Paint().apply {
                 shader = LinearGradient(
@@ -113,13 +127,19 @@ internal object EndingInfoCardRenderer {
         }
         val unit = minOf(bitmap.width, bitmap.height) / 100f
         val panel = RectF(
-            bitmap.width * 0.09f,
-            bitmap.height * 0.14f,
-            bitmap.width * 0.91f,
-            bitmap.height * 0.86f
+            7.7f * unit,
+            9.6f * unit,
+            bitmap.width - 7.7f * unit,
+            bitmap.height - 9.6f * unit
         )
-        canvas.drawRoundRect(panel, 4.5f * unit, 4.5f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        canvas.drawRoundRect(panel, 6.7f * unit, 6.7f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.panel
+        })
+        canvas.drawRoundRect(panel, 6.7f * unit, 6.7f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = colors.secondary
+            alpha = 158
+            strokeWidth = max(1f, 0.31f * unit)
         })
         if (settings.endingInfoCardTheme == EndingInfoCardTheme.TreasureMap) {
             val inner = RectF(panel).apply { inset(3f * unit, 3f * unit) }
@@ -191,12 +211,10 @@ internal object EndingInfoCardRenderer {
         when (settings.endingInfoCardTheme) {
             EndingInfoCardTheme.Itinerary -> {
                 drawItinerary(canvas, panel, dateText, stops, colors, unit)
-                drawFooter(canvas, panel, colors, unit)
                 return
             }
             EndingInfoCardTheme.Landmark -> {
                 drawLandmarkJourney(canvas, panel, stops, colors, unit, captionTypeface)
-                drawFooter(canvas, panel, colors, unit)
                 return
             }
             EndingInfoCardTheme.Office -> {
@@ -213,13 +231,11 @@ internal object EndingInfoCardRenderer {
                     unit = unit,
                     typeface = captionTypeface
                 )
-                drawFooter(canvas, panel, colors, unit)
                 return
             }
             else -> Unit
         }
         drawCaptionRoute(canvas, panel, stops, colors, unit, captionTypeface, settings)
-        drawFooter(canvas, panel, colors, unit)
     }
 
     private fun drawCaptionRoute(
@@ -664,63 +680,116 @@ internal object EndingInfoCardRenderer {
         colors: CardColors,
         unit: Float
     ) {
-        canvas.drawRect(panel.left, panel.top, panel.left + 2f * unit, panel.bottom, Paint().apply { color = colors.accent })
+        val content = RectF(panel).apply { inset(6.2f * unit, 5.1f * unit) }
+        canvas.drawRect(
+            content.left,
+            content.top,
+            content.left + 1.3f * unit,
+            content.top + 12.3f * unit,
+            Paint().apply { color = colors.accent }
+        )
         val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.accent
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            textSize = 2.7f * unit
+            textSize = 4.9f * unit
             textAlign = Paint.Align.LEFT
         }
-        headerPaint.textSize = 4.1f * unit
-        canvas.drawText("여행 기록 보고서", panel.left + 7f * unit, panel.top + 8f * unit, headerPaint)
+        canvas.drawText("여행 기록 보고서", content.left + 3.6f * unit, content.top + 5.6f * unit, headerPaint)
         headerPaint.textSize = 1.8f * unit
-        canvas.drawText("HANCLIP TRAVEL REPORT", panel.left + 7f * unit, panel.top + 12f * unit, headerPaint)
+        headerPaint.color = colors.secondary
+        canvas.drawText("HANCLIP TRAVEL REPORT", content.left + 3.6f * unit, content.top + 10.2f * unit, headerPaint)
         headerPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("DOCUMENT  #${kotlin.math.abs(dateText.hashCode()) % 100_000}", panel.right - 6f * unit, panel.top + 7f * unit, headerPaint)
+        canvas.drawText(
+            "DOCUMENT  #${kotlin.math.abs(dateText.hashCode()) % 100_000}",
+            content.right,
+            content.top + 4.1f * unit,
+            headerPaint
+        )
         val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.text
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-            textSize = 2.7f * unit
-            textAlign = Paint.Align.LEFT
+            textSize = 2.05f * unit
+            textAlign = Paint.Align.RIGHT
         }
-        bodyPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("PERIOD  $dateText", panel.right - 6f * unit, panel.top + 12f * unit, bodyPaint)
-        bodyPaint.textAlign = Paint.Align.LEFT
-        val top = panel.top + 23f * unit
-        val rowHeight = (panel.bottom - top - 9f * unit) / max(1, stops.size)
-        stops.forEachIndexed { index, stop ->
-            val y = top + rowHeight * index
-            canvas.drawLine(panel.left + 6f * unit, y + rowHeight * 0.70f, panel.right - 6f * unit, y + rowHeight * 0.70f, Paint().apply {
-                color = colors.secondary
-                strokeWidth = max(1f, 0.22f * unit)
-            })
-            bodyPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            canvas.drawText(stop.dateText.ifBlank { "–" }, panel.left + 7f * unit, y + 3f * unit, bodyPaint)
-            bodyPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            canvas.drawText(stop.label.take(30), panel.left + 24f * unit, y + 3f * unit, bodyPaint)
-            if (index > 0) {
-                val movement = if (stops[index - 1].countryCode == stop.countryCode) "차량" else "항공"
-                bodyPaint.textAlign = Paint.Align.RIGHT
-                bodyPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-                canvas.drawText(movement, panel.right - 7f * unit, y + 3f * unit, bodyPaint)
-                bodyPaint.textAlign = Paint.Align.LEFT
-            }
-        }
-        drawFooter(canvas, panel, colors, unit)
-    }
+        canvas.drawText("PERIOD  $dateText", content.right, content.top + 9f * unit, bodyPaint)
 
-    private fun drawFooter(canvas: Canvas, panel: RectF, colors: CardColors, unit: Float) {
-        canvas.drawText(
-            "HANCLIP",
-            panel.centerX(),
-            panel.bottom - 4.2f * unit,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                textAlign = Paint.Align.CENTER
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textSize = 2.6f * unit
-                color = colors.accent
-            }
+        val summaryTop = content.top + 14.9f * unit
+        val summaryHeight = 7.7f * unit
+        canvas.drawRect(content.left, summaryTop, content.right, summaryTop + summaryHeight, Paint().apply {
+            color = colors.accent
+            alpha = 20
+        })
+        bodyPaint.textAlign = Paint.Align.LEFT
+        bodyPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        bodyPaint.textSize = 2.3f * unit
+        bodyPaint.color = colors.accent
+        canvas.drawText("방문 지역  ${stops.size}곳", content.left + 2.6f * unit, summaryTop + 5f * unit, bodyPaint)
+        bodyPaint.textAlign = Paint.Align.RIGHT
+        bodyPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        bodyPaint.textSize = 2.05f * unit
+        bodyPaint.color = colors.secondary
+        canvas.drawText("작성  HANCLIP", content.right - 2.6f * unit, summaryTop + 5f * unit, bodyPaint)
+
+        val tableTop = summaryTop + 10.8f * unit
+        val tableBottom = content.bottom
+        val headerHeight = minOf(5.65f * unit, (tableBottom - tableTop) * 0.13f)
+        val numberWidth = content.width() * 0.10f
+        val dateWidth = content.width() * 0.22f
+        val transferWidth = content.width() * 0.18f
+        val columns = floatArrayOf(
+            content.left,
+            content.left + numberWidth,
+            content.left + numberWidth + dateWidth,
+            content.right - transferWidth,
+            content.right
         )
+        canvas.drawRect(content.left, tableTop, content.right, tableTop + headerHeight, Paint().apply {
+            color = colors.accent
+        })
+        val headers = arrayOf("NO.", "DATE", "REGION", "MOVE")
+        bodyPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        bodyPaint.textSize = minOf(1.9f * unit, headerHeight * 0.45f)
+        bodyPaint.color = Color.WHITE
+        headers.forEachIndexed { index, value ->
+            bodyPaint.textAlign = if (index == 2) Paint.Align.LEFT else Paint.Align.CENTER
+            val x = if (index == 2) columns[index] + 1f * unit else (columns[index] + columns[index + 1]) / 2f
+            val baseline = tableTop + headerHeight / 2f - (bodyPaint.ascent() + bodyPaint.descent()) / 2f
+            canvas.drawText(value, x, baseline, bodyPaint)
+        }
+        val rowHeight = (tableBottom - tableTop - headerHeight) / max(1, stops.size)
+        stops.forEachIndexed { index, stop ->
+            val top = tableTop + headerHeight + rowHeight * index
+            if (index % 2 == 0) {
+                canvas.drawRect(content.left, top, content.right, top + rowHeight, Paint().apply {
+                    color = colors.secondary
+                    alpha = 18
+                })
+            }
+            canvas.drawRect(content.left, top, content.right, top + rowHeight, Paint().apply {
+                style = Paint.Style.STROKE
+                color = colors.secondary
+                alpha = 56
+                strokeWidth = max(1f, 0.18f * unit)
+            })
+            val values = arrayOf(
+                String.format(Locale.US, "%02d", index + 1),
+                stop.dateText.ifBlank { "–" },
+                stop.label.take(28),
+                if (index == 0) "시작" else if (stops[index - 1].countryCode == stop.countryCode) "차량" else "항공"
+            )
+            bodyPaint.textSize = minOf(2.4f * unit, rowHeight * 0.32f)
+            val baseline = top + rowHeight / 2f - (bodyPaint.ascent() + bodyPaint.descent()) / 2f
+            values.forEachIndexed { column, value ->
+                bodyPaint.textAlign = if (column == 2) Paint.Align.LEFT else Paint.Align.CENTER
+                bodyPaint.typeface = Typeface.create(
+                    if (column == 2) Typeface.DEFAULT else Typeface.MONOSPACE,
+                    if (column == 2) Typeface.BOLD else Typeface.NORMAL
+                )
+                bodyPaint.color = if (column == 2) colors.text else colors.secondary
+                val x = if (column == 2) columns[column] + 1f * unit else (columns[column] + columns[column + 1]) / 2f
+                canvas.drawText(value, x, baseline, bodyPaint)
+            }
+        }
     }
 
     private data class RouteStop(
@@ -730,44 +799,89 @@ internal object EndingInfoCardRenderer {
         val dayKey: String
     )
 
+    private data class RoutePlace(
+        val countryCode: String,
+        val countryName: String?,
+        val cityName: String
+    )
+
     private fun endingStops(context: Context, clips: List<ClipItem>): List<RouteStop> {
         val result = mutableListOf<RouteStop>()
+        val fallbackDate = clips.mapNotNull(ClipItem::sourceCreatedAtMillis).minOrNull()
+        var previousLatitude: Double? = null
+        var previousLongitude: Double? = null
         clips.forEach { clip ->
             val rawLabel = clip.sourceLocationName?.trim().orEmpty()
             if (rawLabel.isEmpty()) return@forEach
-            val date = clip.sourceCreatedAtMillis
-            val countryCode = countryCode(context, clip)
-            val stop = RouteStop(
-                countryCode = countryCode,
-                label = rawLabel,
-                dateText = date?.let(::shortDate).orEmpty(),
-                dayKey = date?.let(::dayKey).orEmpty()
-            )
+            val date = clip.sourceCreatedAtMillis ?: fallbackDate
+            val currentDay = date?.let(::dayKey).orEmpty()
+            val latitude = clip.sourceLatitude
+            val longitude = clip.sourceLongitude
+            if (latitude != null && longitude != null &&
+                previousLatitude != null && previousLongitude != null &&
+                result.lastOrNull()?.dayKey == currentDay
+            ) {
+                val distance = FloatArray(1)
+                Location.distanceBetween(
+                    previousLatitude,
+                    previousLongitude,
+                    latitude,
+                    longitude,
+                    distance
+                )
+                if (distance[0] < 5_000f) return@forEach
+            }
+            val place = routePlace(context, clip, rawLabel)
             val previous = result.lastOrNull()
+            val label = when {
+                place.countryCode == "KR" -> place.cityName
+                previous?.countryCode != place.countryCode && !place.countryName.isNullOrBlank() ->
+                    "${place.countryName} ${place.cityName}".trim()
+                else -> place.cityName
+            }
+            val stop = RouteStop(
+                countryCode = place.countryCode,
+                label = label,
+                dateText = date?.let(::shortDate).orEmpty(),
+                dayKey = currentDay
+            )
             if (previous?.countryCode == stop.countryCode &&
                 previous.label == stop.label &&
                 previous.dayKey == stop.dayKey
             ) return@forEach
             result += stop
+            previousLatitude = latitude
+            previousLongitude = longitude
         }
         return result
     }
 
     @Suppress("DEPRECATION")
-    private fun countryCode(context: Context, clip: ClipItem): String {
+    private fun routePlace(context: Context, clip: ClipItem, fallbackLabel: String): RoutePlace {
         val latitude = clip.sourceLatitude
         val longitude = clip.sourceLongitude
         if (latitude != null && longitude != null) {
             runCatching {
-                Geocoder(context, Locale.ENGLISH)
+                Geocoder(context, Locale.KOREAN)
                     .getFromLocation(latitude, longitude, 1)
                     ?.firstOrNull()
-                    ?.countryCode
-                    ?.uppercase(Locale.US)
-            }.getOrNull()?.takeIf(String::isNotBlank)?.let { return it }
-            if (latitude in 33.0..39.5 && longitude in 124.0..132.0) return "KR"
+            }.getOrNull()?.let { address ->
+                val code = address.countryCode?.uppercase(Locale.US).orEmpty()
+                val city = address.locality ?: address.subAdminArea ?: address.adminArea
+                if (code.isNotBlank() && !city.isNullOrBlank()) {
+                    return RoutePlace(code, address.countryName, city)
+                }
+            }
+            if (latitude in 33.0..39.5 && longitude in 124.0..132.0) {
+                return RoutePlace("KR", "대한민국", fallbackLabel)
+            }
         }
-        return if (clip.sourceLocationName.orEmpty().any { it.code in 0xAC00..0xD7A3 }) "KR" else "ZZ"
+        val fallbackCode = if (latitude == null || longitude == null) {
+            if (fallbackLabel.any { it.code in 0xAC00..0xD7A3 }) "KR" else "ZZ"
+        } else {
+            "ZZ"
+        }
+        return RoutePlace(fallbackCode, null, fallbackLabel)
     }
 
     private fun dayKey(value: Long): String =
@@ -830,7 +944,7 @@ internal object EndingInfoCardRenderer {
 
     private fun colors(theme: EndingInfoCardTheme, settings: WatermarkSettings): CardColors = when (theme) {
         EndingInfoCardTheme.Caption -> CardColors(
-            Color.rgb(18, 22, 23), Color.rgb(34, 49, 47), Color.argb(150, 238, 246, 242),
+            Color.rgb(18, 22, 23), Color.rgb(34, 49, 47), Color.argb(97, 238, 246, 242),
             safeColor(settings.textColorHex, Color.WHITE),
             safeColor(settings.textColorHex, Color.rgb(222, 244, 236)),
             safeColor(settings.shadowColorHex, Color.rgb(160, 205, 190))
