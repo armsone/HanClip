@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
+import com.hanclip.android.core.media.MediaSelectionContract
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -203,6 +204,8 @@ fun HomeRoute(
         collectionImportJob?.cancel()
         collectionImportJob = coroutineScope.launch {
             var failedCount = 0
+            var importedCount = 0
+            var duplicateCount = 0
             try {
                 uris.forEach { uri ->
                     currentCoroutineContext().ensureActive()
@@ -213,18 +216,33 @@ fun HomeRoute(
                         )
                     }
                     try {
-                        MovieCollectionStore.importMovie(context, uri)
+                        val outcome = MovieCollectionStore.importMovieWithOutcome(context, uri)
+                        if (outcome.wasDuplicate) {
+                            duplicateCount += 1
+                        } else {
+                            importedCount += 1
+                            onCollectionChanged()
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Throwable) {
                         failedCount += 1
                     }
                     collectionImportCompleted += 1
-                    onCollectionChanged()
                 }
-                if (failedCount > 0) {
-                    collectionError = "${uris.size}개 중 ${uris.size - failedCount}개를 컬렉션에 추가했습니다. 동영상이 아니거나 읽을 수 없는 ${failedCount}개는 제외했습니다."
+                if (failedCount > 0 || duplicateCount > 0) {
+                    collectionError = buildList {
+                        add("새 영화 ${importedCount}개를 컬렉션에 추가했습니다.")
+                        if (duplicateCount > 0) add("이미 보관된 ${duplicateCount}개는 중복 복사하지 않았습니다.")
+                        if (failedCount > 0) add("동영상이 아니거나 읽을 수 없는 ${failedCount}개는 제외했습니다.")
+                    }.joinToString(" ")
                 }
+            } catch (cancelled: CancellationException) {
+                collectionError = buildList {
+                    add("컬렉션 가져오기를 취소했습니다.")
+                    if (importedCount > 0) add("완료된 새 영화 ${importedCount}개는 그대로 보관됩니다.")
+                    if (duplicateCount > 0) add("중복 ${duplicateCount}개는 복사하지 않았습니다.")
+                }.joinToString(" ")
             } finally {
                 isImportingCollection = false
                 collectionImportJob = null
@@ -234,10 +252,10 @@ fun HomeRoute(
 
     val collectionFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris -> importCollectionUris(uris) }
+    ) { uris -> importCollectionUris(MediaSelectionContract.normalize(uris).uris) }
     val collectionPhotoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(50)
-    ) { uris -> importCollectionUris(uris) }
+    ) { uris -> importCollectionUris(MediaSelectionContract.normalize(uris).uris) }
     Box(
         modifier = Modifier
             .fillMaxSize()

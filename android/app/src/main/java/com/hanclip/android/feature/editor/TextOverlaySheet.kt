@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +26,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Add
@@ -45,6 +48,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +64,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +81,7 @@ import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ImportedFontStore
 import com.hanclip.android.core.theme.HanClipPalette
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -91,17 +97,21 @@ data class EndingInfoStop(
     val dateText: String
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TextOverlaySheet(
     settings: WatermarkSettings,
     palette: HanClipPalette,
     endingInfoStops: List<EndingInfoStop> = emptyList(),
     fullScreen: Boolean = false,
+    focusEndingInfo: Boolean = false,
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
 ) {
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val endingFocusAdvancePx = with(LocalDensity.current) { 620.dp.roundToPx() }
+    val endingInfoRequester = remember { BringIntoViewRequester() }
     var draft by remember(settings) { mutableStateOf(settings) }
     var importedFonts by remember { mutableStateOf(ImportedFontStore.list(context)) }
     val fontPicker = rememberLauncherForActivityResult(
@@ -148,6 +158,16 @@ fun TextOverlaySheet(
             }
         }
     }
+    LaunchedEffect(focusEndingInfo) {
+        if (focusEndingInfo) {
+            delay(120)
+            endingInfoRequester.bringIntoView()
+            delay(60)
+            scrollState.animateScrollTo(
+                (scrollState.value + endingFocusAdvancePx).coerceAtMost(scrollState.maxValue)
+            )
+        }
+    }
 
     Surface(
         modifier = if (fullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
@@ -157,7 +177,7 @@ fun TextOverlaySheet(
         Column(
             modifier = Modifier
                 .then(if (fullScreen) Modifier.fillMaxSize().statusBarsPadding() else Modifier.fillMaxWidth())
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .navigationBarsPadding()
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -259,12 +279,18 @@ fun TextOverlaySheet(
 
             CaptionStateSummary(draft, palette)
 
-            EndingInfoCardSettings(
-                settings = draft,
-                stops = endingInfoStops,
-                palette = palette,
-                onChange = { draft = it }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(endingInfoRequester)
+            ) {
+                EndingInfoCardSettings(
+                    settings = draft,
+                    stops = endingInfoStops,
+                    palette = palette,
+                    onChange = { draft = it }
+                )
+            }
 
             Button(
                 onClick = { draft = hanClipDefaultWatermark(draft) },

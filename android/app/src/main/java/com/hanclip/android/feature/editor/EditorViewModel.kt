@@ -244,6 +244,75 @@ class EditorViewModel : ViewModel() {
         }
     }
 
+    fun synchronizePickedMedia(
+        context: Context,
+        selectedUris: List<Uri>,
+        deselectionScopeUris: Set<Uri>
+    ) {
+        val normalizedSelected = selectedUris.distinctBy(Uri::toString)
+        val selectedStrings = normalizedSelected.mapTo(mutableSetOf(), Uri::toString)
+        val scopeStrings = deselectionScopeUris.mapTo(mutableSetOf(), Uri::toString)
+        var removedCount = 0
+
+        if (scopeStrings.isNotEmpty()) {
+            _uiState.update { state ->
+                val sourceIdentityByClipId = state.clips.associate { clip ->
+                    clip.id to (clip.originalSourceUriString
+                        ?: clip.sourceUri.toString().takeIf { clip.sourceUri.scheme == "content" })
+                }
+                val removedRootIds = state.clips
+                    .filterNot { it.isVideoSegmentChild }
+                    .filter { clip ->
+                        val sourceIdentity = sourceIdentityByClipId[clip.id]
+                        sourceIdentity != null &&
+                            sourceIdentity in scopeStrings &&
+                            sourceIdentity !in selectedStrings
+                    }
+                    .mapTo(mutableSetOf(), ClipItem::id)
+                if (removedRootIds.isEmpty()) return@update state
+
+                val affectedGroupIds = state.clips
+                    .filter { it.id in removedRootIds }
+                    .mapNotNullTo(mutableSetOf(), ClipItem::similarPhotoGroupId)
+                var retained = state.clips.filterNot { clip ->
+                    clip.id in removedRootIds || clip.videoSegmentParentId in removedRootIds
+                }
+                affectedGroupIds.forEach { groupId ->
+                    retained = rebalanceSimilarPhotoGroup(retained, groupId)
+                }
+                removedCount = state.clips.size - retained.size
+                lastUndoSnapshot = EditorUndoSnapshot(
+                    state = state,
+                    restoredMessage = "사진 선택 변경을 되돌렸습니다."
+                )
+                state.copy(
+                    clips = retained,
+                    importedMediaCount = retained.count { it.isRenderableClip },
+                    expandedSimilarPhotoGroupIds = state.expandedSimilarPhotoGroupIds
+                        .filter { groupId -> retained.any { it.similarPhotoGroupId == groupId } }
+                        .toSet(),
+                    alertMessage = "사진 선택에서 해제한 미디어 ${removedCount}개를 현재 영화에서 제외했습니다.",
+                    undoDeleteMessage = "방금 변경한 사진 선택을 되돌릴 수 있습니다."
+                )
+            }
+        }
+
+        val retainedSourceStrings = _uiState.value.clips
+            .flatMap { clip -> listOfNotNull(clip.originalSourceUriString, clip.sourceUri.toString()) }
+            .toSet()
+        val newUris = normalizedSelected.filterNot { it.toString() in retainedSourceStrings }
+        if (newUris.isNotEmpty()) {
+            addPickedMedia(context, newUris)
+        } else if (removedCount == 0) {
+            _uiState.update {
+                it.copy(
+                    alertMessage = "현재 영화의 미디어 선택을 그대로 유지했습니다.",
+                    undoDeleteMessage = null
+                )
+            }
+        }
+    }
+
     fun cancelMediaImport() {
         importJob?.cancel()
     }
@@ -682,6 +751,13 @@ class EditorViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    fun discardPersistedProjectIfEmpty(context: Context) {
+        val state = _uiState.value
+        if (state.clips.isNotEmpty()) return
+        DraftProjectStore.clear(context.applicationContext)
+        EditableProjectStore.remove(context.applicationContext, state.activeProjectId)
     }
 
     fun openDraft(context: Context): Boolean {
@@ -1699,7 +1775,6 @@ class EditorViewModel : ViewModel() {
                 logoShadowColorHex = "#3F6F63",
                 logoShadowOpacity = 0.45,
                 copyrightPosition = WatermarkPosition.BottomTrailing,
-                includesEndingInfoCard = true,
                 endingInfoCardTheme = EndingInfoCardTheme.TreasureMap
             )
             MoviePreset.NewMovie,

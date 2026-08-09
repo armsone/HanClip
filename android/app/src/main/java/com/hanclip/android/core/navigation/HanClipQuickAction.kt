@@ -6,6 +6,7 @@ enum class HanClipQuickAction {
     Open,
     AiShot,
     Photo,
+    Quick,
     Calendar,
     Files,
     Search;
@@ -17,6 +18,7 @@ enum class HanClipQuickAction {
                 "open" -> Open
                 "aishot" -> AiShot
                 "photo" -> Photo
+                "quick" -> Quick
                 "calendar" -> Calendar
                 "files" -> Files
                 "search" -> Search

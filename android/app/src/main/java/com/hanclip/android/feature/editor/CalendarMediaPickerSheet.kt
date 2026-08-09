@@ -84,8 +84,9 @@ import java.util.Locale
 fun CalendarMediaPickerSheet(
     title: String = "사진첩 날짜별",
     palette: HanClipPalette,
+    initialSelectedUris: List<Uri> = emptyList(),
     onDismiss: () -> Unit,
-    onImport: (List<Uri>) -> Unit
+    onImport: (selectedUris: List<Uri>, deselectionScopeUris: Set<Uri>) -> Unit
 ) {
     val context = LocalContext.current
     val pickerMode = remember(title) {
@@ -99,6 +100,7 @@ fun CalendarMediaPickerSheet(
     var visibleMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDates by remember { mutableStateOf(setOf(LocalDate.now())) }
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var hasAppliedInitialSelection by remember(title) { mutableStateOf(false) }
     var pendingBulkImportUris by remember { mutableStateOf<List<Uri>?>(null) }
     var sortOrder by remember { mutableStateOf(MediaSortOrder.NewestFirst) }
     var recentFilter by remember { mutableStateOf(RecentMediaFilter.Photo) }
@@ -122,10 +124,21 @@ fun CalendarMediaPickerSheet(
             MediaPickerSheetMode.Calendar -> selectedItems
         }
     }
-    LaunchedEffect(pickerMode, visibleItems) {
+    LaunchedEffect(pickerMode, visibleItems, initialSelectedUris) {
         if (pickerMode == MediaPickerSheetMode.Calendar) {
             selectedUris = visibleItems.map { it.uri }
+        } else if (!hasAppliedInitialSelection && visibleItems.isNotEmpty()) {
+            val visibleUriStrings = visibleItems.mapTo(mutableSetOf()) { it.uri.toString() }
+            selectedUris = initialSelectedUris
+                .distinctBy(Uri::toString)
+                .filter { it.toString() in visibleUriStrings }
+            hasAppliedInitialSelection = true
         }
+    }
+    fun deselectionScopeUris(): Set<Uri> = if (pickerMode == MediaPickerSheetMode.Recent) {
+        visibleItems.mapTo(linkedSetOf()) { it.uri }
+    } else {
+        emptySet()
     }
     fun requestImport() {
         val orderedUris = selectedUris.mapNotNull { selectedUri ->
@@ -134,7 +147,7 @@ fun CalendarMediaPickerSheet(
         if (orderedUris.size >= BulkImportConfirmationThreshold) {
             pendingBulkImportUris = orderedUris
         } else {
-            onImport(orderedUris)
+            onImport(orderedUris, deselectionScopeUris())
         }
     }
 
@@ -185,10 +198,12 @@ fun CalendarMediaPickerSheet(
                 RecentPickerHeader(
                     palette = palette,
                     selectedCount = selectedUris.size,
+                    canApplyEmptySelection = initialSelectedUris.isNotEmpty(),
                     filter = recentFilter,
                     onFilterChange = {
                         recentFilter = it
                         selectedUris = emptyList()
+                        hasAppliedInitialSelection = false
                     },
                     onCancel = onDismiss,
                     onConfirm = ::requestImport
@@ -241,7 +256,6 @@ fun CalendarMediaPickerSheet(
                 recentFilter = recentFilter,
                 onToggleSortOrder = {
                     sortOrder = sortOrder.next()
-                    selectedUris = emptyList()
                 },
                 onSelectAll = {
                     selectedUris = visibleItems.map { it.uri }
@@ -316,7 +330,7 @@ fun CalendarMediaPickerSheet(
                 Button(
                     onClick = {
                         pendingBulkImportUris = null
-                        onImport(uris)
+                        onImport(uris, deselectionScopeUris())
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = palette.primary,
@@ -375,6 +389,7 @@ private enum class MediaSortOrder(val label: String) {
 private fun RecentPickerHeader(
     palette: HanClipPalette,
     selectedCount: Int,
+    canApplyEmptySelection: Boolean,
     filter: RecentMediaFilter,
     onFilterChange: (RecentMediaFilter) -> Unit,
     onCancel: () -> Unit,
@@ -416,7 +431,7 @@ private fun RecentPickerHeader(
         }
         Button(
             onClick = onConfirm,
-            enabled = selectedCount > 0,
+            enabled = selectedCount > 0 || canApplyEmptySelection,
             shape = RoundedCornerShape(50),
             colors = ButtonDefaults.buttonColors(
                 containerColor = palette.primary,
@@ -424,7 +439,12 @@ private fun RecentPickerHeader(
                 disabledContainerColor = palette.subText.copy(alpha = 0.38f),
                 disabledContentColor = Color.White.copy(alpha = 0.72f)
             )
-        ) { Text("+ ${selectedCount}개 추가", fontWeight = FontWeight.Bold) }
+        ) {
+            Text(
+                if (selectedCount == 0) "선택 적용" else "+ ${selectedCount}개 적용",
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),

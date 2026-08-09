@@ -9,6 +9,8 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,6 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.max
 import kotlin.math.min
 
@@ -40,6 +43,11 @@ data class CollectedMovie(
 data class CollectionMigrationResult(
     val importedCount: Int,
     val failedCount: Int
+)
+
+data class CollectionImportOutcome(
+    val movie: CollectedMovie,
+    val wasDuplicate: Boolean
 )
 
 object MovieCollectionStore {
@@ -75,7 +83,26 @@ object MovieCollectionStore {
         shootingStartAtMillis: Long? = null,
         shootingEndAtMillis: Long? = null,
         locationName: String? = null
-    ): CollectedMovie = withContext(Dispatchers.IO) {
+    ): CollectedMovie = importMovieWithOutcome(
+        context = context,
+        sourceUri = sourceUri,
+        title = title,
+        madeAtMillis = madeAtMillis,
+        shootingStartAtMillis = shootingStartAtMillis,
+        shootingEndAtMillis = shootingEndAtMillis,
+        locationName = locationName
+    ).movie
+
+    suspend fun importMovieWithOutcome(
+        context: Context,
+        sourceUri: Uri,
+        title: String? = null,
+        madeAtMillis: Long? = null,
+        shootingStartAtMillis: Long? = null,
+        shootingEndAtMillis: Long? = null,
+        locationName: String? = null
+    ): CollectionImportOutcome = withContext(Dispatchers.IO) {
+        val cancellationContext = currentCoroutineContext()
         synchronized(collectionWriteLock) {
             val appContext = context.applicationContext
             require(isVideo(appContext, sourceUri)) { "동영상 파일만 컬렉션에 추가할 수 있습니다." }
@@ -89,7 +116,7 @@ object MovieCollectionStore {
             val existing = list(appContext)
 
             try {
-                val sourceHash = copySource(appContext, sourceUri, destination)
+                val sourceHash = copySource(appContext, sourceUri, destination, cancellationContext)
                 val existingWithHashes = existing.map { movie ->
                     movie.takeIf { it.contentSha256 != null }
                         ?: movie.copy(contentSha256 = sha256(videoFile(appContext, movie)))
@@ -97,7 +124,7 @@ object MovieCollectionStore {
                 existingWithHashes.firstOrNull { it.contentSha256 == sourceHash }?.let { duplicate ->
                     destination.delete()
                     if (existingWithHashes != existing) save(appContext, existingWithHashes)
-                    return@synchronized duplicate
+                    return@synchronized CollectionImportOutcome(duplicate, wasDuplicate = true)
                 }
 
                 val metadata = readMetadata(appContext, destination)
@@ -128,7 +155,7 @@ object MovieCollectionStore {
                     contentSha256 = sourceHash
                 )
                 save(appContext, listOf(movie) + existingWithHashes)
-                movie
+                CollectionImportOutcome(movie, wasDuplicate = false)
             } catch (error: Throwable) {
                 destination.delete()
                 poster.delete()
@@ -251,7 +278,12 @@ object MovieCollectionStore {
             .sortedByDescending(CollectedMovie::createdAtMillis)
     }.getOrNull()
 
-    private fun copySource(context: Context, sourceUri: Uri, destination: File): String {
+    private fun copySource(
+        context: Context,
+        sourceUri: Uri,
+        destination: File,
+        cancellationContext: CoroutineContext
+    ): String {
         val input = when (sourceUri.scheme) {
             "file" -> sourceUri.path?.let(::File)?.inputStream()
             else -> context.contentResolver.openInputStream(sourceUri)
@@ -259,7 +291,15 @@ object MovieCollectionStore {
         val digest = MessageDigest.getInstance("SHA-256")
         input.use { source ->
             java.security.DigestInputStream(source, digest).use { digestSource ->
-                destination.outputStream().use(digestSource::copyTo)
+                destination.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        cancellationContext.ensureActive()
+                        val count = digestSource.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                    }
+                }
             }
         }
         require(destination.length() > 0L) { "빈 동영상 파일은 추가할 수 없습니다." }

@@ -2,7 +2,6 @@ package com.hanclip.android.feature.editor
 
 import android.Manifest
 import android.app.Activity
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -77,6 +76,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -117,6 +118,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.hanclip.android.core.media.MediaImportReader
+import com.hanclip.android.core.media.MediaSelectionContract
 import com.hanclip.android.R
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
@@ -132,6 +134,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,6 +156,7 @@ fun EditorRoute(
     var photoDurationClipID by remember { mutableStateOf<String?>(null) }
     var previewClipID by remember { mutableStateOf<String?>(null) }
     var isTextOverlaySheetVisible by remember { mutableStateOf(false) }
+    var textOverlayFocusEndingInfo by remember { mutableStateOf(false) }
     var isMusicSettingsSheetVisible by remember { mutableStateOf(false) }
     var isCalendarPickerVisible by remember { mutableStateOf(false) }
     var mediaPickerTitle by remember { mutableStateOf("날짜별") }
@@ -162,6 +166,8 @@ fun EditorRoute(
     var isExitConfirmationVisible by remember { mutableStateOf(false) }
     var isExportConfirmationVisible by remember { mutableStateOf(false) }
     var isQuickDurationVisible by remember { mutableStateOf(false) }
+    var reopenQuickAfterPicker by remember { mutableStateOf(false) }
+    var reopenQuickAfterSettings by remember { mutableStateOf(false) }
     var quickDurationShownProjectId by remember { mutableStateOf<String?>(null) }
     var quickTargetDurationSeconds by remember { mutableStateOf(1.0) }
     val trimmingClip = state.clips.firstOrNull { it.id == trimmingClipID }
@@ -171,20 +177,32 @@ fun EditorRoute(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data.persistPickedUriPermissions(context)
-            viewModel.addPickedMedia(context, result.data.extractPickedUris())
+            viewModel.addPickedMedia(
+                context,
+                MediaSelectionContract.fromResultIntent(context, result.data).uris
+            )
         } else {
             viewModel.showAlert("미디어 선택을 취소했습니다. 기본 사진첩이나 파일 선택으로 다시 가져올 수 있습니다.")
+        }
+        if (reopenQuickAfterPicker) {
+            reopenQuickAfterPicker = false
+            isQuickDurationVisible = true
         }
     }
     val musicPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data.persistPickedUriPermissions(context)
-            viewModel.setBackgroundMusic(context, result.data?.data)
+            viewModel.setBackgroundMusic(
+                context,
+                MediaSelectionContract.fromResultIntent(context, result.data).uris.firstOrNull()
+            )
         } else {
             viewModel.showAlert("음악 선택을 취소했습니다. 음악 설정에서 다시 선택하거나 샘플 음악을 사용할 수 있습니다.")
+        }
+        if (reopenQuickAfterSettings) {
+            reopenQuickAfterSettings = false
+            isQuickDurationVisible = true
         }
     }
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
@@ -198,6 +216,10 @@ fun EditorRoute(
             viewModel.showAlert("선택한 사진/영상만 허용되어 날짜별 기본 사진첩을 열 수 없습니다. Android 설정 > HanClip 권한에서 사진 및 동영상을 모두 허용하거나, 파일 선택으로 직접 가져와 주세요.")
         } else {
             viewModel.showAlert("Android 기본 사진첩을 보려면 사진 및 동영상 권한이 필요합니다. Android 설정 > HanClip 권한에서 허용하거나, 파일 선택으로 직접 가져와 주세요.")
+        }
+        if (reopenQuickAfterPicker && !context.hasFullGalleryAccess()) {
+            reopenQuickAfterPicker = false
+            isQuickDurationVisible = true
         }
     }
 
@@ -277,6 +299,7 @@ fun EditorRoute(
 
     fun requestBackHome() {
         if (state.clips.isEmpty()) {
+            viewModel.discardPersistedProjectIfEmpty(context)
             onBackHome()
         } else {
             isExitConfirmationVisible = true
@@ -374,7 +397,10 @@ fun EditorRoute(
                     onUseFullVideoRanges = viewModel::selectFullRangeForAllVideoClips,
                     onSetVideoSegmentMode = viewModel::setVideoSegmentModeForAll,
                     onSetLivePhotoMotion = viewModel::setLivePhotoMotionForAll,
-                    onOpenTextOverlay = { isTextOverlaySheetVisible = true },
+                    onOpenTextOverlay = {
+                        textOverlayFocusEndingInfo = false
+                        isTextOverlaySheetVisible = true
+                    },
                     onOpenMusicSettings = { isMusicSettingsSheetVisible = true },
                     onSetSimilarPhotoInterval = { value ->
                         viewModel.setSimilarPhotoRepresentativeInterval(context, value)
@@ -657,8 +683,58 @@ fun EditorRoute(
             QuickDurationDialog(
                 sourceMediaCount = sourceMediaCount,
                 targetDurationSeconds = quickTargetDurationSeconds,
+                watermarkEnabled = state.watermarkSettings.isEnabled,
+                endingInfoEnabled = state.watermarkSettings.includesEndingInfoCard,
+                endingInfoDuration = state.watermarkSettings.normalizedEndingInfoCardDuration,
+                endingThemeTitle = state.watermarkSettings.endingInfoCardTheme.title,
+                musicTitle = state.backgroundMusicTitle,
+                musicEnabled = state.backgroundMusicUri != null && state.backgroundMusicVolume > 0.001,
+                selectedRatio = state.outputAspectRatio,
                 palette = palette,
                 onTargetDurationChange = { quickTargetDurationSeconds = it.coerceAtLeast(0.2) },
+                onToggleWatermark = { enabled ->
+                    viewModel.updateWatermark(state.watermarkSettings.copy(isEnabled = enabled))
+                },
+                onToggleEnding = { enabled ->
+                    viewModel.updateWatermark(state.watermarkSettings.copy(includesEndingInfoCard = enabled))
+                },
+                onToggleMusic = { enabled ->
+                    if (enabled && state.backgroundMusicUri == null) {
+                        isQuickDurationVisible = false
+                        reopenQuickAfterSettings = true
+                        isMusicSettingsSheetVisible = true
+                    } else {
+                        viewModel.updateBackgroundMusicVolume(if (enabled) 0.35 else 0.0)
+                    }
+                },
+                onSelectRatio = { viewModel.selectAspectRatio(context, it) },
+                onOpenText = {
+                    isQuickDurationVisible = false
+                    reopenQuickAfterSettings = true
+                    textOverlayFocusEndingInfo = false
+                    isTextOverlaySheetVisible = true
+                },
+                onOpenEnding = {
+                    isQuickDurationVisible = false
+                    reopenQuickAfterSettings = true
+                    textOverlayFocusEndingInfo = true
+                    isTextOverlaySheetVisible = true
+                },
+                onOpenMusic = {
+                    isQuickDurationVisible = false
+                    reopenQuickAfterSettings = true
+                    isMusicSettingsSheetVisible = true
+                },
+                onAddPhoto = {
+                    isQuickDurationVisible = false
+                    reopenQuickAfterPicker = true
+                    openCalendarPicker("기본 사진첩")
+                },
+                onAddFile = {
+                    isQuickDurationVisible = false
+                    reopenQuickAfterPicker = true
+                    galleryPicker.launch(mediaFileIntent())
+                },
                 onDismiss = { isQuickDurationVisible = false },
                 onConfirm = {
                     viewModel.applyQuickTargetDuration(quickTargetDurationSeconds)
@@ -716,8 +792,16 @@ fun EditorRoute(
             )
         }
         if (isTextOverlaySheetVisible) {
+            fun closeTextOverlay() {
+                isTextOverlaySheetVisible = false
+                textOverlayFocusEndingInfo = false
+                if (reopenQuickAfterSettings) {
+                    reopenQuickAfterSettings = false
+                    isQuickDurationVisible = true
+                }
+            }
             Dialog(
-                onDismissRequest = { isTextOverlaySheetVisible = false },
+                onDismissRequest = ::closeTextOverlay,
                 properties = DialogProperties(
                     usePlatformDefaultWidth = false,
                     decorFitsSystemWindows = false
@@ -740,14 +824,22 @@ fun EditorRoute(
                             }
                     }.distinctBy { it.location },
                     fullScreen = true,
-                    onDismiss = { isTextOverlaySheetVisible = false },
+                    focusEndingInfo = textOverlayFocusEndingInfo,
+                    onDismiss = ::closeTextOverlay,
                     onApply = viewModel::updateWatermark
                 )
             }
         }
         if (isMusicSettingsSheetVisible) {
+            fun closeMusicSettings() {
+                isMusicSettingsSheetVisible = false
+                if (reopenQuickAfterSettings) {
+                    reopenQuickAfterSettings = false
+                    isQuickDurationVisible = true
+                }
+            }
             Dialog(
-                onDismissRequest = { isMusicSettingsSheetVisible = false },
+                onDismissRequest = ::closeMusicSettings,
                 properties = DialogProperties(
                     usePlatformDefaultWidth = false,
                     decorFitsSystemWindows = false
@@ -766,7 +858,7 @@ fun EditorRoute(
                     fullScreen = true,
                     onUseSample = { sample ->
                         viewModel.useSampleBackgroundMusic(context, sample)
-                        isMusicSettingsSheetVisible = false
+                        closeMusicSettings()
                     },
                     onPickFile = {
                         isMusicSettingsSheetVisible = false
@@ -774,24 +866,32 @@ fun EditorRoute(
                     },
                     onOpenBrowser = {
                         isMusicSettingsSheetVisible = false
+                        reopenQuickAfterSettings = false
                         onOpenBrowser()
                     },
                     onRemove = {
                         viewModel.removeBackgroundMusic()
-                        isMusicSettingsSheetVisible = false
+                        closeMusicSettings()
                     },
                     onMusicVolumeChange = viewModel::updateBackgroundMusicVolume,
                     onOriginalAudioVolumeChange = viewModel::updateOriginalAudioVolume,
                     onLoopingChange = viewModel::updateBackgroundMusicLooping,
                     onFadeInChange = viewModel::updateBackgroundMusicFadeIn,
                     onFadeOutChange = viewModel::updateBackgroundMusicFadeOut,
-                    onDismiss = { isMusicSettingsSheetVisible = false }
+                    onDismiss = ::closeMusicSettings
                 )
             }
         }
         if (isCalendarPickerVisible) {
+            fun closeCalendarPicker() {
+                isCalendarPickerVisible = false
+                if (reopenQuickAfterPicker) {
+                    reopenQuickAfterPicker = false
+                    isQuickDurationVisible = true
+                }
+            }
             Dialog(
-                onDismissRequest = { isCalendarPickerVisible = false },
+                onDismissRequest = ::closeCalendarPicker,
                 properties = DialogProperties(
                     usePlatformDefaultWidth = false,
                     decorFitsSystemWindows = false
@@ -800,10 +900,22 @@ fun EditorRoute(
                 CalendarMediaPickerSheet(
                     title = mediaPickerTitle,
                     palette = palette,
-                    onDismiss = { isCalendarPickerVisible = false },
-                    onImport = { uris ->
-                        isCalendarPickerVisible = false
-                        viewModel.addPickedMedia(context, uris)
+                    initialSelectedUris = state.clips
+                        .filterNot { it.isVideoSegmentChild }
+                        .mapNotNull { clip ->
+                            clip.originalSourceUriString
+                                ?.let(Uri::parse)
+                                ?: clip.sourceUri.takeIf { it.scheme == "content" }
+                        }
+                        .distinctBy(Uri::toString),
+                    onDismiss = ::closeCalendarPicker,
+                    onImport = { uris, deselectionScopeUris ->
+                        closeCalendarPicker()
+                        viewModel.synchronizePickedMedia(
+                            context = context,
+                            selectedUris = MediaSelectionContract.normalize(uris).uris,
+                            deselectionScopeUris = deselectionScopeUris
+                        )
                     }
                 )
             }
@@ -858,44 +970,6 @@ private fun mediaFileIntent(): Intent {
         addCategory(Intent.CATEGORY_OPENABLE)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-    }
-}
-
-private fun Intent?.extractPickedUris(): List<Uri> {
-    if (this == null) return emptyList()
-    val selected = mutableListOf<Uri>()
-    clipData?.forEachUri { selected += it }
-    data?.let { selected += it }
-    return selected.distinct()
-}
-
-private fun Intent?.persistPickedUriPermissions(context: Context) {
-    if (this == null) return
-    val canRead = flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0
-    val canWrite = flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
-    extractPickedUris().forEach { uri ->
-        if (canRead) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-        }
-        if (canWrite) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            }
-        }
-    }
-}
-
-private fun ClipData.forEachUri(block: (Uri) -> Unit) {
-    for (index in 0 until itemCount) {
-        getItemAt(index).uri?.let(block)
     }
 }
 
@@ -1447,90 +1521,367 @@ private fun presetStatusDescription(preset: MoviePreset): String {
 private fun QuickDurationDialog(
     sourceMediaCount: Int,
     targetDurationSeconds: Double,
+    watermarkEnabled: Boolean,
+    endingInfoEnabled: Boolean,
+    endingInfoDuration: Double,
+    endingThemeTitle: String,
+    musicTitle: String?,
+    musicEnabled: Boolean,
+    selectedRatio: OutputAspectRatio?,
     palette: HanClipPalette,
     onTargetDurationChange: (Double) -> Unit,
+    onToggleWatermark: (Boolean) -> Unit,
+    onToggleEnding: (Boolean) -> Unit,
+    onToggleMusic: (Boolean) -> Unit,
+    onSelectRatio: (OutputAspectRatio?) -> Unit,
+    onOpenText: () -> Unit,
+    onOpenEnding: () -> Unit,
+    onOpenMusic: () -> Unit,
+    onAddPhoto: () -> Unit,
+    onAddFile: () -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
     val recommendedDuration = sourceMediaCount.toDouble()
+    val minimumDuration = (sourceMediaCount * 0.2).coerceAtLeast(0.2)
+    var mediaMenuExpanded by remember { mutableStateOf(false) }
     val perMediaDuration = (targetDurationSeconds / sourceMediaCount.coerceAtLeast(1))
         .coerceAtLeast(0.2)
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(22.dp),
-        containerColor = palette.solidPanel,
-        titleContentColor = palette.text,
-        textContentColor = palette.subText,
-        title = { Text("Quick 영화 길이", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(
-                    "원본 ${sourceMediaCount}개 · 권장 전체 ${formatSummaryDuration(recommendedDuration)}",
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.text
-                )
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = palette.panel,
-                    border = BorderStroke(1.dp, palette.border)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(palette.background)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("목표 전체 길이", color = palette.subText)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        Surface(
+                            modifier = Modifier.size(52.dp).clickable(onClick = onDismiss),
+                            shape = RoundedCornerShape(26.dp),
+                            color = palette.panel,
+                            border = BorderStroke(1.dp, palette.border)
                         ) {
-                            OutlinedButton(
-                                onClick = {
-                                    onTargetDurationChange((targetDurationSeconds - 1.0).coerceAtLeast(0.2))
-                                }
-                            ) { Text("−") }
-                            Text(
-                                formatSummaryDuration(targetDurationSeconds),
-                                color = palette.primary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp
-                            )
-                            OutlinedButton(
-                                onClick = { onTargetDurationChange(targetDurationSeconds + 1.0) }
-                            ) { Text("+") }
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Outlined.Close, contentDescription = "취소", tint = palette.primary)
+                            }
                         }
                         Text(
-                            "미디어 한 개당 ${formatSummaryDuration(perMediaDuration)} · 최소 0.2초",
-                            color = palette.subText,
-                            style = MaterialTheme.typography.bodySmall
+                            "퀵모드 영상 길이",
+                            color = palette.text,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 18.sp
                         )
-                        OutlinedButton(
-                            onClick = { onTargetDurationChange(recommendedDuration) },
-                            shape = RoundedCornerShape(14.dp)
-                        ) { Text("권장 길이 사용") }
+                        Box {
+                            IconButton(onClick = { mediaMenuExpanded = true }) {
+                                Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "미디어 추가", tint = palette.primary)
+                            }
+                            DropdownMenu(
+                                expanded = mediaMenuExpanded,
+                                onDismissRequest = { mediaMenuExpanded = false },
+                                shape = RoundedCornerShape(16.dp),
+                                containerColor = palette.solidPanel
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("사진") },
+                                    leadingIcon = { Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null) },
+                                    onClick = {
+                                        mediaMenuExpanded = false
+                                        onAddPhoto()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("파일") },
+                                    leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                                    onClick = {
+                                        mediaMenuExpanded = false
+                                        onAddFile()
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
-                Text(
-                    "만들기를 누르면 모든 클립 길이를 맞춘 뒤 기존 시사회 흐름으로 이동합니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.subText
-                )
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(26.dp),
+                        color = palette.panel,
+                        border = BorderStroke(1.dp, palette.border)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onTargetDurationChange((targetDurationSeconds - 5.0).coerceAtLeast(minimumDuration))
+                                    },
+                                    shape = RoundedCornerShape(18.dp)
+                                ) { Icon(Icons.Outlined.Remove, contentDescription = "5초 줄이기") }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("선택시간", color = palette.subText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        formatQuickDuration(targetDurationSeconds),
+                                        color = palette.primary,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 22.sp
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { onTargetDurationChange((targetDurationSeconds + 5.0).coerceAtMost(3600.0)) },
+                                    shape = RoundedCornerShape(18.dp)
+                                ) { Icon(Icons.Outlined.Add, contentDescription = "5초 늘리기") }
+                            }
+                            Text(
+                                "원본 ${sourceMediaCount}개 · 한 개당 ${formatQuickDuration(perMediaDuration)} · 최소 ${formatQuickDuration(minimumDuration)}",
+                                color = palette.subText,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Box(Modifier.weight(1f).height(1.dp).background(palette.border))
+                        Text("시간 변경", color = palette.subText, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Box(Modifier.weight(1f).height(1.dp).background(palette.border))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    val choices = listOf(
+                        "30초" to 30.0,
+                        "45초" to 45.0,
+                        "1분" to 60.0,
+                        "2분" to 120.0,
+                        "3분" to 180.0,
+                        "5분" to 300.0,
+                        "추천시간" to recommendedDuration,
+                        "최소시간" to minimumDuration
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        choices.chunked(2).forEachIndexed { rowIndex, pair ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                pair.forEachIndexed { columnIndex, (label, rawSeconds) ->
+                                    val choiceIndex = rowIndex * 2 + columnIndex
+                                    val seconds = rawSeconds.coerceAtLeast(minimumDuration)
+                                    val selected = kotlin.math.abs(targetDurationSeconds - seconds) < 0.01
+                                    Button(
+                                        modifier = Modifier.weight(1f).height(54.dp),
+                                        onClick = { onTargetDurationChange(seconds) },
+                                        shape = RoundedCornerShape(27.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (selected) palette.primary else palette.panel,
+                                            contentColor = if (selected) Color.White else palette.text
+                                        ),
+                                        border = if (selected) null else BorderStroke(1.dp, palette.border)
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(label, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                if (choiceIndex < 6) {
+                                                    if (seconds > rawSeconds) "최소 ${formatQuickDuration(seconds)}로 적용"
+                                                    else "최대 ${(rawSeconds * 5).toInt()}개"
+                                                } else {
+                                                    formatQuickDuration(seconds)
+                                                },
+                                                fontSize = 10.sp,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = palette.panel,
+                        border = BorderStroke(1.dp, palette.border)
+                    ) {
+                        Column {
+                            QuickSettingRow(
+                                icon = Icons.Outlined.TextFields,
+                                title = "자막",
+                                detail = if (watermarkEnabled) "사용" else "안함",
+                                palette = palette,
+                                onOpen = onOpenText
+                            ) {
+                                CompactChoice("사용", watermarkEnabled, palette, onClick = { onToggleWatermark(true) })
+                                CompactChoice("안함", !watermarkEnabled, palette, onClick = { onToggleWatermark(false) })
+                            }
+                            SettingDivider(palette)
+                            QuickSettingRow(
+                                icon = Icons.Outlined.LibraryMusic,
+                                title = "음악",
+                                detail = if (musicEnabled) musicTitle.orEmpty() else "안함",
+                                palette = palette,
+                                onOpen = onOpenMusic
+                            ) {
+                                CompactChoice("사용", musicEnabled, palette, onClick = { onToggleMusic(true) })
+                                CompactChoice("안함", !musicEnabled, palette, onClick = { onToggleMusic(false) })
+                            }
+                            SettingDivider(palette)
+                            QuickSettingRow(
+                                icon = Icons.Outlined.AutoFixHigh,
+                                title = "엔딩",
+                                detail = if (endingInfoEnabled) "$endingThemeTitle · ${formatQuickDuration(endingInfoDuration)}" else "안함",
+                                palette = palette,
+                                onOpen = onOpenEnding
+                            ) {
+                                CompactChoice("사용", endingInfoEnabled, palette, onClick = { onToggleEnding(true) })
+                                CompactChoice("안함", !endingInfoEnabled, palette, onClick = { onToggleEnding(false) })
+                            }
+                        }
+                    }
+                }
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        color = palette.panel,
+                        border = BorderStroke(1.dp, palette.border)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            QuickRatioChoice(
+                                label = "첫\n사진",
+                                selected = selectedRatio == null,
+                                palette = palette,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onSelectRatio(null) }
+                            )
+                            OutputAspectRatio.entries.forEach { ratio ->
+                                QuickRatioChoice(
+                                    label = quickRatioLabel(ratio),
+                                    selected = selectedRatio == ratio,
+                                    palette = palette,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { onSelectRatio(ratio) }
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    Button(
+                        modifier = Modifier.fillMaxWidth().height(78.dp),
+                        onClick = onConfirm,
+                        shape = RoundedCornerShape(39.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                    ) {
+                        Text("이 시간으로 만들기", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    }
+                }
             }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(14.dp)) {
-                Text("계속 편집")
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
-            ) { Text("이 길이로 만들기") }
         }
-    )
+    }
+}
+
+@Composable
+private fun QuickRatioChoice(
+    label: String,
+    selected: Boolean,
+    palette: HanClipPalette,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.height(44.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) palette.primary.copy(alpha = 0.14f) else Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) palette.primary else Color.Transparent),
+        onClick = onClick
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                label,
+                color = if (selected) palette.primary else palette.secondary,
+                fontSize = 10.sp,
+                lineHeight = 10.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun quickRatioLabel(ratio: OutputAspectRatio): String = when (ratio) {
+    OutputAspectRatio.Square -> "1:1"
+    OutputAspectRatio.Portrait3x4 -> "3:4"
+    OutputAspectRatio.Landscape4x3 -> "4:3"
+    OutputAspectRatio.Portrait9x16 -> "9:16"
+    OutputAspectRatio.Landscape16x9 -> "16:9"
+}
+
+private fun formatQuickDuration(seconds: Double): String {
+    if (seconds < 1.0) return "%.1f초".format(seconds)
+    val rounded = seconds.roundToInt().coerceAtLeast(1)
+    val minutes = rounded / 60
+    val remainder = rounded % 60
+    return when {
+        minutes == 0 -> "${remainder}초"
+        remainder == 0 -> "${minutes}분"
+        else -> "${minutes}분 ${remainder}초"
+    }
+}
+
+@Composable
+private fun QuickSettingRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    detail: String,
+    palette: HanClipPalette,
+    onOpen: () -> Unit,
+    actions: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = palette.text, fontWeight = FontWeight.Bold)
+            Text(detail, color = palette.subText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), content = actions)
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -188,6 +188,12 @@ fun HanClipApp(
                     navController.navigate(HanClipDestination.Editor.routeFor(MoviePreset.NewMovie))
                 }
             }
+            HanClipQuickAction.Quick -> {
+                pendingEditorImportAction = EditorImportAction.Photo
+                if (activeRoute?.startsWith("editor/") != true) {
+                    navController.navigate(HanClipDestination.Editor.routeFor(MoviePreset.Quick))
+                }
+            }
             HanClipQuickAction.Calendar -> {
                 pendingEditorImportAction = EditorImportAction.Calendar
                 if (activeRoute?.startsWith("editor/") != true) {
