@@ -11,8 +11,18 @@ android {
         applicationId = "com.hanclip.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 410
+        versionCode = 411
         versionName = "1.0.1"
+    }
+
+    buildTypes {
+        create("releaseQa") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release", "debug")
+        }
     }
 
     buildFeatures {
