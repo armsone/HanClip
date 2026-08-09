@@ -8,6 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -292,6 +295,11 @@ private fun CollectionMovieCard(
     palette: HanClipPalette
 ) {
     val context = LocalContext.current
+    val collectionPinBitmap = remember {
+        runCatching {
+            context.assets.open("images/collection_pin.png").use(BitmapFactory::decodeStream)
+        }.getOrNull()
+    }
     var showActions by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     var showRemove by remember { mutableStateOf(false) }
@@ -377,30 +385,39 @@ private fun CollectionMovieCard(
         ) {
             Icon(Icons.Outlined.MoreVert, contentDescription = "컬렉션 메뉴", tint = Color.White)
         }
-        Surface(
+        Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .size(44.dp),
-            shape = RoundedCornerShape(22.dp),
-            color = Color.Transparent,
-            onClick = onTogglePin
+                .size(56.dp)
+                .semantics {
+                    contentDescription = if (movie.isPinned) "컬렉션 핀 해제" else "컬렉션 핀 고정"
+                }
+                .clickable(onClick = onTogglePin),
+            contentAlignment = Alignment.Center
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                if (movie.isPinned) {
+            if (movie.isPinned) {
+                if (collectionPinBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = collectionPinBitmap.asImageBitmap(),
+                        contentDescription = "컬렉션 핀 해제",
+                        modifier = Modifier.size(51.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
                     Icon(
                         Icons.Outlined.PushPin,
                         contentDescription = "컬렉션 핀 해제",
                         tint = Color(0xFFF2545B),
                         modifier = Modifier.size(30.dp)
                     )
-                } else {
-                    Surface(
-                        modifier = Modifier.size(18.dp),
-                        shape = RoundedCornerShape(9.dp),
-                        color = Color.Black.copy(alpha = 0.90f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f))
-                    ) {}
                 }
+            } else {
+                Surface(
+                    modifier = Modifier.size(18.dp),
+                    shape = RoundedCornerShape(9.dp),
+                    color = Color.Black.copy(alpha = 0.90f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f))
+                ) {}
             }
         }
         DropdownMenu(

@@ -302,6 +302,9 @@ private fun EndingCaptionPresetGrid(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 rowPresets.forEach { preset ->
+                    val previewFontFamily = remember(preset.fontName) {
+                        fontFamilyForName(context, preset.fontName)
+                    }
                     val selected = settings.fontName == preset.fontName &&
                         settings.textColorHex.equals(preset.textColor, true) &&
                         settings.shadowColorHex.equals(preset.shadowColor, true) &&
@@ -344,7 +347,7 @@ private fun EndingCaptionPresetGrid(
                                 "Aa",
                                 color = Color(android.graphics.Color.parseColor(preset.textColor)),
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = fontFamilyForName(context, preset.fontName)
+                                fontFamily = previewFontFamily
                             )
                         }
                     }

@@ -85,6 +85,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.pow
 import java.io.File
 
 private val SheetPrimary = Color(0xFF0B7A4E)
@@ -112,6 +113,9 @@ fun TextOverlaySheet(
     val scrollState = rememberScrollState()
     var draft by remember(settings) { mutableStateOf(settings) }
     var showAdvancedFonts by remember { mutableStateOf(false) }
+    val captionPreviewBackground = remember(draft.textColorHex, draft.shadowColorHex) {
+        captionPreviewBackgroundColor(draft.textColorHex, draft.shadowColorHex)
+    }
     val mediaDateCaptionText = remember(mediaCreatedAtMillis) {
         mediaDateRangeCaptionText(mediaCreatedAtMillis)
     }
@@ -266,7 +270,10 @@ fun TextOverlaySheet(
                     focusedBorderColor = palette.primary,
                     unfocusedBorderColor = palette.border,
                     focusedLabelColor = palette.primary,
-                    unfocusedLabelColor = SheetSubText
+                    unfocusedLabelColor = SheetSubText,
+                    focusedContainerColor = captionPreviewBackground.copy(alpha = 0.72f),
+                    unfocusedContainerColor = captionPreviewBackground.copy(alpha = 0.72f),
+                    disabledContainerColor = captionPreviewBackground.copy(alpha = 0.72f)
                 )
             )
 
@@ -348,19 +355,33 @@ fun TextOverlaySheet(
                     "nexon_lv1_gothic",
                     "poppins"
                     ).forEach { font ->
+                        val fontFamily = remember(font) { fontFamilyForName(context, font) }
                         FilterChip(
                             selected = draft.fontName == font,
                             onClick = { draft = draft.copy(fontName = font) },
-                            label = { Text(fontDisplayName(font), fontWeight = FontWeight.SemiBold) },
+                            label = {
+                                Text(
+                                    fontDisplayName(font),
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = fontFamily
+                                )
+                            },
                             colors = sheetFilterChipColors(),
                             border = sheetFilterChipBorder(draft.fontName == font)
                         )
                     }
                     importedFonts.forEach { font ->
+                        val fontFamily = remember(font.id) { fontFamilyForName(context, font.id) }
                         FilterChip(
                             selected = draft.fontName == font.id,
                             onClick = { draft = draft.copy(fontName = font.id) },
-                            label = { Text(font.displayName, fontWeight = FontWeight.SemiBold) },
+                            label = {
+                                Text(
+                                    font.displayName,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = fontFamily
+                                )
+                            },
                             colors = sheetFilterChipColors(),
                             border = sheetFilterChipBorder(draft.fontName == font.id)
                         )
@@ -1507,6 +1528,9 @@ private fun CaptionStylePicker(
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 rowPresets.forEach { preset ->
+                    val previewFontFamily = remember(preset.fontName) {
+                        fontFamilyForName(context, preset.fontName)
+                    }
                     val selected = preset.matches(settings)
                     Surface(
                         modifier = Modifier
@@ -1553,7 +1577,7 @@ private fun CaptionStylePicker(
                                 "Aa",
                                 color = parseHexColor(preset.previewTextColorHex),
                                 fontWeight = FontWeight.Black,
-                                fontFamily = fontFamilyForName(context, preset.fontName),
+                                fontFamily = previewFontFamily,
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
@@ -1666,6 +1690,46 @@ internal fun fontFamilyForName(context: android.content.Context, font: String): 
 private fun parseHexColor(hex: String): Color {
     return runCatching { Color(android.graphics.Color.parseColor(hex)) }
         .getOrDefault(Color.White)
+}
+
+private val CaptionPreviewBackgroundPalette = listOf(
+    Color(0xFFFFF7C7),
+    Color(0xFFDFF4FF),
+    Color(0xFFE4FFD8),
+    Color(0xFFFFE0EA),
+    Color(0xFFEFE3FF),
+    Color(0xFFE0FFF6),
+    Color(0xFFFFF0D6),
+    Color(0xFFF2F4FF)
+)
+
+private fun captionPreviewBackgroundColor(textColorHex: String, shadowColorHex: String): Color {
+    val excluded = listOf(parseHexColor(textColorHex), parseHexColor(shadowColorHex))
+    val scored = CaptionPreviewBackgroundPalette.map { candidate ->
+        candidate to excluded.minOf { foreground -> colorContrastRatio(candidate, foreground) }
+    }
+    val bestScore = scored.maxOfOrNull { it.second } ?: return CaptionPreviewBackgroundPalette.first()
+    return scored.filter { it.second >= bestScore * 0.85f }.randomOrNull()?.first
+        ?: CaptionPreviewBackgroundPalette.first()
+}
+
+private fun colorContrastRatio(first: Color, second: Color): Float {
+    val firstLuminance = relativeLuminance(first)
+    val secondLuminance = relativeLuminance(second)
+    val lighter = maxOf(firstLuminance, secondLuminance)
+    val darker = minOf(firstLuminance, secondLuminance)
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
+private fun relativeLuminance(color: Color): Float {
+    fun convert(component: Float): Float = if (component <= 0.03928f) {
+        component / 12.92f
+    } else {
+        ((component + 0.055f) / 1.055f).pow(2.4f)
+    }
+    return 0.2126f * convert(color.red) +
+        0.7152f * convert(color.green) +
+        0.0722f * convert(color.blue)
 }
 
 private enum class CaptionStylePreset(
