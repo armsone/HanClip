@@ -3,6 +3,7 @@ package com.hanclip.android.feature.browser
 import android.content.Intent
 import android.content.Context
 import android.content.ClipData
+import android.content.ClipboardManager
 import android.app.DownloadManager
 import android.net.Uri
 import android.os.Environment
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -109,9 +111,41 @@ fun OnlineMusicBrowserRoute(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
+    var isPageLoading by remember { mutableStateOf(false) }
 
     fun loadAddress() {
         targetUrl = normalizedBrowserUrl(addressText)
+        isPageLoading = true
+    }
+
+    fun closeOrGoBack() {
+        val view = webView
+        if (view?.canGoBack() == true) {
+            view.goBack()
+            canGoBack = view.canGoBack()
+            canGoForward = view.canGoForward()
+        } else {
+            onClose()
+        }
+    }
+
+    fun pasteCopiedAddressAndLoad() {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val copiedAddress = clipboard
+            ?.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.coerceToText(context)
+            ?.toString()
+            ?.trim()
+            .orEmpty()
+        if (copiedAddress.isBlank()) {
+            Toast.makeText(context, "복사한 주소가 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        addressText = copiedAddress
+        targetUrl = normalizedBrowserUrl(copiedAddress)
+        isPageLoading = true
     }
 
     fun toggleCurrentFavorite() {
@@ -179,8 +213,28 @@ fun OnlineMusicBrowserRoute(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Outlined.Close, contentDescription = "브라우저 닫기", tint = palette.text)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .combinedClickable(
+                            onClick = ::closeOrGoBack,
+                            onLongClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onClose()
+                            },
+                            onLongClickLabel = "브라우저 닫기"
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (canGoBack) Icons.AutoMirrored.Outlined.ArrowBack else Icons.Outlined.Close,
+                        contentDescription = if (canGoBack) {
+                            "이전 페이지, 길게 눌러 브라우저 닫기"
+                        } else {
+                            "브라우저 닫기"
+                        },
+                        tint = palette.text
+                    )
                 }
                 OutlinedTextField(
                     modifier = Modifier.weight(1f),
@@ -191,8 +245,35 @@ fun OnlineMusicBrowserRoute(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { loadAddress() })
                 )
-                IconButton(onClick = ::loadAddress) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "주소 열기", tint = palette.text)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .combinedClickable(
+                            onClick = {
+                                if (isPageLoading) {
+                                    webView?.stopLoading()
+                                    isPageLoading = false
+                                } else {
+                                    loadAddress()
+                                }
+                            },
+                            onLongClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                pasteCopiedAddressAndLoad()
+                            },
+                            onLongClickLabel = "복사한 주소로 이동"
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (isPageLoading) Icons.Outlined.Close else Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = if (isPageLoading) {
+                            "로딩 중지"
+                        } else {
+                            "주소로 이동, 길게 눌러 복사한 주소로 이동"
+                        },
+                        tint = palette.text
+                    )
                 }
                 IconButton(onClick = { webView?.reload() }) {
                     Icon(Icons.Outlined.Refresh, contentDescription = "새로고침", tint = palette.text)
@@ -234,8 +315,18 @@ fun OnlineMusicBrowserRoute(
                                 request: WebResourceRequest
                             ): Boolean = false
 
+                            override fun onPageStarted(
+                                view: WebView,
+                                url: String?,
+                                favicon: android.graphics.Bitmap?
+                            ) {
+                                super.onPageStarted(view, url, favicon)
+                                isPageLoading = true
+                            }
+
                             override fun onPageFinished(view: WebView, url: String?) {
                                 super.onPageFinished(view, url)
+                                isPageLoading = false
                                 url?.let {
                                     addressText = it
                                     targetUrl = it
