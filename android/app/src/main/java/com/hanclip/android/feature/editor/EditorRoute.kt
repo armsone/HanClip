@@ -62,6 +62,10 @@ import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.MovieCreation
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.RadioButtonChecked
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -2036,7 +2040,7 @@ private fun ProjectControls(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Outlined.AutoFixHigh,
+                    Icons.Outlined.Tune,
                     contentDescription = null,
                     tint = palette.primary.copy(alpha = 0.86f),
                     modifier = Modifier.size(16.dp)
@@ -2058,7 +2062,7 @@ private fun ProjectControls(
             border = BorderStroke(1.dp, palette.border)
         ) {
             Column {
-                CompactSettingRow(Icons.Outlined.LightMode, "기본시간", palette) {
+                CompactSettingRow(Icons.Outlined.Timer, "기본시간", palette) {
                     StepperPill(
                         value = "%.1f초".format(defaultDuration),
                         onDecrease = { onSetDuration(defaultDuration - 0.1) },
@@ -2068,12 +2072,12 @@ private fun ProjectControls(
                     CompactChoice("적용", true, palette, onApplyDuration)
                 }
                 SettingDivider(palette)
-                CompactSettingRow(Icons.Outlined.AspectRatio, "영상 길이", palette) {
+                CompactSettingRow(Icons.Outlined.SwapHoriz, "영상 길이", palette) {
                     CompactChoice("선택구간", !usesFullVideoRange, palette, onUseSelectedVideoRanges)
                     CompactChoice("전체영상", usesFullVideoRange, palette, onUseFullVideoRanges)
                 }
                 SettingDivider(palette)
-                CompactSettingRow(Icons.Outlined.PlayCircle, "라이브포토", palette) {
+                CompactSettingRow(Icons.Outlined.RadioButtonChecked, "라이브포토", palette) {
                     CompactChoice(
                         "사진",
                         !livePhotosUseMotion,
