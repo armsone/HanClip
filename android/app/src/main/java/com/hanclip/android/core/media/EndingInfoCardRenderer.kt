@@ -21,6 +21,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.max
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 internal object EndingInfoCardRenderer {
     fun renderToFile(
@@ -112,16 +114,40 @@ internal object EndingInfoCardRenderer {
         canvas.drawRoundRect(panel, 4.5f * unit, 4.5f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.panel
         })
+        if (settings.endingInfoCardTheme == EndingInfoCardTheme.TreasureMap) {
+            val inner = RectF(panel).apply { inset(3f * unit, 3f * unit) }
+            canvas.drawRoundRect(inner, 3f * unit, 3f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                color = colors.accent
+                alpha = 140
+                strokeWidth = max(1f, 0.35f * unit)
+                pathEffect = android.graphics.DashPathEffect(floatArrayOf(1.5f * unit, 1.2f * unit), 0f)
+            })
+            canvas.drawText(
+                "✥",
+                panel.right - 9f * unit,
+                panel.top + 10f * unit,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    textAlign = Paint.Align.CENTER
+                    typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+                    textSize = 6f * unit
+                    color = colors.accent
+                }
+            )
+        }
 
         val dates = clips.mapNotNull(ClipItem::sourceCreatedAtMillis)
         val dateText = dateRange(dates)
         val stops = endingStops(context, clips).take(8)
         val heading = when (settings.endingInfoCardTheme) {
-            EndingInfoCardTheme.Caption -> "여행의 기록"
-            EndingInfoCardTheme.TreasureMap -> "TREASURE MAP"
-            EndingInfoCardTheme.Itinerary -> "TRAVEL ITINERARY"
-            EndingInfoCardTheme.Landmark -> "MEMORIES"
-            EndingInfoCardTheme.Office -> "TRIP REPORT"
+            EndingInfoCardTheme.Caption -> "여행 기록"
+            EndingInfoCardTheme.TreasureMap -> "여행 기록"
+            EndingInfoCardTheme.Itinerary -> "여행 일정표"
+            EndingInfoCardTheme.Landmark -> stops.firstOrNull()?.label?.let { first ->
+                val last = stops.lastOrNull()?.label ?: first
+                if (first == last) "$first 여행" else "$first · $last 여행"
+            } ?: "여행 기록"
+            EndingInfoCardTheme.Office -> ""
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.text
@@ -129,15 +155,17 @@ internal object EndingInfoCardRenderer {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textSize = 5.6f * unit
         }
-        canvas.drawText(heading, panel.centerX(), panel.top + 11f * unit, paint)
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        paint.textSize = 3.2f * unit
-        paint.color = colors.secondary
-        canvas.drawText(dateText, panel.centerX(), panel.top + 17f * unit, paint)
+        if (settings.endingInfoCardTheme != EndingInfoCardTheme.Office) {
+            canvas.drawText(heading, panel.centerX(), panel.top + 11f * unit, paint)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            paint.textSize = 3.2f * unit
+            paint.color = colors.secondary
+            canvas.drawText(dateText, panel.centerX(), panel.top + 17f * unit, paint)
+        }
 
         when (settings.endingInfoCardTheme) {
             EndingInfoCardTheme.Itinerary -> {
-                drawItinerary(canvas, panel, stops, colors, unit)
+                drawItinerary(canvas, panel, dateText, stops, colors, unit)
                 drawFooter(canvas, panel, colors, unit)
                 return
             }
@@ -148,6 +176,18 @@ internal object EndingInfoCardRenderer {
             }
             EndingInfoCardTheme.Office -> {
                 drawOfficeReport(canvas, panel, dateText, stops, colors, unit)
+                return
+            }
+            EndingInfoCardTheme.TreasureMap -> {
+                drawTreasureMapRoute(
+                    canvas = canvas,
+                    panel = panel,
+                    stops = stops,
+                    variation = settings.endingInfoCardVariation,
+                    colors = colors,
+                    unit = unit
+                )
+                drawFooter(canvas, panel, colors, unit)
                 return
             }
             else -> Unit
@@ -225,10 +265,32 @@ internal object EndingInfoCardRenderer {
     private fun drawItinerary(
         canvas: Canvas,
         panel: RectF,
+        dateText: String,
         stops: List<RouteStop>,
         colors: CardColors,
         unit: Float
     ) {
+        canvas.drawRect(
+            panel.left,
+            panel.top,
+            panel.right,
+            panel.top + 20f * unit,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(252, 232, 230) }
+        )
+        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            color = colors.accent
+            textSize = 5f * unit
+        }
+        canvas.drawText("여행 일정표", panel.centerX(), panel.top + 7.5f * unit, headerPaint)
+        headerPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        headerPaint.color = colors.secondary
+        headerPaint.textSize = 1.9f * unit
+        canvas.drawText("TRAVEL SCHEDULE", panel.centerX(), panel.top + 12f * unit, headerPaint)
+        headerPaint.color = colors.text
+        headerPaint.textSize = 2.4f * unit
+        canvas.drawText(dateText, panel.centerX(), panel.top + 17f * unit, headerPaint)
         val top = panel.top + 24f * unit
         val bottom = panel.bottom - 10f * unit
         val rowHeight = (bottom - top) / max(1, stops.size)
@@ -266,6 +328,92 @@ internal object EndingInfoCardRenderer {
         }
     }
 
+    private fun drawTreasureMapRoute(
+        canvas: Canvas,
+        panel: RectF,
+        stops: List<RouteStop>,
+        variation: Int,
+        colors: CardColors,
+        unit: Float
+    ) {
+        if (stops.isEmpty()) return
+        val route = RectF(
+            panel.left + 12f * unit,
+            panel.top + 25f * unit,
+            panel.right - 12f * unit,
+            panel.bottom - 12f * unit
+        )
+        val count = stops.size
+        val usableHeight = route.height() * 0.78f
+        val top = route.top + route.height() * 0.10f
+        val phase = (variation % 9) * 0.42f
+        val direction = if (variation % 2 == 0) 1f else -1f
+        val points = stops.indices.map { index ->
+            val progress = if (count == 1) 0.5f else index.toFloat() / (count - 1)
+            val wave = sin(progress * Math.PI.toFloat() * 2.4f - Math.PI.toFloat() / 2f + phase)
+            Pair(
+                route.centerX() + wave * route.width() * 0.28f * direction,
+                top + progress * usableHeight
+            )
+        }
+        val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = colors.secondary
+            strokeWidth = max(1.4f, 0.58f * unit)
+            strokeCap = Paint.Cap.ROUND
+            pathEffect = android.graphics.DashPathEffect(floatArrayOf(1.2f * unit, 1.7f * unit), 0f)
+        }
+        points.zipWithNext().forEachIndexed { index, (start, end) ->
+            val vertical = (end.second - start.second) * 0.50f
+            canvas.drawPath(
+                Path().apply {
+                    moveTo(start.first, start.second)
+                    cubicTo(
+                        start.first,
+                        start.second + vertical,
+                        end.first,
+                        end.second - vertical,
+                        end.first,
+                        end.second
+                    )
+                },
+                routePaint
+            )
+            drawTransportMark(
+                canvas,
+                (start.first + end.first) / 2f,
+                (start.second + end.second) / 2f,
+                stops[index].countryCode != stops[index + 1].countryCode,
+                colors.accent,
+                unit
+            )
+        }
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.text
+            typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+            textSize = max(2.1f * unit, minOf(3.8f * unit, 8.7f * unit / sqrt(count.toFloat())))
+        }
+        points.forEachIndexed { index, point ->
+            val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors.accent
+                strokeWidth = 0.9f * unit
+                strokeCap = Paint.Cap.ROUND
+            }
+            if (index == 0) {
+                val radius = 2.5f * unit
+                canvas.drawLine(point.first - radius, point.second - radius, point.first + radius, point.second + radius, markerPaint)
+                canvas.drawLine(point.first + radius, point.second - radius, point.first - radius, point.second + radius, markerPaint)
+            } else {
+                canvas.drawCircle(point.first, point.second, 1.7f * unit, markerPaint)
+                canvas.drawCircle(point.first, point.second, 0.7f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colors.panel })
+            }
+            val right = point.first <= route.centerX()
+            labelPaint.textAlign = if (right) Paint.Align.LEFT else Paint.Align.RIGHT
+            val labelX = point.first + if (right) 3f * unit else -3f * unit
+            canvas.drawText(stops[index].label.take(24), labelX, point.second + 0.8f * unit, labelPaint)
+        }
+    }
+
     private fun drawLandmarkJourney(
         canvas: Canvas,
         panel: RectF,
@@ -286,14 +434,17 @@ internal object EndingInfoCardRenderer {
             canvas.drawRoundRect(card, 2.5f * unit, 2.5f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.argb(105, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent))
             })
-            val skyline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colors.secondary }
-            val baseline = card.top + cellHeight * 0.48f
-            repeat(4) { tower ->
-                val towerWidth = cellWidth / 10f
-                val towerLeft = card.left + 4f * unit + tower * (towerWidth + 1.2f * unit)
-                val height = (4 + (tower + index) % 4 * 2) * unit
-                canvas.drawRect(towerLeft, baseline - height, towerLeft + towerWidth, baseline, skyline)
-            }
+            val landmark = landmarkDescriptor(stop.label)
+            canvas.drawText(
+                landmark.emoji,
+                card.centerX(),
+                card.top + cellHeight * 0.46f,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    textAlign = Paint.Align.CENTER
+                    textSize = minOf(9f * unit, cellHeight * 0.34f)
+                    typeface = Typeface.DEFAULT
+                }
+            )
             val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = colors.text
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -301,10 +452,36 @@ internal object EndingInfoCardRenderer {
                 textSize = 3.1f * unit
             }
             canvas.drawText(stop.label.take(20), card.centerX(), card.bottom - 5f * unit, labelPaint)
-            labelPaint.color = colors.accent
+            labelPaint.color = colors.secondary
             labelPaint.textSize = 2.3f * unit
-            canvas.drawText(stop.dateText, card.centerX(), card.bottom - 2f * unit, labelPaint)
+            canvas.drawText(landmark.name, card.centerX(), card.bottom - 2f * unit, labelPaint)
         }
+    }
+
+    private data class LandmarkDescriptor(val name: String, val emoji: String)
+
+    private fun landmarkDescriptor(label: String): LandmarkDescriptor {
+        val value = label.lowercase(Locale.getDefault())
+        val candidates = listOf(
+            listOf("서울", "seoul") to LandmarkDescriptor("남산서울타워", "🗼"),
+            listOf("제주", "jeju") to LandmarkDescriptor("한라산·성산일출봉", "🌋"),
+            listOf("부산", "busan") to LandmarkDescriptor("광안대교·해동용궁사", "🌉"),
+            listOf("인천", "incheon") to LandmarkDescriptor("인천대교·송도", "🌉"),
+            listOf("경주", "gyeongju") to LandmarkDescriptor("불국사·첨성대", "🏯"),
+            listOf("전주", "jeonju") to LandmarkDescriptor("전주한옥마을", "🏘️"),
+            listOf("강릉", "gangneung") to LandmarkDescriptor("경포대", "🌊"),
+            listOf("속초", "sokcho") to LandmarkDescriptor("설악산", "⛰️"),
+            listOf("파리", "paris") to LandmarkDescriptor("Eiffel Tower", "🗼"),
+            listOf("런던", "london") to LandmarkDescriptor("Big Ben·Tower Bridge", "🕰️"),
+            listOf("뉴욕", "new york") to LandmarkDescriptor("Statue of Liberty", "🗽"),
+            listOf("도쿄", "tokyo") to LandmarkDescriptor("Tokyo Tower·Sensoji", "🗼"),
+            listOf("교토", "kyoto") to LandmarkDescriptor("Fushimi Inari", "⛩️"),
+            listOf("오사카", "osaka") to LandmarkDescriptor("Osaka Castle", "🏯"),
+            listOf("로마", "rome", "roma") to LandmarkDescriptor("Colosseum", "🏛️"),
+            listOf("바르셀로나", "barcelona") to LandmarkDescriptor("Sagrada Familia", "⛪")
+        )
+        return candidates.firstOrNull { (keys, _) -> keys.any(value::contains) }?.second
+            ?: LandmarkDescriptor("여행의 순간", "✈️")
     }
 
     private fun drawOfficeReport(
@@ -322,16 +499,21 @@ internal object EndingInfoCardRenderer {
             textSize = 2.7f * unit
             textAlign = Paint.Align.LEFT
         }
-        canvas.drawText("HANCLIP / TRIP REPORT", panel.left + 7f * unit, panel.top + 8f * unit, headerPaint)
+        headerPaint.textSize = 4.1f * unit
+        canvas.drawText("여행 기록 보고서", panel.left + 7f * unit, panel.top + 8f * unit, headerPaint)
+        headerPaint.textSize = 1.8f * unit
+        canvas.drawText("HANCLIP TRAVEL REPORT", panel.left + 7f * unit, panel.top + 12f * unit, headerPaint)
         headerPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("NO. ${dateText.filter(Char::isDigit).takeLast(6).ifBlank { "000001" }}", panel.right - 6f * unit, panel.top + 8f * unit, headerPaint)
+        canvas.drawText("DOCUMENT  #${kotlin.math.abs(dateText.hashCode()) % 100_000}", panel.right - 6f * unit, panel.top + 7f * unit, headerPaint)
         val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = colors.text
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             textSize = 2.7f * unit
             textAlign = Paint.Align.LEFT
         }
-        canvas.drawText("촬영기간  $dateText", panel.left + 7f * unit, panel.top + 16f * unit, bodyPaint)
+        bodyPaint.textAlign = Paint.Align.RIGHT
+        canvas.drawText("PERIOD  $dateText", panel.right - 6f * unit, panel.top + 12f * unit, bodyPaint)
+        bodyPaint.textAlign = Paint.Align.LEFT
         val top = panel.top + 23f * unit
         val rowHeight = (panel.bottom - top - 9f * unit) / max(1, stops.size)
         stops.forEachIndexed { index, stop ->
