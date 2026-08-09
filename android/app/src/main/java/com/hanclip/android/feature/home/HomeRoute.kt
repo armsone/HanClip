@@ -1604,7 +1604,8 @@ private fun PresetTile(
                     Image(
                         painter = painterResource(R.drawable.aishot_icon),
                         contentDescription = null,
-                        modifier = Modifier.size(25.dp)
+                        modifier = Modifier.size(25.dp),
+                        colorFilter = ColorFilter.tint(Color.White)
                     )
                 } else if (icon != null) {
                     Icon(

@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -52,16 +53,12 @@ object MovieCollectionStore {
 
     fun list(context: Context): List<CollectedMovie> {
         val index = indexFile(context)
-        if (!index.isFile) return emptyList()
-        return runCatching {
-            val root = JSONObject(index.readText())
-            val items = root.optJSONArray("movies") ?: JSONArray()
-            List(items.length()) { position -> items.getJSONObject(position).toCollectedMovie() }
-                .filter { movie ->
-                    videoFile(context, movie).isFile && videoFile(context, movie).canRead()
-                }
-                .sortedByDescending(CollectedMovie::createdAtMillis)
-        }.getOrElse { emptyList() }
+        val backup = File(collectionDirectory(context), "$IndexFilename.bak")
+        return sequenceOf(index, backup)
+            .filter(File::isFile)
+            .mapNotNull { source -> parseIndex(context, source) }
+            .firstOrNull()
+            .orEmpty()
     }
 
     fun videoUri(context: Context, movie: CollectedMovie): Uri =
@@ -188,18 +185,22 @@ object MovieCollectionStore {
     fun updateTitle(context: Context, movieId: String, title: String) {
         val normalized = title.trim()
         if (normalized.isEmpty()) return
-        val updated = list(context).map { movie ->
-            if (movie.id == movieId) movie.copy(title = normalized) else movie
+        synchronized(collectionWriteLock) {
+            val updated = list(context).map { movie ->
+                if (movie.id == movieId) movie.copy(title = normalized) else movie
+            }
+            save(context, updated)
         }
-        save(context, updated)
     }
 
     fun remove(context: Context, movieId: String) {
-        val movies = list(context)
-        val target = movies.firstOrNull { it.id == movieId } ?: return
-        videoFile(context, target).delete()
-        posterFile(context, target).delete()
-        save(context, movies.filterNot { it.id == movieId })
+        synchronized(collectionWriteLock) {
+            val movies = list(context)
+            val target = movies.firstOrNull { it.id == movieId } ?: return
+            save(context, movies.filterNot { it.id == movieId })
+            videoFile(context, target).delete()
+            posterFile(context, target).delete()
+        }
     }
 
     private fun save(context: Context, movies: List<CollectedMovie>) {
@@ -213,7 +214,10 @@ object MovieCollectionStore {
                     put(movie.toJson())
                 }
             })
-        temporary.writeText(root.toString())
+        FileOutputStream(temporary).use { output ->
+            output.write(root.toString().toByteArray(Charsets.UTF_8))
+            output.fd.sync()
+        }
         val backup = File(directory, "$IndexFilename.bak")
         backup.delete()
         if (target.exists() && !target.renameTo(backup)) {
@@ -236,6 +240,16 @@ object MovieCollectionStore {
 
     private fun videoFile(context: Context, movie: CollectedMovie): File =
         File(collectionDirectory(context), movie.videoFilename)
+
+    private fun parseIndex(context: Context, source: File): List<CollectedMovie>? = runCatching {
+        val root = JSONObject(source.readText())
+        val items = root.optJSONArray("movies") ?: JSONArray()
+        List(items.length()) { position -> items.getJSONObject(position).toCollectedMovie() }
+            .filter { movie ->
+                videoFile(context, movie).isFile && videoFile(context, movie).canRead()
+            }
+            .sortedByDescending(CollectedMovie::createdAtMillis)
+    }.getOrNull()
 
     private fun copySource(context: Context, sourceUri: Uri, destination: File): String {
         val input = when (sourceUri.scheme) {

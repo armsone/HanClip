@@ -11,6 +11,7 @@ import com.hanclip.android.core.media.Media3TransformerExportService
 import com.hanclip.android.core.media.VideoExportRequest
 import com.hanclip.android.core.model.BackgroundMusicSample
 import com.hanclip.android.core.model.ClipItem
+import com.hanclip.android.core.model.EndingInfoCardTheme
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.LivePhotoMode
 import com.hanclip.android.core.model.MoviePreset
@@ -88,7 +89,17 @@ data class EditorUiState(
         }
 
     val totalDurationSeconds: Double
-        get() = renderableClips.sumOf { it.durationSeconds }
+        get() {
+            val endingDuration = if (
+                watermarkSettings.includesEndingInfoCard &&
+                renderableClips.any(ClipItem::hasUsableSourceLocation)
+            ) {
+                watermarkSettings.normalizedEndingInfoCardDuration
+            } else {
+                0.0
+            }
+            return renderableClips.sumOf { it.durationSeconds } + endingDuration
+        }
 }
 
 class EditorViewModel : ViewModel() {
@@ -269,6 +280,9 @@ class EditorViewModel : ViewModel() {
             val sourceDates = clips.mapNotNull(ClipItem::sourceCreatedAtMillis)
             val shootingStartAtMillis = sourceDates.minOrNull() ?: madeAtMillis
             val shootingEndAtMillis = sourceDates.maxOrNull() ?: shootingStartAtMillis
+            val representativeLocation = clips.firstOrNull { clip ->
+                clip.sourceLatitude != null && clip.sourceLongitude != null
+            }
             runCatching {
                 val exportService = Media3TransformerExportService(context.applicationContext)
                 val exportRequest = VideoExportRequest(
@@ -285,7 +299,10 @@ class EditorViewModel : ViewModel() {
                     backgroundMusicFadeOutEnabled = state.backgroundMusicFadeOutEnabled,
                     madeAtMillis = madeAtMillis,
                     shootingStartAtMillis = shootingStartAtMillis,
-                    shootingEndAtMillis = shootingEndAtMillis
+                    shootingEndAtMillis = shootingEndAtMillis,
+                    locationName = representativeLocation?.sourceLocationName,
+                    latitude = representativeLocation?.sourceLatitude,
+                    longitude = representativeLocation?.sourceLongitude
                 )
 
                 suspend fun runExportAttempt(
@@ -325,7 +342,11 @@ class EditorViewModel : ViewModel() {
                     outputUri = outputUri,
                     title = state.preset.title,
                     clipCount = clips.size,
-                    totalDurationSeconds = clips.sumOf { it.durationSeconds },
+                    totalDurationSeconds = clips.sumOf { it.durationSeconds } +
+                        if (
+                            state.watermarkSettings.includesEndingInfoCard &&
+                            clips.any(ClipItem::hasUsableSourceLocation)
+                        ) state.watermarkSettings.normalizedEndingInfoCardDuration else 0.0,
                     outputAspectRatio = state.outputAspectRatio,
                     outputQualityPreset = actualOutputQualityPreset,
                     hasBackgroundMusic = state.backgroundMusicUri != null ||
@@ -341,7 +362,8 @@ class EditorViewModel : ViewModel() {
                         title = state.preset.title,
                         madeAtMillis = madeAtMillis,
                         shootingStartAtMillis = shootingStartAtMillis,
-                        shootingEndAtMillis = shootingEndAtMillis
+                        shootingEndAtMillis = shootingEndAtMillis,
+                        locationName = representativeLocation?.sourceLocationName
                     )
                 }
                 _uiState.update {
@@ -1676,7 +1698,9 @@ class EditorViewModel : ViewModel() {
                 logoColorHex = "#FFF3D6",
                 logoShadowColorHex = "#3F6F63",
                 logoShadowOpacity = 0.45,
-                copyrightPosition = WatermarkPosition.BottomTrailing
+                copyrightPosition = WatermarkPosition.BottomTrailing,
+                includesEndingInfoCard = true,
+                endingInfoCardTheme = EndingInfoCardTheme.TreasureMap
             )
             MoviePreset.NewMovie,
             MoviePreset.Quick,

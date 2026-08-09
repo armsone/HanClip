@@ -29,6 +29,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.container.MdtaMetadataEntry
 import androidx.media3.container.Mp4TimestampData
+import androidx.media3.container.Mp4LocationData
 import androidx.media3.common.audio.DefaultGainProvider
 import androidx.media3.common.audio.GainProcessor
 import androidx.media3.common.util.UnstableApi
@@ -83,6 +84,8 @@ data class VideoExportRequest(
     val shootingStartAtMillis: Long? = null,
     val shootingEndAtMillis: Long? = null,
     val locationName: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val embedHanClipMetadata: Boolean = true
 )
 
@@ -104,8 +107,29 @@ class Media3TransformerExportService(
         pruneExportCache(outputDirectory)
         val outputFile = File(outputDirectory, "hanclip-preview-${System.currentTimeMillis()}.mp4")
         if (outputFile.exists()) outputFile.delete()
+        val endingInfoFile = EndingInfoCardRenderer.renderToFile(
+            context = context,
+            clips = request.clips,
+            width = request.renderWidth,
+            height = request.renderHeight,
+            settings = request.watermarkSettings
+        )
+        val effectiveClips = if (endingInfoFile != null) {
+            request.clips + ClipItem(
+                sourceUri = Uri.fromFile(endingInfoFile),
+                thumbnailUri = Uri.fromFile(endingInfoFile),
+                durationSeconds = request.watermarkSettings.normalizedEndingInfoCardDuration,
+                photoDurationSeconds = request.watermarkSettings.normalizedEndingInfoCardDuration,
+                mediaKind = ClipMediaKind.Photo,
+                sourceCreatedAtMillis = request.shootingEndAtMillis,
+                sourceWidth = request.renderWidth,
+                sourceHeight = request.renderHeight
+            )
+        } else {
+            request.clips
+        }
 
-        request.clips.singleOrNull()
+        effectiveClips.singleOrNull()
             ?.takeIf { it.mediaKind == ClipMediaKind.Video }
             ?.takeIf { canUseMuxerFastPath(it, request) }
             ?.let { clip ->
@@ -113,7 +137,7 @@ class Media3TransformerExportService(
             }
 
         val effects = effectsForRequest(request)
-        val editedItems = request.clips.map { clip ->
+        val editedItems = effectiveClips.map { clip ->
             val builder = EditedMediaItem.Builder(mediaItemForClip(clip))
                 .setRemoveAudio(clip.mediaKind != ClipMediaKind.Video)
                 .setRemoveVideo(false)
@@ -152,6 +176,7 @@ class Media3TransformerExportService(
                         exportResult: ExportResult
                     ) {
                         progressJob?.cancel()
+                        runCatching { endingInfoFile?.delete() }
                         onProgress(1.0)
                         if (continuation.isActive) {
                             if (outputFile.length() > 0L) {
@@ -170,6 +195,7 @@ class Media3TransformerExportService(
                         exportException: ExportException
                     ) {
                         progressJob?.cancel()
+                        runCatching { endingInfoFile?.delete() }
                         runCatching { outputFile.delete() }
                         if (continuation.isActive) {
                             continuation.resumeWithException(exportException)
@@ -181,6 +207,7 @@ class Media3TransformerExportService(
             continuation.invokeOnCancellation {
                 progressJob?.cancel()
                 transformer.cancel()
+                runCatching { endingInfoFile?.delete() }
             }
             onProgress(0.05)
             transformer.start(composition, outputFile.absolutePath)
@@ -196,6 +223,8 @@ class Media3TransformerExportService(
             .put("shootingStartAtMillis", request.shootingStartAtMillis ?: JSONObject.NULL)
             .put("shootingEndAtMillis", request.shootingEndAtMillis ?: JSONObject.NULL)
             .put("locationName", request.locationName ?: JSONObject.NULL)
+            .put("latitude", request.latitude ?: JSONObject.NULL)
+            .put("longitude", request.longitude ?: JSONObject.NULL)
             .toString()
         return InAppMp4Muxer.Factory { entries ->
             entries.removeAll { entry ->
@@ -210,6 +239,13 @@ class Media3TransformerExportService(
             val mp4Seconds = Mp4TimestampData.unixTimeToMp4TimeSeconds(unixSeconds)
             entries.removeAll { entry -> entry is Mp4TimestampData }
             entries += Mp4TimestampData(mp4Seconds, mp4Seconds)
+            if (request.latitude != null && request.longitude != null) {
+                entries.removeAll { entry -> entry is Mp4LocationData }
+                entries += Mp4LocationData(
+                    request.latitude.toFloat(),
+                    request.longitude.toFloat()
+                )
+            }
         }
     }
 

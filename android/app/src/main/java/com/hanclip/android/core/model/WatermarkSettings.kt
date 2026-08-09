@@ -72,6 +72,14 @@ enum class CopyrightIconColorMode(val title: String) {
     }
 }
 
+enum class EndingInfoCardTheme(val title: String) {
+    Caption("자막"),
+    TreasureMap("보물지도"),
+    Itinerary("여행일정"),
+    Landmark("랜드마크"),
+    Office("오피스")
+}
+
 enum class WatermarkPlatform(val title: String, val mark: String) {
     HanClip("한클립", "▶"),
     Instagram("인스타그램", "◎"),
@@ -127,7 +135,11 @@ data class WatermarkSettings(
     val copyrightPosition: WatermarkPosition = WatermarkPosition.BottomTrailing,
     val copyrightIconColorMode: CopyrightIconColorMode = CopyrightIconColorMode.Original,
     val copyrightIconColorHex: String = "#007644",
-    val customCopyrightIconPath: String = ""
+    val customCopyrightIconPath: String = "",
+    val includesEndingInfoCard: Boolean = false,
+    val endingInfoCardDuration: Double = 2.0,
+    val endingInfoCardTheme: EndingInfoCardTheme = EndingInfoCardTheme.Caption,
+    val endingInfoCardVariation: Int = 0
 ) {
     val shouldRenderText: Boolean
         get() = isEnabled && text.isNotBlank()
@@ -144,4 +156,7 @@ data class WatermarkSettings(
 
     val displayCopyrightText: String
         get() = address.trim().ifBlank { platform.title }
+
+    val normalizedEndingInfoCardDuration: Double
+        get() = (endingInfoCardDuration * 2.0).toInt().div(2.0).coerceIn(1.0, 10.0)
 }

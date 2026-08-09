@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageDecoder
+import android.location.Geocoder
+import android.media.ExifInterface
 import android.media.FaceDetector
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -22,6 +24,7 @@ import java.io.FileInputStream
 import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
@@ -65,6 +68,8 @@ object MediaImportReader {
             null
         }
         val sourceCreatedAtMillis = readSourceCreatedAtMillis(context, uri)
+        val sourceLocation = metadata?.location ?: readImageLocation(context, uri)
+        val sourceLocationName = sourceLocation?.let { resolvePlaceName(context, it) }
         val localSourceUri = persistWorkingMedia(context, uri, mimeType)
         val motionPhoto = if (isImage) {
             extractMotionPhoto(localSourceUri)
@@ -107,6 +112,9 @@ object MediaImportReader {
             photoSimilarityFingerprint = photoFingerprint,
             sourceCreatedAtMillis = sourceCreatedAtMillis,
             originalSourceUriString = uri.toString(),
+            sourceLatitude = sourceLocation?.latitude,
+            sourceLongitude = sourceLocation?.longitude,
+            sourceLocationName = sourceLocationName,
             sourceWidth = metadata?.width ?: imageSize?.first ?: 1,
             sourceHeight = metadata?.height ?: imageSize?.second ?: 1
         )
@@ -380,16 +388,54 @@ object MediaImportReader {
                 val height = retriever.extractMetadata(
                     MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
                 )?.toIntOrNull() ?: 1
+                val location = retriever.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_LOCATION
+                )?.let(::parseLocation)
                 VideoMetadata(
                     durationSeconds = max(0.1, durationMs / 1000.0),
                     width = width,
-                    height = height
+                    height = height,
+                    location = location
                 )
             } finally {
                 retriever.release()
             }
         }.getOrNull()
     }
+
+    @Suppress("DEPRECATION")
+    private fun readImageLocation(context: Context, uri: Uri): GeoPoint? = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val coordinates = FloatArray(2)
+            if (ExifInterface(input).getLatLong(coordinates)) {
+                GeoPoint(coordinates[0].toDouble(), coordinates[1].toDouble()).takeIf { it.isValid }
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+
+    private fun parseLocation(value: String): GeoPoint? {
+        val normalized = value.trim().removeSuffix("/")
+        val splitIndex = normalized.drop(1).indexOfAny(charArrayOf('+', '-'))
+            .takeIf { it >= 0 }?.plus(1) ?: return null
+        val latitude = normalized.substring(0, splitIndex).toDoubleOrNull() ?: return null
+        val longitude = normalized.substring(splitIndex).toDoubleOrNull() ?: return null
+        return GeoPoint(latitude, longitude).takeIf { it.isValid }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun resolvePlaceName(context: Context, point: GeoPoint): String = runCatching {
+        val address = Geocoder(context, Locale.KOREAN)
+            .getFromLocation(point.latitude, point.longitude, 1)
+            ?.firstOrNull()
+        val city = address?.locality ?: address?.subAdminArea ?: address?.adminArea
+        if (address?.countryCode.equals("KR", ignoreCase = true)) {
+            city
+        } else {
+            listOfNotNull(address?.countryName, city).distinct().joinToString(" ")
+        }.orEmpty().ifBlank { point.readableText }
+    }.getOrElse { point.readableText }
 
     private fun readImageSize(context: Context, uri: Uri): Pair<Int, Int>? {
         return runCatching {
@@ -419,5 +465,16 @@ object MediaImportReader {
 private data class VideoMetadata(
     val durationSeconds: Double,
     val width: Int,
-    val height: Int
+    val height: Int,
+    val location: GeoPoint?
 )
+
+private data class GeoPoint(val latitude: Double, val longitude: Double) {
+    val isValid: Boolean
+        get() = latitude.isFinite() && longitude.isFinite() &&
+            latitude in -90.0..90.0 && longitude in -180.0..180.0 &&
+            !(kotlin.math.abs(latitude) < 0.000001 && kotlin.math.abs(longitude) < 0.000001)
+
+    val readableText: String
+        get() = String.format(Locale.KOREAN, "%.4f, %.4f", latitude, longitude)
+}

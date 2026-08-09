@@ -49,6 +49,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +74,8 @@ import java.text.SimpleDateFormat
 import java.io.File
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal fun LazyListScope.movieCollectionItems(
     palette: HanClipPalette,
@@ -290,8 +294,18 @@ private fun CollectionMovieCard(
     var showRename by remember { mutableStateOf(false) }
     var showRemove by remember { mutableStateOf(false) }
     var titleDraft by remember(movie.id, movie.title) { mutableStateOf(movie.title) }
-    val poster = remember(movie.id, movie.posterFilename) {
-        BitmapFactory.decodeFile(MovieCollectionStore.posterFile(context, movie).absolutePath)
+    val posterFile = MovieCollectionStore.posterFile(context, movie)
+    val targetLongEdgePx = with(LocalDensity.current) { 240.dp.roundToPx() }
+    val poster by produceState<android.graphics.Bitmap?>(
+        initialValue = null,
+        movie.id,
+        movie.posterFilename,
+        posterFile.lastModified(),
+        targetLongEdgePx
+    ) {
+        value = withContext(Dispatchers.IO) {
+            decodeSampledPoster(posterFile, targetLongEdgePx)
+        }
     }
     val shape = RoundedCornerShape(12.dp)
 
@@ -303,9 +317,9 @@ private fun CollectionMovieCard(
             .border(1.dp, Color.White.copy(alpha = 0.34f), shape)
             .combinedClickable(onClick = onOpen, onLongClick = { showActions = true })
     ) {
-        if (poster != null) {
+        poster?.let { posterBitmap ->
             androidx.compose.foundation.Image(
-                bitmap = poster.asImageBitmap(),
+                bitmap = posterBitmap.asImageBitmap(),
                 contentDescription = movie.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -432,6 +446,25 @@ private fun CollectionMovieCard(
             }
         )
     }
+}
+
+private fun decodeSampledPoster(file: File, targetLongEdgePx: Int): android.graphics.Bitmap? {
+    if (!file.isFile) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    val sourceLongEdge = maxOf(bounds.outWidth, bounds.outHeight)
+    if (sourceLongEdge <= 0) return null
+    var sampleSize = 1
+    while (sourceLongEdge / (sampleSize * 2) >= targetLongEdgePx) {
+        sampleSize *= 2
+    }
+    return BitmapFactory.decodeFile(
+        file.absolutePath,
+        BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+    )
 }
 
 @Composable

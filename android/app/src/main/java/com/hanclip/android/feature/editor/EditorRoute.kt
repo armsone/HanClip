@@ -129,6 +129,9 @@ import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeStore
 import com.hanclip.android.feature.home.HanClipBrandCapsule
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -723,6 +726,19 @@ fun EditorRoute(
                 TextOverlaySheet(
                     settings = state.watermarkSettings,
                     palette = palette,
+                    endingInfoStops = state.renderableClips.filter(ClipItem::hasUsableSourceLocation).mapNotNull { clip ->
+                        clip.sourceLocationName
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { location ->
+                                EndingInfoStop(
+                                    location = location,
+                                    dateText = clip.sourceCreatedAtMillis?.let { value ->
+                                        SimpleDateFormat("M. d.", Locale.KOREAN).format(Date(value))
+                                    }.orEmpty()
+                                )
+                            }
+                    }.distinctBy { it.location },
                     fullScreen = true,
                     onDismiss = { isTextOverlaySheetVisible = false },
                     onApply = viewModel::updateWatermark

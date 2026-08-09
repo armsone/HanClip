@@ -44,6 +44,9 @@ data class ClipItem(
     val photoSimilarityFingerprint: List<Int> = emptyList(),
     val sourceCreatedAtMillis: Long? = null,
     val originalSourceUriString: String? = null,
+    val sourceLatitude: Double? = null,
+    val sourceLongitude: Double? = null,
+    val sourceLocationName: String? = null,
     val similarPhotoGroupId: String? = null,
     val similarPhotoGroupIndex: Int = 0,
     val similarPhotoGroupCount: Int = 1,
@@ -65,6 +68,17 @@ data class ClipItem(
 
     val isSimilarPhotoGroupChild: Boolean
         get() = similarPhotoGroupId != null && similarPhotoGroupCount > 1 && similarPhotoGroupIndex > 0
+
+    val hasUsableSourceLocation: Boolean
+        get() {
+            if (sourceLocationName.isNullOrBlank()) return false
+            if (sourceLatitude == null && sourceLongitude == null) return true
+            val latitude = sourceLatitude ?: return false
+            val longitude = sourceLongitude ?: return false
+            return latitude.isFinite() && longitude.isFinite() &&
+                latitude in -90.0..90.0 && longitude in -180.0..180.0 &&
+                !(kotlin.math.abs(latitude) < 0.000001 && kotlin.math.abs(longitude) < 0.000001)
+        }
 
     val isHiddenSimilarPhotoGroupMember: Boolean
         get() = similarPhotoGroupId != null && !isSimilarPhotoGroupRepresentative

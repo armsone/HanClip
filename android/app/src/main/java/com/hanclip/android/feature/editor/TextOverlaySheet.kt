@@ -27,6 +27,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hanclip.android.R
 import com.hanclip.android.core.model.CopyrightIconColorMode
+import com.hanclip.android.core.model.EndingInfoCardTheme
 import com.hanclip.android.core.model.WatermarkFontSize
 import com.hanclip.android.core.model.WatermarkLineSpacing
 import com.hanclip.android.core.model.WatermarkPosition
@@ -83,11 +86,17 @@ private val SheetText = Color(0xFF14221A)
 private val SheetSubText = Color(0xFF46564C)
 private val SheetBorder = Color(0xFFD4DDD7)
 
+data class EndingInfoStop(
+    val location: String,
+    val dateText: String
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TextOverlaySheet(
     settings: WatermarkSettings,
     palette: HanClipPalette,
+    endingInfoStops: List<EndingInfoStop> = emptyList(),
     fullScreen: Boolean = false,
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
@@ -249,6 +258,13 @@ fun TextOverlaySheet(
             CaptionPreview(draft)
 
             CaptionStateSummary(draft, palette)
+
+            EndingInfoCardSettings(
+                settings = draft,
+                stops = endingInfoStops,
+                palette = palette,
+                onChange = { draft = it }
+            )
 
             Button(
                 onClick = { draft = hanClipDefaultWatermark(draft) },
@@ -674,6 +690,184 @@ fun TextOverlaySheet(
             }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EndingInfoCardSettings(
+    settings: WatermarkSettings,
+    stops: List<EndingInfoStop>,
+    palette: HanClipPalette,
+    onChange: (WatermarkSettings) -> Unit
+) {
+    val available = stops.isNotEmpty()
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("▤  정보 삽입", fontWeight = FontWeight.Bold, color = palette.text)
+                    Text(
+                        if (available) "날짜와 촬영 위치를 마지막 장면에 넣습니다."
+                        else "위치 정보가 있는 미디어가 있어야 사용할 수 있습니다.",
+                        color = palette.subText
+                    )
+                }
+                Switch(
+                    checked = settings.includesEndingInfoCard && available,
+                    enabled = available,
+                    onCheckedChange = { onChange(settings.copy(includesEndingInfoCard = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = palette.primary
+                    )
+                )
+            }
+
+            if (settings.includesEndingInfoCard && available) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    EndingInfoCardTheme.entries.forEach { theme ->
+                        FilterChip(
+                            selected = settings.endingInfoCardTheme == theme,
+                            onClick = { onChange(settings.copy(endingInfoCardTheme = theme)) },
+                            label = { Text("${endingThemeMark(theme)}  ${theme.title}") },
+                            colors = sheetFilterChipColors(),
+                            border = sheetFilterChipBorder(settings.endingInfoCardTheme == theme)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("표시 시간", fontWeight = FontWeight.SemiBold, color = palette.text)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                onChange(settings.copy(endingInfoCardDuration = settings.normalizedEndingInfoCardDuration - 0.5))
+                            }
+                        ) {
+                            Icon(Icons.Outlined.Remove, contentDescription = "시간 줄이기", tint = palette.text)
+                        }
+                        Text(
+                            "%.1f초".format(settings.normalizedEndingInfoCardDuration),
+                            fontWeight = FontWeight.Bold,
+                            color = palette.text
+                        )
+                        IconButton(
+                            onClick = {
+                                onChange(settings.copy(endingInfoCardDuration = settings.normalizedEndingInfoCardDuration + 0.5))
+                            }
+                        ) {
+                            Icon(Icons.Outlined.Add, contentDescription = "시간 늘리기", tint = palette.text)
+                        }
+                    }
+                }
+
+                EndingInfoCardPreview(settings.endingInfoCardTheme, stops, palette)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EndingInfoCardPreview(
+    theme: EndingInfoCardTheme,
+    stops: List<EndingInfoStop>,
+    palette: HanClipPalette
+) {
+    val colors = endingPreviewColors(theme)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(210.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Brush.linearGradient(listOf(colors[0], colors[1])))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(colors[2])
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Text(
+                endingThemeHeading(theme),
+                color = colors[3],
+                fontWeight = FontWeight.ExtraBold
+            )
+            Text(
+                stops.map { it.dateText }.filter { it.isNotBlank() }.let { dates ->
+                    when {
+                        dates.isEmpty() -> ""
+                        dates.first() == dates.last() -> dates.first()
+                        else -> "${dates.first()}  –  ${dates.last()}"
+                    }
+                },
+                color = colors[4],
+                style = MaterialTheme.typography.bodySmall
+            )
+            stops.take(4).forEachIndexed { index, stop ->
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (theme == EndingInfoCardTheme.TreasureMap && index == stops.lastIndex) "×" else "●", color = colors[4])
+                    Text(
+                        stop.location,
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        color = colors[3],
+                        maxLines = 1,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(stop.dateText, color = colors[4], style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            Text("HANCLIP", color = colors[4], style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private fun endingThemeMark(theme: EndingInfoCardTheme): String = when (theme) {
+    EndingInfoCardTheme.Caption -> "가"
+    EndingInfoCardTheme.TreasureMap -> "⌖"
+    EndingInfoCardTheme.Itinerary -> "≡"
+    EndingInfoCardTheme.Landmark -> "⌂"
+    EndingInfoCardTheme.Office -> "▦"
+}
+
+private fun endingThemeHeading(theme: EndingInfoCardTheme): String = when (theme) {
+    EndingInfoCardTheme.Caption -> "여행의 기록"
+    EndingInfoCardTheme.TreasureMap -> "TREASURE MAP"
+    EndingInfoCardTheme.Itinerary -> "TRAVEL ITINERARY"
+    EndingInfoCardTheme.Landmark -> "MEMORIES"
+    EndingInfoCardTheme.Office -> "TRIP REPORT"
+}
+
+private fun endingPreviewColors(theme: EndingInfoCardTheme): List<Color> = when (theme) {
+    EndingInfoCardTheme.Caption -> listOf(Color(0xFF121617), Color(0xFF22312F), Color(0xCC34433F), Color.White, Color(0xFFA0CDBE))
+    EndingInfoCardTheme.TreasureMap -> listOf(Color(0xFF7A4A1F), Color(0xFFE8C27A), Color(0xFFF2D69C), Color(0xFF3D1F0E), Color(0xFF7A2E0F))
+    EndingInfoCardTheme.Itinerary -> listOf(Color(0xFFFCF5F0), Color(0xFFFFFCFA), Color.White, Color(0xFF383336), Color(0xFFD64761))
+    EndingInfoCardTheme.Landmark -> listOf(Color(0xFFF5E6DE), Color(0xFFFFFAF0), Color(0xFFFFF7EB), Color(0xFF45302B), Color(0xFF8F4A47))
+    EndingInfoCardTheme.Office -> listOf(Color(0xFFF2F2EB), Color.White, Color.White, Color(0xFF242933), Color(0xFF213D66))
 }
 
 @Composable

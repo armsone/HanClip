@@ -13,6 +13,7 @@ import com.hanclip.android.core.model.OutputAspectRatio
 import com.hanclip.android.core.model.OutputQualityPreset
 import com.hanclip.android.core.model.VideoSegmentMode
 import com.hanclip.android.core.model.CopyrightIconColorMode
+import com.hanclip.android.core.model.EndingInfoCardTheme
 import com.hanclip.android.core.model.WatermarkFontSize
 import com.hanclip.android.core.model.WatermarkLineSpacing
 import com.hanclip.android.core.model.WatermarkPlatform
@@ -526,6 +527,9 @@ private fun ClipItem.toJson(): JSONObject {
         })
         .put("sourceCreatedAtMillis", sourceCreatedAtMillis)
         .put("originalSourceUriString", originalSourceUriString)
+        .put("sourceLatitude", sourceLatitude)
+        .put("sourceLongitude", sourceLongitude)
+        .put("sourceLocationName", sourceLocationName)
         .put("similarPhotoGroupId", similarPhotoGroupId)
         .put("similarPhotoGroupIndex", similarPhotoGroupIndex)
         .put("similarPhotoGroupCount", similarPhotoGroupCount)
@@ -563,6 +567,10 @@ private fun JSONObject.toClipItem(): ClipItem {
         sourceCreatedAtMillis = optNullableLong("sourceCreatedAtMillis"),
         originalSourceUriString = optString("originalSourceUriString")
             .takeIf { it.isNotBlank() && it != "null" },
+        sourceLatitude = optNullableDouble("sourceLatitude"),
+        sourceLongitude = optNullableDouble("sourceLongitude"),
+        sourceLocationName = optString("sourceLocationName")
+            .takeIf { it.isNotBlank() && it != "null" },
         similarPhotoGroupId = optString("similarPhotoGroupId")
             .takeIf { it.isNotBlank() && it != "null" },
         similarPhotoGroupIndex = optInt("similarPhotoGroupIndex", 0),
@@ -596,6 +604,10 @@ private fun WatermarkSettings.toJson(): JSONObject {
         .put("copyrightIconColorMode", copyrightIconColorMode.name)
         .put("copyrightIconColorHex", copyrightIconColorHex)
         .put("customCopyrightIconPath", customCopyrightIconPath)
+        .put("includesEndingInfoCard", includesEndingInfoCard)
+        .put("endingInfoCardDuration", endingInfoCardDuration)
+        .put("endingInfoCardTheme", endingInfoCardTheme.name)
+        .put("endingInfoCardVariation", endingInfoCardVariation)
 }
 
 private fun JSONObject.toWatermarkSettings(): WatermarkSettings {
@@ -627,7 +639,14 @@ private fun JSONObject.toWatermarkSettings(): WatermarkSettings {
             optString("copyrightIconColorMode")
         ),
         copyrightIconColorHex = optString("copyrightIconColorHex", "#007644"),
-        customCopyrightIconPath = optString("customCopyrightIconPath", "")
+        customCopyrightIconPath = optString("customCopyrightIconPath", ""),
+        includesEndingInfoCard = optBoolean("includesEndingInfoCard", false),
+        endingInfoCardDuration = optDouble("endingInfoCardDuration", 2.0).coerceIn(1.0, 10.0),
+        endingInfoCardTheme = enumValueOrDefault(
+            optString("endingInfoCardTheme"),
+            EndingInfoCardTheme.Caption
+        ),
+        endingInfoCardVariation = optInt("endingInfoCardVariation", 0).coerceAtLeast(0)
     )
 }
 
