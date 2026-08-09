@@ -28,6 +28,8 @@ import com.hanclip.android.core.project.EditableProjectSummary
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMoviePinResult
 import com.hanclip.android.core.project.ExportedMovieSummary
+import com.hanclip.android.core.project.CollectedMovie
+import com.hanclip.android.core.project.MovieCollectionStore
 import com.hanclip.android.feature.aishot.AiShotRoute
 import com.hanclip.android.feature.browser.BrowserFavoritesStore
 import com.hanclip.android.feature.browser.OnlineMusicBrowserRoute
@@ -61,6 +63,8 @@ fun HanClipApp(
     var pendingEditorImportAction by remember { mutableStateOf<EditorImportAction?>(null) }
     var exportedMovieSummaries by remember { mutableStateOf<List<ExportedMovieSummary>>(emptyList()) }
     var previewHistorySummary by remember { mutableStateOf<ExportedMovieSummary?>(null) }
+    var previewCollectionMovie by remember { mutableStateOf<CollectedMovie?>(null) }
+    var collectionMovies by remember { mutableStateOf<List<CollectedMovie>>(emptyList()) }
     var isPreviewSavingVideo by remember { mutableStateOf(false) }
     var hasDraftProject by remember { mutableStateOf(false) }
     var editableProjectSummaries by remember {
@@ -160,6 +164,8 @@ fun HanClipApp(
             editableProjectSummaries = EditableProjectStore.list(context)
             hasDraftProject = editableProjectSummaries.isNotEmpty()
             exportedMovieSummaries = ExportHistoryStore.list(context)
+            MovieCollectionStore.migrateLegacyHistory(context)
+            collectionMovies = MovieCollectionStore.list(context)
         }
     }
 
@@ -235,6 +241,7 @@ fun HanClipApp(
         composable(HanClipDestination.Home.route) {
             HomeRoute(
                 exportedMovieSummaries = exportedMovieSummaries,
+                collectionMovies = collectionMovies,
                 recentlySavedMovieUriString = editorState.recentlySavedMovieUriString,
                 hasDraftProject = hasDraftProject,
                 editableProjectSummaries = editableDraftProjectSummaries,
@@ -243,6 +250,7 @@ fun HanClipApp(
                 watermarkSettings = editorState.watermarkSettings,
                 onStartPreset = { preset ->
                     previewHistorySummary = null
+                    previewCollectionMovie = null
                     DraftProjectStore.clear(context)
                     editorViewModel.startNewPreset(context, preset)
                     hasDraftProject = editableProjectSummaries.isNotEmpty()
@@ -254,6 +262,7 @@ fun HanClipApp(
                 },
                 onOpenProject = {
                     previewHistorySummary = null
+                    previewCollectionMovie = null
                     val draft = DraftProjectStore.load(context)
                         ?: editableProjectSummaries.firstOrNull()?.let { project ->
                             EditableProjectStore.load(context, project.projectId)
@@ -267,6 +276,7 @@ fun HanClipApp(
                 },
                 onOpenEditableProject = { summary ->
                     previewHistorySummary = null
+                    previewCollectionMovie = null
                     if (editorViewModel.openEditableProject(context, summary.projectId)) {
                         navController.navigate(HanClipDestination.Editor.routeFor(summary.preset))
                     }
@@ -293,6 +303,7 @@ fun HanClipApp(
                 },
                 onOpenExportedMovie = { summary ->
                     previewHistorySummary = summary
+                    previewCollectionMovie = null
                     editorViewModel.openExportedMovie(Uri.parse(summary.uriString))
                     navController.navigate(HanClipDestination.Preview.route)
                 },
@@ -310,6 +321,15 @@ fun HanClipApp(
                 onUpdateExportedMovieMemo = { summary, memo ->
                     ExportHistoryStore.updateMemo(context, summary.uriString, memo)
                     exportedMovieSummaries = ExportHistoryStore.list(context)
+                },
+                onCollectionChanged = {
+                    collectionMovies = MovieCollectionStore.list(context)
+                },
+                onOpenCollectionMovie = { movie ->
+                    previewHistorySummary = null
+                    previewCollectionMovie = movie
+                    editorViewModel.openExportedMovie(MovieCollectionStore.videoUri(context, movie))
+                    navController.navigate(HanClipDestination.Preview.route)
                 },
                 onSleepPreventionModeChange = { mode ->
                     sleepPreventionMode = mode
@@ -360,6 +380,16 @@ fun HanClipApp(
                 exportedVideoUri = editorState.exportedVideoUri,
                 movieSummary = previewHistorySummary?.let { summary ->
                     PreviewMovieSummary.fromHistory(summary)
+                } ?: previewCollectionMovie?.let { movie ->
+                    PreviewMovieSummary(
+                        presetTitle = movie.title,
+                        clipCount = 0,
+                        totalDurationSeconds = movie.durationSeconds,
+                        outputAspectRatio = null,
+                        hasBackgroundMusic = false,
+                        watermarkSettings = com.hanclip.android.core.model.WatermarkSettings(),
+                        detailStatusKnown = false
+                    )
                 } ?: PreviewMovieSummary(
                     presetTitle = editorState.preset.title,
                     clipCount = editorState.renderableClips.size,
@@ -370,17 +400,19 @@ fun HanClipApp(
                         editorState.backgroundMusicSampleId != null,
                     watermarkSettings = editorState.watermarkSettings
                 ),
-                canReturnToEditor = previewHistorySummary == null,
+                canReturnToEditor = previewHistorySummary == null && previewCollectionMovie == null,
                 onEdit = {
-                    if (previewHistorySummary == null) {
+                    if (previewHistorySummary == null && previewCollectionMovie == null) {
                         navController.popBackStack()
                     } else {
                         previewHistorySummary = null
+                        previewCollectionMovie = null
                         navController.popBackStack(HanClipDestination.Home.route, false)
                     }
                 },
                 onDone = {
                     previewHistorySummary = null
+                    previewCollectionMovie = null
                     navController.popBackStack(HanClipDestination.Home.route, false)
                 },
                 onSavingStateChanged = { isSavingVideo ->
@@ -389,6 +421,7 @@ fun HanClipApp(
                 onSavedMovie = { uri ->
                     editorViewModel.recordSavedMovie(context, uri)
                     exportedMovieSummaries = ExportHistoryStore.list(context)
+                    collectionMovies = MovieCollectionStore.list(context)
                     previewHistorySummary = exportedMovieSummaries.firstOrNull {
                         it.uriString == uri.toString()
                     }

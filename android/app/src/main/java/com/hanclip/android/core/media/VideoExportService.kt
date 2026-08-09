@@ -27,6 +27,8 @@ import android.text.style.StyleSpan
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.container.MdtaMetadataEntry
+import androidx.media3.container.Mp4TimestampData
 import androidx.media3.common.audio.DefaultGainProvider
 import androidx.media3.common.audio.GainProcessor
 import androidx.media3.common.util.UnstableApi
@@ -50,6 +52,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.InAppMp4Muxer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,6 +62,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Collections
 import java.nio.ByteBuffer
 import java.io.File
+import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
@@ -74,7 +78,12 @@ data class VideoExportRequest(
     val originalAudioVolume: Double = 1.0,
     val backgroundMusicLoopsToFillVideo: Boolean = true,
     val backgroundMusicFadeInEnabled: Boolean = true,
-    val backgroundMusicFadeOutEnabled: Boolean = true
+    val backgroundMusicFadeOutEnabled: Boolean = true,
+    val madeAtMillis: Long = System.currentTimeMillis(),
+    val shootingStartAtMillis: Long? = null,
+    val shootingEndAtMillis: Long? = null,
+    val locationName: String? = null,
+    val embedHanClipMetadata: Boolean = true
 )
 
 interface VideoExportService {
@@ -136,6 +145,7 @@ class Media3TransformerExportService(
             var progressJob: Job? = null
             val transformer = Transformer.Builder(context)
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setMuxerFactory(hanClipMuxerFactory(request))
                 .addListener(object : Transformer.Listener {
                     override fun onCompleted(
                         composition: Composition,
@@ -175,6 +185,31 @@ class Media3TransformerExportService(
             onProgress(0.05)
             transformer.start(composition, outputFile.absolutePath)
             progressJob = pollTransformerProgress(transformer, onProgress)
+        }
+    }
+
+    private fun hanClipMuxerFactory(request: VideoExportRequest): InAppMp4Muxer.Factory {
+        val metadataJson = JSONObject()
+            .put("marker", HanClipMetadataKey)
+            .put("schemaVersion", 1)
+            .put("madeAtMillis", request.madeAtMillis)
+            .put("shootingStartAtMillis", request.shootingStartAtMillis ?: JSONObject.NULL)
+            .put("shootingEndAtMillis", request.shootingEndAtMillis ?: JSONObject.NULL)
+            .put("locationName", request.locationName ?: JSONObject.NULL)
+            .toString()
+        return InAppMp4Muxer.Factory { entries ->
+            entries.removeAll { entry ->
+                entry is MdtaMetadataEntry && entry.key == HanClipMetadataKey
+            }
+            entries += MdtaMetadataEntry(
+                HanClipMetadataKey,
+                metadataJson.toByteArray(Charsets.UTF_8),
+                MdtaMetadataEntry.TYPE_INDICATOR_STRING
+            )
+            val unixSeconds = request.madeAtMillis / 1_000L
+            val mp4Seconds = Mp4TimestampData.unixTimeToMp4TimeSeconds(unixSeconds)
+            entries.removeAll { entry -> entry is Mp4TimestampData }
+            entries += Mp4TimestampData(mp4Seconds, mp4Seconds)
         }
     }
 
@@ -239,11 +274,16 @@ class Media3TransformerExportService(
     }
 
     private fun canUseMuxerFastPath(clip: ClipItem, request: VideoExportRequest): Boolean {
-        return !request.watermarkSettings.shouldRender &&
+        return !request.embedHanClipMetadata &&
+            !request.watermarkSettings.shouldRender &&
             request.backgroundMusicUri == null &&
             isUnityVolume(request.originalAudioVolume) &&
             clip.sourceWidth == request.renderWidth &&
             clip.sourceHeight == request.renderHeight
+    }
+
+    private companion object {
+        const val HanClipMetadataKey = "HANCLIP_METADATA"
     }
 
     private fun effectsForRequest(request: VideoExportRequest): Effects {

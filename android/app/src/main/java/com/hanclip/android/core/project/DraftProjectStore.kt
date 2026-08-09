@@ -525,6 +525,7 @@ private fun ClipItem.toJson(): JSONObject {
             photoSimilarityFingerprint.forEach(array::put)
         })
         .put("sourceCreatedAtMillis", sourceCreatedAtMillis)
+        .put("originalSourceUriString", originalSourceUriString)
         .put("similarPhotoGroupId", similarPhotoGroupId)
         .put("similarPhotoGroupIndex", similarPhotoGroupIndex)
         .put("similarPhotoGroupCount", similarPhotoGroupCount)
@@ -560,6 +561,8 @@ private fun JSONObject.toClipItem(): ClipItem {
             .takeIf { it.isNotBlank() && it != "null" },
         photoSimilarityFingerprint = optIntList("photoSimilarityFingerprint"),
         sourceCreatedAtMillis = optNullableLong("sourceCreatedAtMillis"),
+        originalSourceUriString = optString("originalSourceUriString")
+            .takeIf { it.isNotBlank() && it != "null" },
         similarPhotoGroupId = optString("similarPhotoGroupId")
             .takeIf { it.isNotBlank() && it != "null" },
         similarPhotoGroupIndex = optInt("similarPhotoGroupIndex", 0),

@@ -106,6 +106,7 @@ object MediaImportReader {
             videoSegmentMode = if (isVideo) defaultVideoSegmentMode else VideoSegmentMode.Single,
             photoSimilarityFingerprint = photoFingerprint,
             sourceCreatedAtMillis = sourceCreatedAtMillis,
+            originalSourceUriString = uri.toString(),
             sourceWidth = metadata?.width ?: imageSize?.first ?: 1,
             sourceHeight = metadata?.height ?: imageSize?.second ?: 1
         )

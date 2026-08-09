@@ -43,6 +43,7 @@ data class ClipItem(
     val videoSegmentParentId: String? = null,
     val photoSimilarityFingerprint: List<Int> = emptyList(),
     val sourceCreatedAtMillis: Long? = null,
+    val originalSourceUriString: String? = null,
     val similarPhotoGroupId: String? = null,
     val similarPhotoGroupIndex: Int = 0,
     val similarPhotoGroupCount: Int = 1,

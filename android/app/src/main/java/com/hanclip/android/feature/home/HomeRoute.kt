@@ -6,6 +6,9 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.util.LruCache
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -90,6 +93,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
@@ -120,13 +124,20 @@ import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMovieSummary
+import com.hanclip.android.core.project.CollectedMovie
+import com.hanclip.android.core.project.MovieCollectionStore
 import com.hanclip.android.core.project.hanClipCompletionTitle
 import com.hanclip.android.core.settings.SleepPreventionMode
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeMode
 import com.hanclip.android.core.theme.HanClipThemeStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -139,6 +150,7 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeRoute(
     exportedMovieSummaries: List<ExportedMovieSummary>,
+    collectionMovies: List<CollectedMovie>,
     recentlySavedMovieUriString: String?,
     hasDraftProject: Boolean,
     editableProjectSummaries: List<DraftProjectSummary>,
@@ -155,12 +167,15 @@ fun HomeRoute(
     onRemoveExportedMovie: (ExportedMovieSummary) -> Unit,
     onToggleExportedMoviePin: (ExportedMovieSummary) -> Boolean,
     onUpdateExportedMovieMemo: (ExportedMovieSummary, String) -> Unit,
+    onCollectionChanged: () -> Unit,
+    onOpenCollectionMovie: (CollectedMovie) -> Unit,
     onSleepPreventionModeChange: (SleepPreventionMode) -> Unit,
     onWatermarkSettingsChange: (WatermarkSettings) -> Unit,
     onOpenBrowser: () -> Unit,
     onRestorePurchases: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var themeMode by remember {
         mutableStateOf(HanClipThemeStore.load(context))
     }
@@ -173,6 +188,56 @@ fun HomeRoute(
     var editableMemoCandidate by remember { mutableStateOf<DraftProjectSummary?>(null) }
     var memoText by remember { mutableStateOf("") }
     var showPinLimitAlert by remember { mutableStateOf(false) }
+    var isImportingCollection by remember { mutableStateOf(false) }
+    var collectionImportCompleted by remember { mutableStateOf(0) }
+    var collectionImportTotal by remember { mutableStateOf(0) }
+    var collectionError by remember { mutableStateOf<String?>(null) }
+    var showCollectionImportSource by remember { mutableStateOf(false) }
+    var collectionImportJob by remember { mutableStateOf<Job?>(null) }
+
+    fun importCollectionUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        collectionImportTotal = uris.size
+        collectionImportCompleted = 0
+        isImportingCollection = true
+        collectionImportJob?.cancel()
+        collectionImportJob = coroutineScope.launch {
+            var failedCount = 0
+            try {
+                uris.forEach { uri ->
+                    currentCoroutineContext().ensureActive()
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                    try {
+                        MovieCollectionStore.importMovie(context, uri)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Throwable) {
+                        failedCount += 1
+                    }
+                    collectionImportCompleted += 1
+                    onCollectionChanged()
+                }
+                if (failedCount > 0) {
+                    collectionError = "${uris.size}개 중 ${uris.size - failedCount}개를 컬렉션에 추가했습니다. 동영상이 아니거나 읽을 수 없는 ${failedCount}개는 제외했습니다."
+                }
+            } finally {
+                isImportingCollection = false
+                collectionImportJob = null
+            }
+        }
+    }
+
+    val collectionFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> importCollectionUris(uris) }
+    val collectionPhotoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(50)
+    ) { uris -> importCollectionUris(uris) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -238,6 +303,21 @@ fun HomeRoute(
             onEditExportedMovieMemo = {
                 memoCandidate = it
                 memoText = it.memo
+            },
+            collectionMovies = collectionMovies,
+            isImportingCollection = isImportingCollection,
+            collectionImportCompleted = collectionImportCompleted,
+            collectionImportTotal = collectionImportTotal,
+            onImportCollection = { showCollectionImportSource = true },
+            onCancelCollectionImport = { collectionImportJob?.cancel() },
+            onOpenCollectionMovie = onOpenCollectionMovie,
+            onRenameCollectionMovie = { movie, title ->
+                MovieCollectionStore.updateTitle(context, movie.id, title)
+                onCollectionChanged()
+            },
+            onRemoveCollectionMovie = { movie ->
+                MovieCollectionStore.remove(context, movie.id)
+                onCollectionChanged()
             }
         )
         item(key = "home-bottom-space") {
@@ -445,6 +525,54 @@ fun HomeRoute(
             title = { Text("핀 고정 제한") },
             text = {
                 Text("핀 고정은 최대 ${ExportHistoryStore.MaxPinnedItems}개까지 가능합니다. 다른 완성본을 해제한 뒤 다시 고정해 주세요.")
+            }
+        )
+    }
+    collectionError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { collectionError = null },
+            confirmButton = {
+                Button(onClick = { collectionError = null }) { Text("확인") }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = palette.solidPanel,
+            title = { Text("컬렉션") },
+            text = { Text(message) }
+        )
+    }
+    if (showCollectionImportSource) {
+        AlertDialog(
+            onDismissRequest = { showCollectionImportSource = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = palette.solidPanel,
+            title = { Text("컬렉션에 영화 추가") },
+            text = { Text("사진 앱에서 영상을 고르거나 파일에서 동영상을 가져옵니다. 원본은 변경하지 않고 HanClip 컬렉션에 별도로 보관합니다.") },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showCollectionImportSource = false
+                        collectionFilePicker.launch(arrayOf("video/*"))
+                    }
+                ) {
+                    Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("파일")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCollectionImportSource = false
+                        collectionPhotoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+                ) {
+                    Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("사진")
+                }
             }
         )
     }
@@ -1241,7 +1369,10 @@ private fun importantInfoIcon(title: String): ImageVector = when (title) {
     "카피라이터" -> Icons.Outlined.Info
     "첫 화면" -> Icons.Outlined.Home
     "영화 프리셋" -> Icons.Outlined.GridView
+    "Quick" -> Icons.Outlined.AutoFixHigh
+    "인생 영화" -> Icons.Outlined.Favorite
     "영화 목록" -> Icons.Outlined.Collections
+    "컬렉션" -> Icons.Outlined.FolderOpen
     "영화 화면" -> Icons.Outlined.Movie
     "영화 설정" -> Icons.Outlined.Tune
     "클립 리스트" -> Icons.Outlined.VideoFile
@@ -1274,8 +1405,11 @@ private fun importantInfoIcon(title: String): ImageVector = when (title) {
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
     "카피라이터" to "첫 화면 하단의 i 원형 유리 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 설정 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
     "첫 화면" to "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다.",
-    "영화 프리셋" to "첫 화면 상단에서 새 영화, AiShot, 여행 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
+    "영화 프리셋" to "첫 화면 상단에서 새 영화, Quick, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
+    "Quick" to "선택한 원본 개수를 권장 전체 초로 제안하고, 지정한 목표 길이를 원본 개수로 나눠 각 클립을 최소 0.2초 이상으로 자동 맞춘 뒤 빠르게 영화를 만드는 프리셋입니다.",
+    "인생 영화" to "사진과 영상을 2초 기본 리듬으로 구성하고 비슷한 사진은 3장 간격의 대표 사진으로 정리하는 일상 영화 프리셋입니다.",
     "영화 목록" to "첫 화면에 저장된 영화들이 표시되는 영역입니다.",
+    "컬렉션" to "완성하거나 외부에서 가져온 영화를 앱 내부에 원본 그대로 보관하고 2열 책 포스터로 보여주는 영역입니다. 포스터를 누르면 재생하고, 길게 누르면 제목 수정·공유·컬렉션 제거를 사용할 수 있습니다. 추가 포스터에서 사진 또는 파일의 동영상을 여러 개 가져올 수 있습니다.",
     "영화 화면" to "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다.",
     "영화 설정" to "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다.",
     "클립 리스트" to "선택한 Photo, Live, Clip이 순서대로 표시되는 목록입니다. 썸네일, 시간, 아이콘, 세그먼트 컨트롤, +/- 버튼이 있는 영역입니다.",
@@ -1306,7 +1440,7 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
 
         샘플 음악 중 '지우에게 첫눈이란'은 앱 제작자의 가족이 직접 만든 개인 창작 음악을 원 저작자의 허락을 받아 HanClip 앱 안에 샘플 음악으로 포함한 곡입니다. '베이비 워킹'은 이 곡에서 느껴지는 첫눈의 감정과 경쾌한 분위기를 참고하되, 원곡 음원이나 멜로디를 직접 사용하지 않고 HanClip 샘플용으로 새롭게 생성한 음악입니다.
 
-        영화 프리셋의 '여행의 설렘'과 '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 각 프리셋에서 자동으로 선택됩니다.
+        영화 프리셋의 '햇살 한 컷', '여행의 설렘', '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 Quick, 여행 영화, 골프 영화에서 각각 자동으로 선택됩니다.
     """.trimIndent(),
     "외부 음악" to """
         음악 설정 화면의 '온라인 음악 찾기'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
@@ -1398,29 +1532,33 @@ private fun SharedInboxBanner(
 private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPalette) {
     val orderedPresets = listOf(
         MoviePreset.NewMovie,
+        MoviePreset.Quick,
         MoviePreset.AiShot,
         MoviePreset.Travel,
+        MoviePreset.Life,
         MoviePreset.Golf
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HomeSectionTitle("영화 프리셋", Icons.Outlined.Collections, palette)
-        orderedPresets.chunked(2).forEach { rowPresets ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        orderedPresets.chunked(3).forEach { rowPresets ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 rowPresets.forEach { preset ->
                     PresetTile(
                         modifier = Modifier.weight(1f),
                         preset = preset,
                         icon = when (preset) {
                             MoviePreset.NewMovie -> Icons.Outlined.Movie
+                            MoviePreset.Quick -> Icons.Outlined.AutoFixHigh
                             MoviePreset.AiShot -> null
                             MoviePreset.Travel -> Icons.Outlined.Flight
+                            MoviePreset.Life -> Icons.Outlined.Favorite
                             MoviePreset.Golf -> Icons.Outlined.SportsGolf
                         },
                         palette = palette,
                         onClick = { onStartPreset(preset) }
                     )
                 }
-                if (rowPresets.size == 1) {
+                repeat(3 - rowPresets.size) {
                     Spacer(Modifier.weight(1f))
                 }
             }
@@ -1439,7 +1577,7 @@ private fun PresetTile(
     val cardShape = RoundedCornerShape(16.dp)
     Box(
         modifier = modifier
-            .height(124.dp)
+            .height(108.dp)
             .clip(cardShape)
             .background(palette.panel)
             .border(1.dp, palette.border, cardShape)
@@ -1448,13 +1586,13 @@ private fun PresetTile(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 10.dp, top = 21.dp, end = 10.dp, bottom = 15.dp),
+                .padding(horizontal = 6.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(
                         Brush.linearGradient(
                             listOf(palette.primary, palette.secondary)
@@ -1466,22 +1604,22 @@ private fun PresetTile(
                     Image(
                         painter = painterResource(R.drawable.aishot_icon),
                         contentDescription = null,
-                        modifier = Modifier.size(29.dp)
+                        modifier = Modifier.size(25.dp)
                     )
                 } else if (icon != null) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(23.dp)
+                        modifier = Modifier.size(21.dp)
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = preset.title,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = palette.text,
                 maxLines = 1,
@@ -1489,8 +1627,8 @@ private fun PresetTile(
             )
             Text(
                 text = preset.detail,
-                fontSize = 10.sp,
-                lineHeight = 14.sp,
+                fontSize = 9.sp,
+                lineHeight = 12.sp,
                 color = palette.subText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1565,7 +1703,16 @@ private fun LazyListScope.savedProjectItems(
     onOpenExportedMovie: (ExportedMovieSummary) -> Unit,
     onRemoveExportedMovie: (ExportedMovieSummary) -> Unit,
     onToggleExportedMoviePin: (ExportedMovieSummary) -> Unit,
-    onEditExportedMovieMemo: (ExportedMovieSummary) -> Unit
+    onEditExportedMovieMemo: (ExportedMovieSummary) -> Unit,
+    collectionMovies: List<CollectedMovie>,
+    isImportingCollection: Boolean,
+    collectionImportCompleted: Int,
+    collectionImportTotal: Int,
+    onImportCollection: () -> Unit,
+    onCancelCollectionImport: () -> Unit,
+    onOpenCollectionMovie: (CollectedMovie) -> Unit,
+    onRenameCollectionMovie: (CollectedMovie, String) -> Unit,
+    onRemoveCollectionMovie: (CollectedMovie) -> Unit
 ) {
     val aiShotProjects = editableProjectSummaries.filter { it.preset == MoviePreset.AiShot }
     val standardProjects = editableProjectSummaries.filterNot { it.preset == MoviePreset.AiShot }
@@ -1626,31 +1773,18 @@ private fun LazyListScope.savedProjectItems(
     ) {
         EmptyStandardMovieRow(palette)
     }
-    if (summaries.isNotEmpty()) {
-        item(key = "completed-mp4-header", contentType = "saved-category-header") {
-            SavedProjectCategoryHeader(
-                title = "완성 MP4",
-                count = summaries.size,
-                icon = Icons.Outlined.Movie,
-                palette = palette
-            )
-        }
-        items(
-            items = summaries,
-            key = { summary -> "saved-movie:${summary.uriString}" },
-            contentType = { "saved-movie" }
-        ) { summary ->
-            SavedProjectRow(
-                palette = palette,
-                summary = summary,
-                isRecentlySaved = summary.uriString == recentlySavedMovieUriString,
-                onClick = { onOpenExportedMovie(summary) },
-                onRemove = { onRemoveExportedMovie(summary) },
-                onTogglePin = { onToggleExportedMoviePin(summary) },
-                onEditMemo = { onEditExportedMovieMemo(summary) }
-            )
-        }
-    }
+    movieCollectionItems(
+        palette = palette,
+        movies = collectionMovies,
+        isImporting = isImportingCollection,
+        importCompletedCount = collectionImportCompleted,
+        importTotalCount = collectionImportTotal,
+        onImport = onImportCollection,
+        onCancelImport = onCancelCollectionImport,
+        onOpen = onOpenCollectionMovie,
+        onRename = onRenameCollectionMovie,
+        onRemove = onRemoveCollectionMovie
+    )
 }
 
 @Composable

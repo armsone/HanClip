@@ -158,6 +158,9 @@ fun EditorRoute(
     var isResetConfirmationVisible by remember { mutableStateOf(false) }
     var isExitConfirmationVisible by remember { mutableStateOf(false) }
     var isExportConfirmationVisible by remember { mutableStateOf(false) }
+    var isQuickDurationVisible by remember { mutableStateOf(false) }
+    var quickDurationShownProjectId by remember { mutableStateOf<String?>(null) }
+    var quickTargetDurationSeconds by remember { mutableStateOf(1.0) }
     val trimmingClip = state.clips.firstOrNull { it.id == trimmingClipID }
     val photoDurationClip = state.clips.firstOrNull { it.id == photoDurationClipID }
     val previewClip = state.clips.firstOrNull { it.id == previewClipID }
@@ -227,6 +230,24 @@ fun EditorRoute(
                 galleryPicker.launch(mediaFileIntent())
             }
             null -> Unit
+        }
+    }
+
+    LaunchedEffect(
+        state.activeProjectId,
+        state.preset,
+        state.clips,
+        state.isImportingMedia
+    ) {
+        if (state.preset == MoviePreset.Quick &&
+            state.clips.any { !it.isVideoSegmentChild } &&
+            !state.isImportingMedia &&
+            quickDurationShownProjectId != state.activeProjectId
+        ) {
+            quickDurationShownProjectId = state.activeProjectId
+            quickTargetDurationSeconds = state.clips.count { !it.isVideoSegmentChild }
+                .toDouble()
+            isQuickDurationVisible = true
         }
     }
 
@@ -496,7 +517,12 @@ fun EditorRoute(
                 message = state.progressMessage.ifBlank {
                     if (state.isExporting) "완성본을 만드는 중..." else "사진/영상을 클립으로 준비하는 중..."
                 },
-                onCancel = if (state.isExporting) viewModel::cancelExport else null
+                isExporting = state.isExporting,
+                onCancel = if (state.isExporting) {
+                    viewModel::cancelExport
+                } else {
+                    viewModel::cancelMediaImport
+                }
             )
         }
         state.alertMessage?.let { message ->
@@ -620,6 +646,21 @@ fun EditorRoute(
                 onConfirm = {
                     isExportConfirmationVisible = false
                     viewModel.exportMovie(context, onPreview)
+                }
+            )
+        }
+        if (isQuickDurationVisible) {
+            val sourceMediaCount = state.clips.count { !it.isVideoSegmentChild }.coerceAtLeast(1)
+            QuickDurationDialog(
+                sourceMediaCount = sourceMediaCount,
+                targetDurationSeconds = quickTargetDurationSeconds,
+                palette = palette,
+                onTargetDurationChange = { quickTargetDurationSeconds = it.coerceAtLeast(0.2) },
+                onDismiss = { isQuickDurationVisible = false },
+                onConfirm = {
+                    viewModel.applyQuickTargetDuration(quickTargetDurationSeconds)
+                    isQuickDurationVisible = false
+                    isExportConfirmationVisible = true
                 }
             )
         }
@@ -1378,10 +1419,102 @@ private fun PresetStatusPill(text: String, active: Boolean, palette: HanClipPale
 private fun presetStatusDescription(preset: MoviePreset): String {
     return when (preset) {
         MoviePreset.NewMovie -> "기본 사진첩에서 사진과 영상을 한 번에 골라 HanClip 완성본으로 만듭니다."
+        MoviePreset.Quick -> "원본 개수를 기준으로 권장 길이를 계산해 빠르게 완성합니다."
         MoviePreset.AiShot -> "스윙 순간을 자동 촬영하고 바로 클립으로 편집합니다."
         MoviePreset.Travel -> "여행 사진과 영상을 순서대로 엮어 짧은 완성본으로 만듭니다."
+        MoviePreset.Life -> "비슷한 사진은 세 장 간격으로 정리해 일상의 흐름을 담습니다."
         MoviePreset.Golf -> "타격점을 중심으로 골프 클립과 HanClip 로고를 자동 구성합니다."
     }
+}
+
+@Composable
+private fun QuickDurationDialog(
+    sourceMediaCount: Int,
+    targetDurationSeconds: Double,
+    palette: HanClipPalette,
+    onTargetDurationChange: (Double) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val recommendedDuration = sourceMediaCount.toDouble()
+    val perMediaDuration = (targetDurationSeconds / sourceMediaCount.coerceAtLeast(1))
+        .coerceAtLeast(0.2)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = palette.solidPanel,
+        titleContentColor = palette.text,
+        textContentColor = palette.subText,
+        title = { Text("Quick 영화 길이", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    "원본 ${sourceMediaCount}개 · 권장 전체 ${formatSummaryDuration(recommendedDuration)}",
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.text
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = palette.panel,
+                    border = BorderStroke(1.dp, palette.border)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("목표 전체 길이", color = palette.subText)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    onTargetDurationChange((targetDurationSeconds - 1.0).coerceAtLeast(0.2))
+                                }
+                            ) { Text("−") }
+                            Text(
+                                formatSummaryDuration(targetDurationSeconds),
+                                color = palette.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp
+                            )
+                            OutlinedButton(
+                                onClick = { onTargetDurationChange(targetDurationSeconds + 1.0) }
+                            ) { Text("+") }
+                        }
+                        Text(
+                            "미디어 한 개당 ${formatSummaryDuration(perMediaDuration)} · 최소 0.2초",
+                            color = palette.subText,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedButton(
+                            onClick = { onTargetDurationChange(recommendedDuration) },
+                            shape = RoundedCornerShape(14.dp)
+                        ) { Text("권장 길이 사용") }
+                    }
+                }
+                Text(
+                    "만들기를 누르면 모든 클립 길이를 맞춘 뒤 기존 시사회 흐름으로 이동합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.subText
+                )
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(14.dp)) {
+                Text("계속 편집")
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
+            ) { Text("이 길이로 만들기") }
+        }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1894,10 +2027,11 @@ private fun autoSegmentAverageDurationText(segmentCount: Int, defaultDuration: D
 private fun WorkProgressOverlay(
     palette: HanClipPalette,
     message: String,
+    isExporting: Boolean,
     onCancel: (() -> Unit)? = null
 ) {
-    val title = progressTitle(message, onCancel != null)
-    val detail = progressDetail(message, onCancel != null)
+    val title = progressTitle(message, isExporting)
+    val detail = progressDetail(message, isExporting)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1935,10 +2069,10 @@ private fun WorkProgressOverlay(
                     )
                 }
                 Text(
-                    text = if (onCancel == null) {
-                        "잠시만 기다려 주세요."
-                    } else {
+                    text = if (isExporting) {
                         "완성 후 시사회에서 확인하고 HanClip 앨범에 저장합니다. 앱을 닫지 말고 화면을 유지해 주세요."
+                    } else {
+                        "취소해도 기존 클립과 설정은 그대로 유지됩니다."
                     },
                     color = palette.subText,
                     style = MaterialTheme.typography.bodyMedium
@@ -1952,7 +2086,7 @@ private fun WorkProgressOverlay(
                             contentColor = Color(0xFFE45D42)
                         )
                     ) {
-                        Text("만들기 취소", fontWeight = FontWeight.Bold)
+                        Text(if (isExporting) "만들기 취소" else "가져오기 취소", fontWeight = FontWeight.Bold)
                     }
                 }
             }

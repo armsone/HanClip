@@ -26,12 +26,15 @@ import com.hanclip.android.core.project.DraftProjectStore
 import com.hanclip.android.core.project.EditorPreferenceStore
 import com.hanclip.android.core.project.EditableProjectStore
 import com.hanclip.android.core.project.ExportHistoryStore
+import com.hanclip.android.core.project.MovieCollectionStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -92,6 +95,7 @@ class EditorViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
     private var exportJob: Job? = null
+    private var importJob: Job? = null
     private var lastUndoSnapshot: EditorUndoSnapshot? = null
 
     fun openPreset(context: Context, preset: MoviePreset) {
@@ -118,22 +122,44 @@ class EditorViewModel : ViewModel() {
             return
         }
 
-        viewModelScope.launch {
+        val existingSourceUris = _uiState.value.clips
+            .flatMap { clip ->
+                listOfNotNull(clip.originalSourceUriString, clip.sourceUri.toString())
+            }
+            .toSet()
+        val uniqueUris = uris
+            .distinctBy(Uri::toString)
+            .filterNot { it.toString() in existingSourceUris }
+        val duplicateCount = uris.size - uniqueUris.size
+        if (uniqueUris.isEmpty()) {
+            _uiState.update {
+                it.copy(
+                    alertMessage = "이미 들어 있는 미디어라서 중복 추가하지 않았습니다.",
+                    undoDeleteMessage = null
+                )
+            }
+            return
+        }
+
+        importJob?.cancel()
+        importJob = viewModelScope.launch {
+            try {
             val appContext = context.applicationContext
             _uiState.update {
                 it.copy(
                     isImportingMedia = true,
-                    progressMessage = "사진첩 선택 ${uris.size}개를 번호순으로 정리하는 중...",
+                    progressMessage = "사진첩 선택 ${uniqueUris.size}개를 번호순으로 정리하는 중...",
                     alertMessage = null
                 )
             }
 
             val state = _uiState.value
             val imported = mutableListOf<ClipItem>()
-            uris.forEachIndexed { index, uri ->
+            uniqueUris.forEachIndexed { index, uri ->
+                currentCoroutineContext().ensureActive()
                 _uiState.update {
                     it.copy(
-                        progressMessage = "선택 번호순 ${index + 1}/${uris.size} · 영상은 타격점 자동 컷 준비 중..."
+                        progressMessage = "선택 번호순 ${index + 1}/${uniqueUris.size} · 영상은 타격점 자동 컷 준비 중..."
                     )
                 }
                 runCatching {
@@ -156,7 +182,7 @@ class EditorViewModel : ViewModel() {
                         alertMessage = "선택한 사진/영상을 클립으로 준비하지 못했습니다. Android 기본 사진첩 권한을 확인하거나 파일 선택으로 다시 가져와 주세요."
                     )
                 } else {
-                    val failedCount = uris.size - imported.size
+                    val failedCount = uniqueUris.size - imported.size
                     val shouldReplaceSamples = it.importedMediaCount == 0
                         && it.clips.all { clip -> clip.sourceUri.scheme == "sample" }
                     val expandedImported = imported.flatMap { clip ->
@@ -171,7 +197,7 @@ class EditorViewModel : ViewModel() {
                         clip.isHiddenSimilarPhotoGroupMember
                     }
                     val importMessage = mediaImportSummaryMessage(
-                        selectedCount = uris.size,
+                        selectedCount = uniqueUris.size,
                         imported = imported,
                         renderableCount = groupedImported.count { clip -> clip.isRenderableClip },
                         failedCount = failedCount,
@@ -184,12 +210,31 @@ class EditorViewModel : ViewModel() {
                         isImportingMedia = false,
                         importedMediaCount = it.importedMediaCount + groupedImported.count { clip -> clip.isRenderableClip },
                         progressMessage = "",
-                        alertMessage = importMessage,
+                        alertMessage = if (duplicateCount > 0) {
+                            "$importMessage 이미 들어 있는 ${duplicateCount}개는 제외했습니다."
+                        } else {
+                            importMessage
+                        },
                         undoDeleteMessage = null
                     )
                 }
             }
+            } catch (cancelled: CancellationException) {
+                _uiState.update {
+                    it.copy(
+                        isImportingMedia = false,
+                        progressMessage = "",
+                        alertMessage = "미디어 가져오기를 취소했습니다. 기존 클립과 설정은 그대로 유지됩니다."
+                    )
+                }
+            } finally {
+                importJob = null
+            }
         }
+    }
+
+    fun cancelMediaImport() {
+        importJob?.cancel()
     }
 
     fun exportMovie(context: Context, onExported: () -> Unit) {
@@ -220,6 +265,10 @@ class EditorViewModel : ViewModel() {
             }
             var actualOutputQualityPreset = state.outputQualityPreset
             var usedCompatibilityRetry = false
+            val madeAtMillis = System.currentTimeMillis()
+            val sourceDates = clips.mapNotNull(ClipItem::sourceCreatedAtMillis)
+            val shootingStartAtMillis = sourceDates.minOrNull() ?: madeAtMillis
+            val shootingEndAtMillis = sourceDates.maxOrNull() ?: shootingStartAtMillis
             runCatching {
                 val exportService = Media3TransformerExportService(context.applicationContext)
                 val exportRequest = VideoExportRequest(
@@ -233,7 +282,10 @@ class EditorViewModel : ViewModel() {
                     originalAudioVolume = state.originalAudioVolume,
                     backgroundMusicLoopsToFillVideo = state.backgroundMusicLoopsToFillVideo,
                     backgroundMusicFadeInEnabled = state.backgroundMusicFadeInEnabled,
-                    backgroundMusicFadeOutEnabled = state.backgroundMusicFadeOutEnabled
+                    backgroundMusicFadeOutEnabled = state.backgroundMusicFadeOutEnabled,
+                    madeAtMillis = madeAtMillis,
+                    shootingStartAtMillis = shootingStartAtMillis,
+                    shootingEndAtMillis = shootingEndAtMillis
                 )
 
                 suspend fun runExportAttempt(
@@ -282,6 +334,16 @@ class EditorViewModel : ViewModel() {
                     hasTextOverlay = state.watermarkSettings.shouldRenderText,
                     hasLogoOverlay = state.watermarkSettings.logoEnabled
                 )
+                runCatching {
+                    MovieCollectionStore.importMovie(
+                        context = context.applicationContext,
+                        sourceUri = outputUri,
+                        title = state.preset.title,
+                        madeAtMillis = madeAtMillis,
+                        shootingStartAtMillis = shootingStartAtMillis,
+                        shootingEndAtMillis = shootingEndAtMillis
+                    )
+                }
                 _uiState.update {
                     it.copy(
                         isExporting = false,
@@ -369,6 +431,15 @@ class EditorViewModel : ViewModel() {
                 undoDeleteMessage = null
             )
         }
+    }
+
+    fun applyQuickTargetDuration(targetDurationSeconds: Double) {
+        val state = _uiState.value
+        val sourceMediaCount = state.clips.count { !it.isVideoSegmentChild }.coerceAtLeast(1)
+        val perClipDuration = (targetDurationSeconds / sourceMediaCount.toDouble())
+            .coerceAtLeast(0.2)
+        _uiState.update { it.copy(defaultDurationSeconds = perClipDuration) }
+        applyDefaultDurationToAll()
     }
 
     fun selectDefaultRangeForAllVideoClips() {
@@ -1462,8 +1533,10 @@ class EditorViewModel : ViewModel() {
     private fun presetInitialState(context: Context?, preset: MoviePreset): EditorUiState {
         val presetDefaultDuration = when (preset) {
             MoviePreset.NewMovie -> 2.0
+            MoviePreset.Quick -> 1.0
             MoviePreset.AiShot -> 4.0
-            MoviePreset.Travel -> 1.5
+            MoviePreset.Travel -> 1.0
+            MoviePreset.Life -> 2.0
             MoviePreset.Golf -> 4.0
         }
         val defaultDuration = context?.let {
@@ -1472,9 +1545,14 @@ class EditorViewModel : ViewModel() {
         val outputAspectRatio = context?.let(EditorPreferenceStore::outputAspectRatio)
         val outputQualityPreset = context?.let(EditorPreferenceStore::outputQualityPreset)
             ?: OutputQualityPreset.Standard
-        val similarPhotoRepresentativeInterval = context?.let(
+        val storedSimilarPhotoRepresentativeInterval = context?.let(
             EditorPreferenceStore::similarPhotoRepresentativeInterval
         ) ?: 6
+        val similarPhotoRepresentativeInterval = when (preset) {
+            MoviePreset.Life -> 3
+            MoviePreset.Travel -> 6
+            else -> storedSimilarPhotoRepresentativeInterval
+        }
         val sampleMusic = presetSampleMusic(preset)
         return EditorUiState(
             preset = preset,
@@ -1549,9 +1627,11 @@ class EditorViewModel : ViewModel() {
 
     private fun presetSampleMusic(preset: MoviePreset): BackgroundMusicSample? {
         return when (preset) {
+            MoviePreset.Quick -> BackgroundMusicSample.DailyLoop
             MoviePreset.Golf -> BackgroundMusicSample.GolfLetsGo
             MoviePreset.Travel -> BackgroundMusicSample.TravelJoy
             MoviePreset.NewMovie,
+            MoviePreset.Life,
             MoviePreset.AiShot -> null
         }
     }
@@ -1598,9 +1678,12 @@ class EditorViewModel : ViewModel() {
                 logoShadowOpacity = 0.45,
                 copyrightPosition = WatermarkPosition.BottomTrailing
             )
-            MoviePreset.NewMovie -> WatermarkSettings(
-                isEnabled = false,
-                logoEnabled = true,
+            MoviePreset.NewMovie,
+            MoviePreset.Quick,
+            MoviePreset.Life -> WatermarkSettings(
+                isEnabled = true,
+                logoEnabled = false,
+                text = if (preset == MoviePreset.Quick) "" else dateText,
                 copyrightPosition = WatermarkPosition.BottomTrailing
             )
         }
