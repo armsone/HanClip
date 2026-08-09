@@ -41,18 +41,67 @@ private final class PhotoPickerGradientView: UIView {
     }
 }
 
+private final class PhotoPickerGlassButton: UIButton {
+    private let blurView = UIVisualEffectView()
+    private let tintView = UIView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        if #available(iOS 26.0, *) {
+            let glassEffect = UIGlassEffect(style: .regular)
+            glassEffect.tintColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.12)
+            glassEffect.isInteractive = true
+            blurView.effect = glassEffect
+            tintView.backgroundColor = UIColor.white.withAlphaComponent(0.14)
+        } else {
+            blurView.effect = UIBlurEffect(style: .systemUltraThinMaterial)
+            tintView.backgroundColor = UIColor.white.withAlphaComponent(0.20)
+        }
+        blurView.isUserInteractionEnabled = false
+        blurView.clipsToBounds = true
+        blurView.layer.cornerRadius = 20
+        blurView.layer.cornerCurve = .continuous
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+        insertSubview(blurView, at: 0)
+        tintView.isUserInteractionEnabled = false
+        tintView.translatesAutoresizingMaskIntoConstraints = false
+        blurView.contentView.addSubview(tintView)
+        NSLayoutConstraint.activate([
+            blurView.topAnchor.constraint(equalTo: topAnchor),
+            blurView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            blurView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tintView.topAnchor.constraint(equalTo: blurView.contentView.topAnchor),
+            tintView.bottomAnchor.constraint(equalTo: blurView.contentView.bottomAnchor),
+            tintView.leadingAnchor.constraint(equalTo: blurView.contentView.leadingAnchor),
+            tintView.trailingAnchor.constraint(equalTo: blurView.contentView.trailingAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 struct PhotoPicker: UIViewControllerRepresentable {
+    let initialSelectionIdentifiers: [String]
     let onComplete: ([ClipItem]) -> Void
     let onStart: () -> Void
+    let onProgress: (Double, String) -> Void
     let onDismiss: () -> Void
+    let onShowCalendar: ([String]) -> Void
 
     func makeUIViewController(
         context: Context
     ) -> DragSelectionPhotoPickerViewController {
         let container = DragSelectionPhotoPickerViewController(
+            initialSelectionIdentifiers: initialSelectionIdentifiers,
             onCancel: {
                 context.coordinator.cancelPicking()
             },
+            onShowCalendar: onShowCalendar,
             onDone: { assetIdentifiers in
                 context.coordinator.finishPicking(
                     assetIdentifiers: assetIdentifiers
@@ -70,6 +119,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             onStart: onStart,
+            onProgress: onProgress,
             onComplete: onComplete,
             onDismiss: onDismiss
         )
@@ -81,6 +131,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         UICollectionViewDelegateFlowLayout,
         UIGestureRecognizerDelegate {
         private let onCancel: () -> Void
+        private let onShowCalendar: ([String]) -> Void
         private let onDone: ([String]) -> Void
         private let imageManager = PHCachingImageManager()
         private var assets: PHFetchResult<PHAsset>?
@@ -90,6 +141,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             .livePhoto,
             .video
         ]
+        private var durationFilterSeconds: TimeInterval?
+        private var durationFilterComparison: DurationFilterComparison = .atLeast
         private var selectedIdentifiers: [String] = []
         private var selectedIdentifierSet: Set<String> = []
         private var dragShouldSelect = true
@@ -99,9 +152,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private var dragLocationInView: CGPoint?
         private var autoScrollDisplayLink: CADisplayLink?
         private var lastAutoScrollTimestamp: CFTimeInterval?
-        private var filterButtons: [UIButton] = []
+        private let filterButton = UIButton(type: .system)
         private let clearSelectionButton = UIButton(type: .system)
-        private let doneButton = UIButton(type: .system)
+        private let doneButton = PhotoPickerGlassButton(type: .system)
         private let previousDayButton = UIButton(type: .system)
         private let todayButton = UIButton(type: .system)
         private var isTodayButtonArmedForSelection = false
@@ -129,17 +182,34 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
         }
 
+        private enum DurationFilterComparison {
+            case atLeast
+            case atMost
+
+            var title: String {
+                switch self {
+                case .atLeast: "이상"
+                case .atMost: "이하"
+                }
+            }
+        }
+
         private struct AssetDaySection {
             let date: Date
             let assets: [PHAsset]
         }
 
         init(
+            initialSelectionIdentifiers: [String],
             onCancel: @escaping () -> Void,
+            onShowCalendar: @escaping ([String]) -> Void,
             onDone: @escaping ([String]) -> Void
         ) {
             self.onCancel = onCancel
+            self.onShowCalendar = onShowCalendar
             self.onDone = onDone
+            selectedIdentifiers = initialSelectionIdentifiers
+            selectedIdentifierSet = Set(initialSelectionIdentifiers)
             let layout = UICollectionViewFlowLayout()
             layout.minimumLineSpacing = 2
             layout.minimumInteritemSpacing = 2
@@ -175,126 +245,86 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
 
         private func configureHeader() {
-            let header = PhotoPickerGradientView()
+            let header = UIView()
+            header.backgroundColor = .clear
             header.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(header)
 
-            let titleIconContainer = UIView()
-            titleIconContainer.backgroundColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.14)
-            titleIconContainer.layer.cornerRadius = 9
-            titleIconContainer.layer.cornerCurve = .continuous
-            titleIconContainer.translatesAutoresizingMaskIntoConstraints = false
-
-            let titleIcon = UIImageView(
-                image: UIImage(systemName: "photo.on.rectangle.angled")
-            )
-            titleIcon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
-                pointSize: 13,
+            let titleButton = PhotoPickerGlassButton(type: .system)
+            titleButton.setTitle("사진", for: .normal)
+            titleButton.setTitleColor(UIColor(HanClipTheme.text), for: .normal)
+            titleButton.titleLabel?.font = .systemFont(
+                ofSize: 16,
                 weight: .semibold
             )
-            titleIcon.tintColor = HanClipTheme.primaryUIColor
-            titleIcon.contentMode = .scaleAspectFit
-            titleIcon.translatesAutoresizingMaskIntoConstraints = false
-            titleIconContainer.addSubview(titleIcon)
+            titleButton.accessibilityHint = "달력 선택 화면으로 전환합니다."
+            titleButton.backgroundColor = .clear
+            titleButton.layer.cornerRadius = 20
+            titleButton.layer.cornerCurve = .continuous
+            titleButton.layer.borderWidth = 1
+            titleButton.layer.borderColor = UIColor.white
+                .withAlphaComponent(0.52).cgColor
+            titleButton.layer.shadowColor = HanClipTheme.secondaryUIColor.cgColor
+            titleButton.layer.shadowOpacity = 0.08
+            titleButton.layer.shadowRadius = 8
+            titleButton.layer.shadowOffset = CGSize(width: 0, height: 4)
+            titleButton.addTarget(
+                self,
+                action: #selector(showCalendarTapped),
+                for: .touchUpInside
+            )
+            titleButton.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(titleButton)
 
-            let titleLabel = UILabel()
-            titleLabel.text = "미디어 선택"
-            titleLabel.font = .systemFont(ofSize: 17, weight: .bold)
-            titleLabel.textColor = UIColor(HanClipTheme.text)
-            titleLabel.adjustsFontForContentSizeCategory = false
-
-            let titleStack = UIStackView(arrangedSubviews: [
-                titleIconContainer,
-                titleLabel
-            ])
-            titleStack.axis = .horizontal
-            titleStack.alignment = .center
-            titleStack.spacing = 7
-            titleStack.translatesAutoresizingMaskIntoConstraints = false
-            header.addSubview(titleStack)
-
-            let cancelButton = UIButton(type: .system)
+            let cancelButton = PhotoPickerGlassButton(type: .system)
             configureCompactButton(
                 cancelButton,
                 title: "취소",
-                symbolName: "xmark",
-                fontSize: 12,
+                symbolName: nil,
+                fontSize: 16,
                 foregroundColor: UIColor(HanClipTheme.text)
-                    .withAlphaComponent(0.78),
-                backgroundColor: HanClipTheme.secondaryUIColor
-                    .withAlphaComponent(0.09),
-                borderColor: HanClipTheme.secondaryUIColor
-                    .withAlphaComponent(0.28)
+                    .withAlphaComponent(0.72),
+                backgroundColor: UIColor.white.withAlphaComponent(0.14),
+                borderColor: UIColor.white.withAlphaComponent(0.52)
             )
             cancelButton.addTarget(
                 self,
                 action: #selector(cancelTapped),
                 for: .touchUpInside
             )
+            cancelButton.backgroundColor = .clear
+            cancelButton.layer.shadowColor = HanClipTheme.secondaryUIColor.cgColor
+            cancelButton.layer.shadowOpacity = 0.08
+            cancelButton.layer.shadowRadius = 8
+            cancelButton.layer.shadowOffset = CGSize(width: 0, height: 4)
 
             configureCompactButton(
                 doneButton,
                 title: "0개 추가",
-                symbolName: "plus",
-                fontSize: 12,
-                foregroundColor: UIColor(HanClipTheme.background),
-                backgroundColor: HanClipTheme.primaryUIColor,
-                borderColor: HanClipTheme.primaryUIColor
+                symbolName: nil,
+                fontSize: 16,
+                foregroundColor: UIColor(HanClipTheme.text)
+                    .withAlphaComponent(0.35),
+                backgroundColor: .clear,
+                borderColor: UIColor.white.withAlphaComponent(0.52)
             )
             doneButton.isEnabled = false
-            doneButton.alpha = 0.30
+            doneButton.alpha = 1
             doneButton.addTarget(
                 self,
                 action: #selector(doneTapped),
                 for: .touchUpInside
             )
+            doneButton.backgroundColor = .clear
+            doneButton.layer.shadowColor = HanClipTheme.secondaryUIColor.cgColor
+            doneButton.layer.shadowOpacity = 0.08
+            doneButton.layer.shadowRadius = 8
+            doneButton.layer.shadowOffset = CGSize(width: 0, height: 4)
 
             cancelButton.translatesAutoresizingMaskIntoConstraints = false
             doneButton.translatesAutoresizingMaskIntoConstraints = false
             header.addSubview(cancelButton)
             header.addSubview(doneButton)
-
-            let filterStack = UIStackView()
-            filterStack.axis = .horizontal
-            filterStack.spacing = 3
-            filterStack.distribution = .fillEqually
-            filterStack.translatesAutoresizingMaskIntoConstraints = false
-
-            let filterContainer = UIView()
-            filterContainer.backgroundColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.07)
-            filterContainer.layer.cornerRadius = 18
-            filterContainer.layer.cornerCurve = .continuous
-            filterContainer.layer.borderWidth = 1
-            filterContainer.layer.borderColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.24).cgColor
-            filterContainer.translatesAutoresizingMaskIntoConstraints = false
-            filterContainer.addSubview(filterStack)
-            header.addSubview(filterContainer)
-
-            for filter in [
-                MediaFilter.photo,
-                MediaFilter.livePhoto,
-                MediaFilter.video
-            ] {
-                let button = UIButton(type: .system)
-                button.tag = filter.rawValue
-                button.addTarget(
-                    self,
-                    action: #selector(mediaFilterTapped(_:)),
-                    for: .touchUpInside
-                )
-                filterButtons.append(button)
-                filterStack.addArrangedSubview(button)
-            }
-            updateFilterButtonAppearance()
-
-            let separator = UIView()
-            separator.backgroundColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.22)
-            separator.translatesAutoresizingMaskIntoConstraints = false
-            header.addSubview(separator)
 
             NSLayoutConstraint.activate([
                 header.topAnchor.constraint(equalTo: view.topAnchor),
@@ -302,89 +332,52 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                 header.bottomAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.topAnchor,
-                    constant: 101
+                    constant: 68
                 ),
                 cancelButton.leadingAnchor.constraint(
                     equalTo: header.leadingAnchor,
-                    constant: 16
+                    constant: 18
                 ),
                 cancelButton.topAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.topAnchor,
-                    constant: 7
+                    constant: 14
                 ),
-                cancelButton.widthAnchor.constraint(equalToConstant: 72),
-                cancelButton.heightAnchor.constraint(equalToConstant: 36),
+                cancelButton.widthAnchor.constraint(equalToConstant: 88),
+                cancelButton.heightAnchor.constraint(equalToConstant: 40),
                 doneButton.trailingAnchor.constraint(
                     equalTo: header.trailingAnchor,
-                    constant: -16
+                    constant: -18
                 ),
                 doneButton.topAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.topAnchor,
-                    constant: 7
+                    constant: 14
                 ),
-                doneButton.widthAnchor.constraint(equalToConstant: 104),
-                doneButton.heightAnchor.constraint(equalToConstant: 36),
-                titleStack.centerXAnchor.constraint(equalTo: header.centerXAnchor),
-                titleStack.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
-                titleStack.leadingAnchor.constraint(
+                doneButton.widthAnchor.constraint(equalToConstant: 88),
+                doneButton.heightAnchor.constraint(equalToConstant: 40),
+                titleButton.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+                titleButton.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
+                titleButton.widthAnchor.constraint(equalToConstant: 88),
+                titleButton.heightAnchor.constraint(equalToConstant: 40),
+                titleButton.leadingAnchor.constraint(
                     greaterThanOrEqualTo: cancelButton.trailingAnchor,
-                    constant: 6
+                    constant: 8
                 ),
-                titleStack.trailingAnchor.constraint(
+                titleButton.trailingAnchor.constraint(
                     lessThanOrEqualTo: doneButton.leadingAnchor,
-                    constant: -6
-                ),
-                titleIconContainer.widthAnchor.constraint(equalToConstant: 30),
-                titleIconContainer.heightAnchor.constraint(equalToConstant: 30),
-                titleIcon.centerXAnchor.constraint(
-                    equalTo: titleIconContainer.centerXAnchor
-                ),
-                titleIcon.centerYAnchor.constraint(
-                    equalTo: titleIconContainer.centerYAnchor
-                ),
-                titleIcon.widthAnchor.constraint(equalToConstant: 17),
-                titleIcon.heightAnchor.constraint(equalToConstant: 17),
-                filterContainer.leadingAnchor.constraint(
-                    equalTo: header.leadingAnchor,
-                    constant: 16
-                ),
-                filterContainer.trailingAnchor.constraint(
-                    equalTo: header.trailingAnchor,
-                    constant: -16
-                ),
-                filterContainer.bottomAnchor.constraint(
-                    equalTo: header.bottomAnchor,
-                    constant: -10
-                ),
-                filterContainer.heightAnchor.constraint(equalToConstant: 36),
-                filterStack.leadingAnchor.constraint(
-                    equalTo: filterContainer.leadingAnchor,
-                    constant: 3
-                ),
-                filterStack.trailingAnchor.constraint(
-                    equalTo: filterContainer.trailingAnchor,
-                    constant: -3
-                ),
-                filterStack.topAnchor.constraint(
-                    equalTo: filterContainer.topAnchor,
-                    constant: 3
-                ),
-                filterStack.bottomAnchor.constraint(
-                    equalTo: filterContainer.bottomAnchor,
-                    constant: -3
-                ),
-                separator.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-                separator.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-                separator.bottomAnchor.constraint(equalTo: header.bottomAnchor),
-                separator.heightAnchor.constraint(equalToConstant: 0.5)
+                    constant: -8
+                )
             ])
             header.tag = 101
+        }
+
+        @objc private func showCalendarTapped() {
+            onShowCalendar(selectedIdentifiers)
         }
 
         private func configureCompactButton(
             _ button: UIButton,
             title: String,
-            symbolName: String,
+            symbolName: String?,
             fontSize: CGFloat,
             foregroundColor: UIColor,
             backgroundColor: UIColor,
@@ -392,7 +385,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
         ) {
             button.configuration = nil
             button.setTitle(title, for: .normal)
-            button.setImage(UIImage(systemName: symbolName), for: .normal)
+            button.setImage(
+                symbolName.flatMap { UIImage(systemName: $0) },
+                for: .normal
+            )
             button.tintColor = foregroundColor
             button.setTitleColor(foregroundColor, for: .normal)
             button.titleLabel?.font = .systemFont(
@@ -413,22 +409,27 @@ struct PhotoPicker: UIViewControllerRepresentable {
             button.semanticContentAttribute = .forceLeftToRight
             button.contentHorizontalAlignment = .center
             button.backgroundColor = backgroundColor
-            button.layer.cornerRadius = 18
+            button.layer.cornerRadius = fontSize >= 14 ? 20 : 18
             button.layer.cornerCurve = .continuous
             button.layer.borderWidth = 1
             button.layer.borderColor = borderColor.cgColor
-            button.imageEdgeInsets = UIEdgeInsets(
-                top: 0,
-                left: -3,
-                bottom: 0,
-                right: 3
-            )
-            button.titleEdgeInsets = UIEdgeInsets(
-                top: 0,
-                left: 3,
-                bottom: 0,
-                right: -3
-            )
+            if symbolName != nil {
+                button.imageEdgeInsets = UIEdgeInsets(
+                    top: 0,
+                    left: -3,
+                    bottom: 0,
+                    right: 3
+                )
+                button.titleEdgeInsets = UIEdgeInsets(
+                    top: 0,
+                    left: 3,
+                    bottom: 0,
+                    right: -3
+                )
+            } else {
+                button.imageEdgeInsets = .zero
+                button.titleEdgeInsets = .zero
+            }
         }
 
         private func configureCollectionView() {
@@ -484,10 +485,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     equalTo: header.bottomAnchor
                 ),
                 collectionView.leadingAnchor.constraint(
-                    equalTo: view.leadingAnchor
+                    equalTo: view.leadingAnchor,
+                    constant: 14
                 ),
                 collectionView.trailingAnchor.constraint(
-                    equalTo: view.trailingAnchor
+                    equalTo: view.trailingAnchor,
+                    constant: -14
                 ),
                 collectionView.bottomAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.bottomAnchor
@@ -497,8 +500,16 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         private func configureDayNavigationButtons() {
             configureFloatingDayButton(
+                filterButton,
+                title: "필터",
+                accessibilityHint: "표시할 미디어 종류를 선택합니다."
+            )
+            filterButton.showsMenuAsPrimaryAction = true
+            updateFilterMenu()
+
+            configureFloatingDayButton(
                 previousDayButton,
-                title: "어제",
+                title: "전날",
                 accessibilityHint: "선택이 없으면 어제와 가까운 날짜를 선택하고, 선택이 있으면 선택된 날짜의 전날을 선택합니다."
             )
             previousDayButton.addTarget(
@@ -532,37 +543,36 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 for: .touchUpInside
             )
 
-            view.addSubview(previousDayButton)
-            view.addSubview(todayButton)
-            view.addSubview(clearSelectionButton)
+            let buttonStack = UIStackView(arrangedSubviews: [
+                filterButton,
+                previousDayButton,
+                todayButton,
+                clearSelectionButton
+            ])
+            buttonStack.axis = .horizontal
+            buttonStack.alignment = .center
+            buttonStack.distribution = .equalSpacing
+            buttonStack.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(buttonStack)
             NSLayoutConstraint.activate([
-                previousDayButton.leadingAnchor.constraint(
+                buttonStack.leadingAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.leadingAnchor,
                     constant: 18
                 ),
-                previousDayButton.bottomAnchor.constraint(
-                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                    constant: -16
-                ),
-                previousDayButton.widthAnchor.constraint(equalToConstant: 58),
-                previousDayButton.heightAnchor.constraint(equalToConstant: 58),
-                todayButton.centerXAnchor.constraint(
-                    equalTo: view.safeAreaLayoutGuide.centerXAnchor
-                ),
-                todayButton.bottomAnchor.constraint(
-                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
-                    constant: -16
-                ),
-                todayButton.widthAnchor.constraint(equalToConstant: 58),
-                todayButton.heightAnchor.constraint(equalToConstant: 58),
-                clearSelectionButton.trailingAnchor.constraint(
+                buttonStack.trailingAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.trailingAnchor,
                     constant: -18
                 ),
-                clearSelectionButton.bottomAnchor.constraint(
+                buttonStack.bottomAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.bottomAnchor,
                     constant: -16
                 ),
+                filterButton.widthAnchor.constraint(equalToConstant: 58),
+                filterButton.heightAnchor.constraint(equalToConstant: 58),
+                previousDayButton.widthAnchor.constraint(equalToConstant: 58),
+                previousDayButton.heightAnchor.constraint(equalToConstant: 58),
+                todayButton.widthAnchor.constraint(equalToConstant: 58),
+                todayButton.heightAnchor.constraint(equalToConstant: 58),
                 clearSelectionButton.widthAnchor.constraint(equalToConstant: 58),
                 clearSelectionButton.heightAnchor.constraint(equalToConstant: 58)
             ])
@@ -613,6 +623,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 )
                 assets = PHAsset.fetchAssets(with: options)
                 rebuildAssetSections()
+                updateSelectionCount()
                 collectionView.reloadData()
                 collectionView.layoutIfNeeded()
                 if let lastSection = assetSections.indices.last,
@@ -626,16 +637,139 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
         }
 
-        @objc private func mediaFilterTapped(_ sender: UIButton) {
-            guard let filter = MediaFilter(rawValue: sender.tag) else { return }
-            resetTodayButtonState()
+        private func toggleMediaFilter(_ filter: MediaFilter) {
             if selectedMediaFilters.contains(filter) {
                 guard selectedMediaFilters.count > 1 else { return }
                 selectedMediaFilters.remove(filter)
             } else {
                 selectedMediaFilters.insert(filter)
             }
-            updateFilterButtonAppearance()
+            applyMediaFilters()
+        }
+
+        private func updateFilterMenu() {
+            let allAction = UIAction(
+                title: "전체",
+                image: UIImage(systemName: "square.grid.2x2.fill"),
+                state: selectedMediaFilters.count == 3
+                    && durationFilterSeconds == nil ? .on : .off
+            ) { [weak self] _ in
+                guard let self else { return }
+                selectedMediaFilters = [.photo, .livePhoto, .video]
+                durationFilterSeconds = nil
+                applyMediaFilters()
+            }
+            let actions = [
+                MediaFilter.photo,
+                MediaFilter.livePhoto,
+                MediaFilter.video
+            ].map { filter in
+                UIAction(
+                    title: filter.title,
+                    image: UIImage(systemName: filter.symbolName),
+                    state: selectedMediaFilters.contains(filter) ? .on : .off
+                ) { [weak self] _ in
+                    self?.toggleMediaFilter(filter)
+                }
+            }
+            let durationAction = UIAction(
+                title: durationFilterMenuTitle,
+                image: UIImage(systemName: "clock.badge.checkmark"),
+                state: durationFilterSeconds == nil ? .off : .on
+            ) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.presentDurationFilterEditor()
+                }
+            }
+            filterButton.menu = UIMenu(
+                title: "필터",
+                options: .displayInline,
+                children: [
+                    allAction,
+                    UIMenu(options: .displayInline, children: actions),
+                    UIMenu(options: .displayInline, children: [durationAction])
+                ]
+            )
+            var accessibilityValue = selectedMediaFilters
+                .sorted { $0.rawValue < $1.rawValue }
+                .map(\.title)
+                .joined(separator: ", ")
+            if durationFilterSeconds != nil {
+                accessibilityValue += ", \(durationFilterMenuTitle)"
+            }
+            filterButton.accessibilityValue = accessibilityValue
+        }
+
+        private var durationFilterMenuTitle: String {
+            guard let seconds = durationFilterSeconds else {
+                return "시간 제한 없음"
+            }
+            let totalSeconds = max(Int(seconds.rounded()), 0)
+            let minutes = totalSeconds / 60
+            let remainingSeconds = totalSeconds % 60
+            let timeText: String
+            if minutes > 0, remainingSeconds > 0 {
+                timeText = "\(minutes)분 \(remainingSeconds)초"
+            } else if minutes > 0 {
+                timeText = "\(minutes)분"
+            } else {
+                timeText = "\(remainingSeconds)초"
+            }
+            return "시간: \(timeText) \(durationFilterComparison.title)"
+        }
+
+        private func presentDurationFilterEditor() {
+            let alert = UIAlertController(
+                title: "영상 시간 필터",
+                message: "분과 초를 입력한 뒤 이상 또는 이하를 선택하세요.",
+                preferredStyle: .alert
+            )
+            let currentSeconds = max(Int((durationFilterSeconds ?? 0).rounded()), 0)
+            alert.addTextField { textField in
+                textField.placeholder = "분"
+                textField.keyboardType = .numberPad
+                textField.text = currentSeconds > 0
+                    ? String(currentSeconds / 60)
+                    : nil
+                textField.accessibilityLabel = "분"
+            }
+            alert.addTextField { textField in
+                textField.placeholder = "초"
+                textField.keyboardType = .numberPad
+                textField.text = currentSeconds > 0
+                    ? String(currentSeconds % 60)
+                    : nil
+                textField.accessibilityLabel = "초"
+            }
+
+            func apply(_ comparison: DurationFilterComparison) {
+                let minutes = Int(alert.textFields?.first?.text ?? "") ?? 0
+                let seconds = Int(alert.textFields?.last?.text ?? "") ?? 0
+                durationFilterSeconds = TimeInterval(
+                    max(minutes, 0) * 60 + max(seconds, 0)
+                )
+                durationFilterComparison = comparison
+                applyMediaFilters()
+            }
+
+            alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+            alert.addAction(UIAlertAction(title: "해제", style: .destructive) {
+                [weak self] _ in
+                self?.durationFilterSeconds = nil
+                self?.applyMediaFilters()
+            })
+            alert.addAction(UIAlertAction(title: "이상 적용", style: .default) {
+                _ in apply(.atLeast)
+            })
+            alert.addAction(UIAlertAction(title: "이하 적용", style: .default) {
+                _ in apply(.atMost)
+            })
+            present(alert, animated: true)
+        }
+
+        private func applyMediaFilters() {
+            resetTodayButtonState()
+            updateFilterMenu()
             rebuildAssetSections()
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
@@ -646,38 +780,6 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     at: .bottom,
                     animated: false
                 )
-            }
-        }
-
-        private func updateFilterButtonAppearance() {
-            for button in filterButtons {
-                guard let filter = MediaFilter(rawValue: button.tag) else {
-                    continue
-                }
-                let isSelected = selectedMediaFilters.contains(filter)
-                let foregroundColor = isSelected
-                    ? HanClipTheme.primaryUIColor
-                    : UIColor(HanClipTheme.text).withAlphaComponent(0.66)
-                configureCompactButton(
-                    button,
-                    title: filter.title,
-                    symbolName: filter.symbolName,
-                    fontSize: 11,
-                    foregroundColor: foregroundColor,
-                    backgroundColor: isSelected
-                        ? HanClipTheme.primaryUIColor.withAlphaComponent(0.13)
-                        : .clear,
-                    borderColor: isSelected
-                        ? HanClipTheme.primaryUIColor.withAlphaComponent(0.34)
-                        : .clear
-                )
-                button.layer.cornerRadius = 15
-                button.layer.borderColor = (
-                    isSelected
-                        ? HanClipTheme.primaryUIColor.withAlphaComponent(0.34)
-                        : UIColor.clear
-                ).cgColor
-                button.accessibilityValue = isSelected ? "선택됨" : "선택 안 됨"
             }
         }
 
@@ -709,7 +811,14 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         private func includesAsset(_ asset: PHAsset) -> Bool {
             if asset.mediaType == .video {
-                return selectedMediaFilters.contains(.video)
+                guard selectedMediaFilters.contains(.video) else { return false }
+                guard let durationFilterSeconds else { return true }
+                switch durationFilterComparison {
+                case .atLeast:
+                    return asset.duration >= durationFilterSeconds
+                case .atMost:
+                    return asset.duration <= durationFilterSeconds
+                }
             }
             if asset.mediaType == .image,
                asset.mediaSubtypes.contains(.photoLive) {
@@ -795,7 +904,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             layout collectionViewLayout: UICollectionViewLayout,
             referenceSizeForHeaderInSection section: Int
         ) -> CGSize {
-            CGSize(width: collectionView.bounds.width, height: 38)
+            CGSize(width: collectionView.bounds.width, height: 42)
         }
 
         func collectionView(
@@ -962,14 +1071,34 @@ struct PhotoPicker: UIViewControllerRepresentable {
             let point = gesture.location(in: collectionView)
             guard let indexPath = collectionView.indexPathForItem(at: point),
                   let asset = asset(at: indexPath) else { return }
+            let sourcePoint = collectionView.convert(point, to: nil)
+            let isSelected = selectedIdentifierSet.contains(asset.localIdentifier)
 
             let preview = MediaAssetPreviewViewController(
                 asset: asset,
                 imageManager: imageManager,
-                showsCloseButton: true
+                showsCloseButton: false,
+                sourcePoint: sourcePoint,
+                onDelete: isSelected
+                    ? { [weak self] in
+                        self?.deselectAsset(identifier: asset.localIdentifier)
+                    }
+                    : nil
             )
-            preview.modalPresentationStyle = .fullScreen
+            preview.modalPresentationStyle = .overFullScreen
+            preview.modalTransitionStyle = .crossDissolve
             present(preview, animated: true)
+        }
+
+        private func deselectAsset(identifier: String) {
+            selectedIdentifierSet.remove(identifier)
+            selectedIdentifiers.removeAll { $0 == identifier }
+            for case let cell as DragSelectionPhotoCell
+                in collectionView.visibleCells
+            where cell.representedAssetIdentifier == identifier {
+                cell.updateSelection(false)
+            }
+            updateSelectionCount()
         }
 
         private func changeColumnCount(towardLargerItems: Bool) {
@@ -1070,7 +1199,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
             let count = selectedIdentifiers.count
             updateDoneButtonTitle("\(count)개 추가")
             doneButton.isEnabled = count > 0
-            doneButton.alpha = count > 0 ? 1 : 0.30
+            doneButton.alpha = 1
+            doneButton.setTitleColor(
+                count > 0
+                    ? HanClipTheme.secondaryUIColor
+                    : UIColor(HanClipTheme.text).withAlphaComponent(0.35),
+                for: .normal
+            )
             clearSelectionButton.isEnabled = count > 0
             clearSelectionButton.alpha = count > 0 ? 1 : 0.34
         }
@@ -1275,7 +1410,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             addSubview(dateLabel)
             NSLayoutConstraint.activate([
                 dateLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-                dateLabel.topAnchor.constraint(equalTo: topAnchor, constant: 5),
+                dateLabel.topAnchor.constraint(equalTo: topAnchor, constant: 9),
                 dateLabel.bottomAnchor.constraint(
                     equalTo: bottomAnchor,
                     constant: -5
@@ -1295,16 +1430,21 @@ struct PhotoPicker: UIViewControllerRepresentable {
     }
 
     final class MediaAssetPreviewViewController: UIViewController,
-        UIScrollViewDelegate {
+        UIScrollViewDelegate,
+        UIGestureRecognizerDelegate {
         private let asset: PHAsset
         private let imageManager: PHImageManager
         private let showsCloseButton: Bool
+        private let sourcePoint: CGPoint?
+        private let onDelete: (() -> Void)?
+        private let onDismiss: (() -> Void)?
         private let scrollView = UIScrollView()
+        private let previewSurfaceView = UIView()
         private let imageView = UIImageView()
         private let livePhotoView = PHLivePhotoView()
         private let playerViewController = AVPlayerViewController()
         private let videoControlsView = UIVisualEffectView(
-            effect: UIBlurEffect(style: .systemThinMaterialDark)
+            effect: UIBlurEffect(style: .systemThinMaterial)
         )
         private let playPauseButton = UIButton(type: .system)
         private let progressSlider = UISlider()
@@ -1315,15 +1455,25 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private var isSeekingVideo = false
         private var wasPlayingBeforeSeek = false
         private var isVideoLooping = true
+        private var livePhotoProgressTimer: Timer?
+        private var livePhotoPlaybackStartedAt: Date?
+        private var isLivePhotoPlaying = false
+        private var previewCenterYConstraint: NSLayoutConstraint?
 
         init(
             asset: PHAsset,
             imageManager: PHImageManager,
-            showsCloseButton: Bool = false
+            showsCloseButton: Bool = false,
+            sourcePoint: CGPoint? = nil,
+            onDelete: (() -> Void)? = nil,
+            onDismiss: (() -> Void)? = nil
         ) {
             self.asset = asset
             self.imageManager = imageManager
             self.showsCloseButton = showsCloseButton
+            self.sourcePoint = sourcePoint
+            self.onDelete = onDelete
+            self.onDismiss = onDismiss
             super.init(nibName: nil, bundle: nil)
             preferredContentSize = CGSize(width: 360, height: 520)
         }
@@ -1335,7 +1485,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         override func viewDidLoad() {
             super.viewDidLoad()
-            view.backgroundColor = .black
+            view.backgroundColor = .clear
+            configurePreviewSurface()
+            configureOutsideTapToDismiss()
             if asset.mediaType == .video {
                 configureVideoPreview()
             } else if asset.mediaSubtypes.contains(.photoLive) {
@@ -1347,21 +1499,112 @@ struct PhotoPicker: UIViewControllerRepresentable {
             if showsCloseButton {
                 configureCloseButton()
             }
+            if asset.mediaType != .video,
+               !asset.mediaSubtypes.contains(.photoLive) {
+                configureStandaloneDeleteButton()
+            }
+        }
+
+        private func configurePreviewSurface() {
+            previewSurfaceView.backgroundColor = UIColor(HanClipTheme.background)
+            previewSurfaceView.layer.cornerRadius = 18
+            previewSurfaceView.layer.cornerCurve = .continuous
+            previewSurfaceView.layer.borderWidth = 1.25
+            previewSurfaceView.layer.borderColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.38).cgColor
+            previewSurfaceView.clipsToBounds = true
+            previewSurfaceView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(previewSurfaceView)
+            let centerY = previewSurfaceView.centerYAnchor.constraint(
+                equalTo: view.centerYAnchor,
+                constant: -38
+            )
+            previewCenterYConstraint = centerY
+            NSLayoutConstraint.activate([
+                previewSurfaceView.centerXAnchor.constraint(
+                    equalTo: view.centerXAnchor
+                ),
+                centerY,
+                previewSurfaceView.widthAnchor.constraint(
+                    equalTo: view.widthAnchor,
+                    multiplier: 0.70
+                ),
+                previewSurfaceView.heightAnchor.constraint(
+                    equalTo: previewSurfaceView.widthAnchor
+                )
+            ])
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            positionPreviewNearSourcePoint()
+        }
+
+        private func positionPreviewNearSourcePoint() {
+            guard let sourcePoint, view.bounds.height > 0 else { return }
+            let previewWidth = view.bounds.width * 0.70
+            let controlsHeight: CGFloat = 68
+            let totalHeight = previewWidth + controlsHeight
+            let spacing: CGFloat = 14
+            let topLimit = view.safeAreaInsets.top + 8
+            let bottomLimit = view.bounds.height - view.safeAreaInsets.bottom - 8
+
+            let aboveCenter = sourcePoint.y - spacing - totalHeight / 2
+            let belowCenter = sourcePoint.y + spacing + totalHeight / 2
+            let targetCenter: CGFloat
+            if aboveCenter - totalHeight / 2 >= topLimit {
+                targetCenter = aboveCenter
+            } else {
+                targetCenter = min(
+                    bottomLimit - totalHeight / 2,
+                    max(topLimit + totalHeight / 2, belowCenter)
+                )
+            }
+            previewCenterYConstraint?.constant = targetCenter - view.bounds.midY
+        }
+
+        private func configureOutsideTapToDismiss() {
+            let tap = UITapGestureRecognizer(
+                target: self,
+                action: #selector(closePreview)
+            )
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            view.addGestureRecognizer(tap)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            guard let touchedView = touch.view else { return true }
+            if touchedView.isDescendant(of: videoControlsView)
+                || touchedView is UIControl {
+                return false
+            }
+            return true
+        }
+
+        override func accessibilityPerformEscape() -> Bool {
+            closePreview()
+            return true
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             if asset.mediaType == .video {
+                HanClipAudioSession.activatePlayback()
                 videoPlayer?.play()
                 updatePlayPauseButton()
             } else if asset.mediaSubtypes.contains(.photoLive) {
-                livePhotoView.startPlayback(with: .full)
+                startLivePhotoPlayback()
             }
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
             livePhotoView.stopPlayback()
+            stopLivePhotoProgress()
             videoPlayer?.pause()
             updatePlayPauseButton()
         }
@@ -1373,6 +1616,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             if let videoEndObserver {
                 NotificationCenter.default.removeObserver(videoEndObserver)
             }
+            livePhotoProgressTimer?.invalidate()
         }
 
         private func configureVideoPreview() {
@@ -1382,19 +1626,19 @@ struct PhotoPicker: UIViewControllerRepresentable {
             playerViewController.view.backgroundColor = .black
             playerViewController.view.translatesAutoresizingMaskIntoConstraints =
                 false
-            view.addSubview(playerViewController.view)
+            previewSurfaceView.addSubview(playerViewController.view)
             NSLayoutConstraint.activate([
                 playerViewController.view.topAnchor.constraint(
-                    equalTo: view.topAnchor
+                    equalTo: previewSurfaceView.topAnchor
                 ),
                 playerViewController.view.bottomAnchor.constraint(
-                    equalTo: view.bottomAnchor
+                    equalTo: previewSurfaceView.bottomAnchor
                 ),
                 playerViewController.view.leadingAnchor.constraint(
-                    equalTo: view.leadingAnchor
+                    equalTo: previewSurfaceView.leadingAnchor
                 ),
                 playerViewController.view.trailingAnchor.constraint(
-                    equalTo: view.trailingAnchor
+                    equalTo: previewSurfaceView.trailingAnchor
                 )
             ])
             playerViewController.didMove(toParent: self)
@@ -1454,12 +1698,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
             view.addSubview(closeButton)
             NSLayoutConstraint.activate([
                 closeButton.topAnchor.constraint(
-                    equalTo: view.safeAreaLayoutGuide.topAnchor,
-                    constant: 12
+                    equalTo: previewSurfaceView.topAnchor,
+                    constant: 10
                 ),
                 closeButton.trailingAnchor.constraint(
-                    equalTo: view.trailingAnchor,
-                    constant: -16
+                    equalTo: previewSurfaceView.trailingAnchor,
+                    constant: -10
                 ),
                 closeButton.widthAnchor.constraint(equalToConstant: 44),
                 closeButton.heightAnchor.constraint(equalToConstant: 44)
@@ -1467,16 +1711,26 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
 
         @objc private func closePreview() {
-            dismiss(animated: true)
+            if let onDismiss {
+                onDismiss()
+            } else {
+                dismiss(animated: true)
+            }
         }
 
         private func configureVideoControls() {
             videoControlsView.layer.cornerRadius = 18
+            videoControlsView.layer.borderWidth = 1
+            videoControlsView.layer.borderColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.28).cgColor
+            videoControlsView.contentView.backgroundColor = UIColor(
+                HanClipTheme.background
+            ).withAlphaComponent(0.42)
             videoControlsView.clipsToBounds = true
             videoControlsView.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(videoControlsView)
 
-            playPauseButton.tintColor = .white
+            playPauseButton.tintColor = HanClipTheme.secondaryUIColor
             playPauseButton.accessibilityLabel = "재생"
             playPauseButton.addTarget(
                 self,
@@ -1489,9 +1743,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             progressSlider.minimumTrackTintColor = UIColor(
                 HanClipTheme.primary
             )
-            progressSlider.maximumTrackTintColor = UIColor.white.withAlphaComponent(
-                0.35
-            )
+            progressSlider.maximumTrackTintColor = UIColor(HanClipTheme.text)
+                .withAlphaComponent(0.22)
             progressSlider.addTarget(
                 self,
                 action: #selector(beginVideoSeek),
@@ -1519,9 +1772,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
             let controls = UIStackView(arrangedSubviews: [
                 playPauseButton,
-                progressSlider,
-                loopButton
+                progressSlider
             ])
+            controls.addArrangedSubview(makePreviewActionButton())
+            controls.addArrangedSubview(loopButton)
             controls.axis = .horizontal
             controls.alignment = .center
             controls.spacing = 10
@@ -1530,15 +1784,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
             NSLayoutConstraint.activate([
                 videoControlsView.leadingAnchor.constraint(
-                    equalTo: view.leadingAnchor,
-                    constant: 12
+                    equalTo: previewSurfaceView.leadingAnchor
                 ),
                 videoControlsView.trailingAnchor.constraint(
-                    equalTo: view.trailingAnchor,
-                    constant: -12
+                    equalTo: previewSurfaceView.trailingAnchor
                 ),
                 videoControlsView.bottomAnchor.constraint(
-                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    equalTo: previewSurfaceView.topAnchor,
                     constant: -12
                 ),
                 videoControlsView.heightAnchor.constraint(equalToConstant: 56),
@@ -1561,6 +1813,58 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 loopButton.widthAnchor.constraint(equalToConstant: 44),
                 loopButton.heightAnchor.constraint(equalToConstant: 44)
             ])
+        }
+
+        private func configureStandaloneDeleteButton() {
+            let deleteButton = makePreviewActionButton()
+            deleteButton.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(deleteButton)
+            NSLayoutConstraint.activate([
+                deleteButton.trailingAnchor.constraint(
+                    equalTo: previewSurfaceView.trailingAnchor
+                ),
+                deleteButton.bottomAnchor.constraint(
+                    equalTo: previewSurfaceView.topAnchor,
+                    constant: -12
+                ),
+                deleteButton.widthAnchor.constraint(equalToConstant: 52),
+                deleteButton.heightAnchor.constraint(equalToConstant: 52)
+            ])
+        }
+
+        private func makePreviewActionButton() -> UIButton {
+            let button = UIButton(type: .system)
+            button.setTitle(onDelete == nil ? "닫기" : "제거", for: .normal)
+            button.setTitleColor(
+                UIColor(HanClipTheme.onSecondary),
+                for: .normal
+            )
+            button.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
+            button.tintColor = UIColor(HanClipTheme.onSecondary)
+            button.backgroundColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.86)
+            button.layer.cornerRadius = 18
+            button.layer.cornerCurve = .continuous
+            button.accessibilityLabel = onDelete == nil
+                ? "미리보기 닫기"
+                : "선택에서 제거"
+            button.addTarget(
+                self,
+                action: #selector(deletePreviewItem),
+                for: .touchUpInside
+            )
+            return button
+        }
+
+        @objc private func deletePreviewItem() {
+            if let onDelete {
+                onDelete()
+                if onDismiss == nil {
+                    dismiss(animated: true)
+                }
+            } else {
+                closePreview()
+            }
         }
 
         private func observeVideoProgress(_ player: AVPlayer) {
@@ -1587,6 +1891,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 if progressSlider.value >= 0.999 {
                     videoPlayer.seek(to: .zero)
                 }
+                HanClipAudioSession.activatePlayback()
                 videoPlayer.play()
             }
             updatePlayPauseButton()
@@ -1635,20 +1940,29 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private func updateLoopButton() {
             loopButton.tintColor = isVideoLooping
                 ? UIColor(HanClipTheme.primary)
-                : UIColor.white.withAlphaComponent(0.55)
+                : UIColor(HanClipTheme.text).withAlphaComponent(0.45)
             loopButton.accessibilityValue = isVideoLooping ? "켬" : "끔"
         }
 
         private func configureLivePhotoPreview() {
             livePhotoView.contentMode = .scaleAspectFit
             livePhotoView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(livePhotoView)
+            previewSurfaceView.addSubview(livePhotoView)
             NSLayoutConstraint.activate([
-                livePhotoView.topAnchor.constraint(equalTo: view.topAnchor),
-                livePhotoView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                livePhotoView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                livePhotoView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+                livePhotoView.topAnchor.constraint(
+                    equalTo: previewSurfaceView.topAnchor
+                ),
+                livePhotoView.bottomAnchor.constraint(
+                    equalTo: previewSurfaceView.bottomAnchor
+                ),
+                livePhotoView.leadingAnchor.constraint(
+                    equalTo: previewSurfaceView.leadingAnchor
+                ),
+                livePhotoView.trailingAnchor.constraint(
+                    equalTo: previewSurfaceView.trailingAnchor
+                )
             ])
+            configureLivePhotoControls()
 
             let options = PHLivePhotoRequestOptions()
             options.deliveryMode = .highQualityFormat
@@ -1662,9 +1976,138 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 guard let self, let livePhoto else { return }
                 DispatchQueue.main.async {
                     self.livePhotoView.livePhoto = livePhoto
-                    self.livePhotoView.startPlayback(with: .full)
+                    self.startLivePhotoPlayback()
                 }
             }
+        }
+
+        private func configureLivePhotoControls() {
+            videoControlsView.layer.cornerRadius = 18
+            videoControlsView.layer.borderWidth = 1
+            videoControlsView.layer.borderColor = HanClipTheme.secondaryUIColor
+                .withAlphaComponent(0.28).cgColor
+            videoControlsView.contentView.backgroundColor = UIColor(
+                HanClipTheme.background
+            ).withAlphaComponent(0.42)
+            videoControlsView.clipsToBounds = true
+            videoControlsView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(videoControlsView)
+
+            playPauseButton.tintColor = HanClipTheme.secondaryUIColor
+            playPauseButton.setImage(
+                UIImage(systemName: "play.fill"),
+                for: .normal
+            )
+            playPauseButton.accessibilityLabel = "라이브 포토 재생"
+            playPauseButton.addTarget(
+                self,
+                action: #selector(toggleLivePhotoPlayback),
+                for: .touchUpInside
+            )
+
+            progressSlider.minimumValue = 0
+            progressSlider.maximumValue = 1
+            progressSlider.isUserInteractionEnabled = false
+            progressSlider.minimumTrackTintColor = UIColor(HanClipTheme.primary)
+            progressSlider.maximumTrackTintColor = UIColor(HanClipTheme.text)
+                .withAlphaComponent(0.22)
+
+            let controls = UIStackView(arrangedSubviews: [
+                playPauseButton,
+                progressSlider
+            ])
+            controls.addArrangedSubview(makePreviewActionButton())
+            controls.axis = .horizontal
+            controls.alignment = .center
+            controls.spacing = 10
+            controls.translatesAutoresizingMaskIntoConstraints = false
+            videoControlsView.contentView.addSubview(controls)
+
+            NSLayoutConstraint.activate([
+                videoControlsView.leadingAnchor.constraint(
+                    equalTo: previewSurfaceView.leadingAnchor
+                ),
+                videoControlsView.trailingAnchor.constraint(
+                    equalTo: previewSurfaceView.trailingAnchor
+                ),
+                videoControlsView.bottomAnchor.constraint(
+                    equalTo: previewSurfaceView.topAnchor,
+                    constant: -12
+                ),
+                videoControlsView.heightAnchor.constraint(equalToConstant: 56),
+                controls.leadingAnchor.constraint(
+                    equalTo: videoControlsView.contentView.leadingAnchor,
+                    constant: 8
+                ),
+                controls.trailingAnchor.constraint(
+                    equalTo: videoControlsView.contentView.trailingAnchor,
+                    constant: -8
+                ),
+                controls.topAnchor.constraint(
+                    equalTo: videoControlsView.contentView.topAnchor
+                ),
+                controls.bottomAnchor.constraint(
+                    equalTo: videoControlsView.contentView.bottomAnchor
+                ),
+                playPauseButton.widthAnchor.constraint(equalToConstant: 44),
+                playPauseButton.heightAnchor.constraint(equalToConstant: 44)
+            ])
+        }
+
+        @objc private func toggleLivePhotoPlayback() {
+            if isLivePhotoPlaying {
+                livePhotoView.stopPlayback()
+                stopLivePhotoProgress()
+            } else {
+                startLivePhotoPlayback()
+            }
+        }
+
+        private func startLivePhotoPlayback() {
+            guard livePhotoView.livePhoto != nil else { return }
+            livePhotoView.startPlayback(with: .full)
+            isLivePhotoPlaying = true
+            progressSlider.value = 0
+            livePhotoPlaybackStartedAt = Date()
+            livePhotoProgressTimer?.invalidate()
+            livePhotoProgressTimer = Timer.scheduledTimer(
+                withTimeInterval: 0.05,
+                repeats: true
+            ) { [weak self] _ in
+                guard let self, let startedAt = self.livePhotoPlaybackStartedAt
+                else { return }
+                let duration = self.asset.duration > 0
+                    ? self.asset.duration
+                    : 3
+                let progress = Date().timeIntervalSince(startedAt) / duration
+                self.progressSlider.value = Float(min(1, progress))
+                if progress >= 1 {
+                    self.stopLivePhotoProgress()
+                }
+            }
+            updateLivePhotoPlayButton()
+        }
+
+        private func stopLivePhotoProgress() {
+            livePhotoProgressTimer?.invalidate()
+            livePhotoProgressTimer = nil
+            livePhotoPlaybackStartedAt = nil
+            isLivePhotoPlaying = false
+            updateLivePhotoPlayButton()
+        }
+
+        private func updateLivePhotoPlayButton() {
+            playPauseButton.setImage(
+                UIImage(
+                    systemName: isLivePhotoPlaying
+                        ? "pause.fill"
+                        : "play.fill"
+                ),
+                for: .normal
+            )
+            playPauseButton.accessibilityLabel = isLivePhotoPlaying
+                ? "라이브 포토 일시 정지"
+                : "라이브 포토 재생"
         }
 
         private func configureStillPhotoPreview() {
@@ -1672,17 +2115,25 @@ struct PhotoPicker: UIViewControllerRepresentable {
             scrollView.minimumZoomScale = 1
             scrollView.maximumZoomScale = 5
             scrollView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(scrollView)
+            previewSurfaceView.addSubview(scrollView)
 
             imageView.contentMode = .scaleAspectFit
             imageView.translatesAutoresizingMaskIntoConstraints = false
             scrollView.addSubview(imageView)
 
             NSLayoutConstraint.activate([
-                scrollView.topAnchor.constraint(equalTo: view.topAnchor),
-                scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                scrollView.topAnchor.constraint(
+                    equalTo: previewSurfaceView.topAnchor
+                ),
+                scrollView.bottomAnchor.constraint(
+                    equalTo: previewSurfaceView.bottomAnchor
+                ),
+                scrollView.leadingAnchor.constraint(
+                    equalTo: previewSurfaceView.leadingAnchor
+                ),
+                scrollView.trailingAnchor.constraint(
+                    equalTo: previewSurfaceView.trailingAnchor
+                ),
                 imageView.topAnchor.constraint(
                     equalTo: scrollView.contentLayoutGuide.topAnchor
                 ),
@@ -1756,10 +2207,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
             imageView.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(imageView)
 
-            selectionOverlay.backgroundColor = HanClipTheme.primaryUIColor
+            selectionOverlay.backgroundColor = HanClipTheme.secondaryUIColor
                 .withAlphaComponent(0.18)
-            selectionOverlay.layer.borderColor = HanClipTheme.primaryUIColor.cgColor
+            selectionOverlay.layer.borderColor = HanClipTheme.secondaryUIColor.cgColor
             selectionOverlay.layer.borderWidth = 2.4
+            selectionOverlay.layer.cornerRadius = 9
+            selectionOverlay.layer.cornerCurve = .continuous
             selectionOverlay.isHidden = true
             selectionOverlay.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(selectionOverlay)
@@ -1767,8 +2220,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             checkLabel.text = "✓"
             checkLabel.textAlignment = .center
             checkLabel.font = .systemFont(ofSize: 12, weight: .black)
-            checkLabel.textColor = UIColor(HanClipTheme.background)
-            checkLabel.backgroundColor = HanClipTheme.primaryUIColor
+            checkLabel.textColor = UIColor(HanClipTheme.onSecondary)
+            checkLabel.backgroundColor = HanClipTheme.secondaryUIColor
             checkLabel.layer.cornerRadius = 9
             checkLabel.clipsToBounds = true
             checkLabel.isHidden = true
@@ -1830,6 +2283,14 @@ struct PhotoPicker: UIViewControllerRepresentable {
         func updateSelection(_ isSelected: Bool) {
             selectionOverlay.isHidden = !isSelected
             checkLabel.isHidden = !isSelected
+            let scale: CGFloat = isSelected ? 0.86 : 1
+            let transform = CGAffineTransform(scaleX: scale, y: scale)
+            imageView.transform = transform
+            selectionOverlay.transform = transform
+            imageView.layer.cornerRadius = isSelected ? 9 : 0
+            contentView.backgroundColor = isSelected
+                ? HanClipTheme.secondaryUIColor.withAlphaComponent(0.16)
+                : .clear
         }
 
         func updateMediaKind(_ mediaKind: MediaKind) {
@@ -1973,6 +2434,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         private let onStart: () -> Void
+        private let onProgress: (Double, String) -> Void
         private let onComplete: ([ClipItem]) -> Void
         private let onDismiss: () -> Void
         private var selectedResults: [PHPickerResult] = []
@@ -1980,10 +2442,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         init(
             onStart: @escaping () -> Void,
+            onProgress: @escaping (Double, String) -> Void,
             onComplete: @escaping ([ClipItem]) -> Void,
             onDismiss: @escaping () -> Void
         ) {
             self.onStart = onStart
+            self.onProgress = onProgress
             self.onComplete = onComplete
             self.onDismiss = onDismiss
         }
@@ -2009,7 +2473,14 @@ struct PhotoPicker: UIViewControllerRepresentable {
             Task { @MainActor in
                 var items: [ClipItem] = []
                 items.reserveCapacity(assetIdentifiers.count)
-                for identifier in assetIdentifiers {
+                for (index, identifier) in assetIdentifiers.enumerated() {
+                    defer {
+                        let completed = index + 1
+                        onProgress(
+                            Double(completed) / Double(assetIdentifiers.count),
+                            "미디어 \(completed)/\(assetIdentifiers.count)개를 불러오는 중…"
+                        )
+                    }
                     guard let asset = PhotoLibraryService.asset(
                         localIdentifier: identifier
                     ), let thumbnail = try? await PhotoLibraryService.thumbnail(
@@ -2063,7 +2534,14 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
             Task { @MainActor in
                 var items: [ClipItem] = []
-                for result in results {
+                for (index, result) in results.enumerated() {
+                    defer {
+                        let completed = index + 1
+                        onProgress(
+                            Double(completed) / Double(results.count),
+                            "미디어 \(completed)/\(results.count)개를 불러오는 중…"
+                        )
+                    }
                     if let identifier = result.assetIdentifier,
                        let asset = PhotoLibraryService.asset(
                         localIdentifier: identifier

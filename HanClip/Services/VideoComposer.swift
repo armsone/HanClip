@@ -1,8 +1,83 @@
 import AVFoundation
 import CoreImage
+import CoreLocation
 import OSLog
 import Photos
 import UIKit
+
+struct HanClipMovieMetadata: Codable, Sendable {
+    static let payloadPrefix = "HANCLIP_METADATA:"
+
+    let shootingStartAt: Date?
+    let shootingEndAt: Date?
+    let latitude: Double?
+    let longitude: Double?
+    let locationName: String?
+    let routeLocationNames: [String]?
+
+    var location: CLLocation? {
+        guard let latitude, let longitude else { return nil }
+        return CLLocation(latitude: latitude, longitude: longitude)
+    }
+
+    func avMetadataItems() -> [AVMetadataItem] {
+        var items: [AVMetadataItem] = []
+        if let payload = try? JSONEncoder.hanClip.encode(self),
+           let payloadText = String(data: payload, encoding: .utf8) {
+            let item = AVMutableMetadataItem()
+            item.identifier = .commonIdentifierDescription
+            item.value = (Self.payloadPrefix + payloadText) as NSString
+            item.dataType = kCMMetadataBaseDataType_UTF8 as String
+            items.append(item)
+        }
+
+        if let latitude, let longitude {
+            let item = AVMutableMetadataItem()
+            item.identifier = .quickTimeMetadataLocationISO6709
+            item.value = String(
+                format: "%+.5f%+.5f/",
+                latitude,
+                longitude
+            ) as NSString
+            item.dataType = kCMMetadataDataType_QuickTimeMetadataLocation_ISO6709 as String
+            items.append(item)
+        }
+        return items
+    }
+
+    static func decode(from metadata: [AVMetadataItem]) async -> Self? {
+        let descriptions = AVMetadataItem.metadataItems(
+            from: metadata,
+            filteredByIdentifier: .commonIdentifierDescription
+        )
+        for item in descriptions {
+            guard let value = try? await item.load(.stringValue),
+                  value.hasPrefix(payloadPrefix),
+                  let data = String(value.dropFirst(payloadPrefix.count))
+                    .data(using: .utf8),
+                  let decoded = try? JSONDecoder.hanClip.decode(Self.self, from: data)
+            else { continue }
+            return decoded
+        }
+        return nil
+    }
+}
+
+private extension JSONEncoder {
+    static var hanClip: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var hanClip: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
 
 final class VideoComposer {
     private struct RecoveredIntermediate {
@@ -22,6 +97,7 @@ final class VideoComposer {
         renderSize requestedRenderSize: CGSize,
         watermarkSettings: WatermarkSettings = .stored(),
         backgroundMusicSettings: BackgroundMusicSettings = .empty,
+        movieMetadata: HanClipMovieMetadata? = nil,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         guard !items.isEmpty else {
@@ -33,6 +109,7 @@ final class VideoComposer {
                 renderSize: requestedRenderSize,
                 watermarkSettings: watermarkSettings,
                 backgroundMusicSettings: backgroundMusicSettings,
+                movieMetadata: movieMetadata,
                 progressHandler: progressHandler
             )
         }
@@ -252,6 +329,7 @@ final class VideoComposer {
         exporter.shouldOptimizeForNetworkUse = true
         exporter.videoComposition = videoComposition
         exporter.audioMix = audioMix
+        exporter.metadata = movieMetadata?.avMetadataItems()
         exporter.timeRange = CMTimeRange(start: .zero, duration: cursor)
         logger.info("내보내기 시작: 사진 랜덤 줌인·줌아웃 합성 적용")
         await progressHandler(0.86)
@@ -289,7 +367,8 @@ final class VideoComposer {
             outputURL: finalOutputURL,
             renderSize: renderSize,
             settings: watermarkSettings,
-            expectedDuration: cursor
+            expectedDuration: cursor,
+            movieMetadata: movieMetadata
         ) { watermarkProgress in
             await progressHandler(0.96 + watermarkProgress * 0.04)
         }
@@ -308,6 +387,7 @@ final class VideoComposer {
         renderSize: CGSize,
         watermarkSettings: WatermarkSettings,
         backgroundMusicSettings: BackgroundMusicSettings,
+        movieMetadata: HanClipMovieMetadata?,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         let chunkSize = Self.maximumItemsPerComposition
@@ -345,7 +425,8 @@ final class VideoComposer {
                     items: chunkItems,
                     renderSize: renderSize,
                     watermarkSettings: disabledWatermark,
-                    backgroundMusicSettings: .empty
+                    backgroundMusicSettings: .empty,
+                    movieMetadata: nil
                 ) { chunkProgress in
                     await progressHandler(
                         phaseStart + chunkProgress * phaseLength
@@ -417,7 +498,8 @@ final class VideoComposer {
                 items: intermediateItems,
                 renderSize: renderSize,
                 watermarkSettings: watermarkSettings,
-                backgroundMusicSettings: backgroundMusicSettings
+                backgroundMusicSettings: backgroundMusicSettings,
+                movieMetadata: movieMetadata
             ) { finalProgress in
                 await progressHandler(0.78 + finalProgress * 0.22)
             }
@@ -743,11 +825,11 @@ final class VideoComposer {
         renderSize: CGSize,
         settings: WatermarkSettings,
         expectedDuration: CMTime,
+        movieMetadata: HanClipMovieMetadata?,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
         let scale = max(1, min(renderSize.width, renderSize.height) / 390)
-        var overlayImages: [CIImage] = []
         let copyrightPosition = settings.copyrightPosition
         let inset = 20 * scale
 
@@ -783,45 +865,56 @@ final class VideoComposer {
             )
         }
 
-        if let textWatermark {
-            overlayImages.append(
-                textWatermark.transformed(
+        let positionedTextWatermark = textWatermark.map {
+            $0.transformed(
                     by: Self.watermarkTransform(
-                        watermarkSize: textWatermark.extent.size,
+                        watermarkSize: $0.extent.size,
                         renderSize: renderSize,
                         position: settings.position,
                         inset: inset
                     )
                 )
-            )
         }
 
-        if let copyrightWatermark {
-            overlayImages.append(
-                copyrightWatermark.transformed(
+        let positionedCopyrightWatermark = copyrightWatermark.map {
+            $0.transformed(
                     by: Self.watermarkTransform(
-                        watermarkSize: copyrightWatermark.extent.size,
+                        watermarkSize: $0.extent.size,
                         renderSize: renderSize,
                         position: copyrightPosition,
                         inset: inset
                     )
                 )
-            )
         }
 
-        guard !overlayImages.isEmpty else {
+        guard positionedTextWatermark != nil
+                || positionedCopyrightWatermark != nil else {
             throw MediaError.exportFailed("합성할 표시를 만들 수 없습니다.")
         }
+
+        let textWatermarkEnd = settings.includesEndingInfoCard
+            ? CMTimeSubtract(
+                expectedDuration,
+                CMTime(
+                    seconds: settings.endingInfoCardDuration,
+                    preferredTimescale: 600
+                )
+            )
+            : expectedDuration
 
         let videoComposition = AVMutableVideoComposition(
             asset: asset
         ) { request in
             let source = request.sourceImage
-            let output = overlayImages.reduce(source) { image, overlay in
-                overlay.composited(over: image)
+            var output = source
+            if let positionedTextWatermark,
+               CMTimeCompare(request.compositionTime, textWatermarkEnd) < 0 {
+                output = positionedTextWatermark.composited(over: output)
             }
-            .cropped(to: source.extent)
-            request.finish(with: output, context: nil)
+            if let positionedCopyrightWatermark {
+                output = positionedCopyrightWatermark.composited(over: output)
+            }
+            request.finish(with: output.cropped(to: source.extent), context: nil)
         }
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = CMTime(
@@ -839,6 +932,7 @@ final class VideoComposer {
         exporter.outputFileType = .mp4
         exporter.shouldOptimizeForNetworkUse = true
         exporter.videoComposition = videoComposition
+        exporter.metadata = movieMetadata?.avMetadataItems()
         exporter.timeRange = CMTimeRange(
             start: .zero,
             duration: expectedDuration

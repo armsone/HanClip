@@ -71,6 +71,7 @@
 		140000000000000000000001 /* AiShotCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240000000000000000000001 /* AiShotCamera.swift */; };
 		150000000000000000000001 /* AudioImpactClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250000000000000000000001 /* AudioImpactClassifier.swift */; };
 		160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000001 /* CopyrightPurchaseManager.swift */; };
+		290000000000000000000001 /* MovieCollectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290000000000000000000011 /* MovieCollectionStore.swift */; };
 		270000000000000000000001 /* HanClipLockWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000010 /* HanClipLockWidget.swift */; };
 		270000000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000012 /* Assets.xcassets */; };
 		270000000000000000000003 /* HanClipWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 270000000000000000000013 /* HanClipWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -132,6 +133,7 @@
 		200000000000000000000018 /* WatermarkSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatermarkSettings.swift; sourceTree = "<group>"; };
 		200000000000000000000019 /* FontImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontImportStore.swift; sourceTree = "<group>"; };
 		260000000000000000000001 /* CopyrightPurchaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyrightPurchaseManager.swift; sourceTree = "<group>"; };
+		290000000000000000000011 /* MovieCollectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieCollectionStore.swift; sourceTree = "<group>"; };
 		260000000000000000000002 /* HanClip.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = HanClip.storekit; sourceTree = "<group>"; };
 		20000000000000000000001C /* Resources/Fonts/KakaoBigSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/KakaoBigSans-Regular.ttf"; sourceTree = "<group>"; };
 		20000000000000000000001D /* Resources/Fonts/KakaoBigSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/Fonts/KakaoBigSans-OFL.txt"; sourceTree = "<group>"; };
@@ -336,6 +338,7 @@
 				250000000000000000000001 /* AudioImpactClassifier.swift */,
 				240000000000000000000001 /* AiShotCamera.swift */,
 				260000000000000000000001 /* CopyrightPurchaseManager.swift */,
+				290000000000000000000011 /* MovieCollectionStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -562,6 +565,7 @@
 				110000000000000000000003 /* VideoTrimEditor.swift in Sources */,
 				140000000000000000000001 /* AiShotCamera.swift in Sources */,
 				160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */,
+				290000000000000000000001 /* MovieCollectionStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -724,7 +728,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.3.55;
+				CURRENT_PROJECT_VERSION = 3.6.27;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -750,7 +754,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.3.55;
+				CURRENT_PROJECT_VERSION = 3.6.27;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -776,7 +780,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.3.55;
+				CURRENT_PROJECT_VERSION = 3.6.27;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -803,7 +807,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.3.55;
+				CURRENT_PROJECT_VERSION = 3.6.27;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -829,7 +833,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.3.55;
+				CURRENT_PROJECT_VERSION = 3.6.27;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -855,7 +859,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.3.55;
+				CURRENT_PROJECT_VERSION = 3.6.27;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;

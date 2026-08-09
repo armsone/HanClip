@@ -43,18 +43,32 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.MovieCreation
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.SportsGolf
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.AlertDialog
@@ -84,6 +98,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -176,7 +191,13 @@ fun HomeRoute(
             Spacer(Modifier.height(6.dp))
             HomeHeader(
                 palette = palette,
-                onOpenTheme = { showThemeSelection = true },
+                onCycleTheme = {
+                    val modes = HanClipThemeMode.visibleModes
+                    val currentIndex = modes.indexOf(themeMode).coerceAtLeast(0)
+                    themeMode = modes[(currentIndex + 1) % modes.size]
+                    HanClipThemeStore.save(context, themeMode)
+                },
+                onOpenThemeSelection = { showThemeSelection = true },
                 onQuickAdd = { onStartPreset(MoviePreset.NewMovie) }
             )
             Spacer(Modifier.height(8.dp))
@@ -234,9 +255,9 @@ fun HomeRoute(
                     onLongClick = onOpenBrowser
                 ),
             shape = CircleShape,
-            color = palette.secondary.copy(alpha = 0.36f),
-            border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.34f)),
-            shadowElevation = 12.dp
+            color = palette.secondary.copy(alpha = 0.18f).compositeOver(palette.solidPanel),
+            border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.42f)),
+            shadowElevation = 7.dp
         ) {
             Icon(
                 Icons.Outlined.Info,
@@ -297,7 +318,7 @@ fun HomeRoute(
                     Text("목록에서 제거")
                 }
             },
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(16.dp),
             containerColor = Color.White,
             titleContentColor = HomeText,
             textContentColor = HomeSubText,
@@ -339,8 +360,8 @@ fun HomeRoute(
                     Text("저장")
                 }
             },
-            shape = RoundedCornerShape(8.dp),
-            containerColor = palette.panel,
+            shape = RoundedCornerShape(16.dp),
+            containerColor = palette.solidPanel,
             titleContentColor = palette.text,
             textContentColor = palette.subText,
             title = { Text("메모 편집") },
@@ -417,8 +438,8 @@ fun HomeRoute(
                     Text("확인")
                 }
             },
-            shape = RoundedCornerShape(8.dp),
-            containerColor = palette.panel,
+            shape = RoundedCornerShape(16.dp),
+            containerColor = palette.solidPanel,
             titleContentColor = palette.text,
             textContentColor = palette.subText,
             title = { Text("핀 고정 제한") },
@@ -550,7 +571,7 @@ private fun ThemeSelectionDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = selectedPalette.panel,
+            color = selectedPalette.solidPanel,
             border = BorderStroke(1.dp, selectedPalette.border),
             shadowElevation = 10.dp
         ) {
@@ -677,7 +698,7 @@ private fun ThemeSelectionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -713,15 +734,17 @@ private fun ThemeColorSwatch(color: Color) {
     Box(
         modifier = Modifier
             .size(26.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(color)
     )
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun HomeHeader(
     palette: HanClipPalette,
-    onOpenTheme: () -> Unit,
+    onCycleTheme: () -> Unit,
+    onOpenThemeSelection: () -> Unit,
     onQuickAdd: () -> Unit
 ) {
     Row(
@@ -731,7 +754,13 @@ private fun HomeHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.clickable(onClick = onOpenTheme)) {
+        Box(
+            modifier = Modifier.combinedClickable(
+                onClick = onCycleTheme,
+                onLongClick = onOpenThemeSelection,
+                onLongClickLabel = "테마 선택 열기"
+            )
+        ) {
             HanClipBrandCapsule(palette)
         }
         Surface(
@@ -856,7 +885,7 @@ private fun SettingsInfoScreen(
                     ) {
                         Surface(
                             modifier = Modifier.size(24.dp),
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = palette.secondary.copy(alpha = 0.14f)
                         ) {
                             Icon(Icons.Outlined.GridView, null, tint = palette.primary, modifier = Modifier.padding(5.dp))
@@ -1188,13 +1217,7 @@ private fun ImportantInfoRow(
             verticalAlignment = Alignment.Top
         ) {
             Icon(
-                imageVector = when (title) {
-                    "로고" -> Icons.Outlined.Favorite
-                    "첫 화면" -> Icons.Outlined.Home
-                    "영화 프리셋" -> Icons.Outlined.GridView
-                    "Ai" -> Icons.Outlined.Info
-                    else -> Icons.Outlined.Info
-                },
+                imageVector = importantInfoIcon(title),
                 contentDescription = null,
                 tint = palette.primary,
                 modifier = Modifier.size(22.dp)
@@ -1214,22 +1237,107 @@ private fun ImportantInfoRow(
     }
 }
 
+private fun importantInfoIcon(title: String): ImageVector = when (title) {
+    "카피라이터" -> Icons.Outlined.Info
+    "첫 화면" -> Icons.Outlined.Home
+    "영화 프리셋" -> Icons.Outlined.GridView
+    "영화 목록" -> Icons.Outlined.Collections
+    "영화 화면" -> Icons.Outlined.Movie
+    "영화 설정" -> Icons.Outlined.Tune
+    "클립 리스트" -> Icons.Outlined.VideoFile
+    "순서변경 상태" -> Icons.Outlined.DragIndicator
+    "편집 영역 / 편집 모드" -> Icons.Outlined.Tune
+    "시사회" -> Icons.Outlined.PlayCircle
+    "만들기" -> Icons.Outlined.AutoFixHigh
+    "영상 생성 진행창" -> Icons.Outlined.Timelapse
+    "개봉하기 창" -> Icons.Outlined.IosShare
+    "테마 선택창" -> Icons.Outlined.Palette
+    "첫 화면 이동 팝업" -> Icons.Outlined.Home
+    "로고" -> Icons.Outlined.Favorite
+    "카피라이터 입력" -> Icons.Outlined.TextFields
+    "세그먼트 컨트롤" -> Icons.Outlined.SwapHoriz
+    "단일 / 다중" -> Icons.Outlined.Collections
+    "모클립" -> Icons.Outlined.Collections
+    "자클립" -> Icons.Outlined.MovieCreation
+    "웨이브 / 웨이브 인디케이터" -> Icons.Outlined.GraphicEq
+    "선택바" -> Icons.Outlined.SwapHoriz
+    "자동 진행" -> Icons.Outlined.Repeat
+    "달력 썸네일 버튼" -> Icons.Outlined.CalendarMonth
+    "자막" -> Icons.Outlined.TextFields
+    "외부 호출 주소" -> Icons.Outlined.TravelExplore
+    "샘플 음악" -> Icons.Outlined.LibraryMusic
+    "외부 음악" -> Icons.Outlined.Public
+    "내장 서체 저작권" -> Icons.Outlined.TextFields
+    else -> Icons.Outlined.Info
+}
+
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
-    "카피라이터" to "첫 화면 하단의 i 원형 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 앱 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
-    "로고" to "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다. 완성본 로고는 워터마크 사용 권한과 유료화 기준 항목으로 분리해 관리합니다.",
+    "카피라이터" to "첫 화면 하단의 i 원형 유리 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 설정 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
     "첫 화면" to "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다.",
     "영화 프리셋" to "첫 화면 상단에서 새 영화, AiShot, 여행 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
-    "Ai" to "AiShot과 영상 분석에서 소리의 피크, 화면 변화, 이어지는 반응을 함께 참고해 필요한 순간을 찾습니다.",
-    "AiShot" to "필요한 순간을 자동으로 찾아 클립에 담는 카메라입니다. 감도, 샷 길이, 줌, 전면/후면 카메라 선택을 기억합니다.",
-    "Ai 버전" to "현재 Ai 버전은 0.2.1입니다. 798 영상 보정 Ai 기준으로 소리의 피크와 이어지는 반응을 함께 참고합니다.",
-    "클립 리스트" to "선택한 사진과 영상이 순서대로 표시됩니다. 썸네일, 시간, 단일 컷/자동 컷, 길이 조절 버튼으로 빠르게 편집합니다.",
-    "단일 컷 / 자동 컷" to "영상을 하나의 구간으로 쓰거나, Ai가 찾은 타격점 후보 기준으로 여러 자클립으로 나눕니다.",
-    "자막" to "영상 위에 문구, 폰트, 색상, 그림자, 위치를 설정하고 최종 MP4에 합성합니다.",
-    "HanClip 로고" to "로고 워터마크의 표시 여부, 플랫폼 로고와 위치를 설정하고 최종 영상에 반영합니다.",
-    "시사회" to "완성본 만들기 완료 후 전체 영상을 확인하고 폰 기본 사진첩의 HanClip 앨범 저장, 파일 저장, 공유를 실행합니다. 저장 중에는 화면을 유지합니다.",
-    "음악 찾기" to "외부 무료 음악 사이트를 앱 안에서 열어 배경음악을 찾는 화면입니다. 즐겨찾기 추가/삭제와 첫 페이지 지정을 저장하며, 다운로드한 파일은 음악 설정의 내 음악 파일 선택으로 가져옵니다.",
-    "외부 호출 주소" to "iOS와 같은 주소를 Android에서도 받습니다. Ai hanclip://aishot, 파일 hanclip://files, 달력 hanclip://calendar, 사진 hanclip://photo, 검색 hanclip://search, 첫 화면 hanclip://open 흐름을 빠르게 엽니다.",
-    "샘플 음악" to "HanClip에 포함된 샘플 음악은 앱 기능 검증과 사용자의 영상 배경음악을 위해 제공됩니다."
+    "영화 목록" to "첫 화면에 저장된 영화들이 표시되는 영역입니다.",
+    "영화 화면" to "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다.",
+    "영화 설정" to "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다.",
+    "클립 리스트" to "선택한 Photo, Live, Clip이 순서대로 표시되는 목록입니다. 썸네일, 시간, 아이콘, 세그먼트 컨트롤, +/- 버튼이 있는 영역입니다.",
+    "순서변경 상태" to "썸네일을 한 줄에 여러 개 표시하고 드래그해서 클립 순서를 변경하는 상태입니다.",
+    "편집 영역 / 편집 모드" to "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다.",
+    "시사회" to "만들기 완료 후, 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다.",
+    "만들기" to "전체 클립을 하나의 영상으로 생성하는 액션과 버튼입니다.",
+    "영상 생성 진행창" to "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다.",
+    "개봉하기 창" to "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다.",
+    "테마 선택창" to "로고를 길게 눌렀을 때 테마를 선택하는 창입니다.",
+    "첫 화면 이동 팝업" to "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다.",
+    "로고" to "상단의 앱 심볼과 HanClip 글자 부분입니다.",
+    "카피라이터 입력" to "카피라이터에서 설정하는 기능입니다. HanClip 로고 또는 SNS/기타 표시를 결과 영상에 합성할지 결정합니다.",
+    "세그먼트 컨트롤" to "포토 / Live, 단일 / 다중처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다.",
+    "단일 / 다중" to "클립을 하나의 구간으로 쓸지, 사운드 피크 기준으로 여러 자클립으로 나눌지 정하는 클립 분할 모드입니다.",
+    "모클립" to "다중 분할을 만들 때 원본 역할로 남는 부모 클립입니다.",
+    "자클립" to "모클립에서 사운드 피크 기준으로 만들어진 하위 클립입니다.",
+    "웨이브 / 웨이브 인디케이터" to "영상/Live Photo 편집에서 소리 파형을 보여주는 영역입니다.",
+    "선택바" to "웨이브 인디케이터의 좌우 끝에 있는 드래그 바입니다.",
+    "자동 진행" to "편집에서 클립 재생이 끝나면 다음 클립으로 이어지고, 마지막 클립 뒤에는 처음 클립으로 계속 이어지는 기능입니다.",
+    "달력 썸네일 버튼" to "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다.",
+    "자막" to "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다.",
+    "외부 호출 주소" to "hanclip://files\nhanclip://calendar\nhanclip://photo\nhanclip://search\nhanclip://open",
+    "샘플 음악" to """
+        HanClip에 포함된 샘플 음악은 앱 기능 검증과 사용자의 일상 영상 배경음악을 위해 인공지능 생성 및 합성 방식으로 만든 샘플 음악입니다.
+
+        이 샘플 음악은 외부 음원, 기존 곡, 상용 음악 라이브러리, 사람의 실연 녹음 파일을 가져와 사용하지 않았으며, HanClip 앱 안에서 제공되는 기본 샘플 자산입니다. 사용자는 이 샘플 음악을 HanClip으로 만든 영상 결과물의 배경음악으로 사용할 수 있습니다.
+
+        샘플 음악 중 '지우에게 첫눈이란'은 앱 제작자의 가족이 직접 만든 개인 창작 음악을 원 저작자의 허락을 받아 HanClip 앱 안에 샘플 음악으로 포함한 곡입니다. '베이비 워킹'은 이 곡에서 느껴지는 첫눈의 감정과 경쾌한 분위기를 참고하되, 원곡 음원이나 멜로디를 직접 사용하지 않고 HanClip 샘플용으로 새롭게 생성한 음악입니다.
+
+        영화 프리셋의 '여행의 설렘'과 '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 각 프리셋에서 자동으로 선택됩니다.
+    """.trimIndent(),
+    "외부 음악" to """
+        음악 설정 화면의 '온라인 음악 찾기'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
+
+        Pixabay Music과 Mixkit Music에서 다운로드한 음악은 HanClip 내장 샘플 음악이 아니며, 각 음원의 권리와 이용 조건은 해당 사이트의 라이선스와 곡별 안내를 따릅니다. 사용자는 다운로드 시점의 Pixabay Content License, Mixkit License, 곡별 안내, 다운로드 기록을 확인하고 보관한 뒤 자신이 만든 영상에 사용할 책임이 있습니다.
+
+        HanClip은 외부 음원 파일을 독립 음원으로 판매, 배포, 재라이선스하거나 음악 라이브러리 형태로 제공하지 않습니다. 외부 음원은 사용자가 선택한 영상 결과물 안에 배경음악으로 합성될 때만 사용되며, TV/라디오 방송, 게임, CD/DVD, 음원 단독 배포 등 각 사이트가 제한하는 용도에는 사용자가 별도 라이선스 확인 또는 권리자의 허락을 받아야 합니다.
+    """.trimIndent(),
+    "내장 서체 저작권" to """
+        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
+
+        내장 자막 서체 파일의 원본 크기 합계는 약 38 MB입니다. 앱 번들, 압축, 스토어 처리 방식에 따라 최종 설치 크기와 다운로드 크기는 달라질 수 있습니다.
+
+        Kakao Big Sans, Nanum Gothic, Pretendard, Tenada, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 SIL Open Font License 1.1로 제공되는 서체입니다. OFL은 서체 파일을 단독으로 판매하지 않는 조건에서 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
+
+        MaruBuri의 저작권은 NAVER 및 NAVER Cultural Foundation에 있습니다. NAVER 안내에 따라 개인과 기업을 포함한 모든 사용자가 무료로 사용할 수 있고 상업적 사용이 가능하며, 글꼴 자체를 유료로 판매하는 행위를 제외하고 저작권 안내와 라이선스 전문을 포함해 다른 소프트웨어와 번들하거나 재배포할 수 있다고 설명합니다.
+
+        Pretendard는 Kil Hyung-jin 및 원 기반 서체 저작권자의 저작권 고지와 함께 SIL Open Font License 1.1로 제공됩니다. Pretendard, Source, Inter, M PLUS 1 등 예약된 서체명은 수정본에 임의로 사용할 수 없습니다. HanClip은 공식 배포 파일을 수정하지 않고 앱에 포함합니다.
+
+        Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 Google Fonts의 공식 google/fonts 저장소에서 제공되는 SIL Open Font License 1.1 서체입니다. Google Fonts 안내에 따라 상업적 제품, 앱, 웹사이트, 인쇄물, 영상 등에서 사용할 수 있으며, HanClip은 공식 저장소의 원본 TTF 파일을 포함합니다. 수정본을 배포하는 경우에는 OFL 조건과 예약 서체명 제한을 별도로 확인해야 합니다.
+
+        Tenada는 공식 배포 페이지에서 SIL Open Font License 1.1로 제공됩니다. 앱에 포함된 Tenada.ttf는 공식 배포본의 원본 파일이며, HanClip에서는 골프 기록, 홀 정보, 스코어 같은 제목형 자막에 사용할 수 있도록 제공합니다.
+
+        Cafe24 Ssurround는 Cafe24 공식 안내에 따라 개인 및 기업 사용자를 포함한 모든 사용자에게 무료로 제공되며 상업적 사용이 가능합니다. Cafe24는 영상 제작 및 자막, 소프트웨어 번들, 특정 프로그램 임베드 등 사용 범위 제한 없이 이용할 수 있다고 안내합니다. 단, 글꼴 파일 자체를 유료로 판매하는 행위는 금지됩니다.
+
+        Puradak Gentle Gothic은 Puradak Chicken 공식 폰트 페이지에서 무료로 배포되는 서체입니다. 공개 사용 안내에 따라 상업적, 비상업적 사용과 영상 자막, 앱 사용, 소프트웨어 번들이 가능하며, HanClip은 공식 TTF 파일을 수정하지 않고 포함합니다. 서체 파일 자체를 단독 판매하거나 저작권 고지를 제거해서 재배포해서는 안 됩니다.
+
+        Ddulgi Mayo는 제작자 공식 블로그에서 개인 및 기업의 상업적 이용이 가능하고 자유롭게 사용할 수 있다고 안내된 서체입니다. HanClip은 제작자가 공개한 원본 OTF 파일을 수정하지 않고 포함합니다. 다만 OFL처럼 세부 재배포 조건이 긴 전문 형태로 제공된 서체는 아니므로, HanClip에서는 원본 파일과 저작권 고지를 함께 보관하고 서체 파일 자체를 단독 판매하지 않습니다. 향후 라이선스 정책이 바뀌거나 앱 번들/재배포 조건이 더 엄격하게 확인될 경우에는 우선 검토 또는 제거 대상입니다.
+
+        모든 내장 서체의 라이선스 전문, 저작권 고지, 확인한 공식 배포처 정보와 파일 크기 정리를 프로젝트 기록으로 보관합니다. 서체 파일을 수정하거나 별도 재배포하는 경우에는 각 서체의 원 라이선스와 저작권 고지를 유지해야 하며, 예약된 서체명이 있는 경우 수정본에 원래 이름을 사용할 수 없습니다.
+    """.trimIndent()
 )
 
 @Composable
@@ -1328,7 +1436,7 @@ private fun PresetTile(
     palette: HanClipPalette,
     onClick: () -> Unit
 ) {
-    val cardShape = RoundedCornerShape(8.dp)
+    val cardShape = RoundedCornerShape(16.dp)
     Box(
         modifier = modifier
             .height(124.dp)
@@ -1346,7 +1454,7 @@ private fun PresetTile(
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
                         Brush.linearGradient(
                             listOf(palette.primary, palette.secondary)
@@ -1404,7 +1512,7 @@ private fun HomeSectionTitle(
     ) {
         Surface(
             modifier = Modifier.size(18.dp),
-            shape = RoundedCornerShape(5.dp),
+            shape = RoundedCornerShape(10.dp),
             color = palette.secondary.copy(alpha = 0.10f)
         ) {
             Icon(
@@ -1817,14 +1925,14 @@ private fun EmptyAiShotMovieCard(
                     modifier = Modifier
                         .fillMaxWidth(0.76f)
                         .height(10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(placeholder)
                 )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.56f)
                         .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(palette.secondary.copy(alpha = 0.086f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1832,7 +1940,7 @@ private fun EmptyAiShotMovieCard(
                         Box(
                             modifier = Modifier
                                 .size(width = 20.dp, height = 18.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(palette.secondary.copy(alpha = 0.078f))
                         )
                     }
@@ -1854,7 +1962,7 @@ private fun MiniAiShotAction(
         Box(
             modifier = Modifier
                 .size(22.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFFEAF5F0)),
             contentAlignment = Alignment.Center
         ) {
@@ -1879,7 +1987,7 @@ private fun SavedProjectCategoryHeader(
     ) {
         Surface(
             modifier = Modifier.size(26.dp),
-            shape = RoundedCornerShape(7.dp),
+            shape = RoundedCornerShape(12.dp),
             color = Color.Transparent
         ) {
             Box(
@@ -2019,7 +2127,7 @@ private fun EditableProjectThumbnail(
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(7.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
@@ -2078,7 +2186,7 @@ private fun EditableProjectFrame(uriString: String, modifier: Modifier) {
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(HomePrimary.copy(alpha = 0.10f))
     ) {
         bitmap?.let {
@@ -2186,13 +2294,13 @@ private fun EmptyStandardMovieRow(palette: HanClipPalette) {
                 Box(
                     modifier = Modifier
                         .size(width = 112.dp, height = 13.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(placeholder)
                 )
                 Box(
                     modifier = Modifier
                         .size(width = 154.dp, height = 10.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(palette.secondary.copy(alpha = 0.066f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2200,7 +2308,7 @@ private fun EmptyStandardMovieRow(palette: HanClipPalette) {
                         Box(
                             modifier = Modifier
                                 .size(width = 18.dp, height = 18.dp)
-                                .clip(RoundedCornerShape(3.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(palette.secondary.copy(alpha = 0.058f))
                         )
                     }
@@ -2237,7 +2345,7 @@ private fun SavedProjectRow(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onRemove),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(
             width = if (isRecentlySaved) 1.5.dp else 1.dp,
@@ -2425,7 +2533,7 @@ private fun ExportedMovieThumbnail(
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFFEAF5F0)),
         contentAlignment = Alignment.Center
     ) {
@@ -2531,7 +2639,7 @@ private fun ExportedMovieThumbnailStrip(
                 contentDescription = null,
                 modifier = Modifier
                     .size(width = frameWidth.dp, height = frameHeight.dp)
-                    .clip(RoundedCornerShape(4.dp)),
+                    .clip(RoundedCornerShape(10.dp)),
                 contentScale = ContentScale.Crop
             )
         }

@@ -202,6 +202,50 @@ enum CopyrightIconColorMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum EndingInfoCardTheme: String, CaseIterable, Codable, Identifiable {
+    case caption
+    case treasureMap
+    case itinerary
+    case landmark
+    case office
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .caption: "자막"
+        case .treasureMap: "보물지도"
+        case .itinerary: "여행일정"
+        case .landmark: "랜드마크"
+        case .office: "오피스"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .caption: "captions.bubble.fill"
+        case .treasureMap: "map.fill"
+        case .itinerary: "point.topleft.down.to.point.bottomright.curvepath.fill"
+        case .landmark: "building.columns.fill"
+        case .office: "doc.text.fill"
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        if value == "codex" {
+            self = .caption
+        } else {
+            self = Self(rawValue: value) ?? .caption
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 struct WatermarkSettings: Codable {
     static let logoEnabledStorageKey = "hanClipLogoWatermarkEnabled"
     static let enabledStorageKey = "hanClipWatermarkEnabled"
@@ -235,11 +279,9 @@ struct WatermarkSettings: Codable {
     static let defaultIsEnabled = true
     static let defaultTextIsEnabled = false
     static let legacyDefaultText = "여기에 글을 넣으세요."
-    static let defaultText = """
-    여기에 글을 넣으세요
-    I Love you ♡
-    +82 10-0000-0000
-    """
+    static var defaultText: String {
+        dateCaptionText()
+    }
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip
     static let defaultPosition = WatermarkPosition.topLeading
@@ -291,6 +333,10 @@ struct WatermarkSettings: Codable {
     var copyrightIconColorMode: CopyrightIconColorMode
     var copyrightIconColorHex: String
     var customCopyrightIconPath: String
+    var includesEndingInfoCard: Bool
+    var endingInfoCardDuration: Double
+    var endingInfoCardTheme: EndingInfoCardTheme
+    var endingInfoCardVariation: Int
 
     enum CodingKeys: String, CodingKey {
         case isEnabled
@@ -314,6 +360,10 @@ struct WatermarkSettings: Codable {
         case copyrightIconColorMode
         case copyrightIconColorHex
         case customCopyrightIconPath
+        case includesEndingInfoCard
+        case endingInfoCardDuration
+        case endingInfoCardTheme
+        case endingInfoCardVariation
     }
 
     init(
@@ -337,7 +387,11 @@ struct WatermarkSettings: Codable {
         copyrightShadowOpacity: Double = Self.defaultCopyrightShadowOpacity,
         copyrightIconColorMode: CopyrightIconColorMode,
         copyrightIconColorHex: String,
-        customCopyrightIconPath: String = Self.defaultCustomCopyrightIconPath
+        customCopyrightIconPath: String = Self.defaultCustomCopyrightIconPath,
+        includesEndingInfoCard: Bool = false,
+        endingInfoCardDuration: Double = 2,
+        endingInfoCardTheme: EndingInfoCardTheme = .caption,
+        endingInfoCardVariation: Int = 0
     ) {
         self.isEnabled = isEnabled
         self.logoEnabled = logoEnabled
@@ -364,6 +418,12 @@ struct WatermarkSettings: Codable {
         self.copyrightIconColorMode = copyrightIconColorMode
         self.copyrightIconColorHex = copyrightIconColorHex
         self.customCopyrightIconPath = customCopyrightIconPath
+        self.includesEndingInfoCard = includesEndingInfoCard
+        self.endingInfoCardDuration = Self.normalizedEndingInfoCardDuration(
+            endingInfoCardDuration
+        )
+        self.endingInfoCardTheme = endingInfoCardTheme
+        self.endingInfoCardVariation = max(0, endingInfoCardVariation)
     }
 
     init(from decoder: Decoder) throws {
@@ -457,6 +517,27 @@ struct WatermarkSettings: Codable {
             String.self,
             forKey: .customCopyrightIconPath
         ) ?? Self.defaultCustomCopyrightIconPath
+        includesEndingInfoCard = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .includesEndingInfoCard
+        ) ?? false
+        endingInfoCardDuration = Self.normalizedEndingInfoCardDuration(
+            try container.decodeIfPresent(
+                Double.self,
+                forKey: .endingInfoCardDuration
+            ) ?? 2
+        )
+        endingInfoCardTheme = try container.decodeIfPresent(
+            EndingInfoCardTheme.self,
+            forKey: .endingInfoCardTheme
+        ) ?? .caption
+        endingInfoCardVariation = max(
+            0,
+            try container.decodeIfPresent(
+                Int.self,
+                forKey: .endingInfoCardVariation
+            ) ?? 0
+        )
     }
 
     var displayText: String {
@@ -604,6 +685,36 @@ struct WatermarkSettings: Codable {
         )
     }
 
+    static func dateCaptionPreset(text: String) -> WatermarkSettings {
+        var settings = projectDefault()
+        settings.isEnabled = true
+        settings.text = text
+        return settings
+    }
+
+    static func dateCaptionText(for date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yy. M. d. (EEE)"
+        return formatter.string(from: date)
+    }
+
+    static func dateRangeCaptionText(from startDate: Date, to endDate: Date)
+        -> String
+    {
+        let startText = dateCaptionText(for: startDate)
+            .replacingOccurrences(of: ". (", with: ".(")
+        if Calendar.current.isDate(startDate, inSameDayAs: endDate) {
+            return startText
+        }
+        let recentDate = dateCaptionText(for: endDate)
+            .replacingOccurrences(of: ". (", with: ".(")
+            .replacingOccurrences(of: " ", with: "\u{00A0}")
+        return "\(startText) ~\u{00A0}\(recentDate)"
+    }
+
     static func greenGolfPreset(text: String) -> WatermarkSettings {
         var settings = projectDefault()
         let availableFontIDs = Set(FontRegistry.availableFonts.map(\.id))
@@ -664,7 +775,11 @@ struct WatermarkSettings: Codable {
             copyrightShadowOpacity: copyrightShadowOpacity,
             copyrightIconColorMode: copyrightIconColorMode,
             copyrightIconColorHex: copyrightIconColorHex,
-            customCopyrightIconPath: customCopyrightIconPath
+            customCopyrightIconPath: customCopyrightIconPath,
+            includesEndingInfoCard: includesEndingInfoCard,
+            endingInfoCardDuration: endingInfoCardDuration,
+            endingInfoCardTheme: endingInfoCardTheme,
+            endingInfoCardVariation: endingInfoCardVariation
         )
     }
 
@@ -690,7 +805,11 @@ struct WatermarkSettings: Codable {
             copyrightShadowOpacity: copyright.copyrightShadowOpacity,
             copyrightIconColorMode: copyright.copyrightIconColorMode,
             copyrightIconColorHex: copyright.copyrightIconColorHex,
-            customCopyrightIconPath: copyright.customCopyrightIconPath
+            customCopyrightIconPath: copyright.customCopyrightIconPath,
+            includesEndingInfoCard: includesEndingInfoCard,
+            endingInfoCardDuration: endingInfoCardDuration,
+            endingInfoCardTheme: endingInfoCardTheme,
+            endingInfoCardVariation: endingInfoCardVariation
         )
     }
 
@@ -707,6 +826,10 @@ struct WatermarkSettings: Codable {
 
     static func normalizedShadowOpacity(_ value: Double) -> Double {
         min(max(value, 0), 1)
+    }
+
+    static func normalizedEndingInfoCardDuration(_ value: Double) -> Double {
+        min(max((value * 2).rounded() / 2, 1), 10)
     }
 }
 

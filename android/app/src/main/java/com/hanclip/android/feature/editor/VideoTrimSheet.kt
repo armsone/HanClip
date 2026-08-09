@@ -239,7 +239,7 @@ private fun VideoImpactPanel(
     val impactIncluded = isImpactInRange(clip, startSeconds, durationSeconds)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -296,7 +296,7 @@ private fun VideoImpactPanel(
                     onClick = onUseFullRange,
                     border = BorderStroke(1.dp, palette.border),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = palette.panel,
+                        containerColor = palette.solidPanel,
                         contentColor = palette.text
                     )
                 ) {
@@ -417,7 +417,7 @@ private fun TrimPrecisionControls(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -536,7 +536,7 @@ private fun TrimAdjustButton(
         onClick = onClick,
         border = BorderStroke(1.dp, palette.border),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = palette.panel,
+            containerColor = palette.solidPanel,
             contentColor = palette.text,
             disabledContainerColor = palette.chip,
             disabledContentColor = palette.subText.copy(alpha = 0.55f)
@@ -619,7 +619,7 @@ private fun VideoPreview(
         modifier = Modifier
             .fillMaxWidth()
             .height(230.dp)
-            .background(Color.Black, RoundedCornerShape(8.dp)),
+            .background(Color.Black, RoundedCornerShape(16.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (player != null) {

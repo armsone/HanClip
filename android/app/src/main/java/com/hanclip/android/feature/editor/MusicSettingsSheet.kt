@@ -353,7 +353,7 @@ private fun SelectedMusicPreviewRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, if (isPlaying) palette.primary else palette.border)
     ) {
@@ -392,7 +392,7 @@ private fun MusicMixSummaryPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -442,7 +442,7 @@ private fun MusicMixChip(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(7.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (active) Color.White else palette.panel,
         border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.24f) else palette.border)
     ) {
@@ -480,7 +480,7 @@ private fun MusicVolumePanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (enabled) palette.chip else palette.chip.copy(alpha = 0.58f),
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -548,7 +548,7 @@ private fun SampleMusicButton(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (selected) palette.primary else palette.chip,
         contentColor = if (selected) Color.White else palette.text
     ) {

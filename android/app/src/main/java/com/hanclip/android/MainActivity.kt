@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
                         sharedBrowserFavorites = emptyList()
                         sharedBrowserFavoritesImportAttempted = false
                     },
-                    onQuickActionHandled = { quickAction = null },
+                    onQuickActionHandled = ::clearHandledQuickAction,
                     onKeepScreenOnChanged = ::setKeepScreenOn
                 )
             }
@@ -58,6 +58,18 @@ class MainActivity : ComponentActivity() {
         sharedBrowserFavoritesImportAttempted = hasBrowserFavoritesArchiveIntent()
         sharedBrowserFavorites = extractSharedBrowserFavorites()
         quickAction = intent.extractQuickAction()
+            ?: if (intent.isLauncherLaunch()) HanClipQuickAction.Open else null
+    }
+
+    private fun clearHandledQuickAction() {
+        quickAction = null
+        if (intent.extractQuickAction() != null) {
+            setIntent(
+                Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setClass(this, MainActivity::class.java)
+            )
+        }
     }
 
     private fun setKeepScreenOn(shouldKeepScreenOn: Boolean) {
@@ -77,6 +89,10 @@ class MainActivity : ComponentActivity() {
 private fun Intent?.extractQuickAction(): HanClipQuickAction? {
     if (this?.action != Intent.ACTION_VIEW) return null
     return HanClipQuickAction.fromUri(data)
+}
+
+private fun Intent?.isLauncherLaunch(): Boolean {
+    return this?.action == Intent.ACTION_MAIN && hasCategory(Intent.CATEGORY_LAUNCHER)
 }
 
 private fun MainActivity.extractSharedMediaUris(): List<Uri> {

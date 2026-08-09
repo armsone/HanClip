@@ -321,7 +321,7 @@ fun PreviewRoute(
         message?.let {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = palette.panel,
                 border = BorderStroke(1.dp, palette.border)
             ) {
@@ -376,7 +376,7 @@ private fun PreviewSummaryPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -473,7 +473,7 @@ private fun PreviewSummaryPanel(
             }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = palette.chip,
                 border = BorderStroke(1.dp, palette.border)
             ) {
@@ -526,7 +526,7 @@ private fun SummaryInfoCell(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -727,7 +727,7 @@ private fun SaveOptionsSheet(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(30.dp),
-                        color = palette.panel.copy(alpha = 0.92f),
+                        color = palette.solidPanel.copy(alpha = 0.98f),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.52f)),
                         shadowElevation = 12.dp
                         ) {
@@ -792,7 +792,7 @@ private fun SaveOptionsSheet(
                             shape = RoundedCornerShape(50),
                             border = BorderStroke(1.dp, palette.border),
                             colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = palette.panel,
+                                containerColor = palette.solidPanel,
                                 contentColor = palette.text
                             )
                         ) {
@@ -813,7 +813,7 @@ private fun SaveFileNameNote(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -842,7 +842,7 @@ private fun SaveFileNameNote(
 private fun SaveFormatNote(palette: HanClipPalette) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -852,7 +852,7 @@ private fun SaveFormatNote(palette: HanClipPalette) {
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = palette.panel,
                 border = BorderStroke(1.dp, palette.border)
             ) {
@@ -892,7 +892,7 @@ private fun SaveDestinationCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (primary) palette.primary else palette.panel,
         border = BorderStroke(1.dp, if (primary) palette.primary else palette.border),
         onClick = onClick
@@ -903,7 +903,7 @@ private fun SaveDestinationCard(
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = if (primary) Color.White.copy(alpha = 0.16f) else palette.chip,
                 border = BorderStroke(
                     1.dp,
@@ -1062,8 +1062,8 @@ private fun SavingMovieDialog(palette: HanClipPalette) {
         )
     ) {
         Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = palette.panel,
+            shape = RoundedCornerShape(22.dp),
+            color = palette.solidPanel,
             shadowElevation = 10.dp
         ) {
             Column(

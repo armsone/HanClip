@@ -730,7 +730,7 @@ private fun AiShotBottomPanel(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.Black.copy(alpha = 0.62f),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
     ) {
         Column(
@@ -744,13 +744,13 @@ private fun AiShotBottomPanel(
                     modifier = Modifier
                         .weight(1f)
                         .height(10.dp)
-                        .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(16.dp))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(level.coerceIn(0.02, 1.0).toFloat())
                             .height(10.dp)
-                            .background(Color(0xFF1DBA7A), RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1DBA7A), RoundedCornerShape(16.dp))
                     )
                 }
             }
@@ -785,7 +785,7 @@ private fun AiShotModelInfoRow() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.White.copy(alpha = 0.08f),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
     ) {
         Column(
@@ -1055,7 +1055,7 @@ private fun ShotLengthNoticePanel(
                     Surface(
                         modifier = Modifier.weight(1f),
                         color = if (selected) Color(0xFF1DBA7A) else Color.Transparent,
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Text(
                             option.title,
@@ -1112,7 +1112,7 @@ private fun PermissionPanel(onRequest: () -> Unit) {
         Surface(
             modifier = Modifier.padding(24.dp),
             color = Color.White,
-            shape = RoundedCornerShape(8.dp)
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
                 modifier = Modifier.padding(18.dp),

@@ -683,7 +683,7 @@ private fun CaptionPreview(settings: WatermarkSettings) {
         modifier = Modifier
             .fillMaxWidth()
             .height(178.dp),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color(0xFF163A2B),
         border = BorderStroke(1.dp, SheetBorder)
     ) {
@@ -839,7 +839,7 @@ private fun CaptionStateSummary(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -990,9 +990,9 @@ private fun ColorSwatchChip(
 ) {
     Surface(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (selected) palette.primary.copy(alpha = 0.12f) else palette.panel,
         border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
     ) {
@@ -1004,7 +1004,7 @@ private fun ColorSwatchChip(
             Box(
                 modifier = Modifier
                     .size(18.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(10.dp))
                     .background(parseHexColor(colorHex))
             )
             Text(label, fontWeight = FontWeight.SemiBold, color = palette.text)
@@ -1020,7 +1020,7 @@ private fun PositionPicker(
     onSelect: (WatermarkPosition) -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1039,7 +1039,7 @@ private fun PositionPicker(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(34.dp)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(if (isSelected) palette.primary else palette.panel)
                                 .clickable { onSelect(position) },
                             contentAlignment = Alignment.Center
@@ -1076,7 +1076,7 @@ private fun PlatformPicker(
                             .weight(1f)
                             .height(54.dp)
                             .clickable { onSelect(platform) },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = if (isSelected) palette.primary else palette.chip,
                         border = BorderStroke(
                             1.dp,
@@ -1116,7 +1116,7 @@ private fun CaptionStylePicker(
                             .weight(1f)
                             .height(52.dp)
                             .clickable { onSelect(preset) },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(16.dp),
                         color = if (selected) palette.secondary.copy(alpha = 0.20f) else palette.chip,
                         border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
                     ) {

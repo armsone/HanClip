@@ -508,7 +508,7 @@ fun EditorRoute(
                             onClick = viewModel::undoLastEditorAction,
                             border = BorderStroke(1.dp, palette.border),
                             colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = palette.panel,
+                                containerColor = palette.solidPanel,
                                 contentColor = palette.text
                             )
                         ) {
@@ -529,8 +529,8 @@ fun EditorRoute(
                         Text("확인")
                     }
                 },
-                shape = RoundedCornerShape(8.dp),
-                containerColor = palette.panel,
+                shape = RoundedCornerShape(16.dp),
+                containerColor = palette.solidPanel,
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
                 title = { Text("HanClip") },
@@ -545,7 +545,7 @@ fun EditorRoute(
                         onClick = { isResetConfirmationVisible = false },
                         border = BorderStroke(1.dp, palette.border),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = palette.panel,
+                            containerColor = palette.solidPanel,
                             contentColor = palette.text
                         )
                     ) {
@@ -566,8 +566,8 @@ fun EditorRoute(
                         Text("초기화")
                     }
                 },
-                shape = RoundedCornerShape(8.dp),
-                containerColor = palette.panel,
+                shape = RoundedCornerShape(16.dp),
+                containerColor = palette.solidPanel,
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
                 title = { Text("현재 완성본 초기화") },
@@ -582,7 +582,7 @@ fun EditorRoute(
                         onClick = { isExitConfirmationVisible = false },
                         border = BorderStroke(1.dp, palette.border),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = palette.panel,
+                            containerColor = palette.solidPanel,
                             contentColor = palette.text
                         )
                     ) {
@@ -604,8 +604,8 @@ fun EditorRoute(
                         Text("홈으로")
                     }
                 },
-                shape = RoundedCornerShape(8.dp),
-                containerColor = palette.panel,
+                shape = RoundedCornerShape(16.dp),
+                containerColor = palette.solidPanel,
                 titleContentColor = palette.text,
                 textContentColor = palette.subText,
                 title = { Text("편집을 닫을까요?") },
@@ -923,7 +923,7 @@ private fun SummaryPanel(
     val compositionText = mediaCountSummary(photoCount, videoCount, clipCount)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1075,7 +1075,7 @@ private fun ExportConfirmationDialog(
                 onClick = onDismiss,
                 border = BorderStroke(1.dp, palette.border),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
+                    containerColor = palette.solidPanel,
                     contentColor = palette.text
                 )
             ) {
@@ -1094,8 +1094,8 @@ private fun ExportConfirmationDialog(
                 Text("완성본 만들기")
             }
         },
-        shape = RoundedCornerShape(8.dp),
-        containerColor = palette.panel,
+        shape = RoundedCornerShape(16.dp),
+        containerColor = palette.solidPanel,
         titleContentColor = palette.text,
         textContentColor = palette.subText,
         title = { Text("완성본을 만들까요?") },
@@ -1179,7 +1179,7 @@ private fun ExportConfirmationHero(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1275,7 +1275,7 @@ private fun PresetStatusPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1304,7 +1304,7 @@ private fun PresetStatusPanel(
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(7.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = palette.chip,
                     border = BorderStroke(1.dp, palette.border)
                 ) {
@@ -1359,7 +1359,7 @@ private fun PresetStatusPanel(
 @Composable
 private fun PresetStatusPill(text: String, active: Boolean, palette: HanClipPalette) {
     Surface(
-        shape = RoundedCornerShape(7.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (active) palette.chip else palette.panel,
         border = BorderStroke(1.dp, if (active) palette.secondary else palette.border)
     ) {
@@ -1444,7 +1444,7 @@ private fun ImportActionRow(
                 onClick = onPickCalendar,
                 border = BorderStroke(1.dp, palette.border),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
+                    containerColor = palette.solidPanel,
                     contentColor = palette.text
                 )
             ) {
@@ -1461,7 +1461,7 @@ private fun ImportActionRow(
                 onClick = onPickFiles,
                 border = BorderStroke(1.dp, palette.border),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
+                    containerColor = palette.solidPanel,
                     contentColor = palette.text
                 )
             ) {
@@ -1476,7 +1476,7 @@ private fun ImportActionRow(
                 onClick = onAiCut,
                 border = BorderStroke(1.dp, palette.border),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
+                    containerColor = palette.solidPanel,
                     contentColor = palette.text
                 )
             ) {
@@ -1511,7 +1511,7 @@ private fun EmptyClipPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1581,7 +1581,7 @@ private fun EmptyClipPanel(
                     onClick = onPickCalendar,
                     border = BorderStroke(1.dp, palette.border),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = palette.panel,
+                        containerColor = palette.solidPanel,
                         contentColor = palette.text
                     )
                 ) {
@@ -1594,7 +1594,7 @@ private fun EmptyClipPanel(
                     onClick = onPickFiles,
                     border = BorderStroke(1.dp, palette.border),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = palette.panel,
+                        containerColor = palette.solidPanel,
                         contentColor = palette.text
                     )
                 ) {
@@ -1618,7 +1618,7 @@ private fun ReorderStrip(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.38f))
     ) {
@@ -1690,7 +1690,7 @@ private fun ReorderTile(
 ) {
     Surface(
         modifier = modifier.aspectRatio(1f),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, clipRowBorder(clip, palette))
     ) {
@@ -1786,7 +1786,7 @@ private fun reorderTileTitle(clip: ClipItem): String {
 private fun ImportStatusPanel(message: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color(0xFFEAF5F0),
         border = BorderStroke(1.dp, Color(0xFFD4E8DD))
     ) {
@@ -1830,7 +1830,7 @@ private fun AutoSegmentStatusPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1841,7 +1841,7 @@ private fun AutoSegmentStatusPanel(
         ) {
             Surface(
                 modifier = Modifier.size(38.dp),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = palette.primary
             ) {
                 Icon(
@@ -1906,7 +1906,7 @@ private fun WorkProgressOverlay(
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(16.dp),
             color = palette.panel,
             shadowElevation = 10.dp
         ) {
@@ -1948,7 +1948,7 @@ private fun WorkProgressOverlay(
                         onClick = onCancel,
                         border = BorderStroke(1.dp, Color(0xFFF0C6BC)),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = palette.panel,
+                            containerColor = palette.solidPanel,
                             contentColor = Color(0xFFE45D42)
                         )
                     ) {
@@ -2035,7 +2035,7 @@ private fun ProjectControls(
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(palette.secondary.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -2339,7 +2339,7 @@ private fun clearAssistChipColors(
 
 @Composable
 private fun clearFilterChipColors(palette: HanClipPalette) = FilterChipDefaults.filterChipColors(
-    containerColor = palette.panel,
+    containerColor = palette.solidPanel,
     labelColor = palette.text,
     iconColor = palette.subText,
     selectedContainerColor = palette.primary,
@@ -2370,7 +2370,7 @@ private fun CompactClipRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = clipRowFill(clip, palette),
         border = BorderStroke(1.dp, clipRowBorder(clip, palette))
     ) {
@@ -2396,7 +2396,7 @@ private fun CompactClipRow(
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .clip(RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(clipFallbackBrush(clip, palette))
                     .clickable(
                         enabled = clip.mediaKind == ClipMediaKind.Video,
@@ -2562,7 +2562,7 @@ private fun ClipRow(
     isReorderMode: Boolean
 ) {
     Card(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = clipRowFill(clip, palette)),
         elevation = CardDefaults.cardElevation(defaultElevation = if (clip.isVideoSegmentChild) 0.dp else 1.dp),
         border = BorderStroke(1.dp, clipRowBorder(clip, palette))
@@ -2604,7 +2604,7 @@ private fun ClipRow(
                             width = if (clip.isVideoSegmentChild) 50.dp else 58.dp,
                             height = if (clip.isVideoSegmentChild) 50.dp else 58.dp
                         )
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(clipFallbackBrush(clip, palette)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -2842,13 +2842,13 @@ private fun ClipPreviewDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(Color.Black)
                 )
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    color = palette.panel.copy(alpha = 0.98f),
+                    shape = RoundedCornerShape(16.dp),
+                    color = palette.solidPanel.copy(alpha = 0.98f),
                     border = BorderStroke(1.dp, palette.border.copy(alpha = 0.65f))
                 ) {
                     Row(
@@ -2988,7 +2988,7 @@ private fun ClipControlPill(
         modifier = modifier
             .height(30.dp)
             .defaultMinSize(minWidth = 56.dp),
-        shape = RoundedCornerShape(7.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (active) palette.chip else palette.panel,
         contentColor = if (active) palette.primary else palette.text,
         border = BorderStroke(1.dp, if (active) palette.primary else palette.border),
@@ -3213,7 +3213,7 @@ private fun GlobalTimePanel(
     onSelectFullRange: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -3290,7 +3290,7 @@ private fun GlobalTimePanel(
                 modifier = Modifier.fillMaxWidth(),
                 border = BorderStroke(1.dp, palette.border),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
+                    containerColor = palette.solidPanel,
                     contentColor = palette.text,
                     disabledContainerColor = palette.chip,
                     disabledContentColor = palette.subText
@@ -3326,7 +3326,8 @@ private fun BottomMakeBar(
     var isRatioPickerVisible by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = palette.panel.copy(alpha = 0.96f),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = palette.solidPanel.copy(alpha = 0.98f),
         shadowElevation = 8.dp
     ) {
         Column(

@@ -305,7 +305,7 @@ fun CalendarMediaPickerSheet(
                     onClick = { pendingBulkImportUris = null },
                     border = BorderStroke(1.dp, palette.border),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = palette.panel,
+                        containerColor = palette.solidPanel,
                         contentColor = palette.text
                     )
                 ) {
@@ -327,8 +327,8 @@ fun CalendarMediaPickerSheet(
                     Text("HanClip에 넣기")
                 }
             },
-            shape = RoundedCornerShape(8.dp),
-            containerColor = palette.panel,
+            shape = RoundedCornerShape(16.dp),
+            containerColor = palette.solidPanel,
             titleContentColor = palette.text,
             textContentColor = palette.subText,
             title = { Text("HanClip 클립 순서 확인") },
@@ -390,7 +390,7 @@ private fun RecentPickerHeader(
             shape = RoundedCornerShape(50),
             border = BorderStroke(1.dp, palette.border),
             colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = palette.panel,
+                containerColor = palette.solidPanel,
                 contentColor = palette.text
             )
         ) {
@@ -562,7 +562,7 @@ private fun StandardPickerBottomActions(
             onClick = onDismiss,
             border = BorderStroke(1.dp, palette.border),
             colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = palette.panel,
+                containerColor = palette.solidPanel,
                 contentColor = palette.text
             )
         ) { Text("닫기") }
@@ -600,13 +600,13 @@ private fun CalendarTopActions(
             onClick = onCancel,
             shape = RoundedCornerShape(50),
             border = BorderStroke(1.dp, palette.border),
-            colors = ButtonDefaults.outlinedButtonColors(containerColor = palette.panel, contentColor = palette.text)
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = palette.solidPanel, contentColor = palette.text)
         ) { Text("취소", fontWeight = FontWeight.Bold) }
         OutlinedButton(
             onClick = onToday,
             shape = RoundedCornerShape(50),
             border = BorderStroke(1.dp, palette.border),
-            colors = ButtonDefaults.outlinedButtonColors(containerColor = palette.panel, contentColor = palette.text)
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = palette.solidPanel, contentColor = palette.text)
         ) { Text("오늘", fontWeight = FontWeight.Bold) }
         OutlinedButton(
             onClick = onConfirm,
@@ -614,7 +614,7 @@ private fun CalendarTopActions(
             shape = RoundedCornerShape(50),
             border = BorderStroke(1.dp, palette.border),
             colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = palette.panel,
+                containerColor = palette.solidPanel,
                 contentColor = palette.primary,
                 disabledContainerColor = palette.chip,
                 disabledContentColor = palette.subText
@@ -710,7 +710,7 @@ private fun CalendarSheetHeader(
     ) {
         Surface(
             modifier = Modifier.size(38.dp),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(16.dp),
             color = palette.primary
         ) {
             Icon(
@@ -936,7 +936,7 @@ private fun CalendarMediaStrip(
                         onClick = onToggleSortOrder,
                         border = BorderStroke(1.dp, palette.border),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = palette.panel,
+                            containerColor = palette.solidPanel,
                             contentColor = palette.text
                         )
                     ) {
@@ -951,7 +951,7 @@ private fun CalendarMediaStrip(
                         onClick = if (selectedUris.size == items.size) onClearSelection else onSelectAll,
                         border = BorderStroke(1.dp, palette.border),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = palette.panel,
+                            containerColor = palette.solidPanel,
                             contentColor = palette.text
                         )
                     ) {
@@ -1016,7 +1016,7 @@ private fun MediaSelectionSummary(
     val selectionEdgeText = remember(selectedItems) { selectionEdgeText(selectedItems) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (selectedUris.isEmpty()) palette.panel else palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1115,7 +1115,7 @@ private fun EmptyMediaStrip(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = palette.chip,
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -1234,7 +1234,7 @@ private fun CalendarMediaThumb(
     Box(
         modifier = modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(palette.chip)
             .clickable(onClick = onClick)
     ) {
@@ -1259,7 +1259,7 @@ private fun CalendarMediaThumb(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp),
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = Color.Black.copy(alpha = 0.58f)
             ) {
                 Row(

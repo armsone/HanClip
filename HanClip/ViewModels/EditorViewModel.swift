@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import CoreLocation
 import ImageIO
 import Photos
 import SwiftUI
@@ -7,6 +8,30 @@ import SwiftUI
 private enum PreviewSaveRequest {
     case photos(albumName: String)
     case files
+}
+
+struct EndingInfoRouteStop: Identifiable, Equatable {
+    let id = UUID()
+    let countryCode: String
+    let label: String
+    let dateText: String
+}
+
+struct EndingInfoPreviewData: Equatable {
+    let dateText: String
+    let stops: [EndingInfoRouteStop]
+}
+
+private struct EndingInfoPackage {
+    let preview: EndingInfoPreviewData
+    let sourceLocation: CLLocation
+    let temporaryImageURL: URL
+    let image: UIImage
+}
+
+private struct LocatedMediaSample {
+    let location: CLLocation
+    let date: Date?
 }
 
 private struct ProjectEditSignature: Equatable {
@@ -21,8 +46,10 @@ private struct ProjectEditSignature: Equatable {
 
 enum MoviePreset {
     case newMovie
+    case quick
     case aiShot
     case travel
+    case life
     case golf
 }
 
@@ -78,8 +105,34 @@ final class EditorViewModel: ObservableObject {
         width: 1,
         height: 1
     )
+
+    var selectedMediaDateRange: ClosedRange<Date>? {
+        let dates = renderableClips.compactMap(\.sourceCreatedAt)
+        guard let firstDate = dates.min(), let lastDate = dates.max() else {
+            return nil
+        }
+        return firstDate...lastDate
+    }
+
+    var selectedSourceMediaCount: Int {
+        clips.filter { !$0.isVideoSegmentChild }.count
+    }
+
+    var hasEndingInfoData: Bool {
+        selectedMediaDateRange != nil
+            && orderedPhotoLocations(in: renderableClips).isEmpty == false
+    }
+
+    var quickRecommendedDuration: Double {
+        let sourceMediaCount = max(
+            1,
+            clips.filter { !$0.isVideoSegmentChild }.count
+        )
+        return Double(sourceMediaCount)
+    }
     @Published var isPickerPresented = false
     @Published var isCalendarPickerPresented = false
+    @Published var mediaPickerSelectionIdentifiers: [String] = []
     @Published var isFileImporterPresented = false
     @Published var isBackgroundMusicImporterPresented = false
     @Published var isExporting = false
@@ -96,6 +149,7 @@ final class EditorViewModel: ObservableObject {
     @Published var isPreviewRendering = false
     @Published var isImportingFiles = false
     @Published var isImportingPhotoLibraryMedia = false
+    @Published var photoLibraryImportProgress = 0.0
     @Published var isImportingSharedItems = false
     @Published var sharedImportProgress = 0.0
     @Published var sharedImportThumbnail: UIImage?
@@ -110,6 +164,9 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var pendingSharedItemCount = 0
     @Published private(set) var pendingSharedThumbnails: [UIImage] = []
     @Published private(set) var newlySavedProjectID: UUID?
+    @Published private(set) var isQuickModeProject = false
+    @Published private(set) var activeMoviePreset: MoviePreset?
+    @Published var isQuickDurationPickerPresented = false
     @Published private var expandedSimilarPhotoGroupIDs: Set<UUID> = []
 
     var isActiveAiShotProject: Bool {
@@ -205,9 +262,35 @@ final class EditorViewModel: ObservableObject {
     }
 
     var totalDuration: Double {
-        clips.reduce(0) { total, clip in
+        let clipDuration = clips.reduce(0) { total, clip in
             clip.isRenderableClip ? total + clip.duration : total
         }
+        return clipDuration
+            + (textOverlaySettings.includesEndingInfoCard
+                && hasEndingInfoData
+                ? textOverlaySettings.endingInfoCardDuration
+                : 0)
+    }
+
+    func endingInfoPreviewData() async -> EndingInfoPreviewData? {
+        await makeEndingInfoPreview(
+            for: renderableClips,
+            shootingRange: selectedMediaDateRange
+        )
+    }
+
+    func endingInfoPreviewImage(
+        _ data: EndingInfoPreviewData,
+        theme: EndingInfoCardTheme
+    ) -> UIImage {
+        var settings = textOverlaySettings
+        settings.endingInfoCardTheme = theme
+        return Self.renderEndingInfoCard(
+            data,
+            backgroundImage: renderableClips.first?.thumbnail,
+            size: outputRenderSize,
+            settings: settings
+        )
     }
 
     var totalDurationText: String {
@@ -482,6 +565,7 @@ final class EditorViewModel: ObservableObject {
         }
         Task {
             if await PhotoLibraryService.requestReadAccess() {
+                isCalendarPickerPresented = false
                 isPickerPresented = true
             } else {
                 alertMessage = "사진 보관함 접근을 허용해 주세요."
@@ -494,7 +578,7 @@ final class EditorViewModel: ObservableObject {
         beginNewProject()
         applyMoviePreset(preset)
         importPendingItemsIntoNewProject()
-        if preset == .travel {
+        if preset == .travel || preset == .life {
             openCalendarPicker()
         } else {
             openPicker()
@@ -510,10 +594,34 @@ final class EditorViewModel: ObservableObject {
             if await PhotoLibraryService.requestReadAccess() {
                 await prepareCalendarPicker()
                 isCalendarPickerPresented = true
+                isPickerPresented = true
             } else {
                 alertMessage = "사진 보관함 접근을 허용해 주세요."
             }
         }
+    }
+
+    func switchPhotoPickerToCalendar(selectionIdentifiers: [String]) {
+        mediaPickerSelectionIdentifiers = selectionIdentifiers
+        Task {
+            await prepareCalendarPicker()
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.11)) {
+                isCalendarPickerPresented = true
+            }
+        }
+    }
+
+    func switchCalendarPickerToPhotos(selectionIdentifiers: [String]) {
+        mediaPickerSelectionIdentifiers = selectionIdentifiers
+        withAnimation(.easeInOut(duration: 0.11)) {
+            isCalendarPickerPresented = false
+        }
+    }
+
+    func closeMediaPicker() {
+        isPickerPresented = false
+        isCalendarPickerPresented = false
     }
 
     private func prepareCalendarPicker() async {
@@ -569,13 +677,21 @@ final class EditorViewModel: ObservableObject {
     private func applyMoviePreset(_ preset: MoviePreset) {
         var overlay = WatermarkSettings.projectDefault()
         let musicTrackID: String?
+        activeMoviePreset = preset
+        isQuickModeProject = preset == .quick
 
         switch preset {
         case .newMovie:
             defaultDuration = 2
             defaultVideoSegmentMode = .multiple
-            overlay.isEnabled = false
+            overlay = .dateCaptionPreset(text: Self.movieDateCaptionText())
             musicTrackID = nil
+        case .quick:
+            defaultDuration = 1
+            defaultVideoSegmentMode = .multiple
+            overlay = .dateCaptionPreset(text: "")
+            overlay.isEnabled = true
+            musicTrackID = "daily-loop"
         case .aiShot:
             defaultDuration = 4
             defaultVideoSegmentMode = .multiple
@@ -584,13 +700,22 @@ final class EditorViewModel: ObservableObject {
         case .golf:
             defaultDuration = 4
             defaultVideoSegmentMode = .multiple
-            overlay = .greenGolfPreset(text: Self.movieDateCaptionText())
+            overlay = .dateCaptionPreset(text: Self.movieDateCaptionText())
             musicTrackID = "golf-lets-go"
         case .travel:
-            defaultDuration = 1.5
+            defaultDuration = 1
             defaultVideoSegmentMode = .multiple
+            setSimilarPhotoRepresentativeInterval(6)
             overlay = .travelPreset(text: Self.movieDateCaptionText())
+            overlay.includesEndingInfoCard = true
+            overlay.endingInfoCardTheme = .treasureMap
             musicTrackID = "travel-joy"
+        case .life:
+            defaultDuration = 2
+            defaultVideoSegmentMode = .multiple
+            setSimilarPhotoRepresentativeInterval(3)
+            overlay = .dateCaptionPreset(text: Self.movieDateCaptionText())
+            musicTrackID = nil
         }
 
         textOverlaySettings = overlay
@@ -601,13 +726,123 @@ final class EditorViewModel: ObservableObject {
         } ?? .empty
     }
 
+    func startQuickMovieIfNeeded() {
+        guard isQuickModeProject,
+              !renderableClips.isEmpty,
+              !isExporting
+        else { return }
+        isQuickDurationPickerPresented = true
+    }
+
+    func confirmQuickMovieDuration(_ targetDuration: Double?) {
+        guard isQuickModeProject,
+              !renderableClips.isEmpty,
+              !isExporting
+        else { return }
+        isQuickDurationPickerPresented = false
+        if let targetDuration {
+            let sourceMediaCount = max(
+                1,
+                clips.filter { !$0.isVideoSegmentChild }.count
+            )
+            defaultDuration = max(
+                0.1,
+                targetDuration / Double(sourceMediaCount)
+            )
+            applyDefaultDurationToAll()
+        }
+        isQuickModeProject = false
+        saveProjectAndOpenPreview()
+    }
+
+    func cancelQuickMovieDurationSelection() {
+        isQuickDurationPickerPresented = false
+        isQuickModeProject = false
+        reset()
+    }
+
+    func refreshPresetCaptionAfterMediaImport() async {
+        guard activeMoviePreset == .travel else { return }
+
+        let dateText: String
+        if selectedSourceMediaCount <= 1 {
+            dateText = WatermarkSettings.dateRangeCaptionText(
+                from: Date(),
+                to: Date()
+            )
+        } else if let range = selectedMediaDateRange {
+            dateText = WatermarkSettings.dateRangeCaptionText(
+                from: range.lowerBound,
+                to: range.upperBound
+            )
+        } else {
+            dateText = WatermarkSettings.dateRangeCaptionText(
+                from: Date(),
+                to: Date()
+            )
+        }
+
+        struct LocationCluster {
+            let location: CLLocation
+            var count: Int
+            let order: Int
+        }
+        var clusters: [LocationCluster] = []
+        for (order, sample) in allPhotoLocationSamples(
+            in: renderableClips
+        ).enumerated() {
+            if let index = clusters.firstIndex(where: {
+                $0.location.distance(from: sample.location) < 10_000
+            }) {
+                clusters[index].count += 1
+            } else {
+                clusters.append(
+                    LocationCluster(
+                        location: sample.location,
+                        count: 1,
+                        order: order
+                    )
+                )
+            }
+        }
+
+        var cityCounts: [String: (count: Int, order: Int)] = [:]
+        for cluster in clusters.sorted(by: {
+            $0.count == $1.count
+                ? $0.order < $1.order
+                : $0.count > $1.count
+        }).prefix(12) {
+            guard let place = await MovieCollectionStore.shared
+                .resolvedPlace(for: cluster.location)
+            else { continue }
+            let city = place.cityName.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            guard !city.isEmpty else { continue }
+            let current = cityCounts[city]
+            cityCounts[city] = (
+                (current?.count ?? 0) + cluster.count,
+                min(current?.order ?? cluster.order, cluster.order)
+            )
+        }
+
+        let mainCities = cityCounts.sorted {
+            $0.value.count == $1.value.count
+                ? $0.value.order < $1.value.order
+                : $0.value.count > $1.value.count
+        }
+        .prefix(2)
+        .map(\.key)
+
+        guard activeMoviePreset == .travel else { return }
+        textOverlaySettings.text = mainCities.isEmpty
+            ? dateText
+            : dateText + "\n" + mainCities.joined(separator: " · ")
+        textOverlaySettings.isEnabled = true
+    }
+
     private static func movieDateCaptionText(for date: Date = Date()) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = .current
-        formatter.dateFormat = "yy.MM.dd(EEE)"
-        return formatter.string(from: date)
+        WatermarkSettings.dateCaptionText(for: date)
     }
 
     func openBackgroundMusicPicker() {
@@ -727,6 +962,26 @@ final class EditorViewModel: ObservableObject {
 
         guard !newClipIDs.isEmpty else { return nil }
         applySimilarPhotoGrouping(to: newClipIDs, in: &updatedClips)
+        if activeMoviePreset == .travel || activeMoviePreset == .life {
+            let newIDSet = Set(newClipIDs)
+            for index in updatedClips.indices
+                where newIDSet.contains(updatedClips[index].id)
+                    && updatedClips[index].isLivePhoto {
+                let sourceDuration = updatedClips[index].sourceDuration
+                    ?? updatedClips[index].livePhotoDuration
+                    ?? updatedClips[index].duration
+                let selectedDuration = min(defaultDuration, sourceDuration)
+                updatedClips[index].livePhotoMode = .motion
+                updatedClips[index].sourceDuration = sourceDuration
+                updatedClips[index].livePhotoDuration = sourceDuration
+                updatedClips[index].duration = selectedDuration
+                updatedClips[index].photoDuration = selectedDuration
+                updatedClips[index].trimStart = max(
+                    0,
+                    (sourceDuration - selectedDuration) / 2
+                )
+            }
+        }
         let segmentedParentIDs = defaultVideoSegmentMode == .multiple
             ? applyDefaultVideoSegmentation(
                 to: newClipIDs,
@@ -1352,6 +1607,7 @@ final class EditorViewModel: ObservableObject {
         releaseEditingMemory()
         isPickerPresented = false
         isCalendarPickerPresented = false
+        isPickerPresented = false
         isFileImporterPresented = false
         isBackgroundMusicImporterPresented = false
         isExporting = false
@@ -1514,22 +1770,81 @@ final class EditorViewModel: ObservableObject {
                 newlySavedProjectID = savedID
                 openedProjectSignature = currentProjectSignature()
 
-                let compositionItems = savedProject.clips.filter(
+                var compositionItems = savedProject.clips.filter(
                     \.isRenderableClip
                 )
+                let shootingRange = selectedMediaDateRange
+                let endingInfoPackage = textOverlaySettings
+                    .includesEndingInfoCard
+                    ? await makeEndingInfoPackage(
+                        for: compositionItems,
+                        shootingRange: shootingRange,
+                        renderSize: outputRenderSize,
+                        settings: textOverlaySettings
+                    )
+                    : nil
+                if let endingInfoPackage {
+                    compositionItems.append(
+                        ClipItem(
+                            source: .imageFile(
+                                endingInfoPackage.temporaryImageURL
+                            ),
+                            thumbnail: endingInfoPackage.image,
+                            duration: textOverlaySettings
+                                .endingInfoCardDuration,
+                            photoDuration: textOverlaySettings
+                                .endingInfoCardDuration,
+                            mediaKind: .photo,
+                            sourceCreatedAt: shootingRange?.upperBound,
+                            sourcePixelSize: outputRenderSize
+                        )
+                    )
+                }
+                defer {
+                    if let endingInfoPackage {
+                        try? FileManager.default.removeItem(
+                            at: endingInfoPackage.temporaryImageURL
+                        )
+                    }
+                }
+                let sourceLocation = endingInfoPackage?.sourceLocation
+                    ?? firstPhotoLocation(in: compositionItems)
+                let routeLocationNames = endingInfoPackage?.preview.stops
+                    .map(\.label)
+                let sourceLocationName: String?
+                if let routeLocationNames, !routeLocationNames.isEmpty {
+                    sourceLocationName = routeLocationNames.joined(
+                        separator: " → "
+                    )
+                } else {
+                    sourceLocationName = await MovieCollectionStore.shared
+                        .resolvedLocationName(for: sourceLocation)
+                }
+                let movieMetadata = HanClipMovieMetadata(
+                    shootingStartAt: shootingRange?.lowerBound,
+                    shootingEndAt: shootingRange?.upperBound,
+                    latitude: sourceLocation?.coordinate.latitude,
+                    longitude: sourceLocation?.coordinate.longitude,
+                    locationName: sourceLocationName,
+                    routeLocationNames: routeLocationNames
+                )
+                var renderWatermarkSettings = textOverlaySettings
+                renderWatermarkSettings.includesEndingInfoCard =
+                    endingInfoPackage != nil
                 previewProgress = 0.10
                 progressMessage = "시사회 영화를 준비하는 중…"
                 let output = try await VideoComposer().compose(
                     items: compositionItems,
                     renderSize: outputRenderSize,
-                    watermarkSettings: textOverlaySettings
+                    watermarkSettings: renderWatermarkSettings
                         .withCopyrightSettings(
                             CopyrightPurchaseManager.shared.isPurchased
                                 ? WatermarkSettings.stored()
                                 : WatermarkSettings.stored()
                                     .withLogoEnabled(false)
-                        ),
-                    backgroundMusicSettings: backgroundMusicSettings
+                    ),
+                    backgroundMusicSettings: backgroundMusicSettings,
+                    movieMetadata: movieMetadata
                 ) { [self] progress in
                     await updatePreviewProgress(progress)
                 }
@@ -1543,6 +1858,12 @@ final class EditorViewModel: ObservableObject {
                 try? FileManager.default.removeItem(at: output)
                 exportedURL = storedOutput
                 reloadProjects()
+                let collectionTitle = savedProjects.first {
+                    $0.id == savedID
+                }?.memo.trimmingCharacters(in: .whitespacesAndNewlines)
+                let automaticCollectionTitle = collectionTitle?.isEmpty == false
+                    ? collectionTitle
+                    : nil
                 releaseEditingMemory()
                 isProjectOpen = false
                 previewProgress = 1
@@ -1552,6 +1873,16 @@ final class EditorViewModel: ObservableObject {
                 previewThumbnail = nil
                 previewTask = nil
                 showPreview = true
+                Task { @MainActor in
+                    try? await MovieCollectionStore.shared.importMovie(
+                        from: storedOutput,
+                        title: automaticCollectionTitle,
+                        madeAt: Date(),
+                        shootingRange: shootingRange,
+                        location: sourceLocation,
+                        locationName: sourceLocationName
+                    )
+                }
             } catch is CancellationError {
                 progressMessage = ""
                 previewProgress = 0
@@ -1571,12 +1902,1427 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    private func firstPhotoLocation(in items: [ClipItem]) -> CLLocation? {
+        orderedPhotoLocations(in: items).first
+    }
+
+    private func orderedPhotoLocations(in items: [ClipItem]) -> [CLLocation] {
+        orderedPhotoLocationSamples(in: items).map(\.location)
+    }
+
+    private func orderedPhotoLocationSamples(
+        in items: [ClipItem]
+    ) -> [LocatedMediaSample] {
+        var result: [LocatedMediaSample] = []
+        for sample in allPhotoLocationSamples(in: items) {
+            if let previous = result.last,
+               previous.location.distance(from: sample.location) < 5_000,
+               Self.isSameEndingInfoDay(previous.date, sample.date) {
+                continue
+            }
+            result.append(sample)
+        }
+        return result
+    }
+
+    private func allPhotoLocationSamples(
+        in items: [ClipItem]
+    ) -> [LocatedMediaSample] {
+        let identifiers = items.compactMap { item -> String? in
+            guard case .photoAsset(let identifier) = item.source else {
+                return nil
+            }
+            return identifier
+        }
+        var locationsByIdentifier: [String: CLLocation] = [:]
+        if !identifiers.isEmpty {
+            let assets = PHAsset.fetchAssets(
+                withLocalIdentifiers: Array(Set(identifiers)),
+                options: nil
+            )
+            assets.enumerateObjects { asset, _, _ in
+                if let location = asset.location {
+                    locationsByIdentifier[asset.localIdentifier] = location
+                }
+            }
+        }
+
+        var result: [LocatedMediaSample] = []
+        for item in items {
+            let location: CLLocation?
+            switch item.source {
+            case .photoAsset(let identifier):
+                location = locationsByIdentifier[identifier]
+            case .imageFile(let url):
+                location = Self.imageLocation(at: url)
+            case .livePhotoFiles(let imageURL, _):
+                location = Self.imageLocation(at: imageURL)
+            case .videoFile:
+                location = nil
+            }
+            guard let location else { continue }
+            let sample = LocatedMediaSample(
+                location: location,
+                date: item.sourceCreatedAt
+            )
+            result.append(sample)
+        }
+        return result
+    }
+
+    private static func isSameEndingInfoDay(_ lhs: Date?, _ rhs: Date?) -> Bool {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?):
+            Calendar.current.isDate(lhs, inSameDayAs: rhs)
+        case (nil, nil):
+            true
+        default:
+            false
+        }
+    }
+
+    private static func imageLocation(at url: URL) -> CLLocation? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(
+                source,
+                0,
+                nil
+              ) as? [CFString: Any],
+              let gps = properties[kCGImagePropertyGPSDictionary]
+                as? [CFString: Any],
+              let latitudeNumber = gps[kCGImagePropertyGPSLatitude]
+                as? NSNumber,
+              let longitudeNumber = gps[kCGImagePropertyGPSLongitude]
+                as? NSNumber
+        else { return nil }
+        let rawLatitude = latitudeNumber.doubleValue
+        let rawLongitude = longitudeNumber.doubleValue
+        let latitudeRef = gps[kCGImagePropertyGPSLatitudeRef] as? String
+        let longitudeRef = gps[kCGImagePropertyGPSLongitudeRef] as? String
+        let latitude = latitudeRef == "S" ? -rawLatitude : rawLatitude
+        let longitude = longitudeRef == "W" ? -rawLongitude : rawLongitude
+        return CLLocation(latitude: latitude, longitude: longitude)
+    }
+
+    private func makeEndingInfoPreview(
+        for items: [ClipItem],
+        shootingRange: ClosedRange<Date>?
+    ) async -> EndingInfoPreviewData? {
+        guard let shootingRange else { return nil }
+        let samples = orderedPhotoLocationSamples(in: items)
+        guard !samples.isEmpty else { return nil }
+
+        var stops: [EndingInfoRouteStop] = []
+        var previousCountryCode: String?
+        var previousCityName: String?
+        var previousDate: Date?
+        for sample in samples {
+            try? Task.checkCancellation()
+            guard let place = await MovieCollectionStore.shared
+                .resolvedPlace(for: sample.location) else { continue }
+            let date = sample.date ?? shootingRange.lowerBound
+            if previousCountryCode == place.countryCode,
+               previousCityName == place.cityName,
+               Self.isSameEndingInfoDay(previousDate, date) {
+                continue
+            }
+            let countryChanged = previousCountryCode != place.countryCode
+            let label: String
+            if place.countryCode == "KR" {
+                label = place.cityName
+            } else if countryChanged {
+                label = "\(place.countryName) \(place.cityName)"
+            } else {
+                label = place.cityName
+            }
+            stops.append(
+                EndingInfoRouteStop(
+                    countryCode: place.countryCode,
+                    label: label,
+                    dateText: Self.endingInfoStopDateText(date)
+                )
+            )
+            previousCountryCode = place.countryCode
+            previousCityName = place.cityName
+            previousDate = date
+        }
+        guard !stops.isEmpty else { return nil }
+        return EndingInfoPreviewData(
+            dateText: Self.endingInfoDateText(shootingRange),
+            stops: stops
+        )
+    }
+
+    private func makeEndingInfoPackage(
+        for items: [ClipItem],
+        shootingRange: ClosedRange<Date>?,
+        renderSize: CGSize,
+        settings: WatermarkSettings
+    ) async -> EndingInfoPackage? {
+        guard let preview = await makeEndingInfoPreview(
+            for: items,
+            shootingRange: shootingRange
+        ), let sourceLocation = orderedPhotoLocations(in: items).first else {
+            return nil
+        }
+        let image = Self.renderEndingInfoCard(
+            preview,
+            backgroundImage: items.first?.thumbnail,
+            size: renderSize,
+            settings: settings
+        )
+        guard let data = image.jpegData(compressionQuality: 0.94) else {
+            return nil
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HanClip-EndingInfo-\(UUID().uuidString)")
+            .appendingPathExtension("jpg")
+        do {
+            try data.write(to: url, options: .atomic)
+            return EndingInfoPackage(
+                preview: preview,
+                sourceLocation: sourceLocation,
+                temporaryImageURL: url,
+                image: image
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private static func endingInfoDateText(
+        _ range: ClosedRange<Date>
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy. M. d."
+        if Calendar.current.isDate(
+            range.lowerBound,
+            inSameDayAs: range.upperBound
+        ) {
+            return formatter.string(from: range.lowerBound)
+        }
+        return "\(formatter.string(from: range.lowerBound))  –  \(formatter.string(from: range.upperBound))"
+    }
+
+    private static func endingInfoStopDateText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "M. d."
+        return formatter.string(from: date)
+    }
+
+    private static func renderEndingInfoCard(
+        _ data: EndingInfoPreviewData,
+        backgroundImage: UIImage?,
+        size: CGSize,
+        settings: WatermarkSettings
+    ) -> UIImage {
+        let safeSize = CGSize(width: max(2, size.width), height: max(2, size.height))
+        let captionTextColor = Self.endingInfoUIColor(
+            hexString: settings.textColorHex
+        )
+            ?? HanClipTheme.primaryUIColor
+        let captionShadowColor = Self.endingInfoUIColor(
+            hexString: settings.shadowColorHex
+        )
+            ?? HanClipTheme.secondaryUIColor
+        let backgroundColors: [UIColor]
+        let panelColor: UIColor
+        let textColor: UIColor
+        let accentColor: UIColor
+        let secondaryColor: UIColor
+        let showsBackgroundImage: Bool
+        let titleFontName: String?
+        switch settings.endingInfoCardTheme {
+        case .caption:
+            backgroundColors = [
+                UIColor.black.withAlphaComponent(0.56),
+                captionShadowColor.withAlphaComponent(0.48)
+            ]
+            panelColor = UIColor(HanClipTheme.background)
+                .withAlphaComponent(0.38)
+            textColor = captionTextColor
+            accentColor = captionTextColor
+            secondaryColor = captionShadowColor
+            showsBackgroundImage = true
+            titleFontName = settings.fontName
+        case .itinerary:
+            backgroundColors = [
+                UIColor(red: 0.99, green: 0.96, blue: 0.94, alpha: 1),
+                UIColor(red: 1.00, green: 0.99, blue: 0.98, alpha: 1)
+            ]
+            panelColor = UIColor.white.withAlphaComponent(0.96)
+            textColor = UIColor(red: 0.22, green: 0.20, blue: 0.21, alpha: 1)
+            accentColor = UIColor(red: 0.84, green: 0.28, blue: 0.38, alpha: 1)
+            secondaryColor = UIColor(red: 0.94, green: 0.55, blue: 0.49, alpha: 1)
+            showsBackgroundImage = false
+            titleFontName = nil
+        case .landmark:
+            backgroundColors = [
+                UIColor(red: 0.96, green: 0.90, blue: 0.87, alpha: 1),
+                UIColor(red: 1.00, green: 0.98, blue: 0.94, alpha: 1)
+            ]
+            panelColor = UIColor(red: 1.00, green: 0.97, blue: 0.92, alpha: 0.97)
+            textColor = UIColor(red: 0.27, green: 0.19, blue: 0.17, alpha: 1)
+            accentColor = UIColor(red: 0.56, green: 0.29, blue: 0.28, alpha: 1)
+            secondaryColor = UIColor(red: 0.69, green: 0.48, blue: 0.42, alpha: 1)
+            showsBackgroundImage = false
+            titleFontName = "maruburi"
+        case .office:
+            backgroundColors = [
+                UIColor(red: 0.95, green: 0.95, blue: 0.92, alpha: 1),
+                .white
+            ]
+            panelColor = UIColor.white.withAlphaComponent(0.90)
+            textColor = UIColor(red: 0.14, green: 0.16, blue: 0.20, alpha: 1)
+            accentColor = UIColor(red: 0.13, green: 0.24, blue: 0.40, alpha: 1)
+            secondaryColor = UIColor(red: 0.43, green: 0.48, blue: 0.54, alpha: 1)
+            showsBackgroundImage = false
+            titleFontName = nil
+        case .treasureMap:
+            backgroundColors = [
+                UIColor(red: 0.48, green: 0.29, blue: 0.12, alpha: 1),
+                UIColor(red: 0.91, green: 0.76, blue: 0.48, alpha: 1)
+            ]
+            panelColor = UIColor(red: 0.95, green: 0.84, blue: 0.61, alpha: 0.92)
+            textColor = UIColor(red: 0.24, green: 0.12, blue: 0.055, alpha: 1)
+            accentColor = UIColor(red: 0.48, green: 0.18, blue: 0.06, alpha: 1)
+            secondaryColor = UIColor(red: 0.38, green: 0.25, blue: 0.12, alpha: 1)
+            showsBackgroundImage = false
+            titleFontName = "gowun_batang"
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: safeSize, format: format).image {
+            context in
+            let bounds = CGRect(origin: .zero, size: safeSize)
+            let cg = context.cgContext
+            backgroundColors[0].setFill()
+            cg.fill(bounds)
+
+            if showsBackgroundImage, let backgroundImage {
+                let sourceRatio = backgroundImage.size.width
+                    / max(1, backgroundImage.size.height)
+                let targetRatio = safeSize.width / safeSize.height
+                let drawSize: CGSize
+                if sourceRatio > targetRatio {
+                    drawSize = CGSize(
+                        width: safeSize.height * sourceRatio,
+                        height: safeSize.height
+                    )
+                } else {
+                    drawSize = CGSize(
+                        width: safeSize.width,
+                        height: safeSize.width / sourceRatio
+                    )
+                }
+                backgroundImage.draw(
+                    in: CGRect(
+                        x: (safeSize.width - drawSize.width) / 2,
+                        y: (safeSize.height - drawSize.height) / 2,
+                        width: drawSize.width,
+                        height: drawSize.height
+                    ),
+                    blendMode: .normal,
+                    alpha: settings.endingInfoCardTheme == .caption ? 0.46 : 0.16
+                )
+            }
+
+            let colors = backgroundColors.map(\.cgColor) as CFArray
+            if let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: colors,
+                locations: [0, 1]
+            ) {
+                cg.drawLinearGradient(
+                    gradient,
+                    start: CGPoint(x: 0, y: 0),
+                    end: CGPoint(x: safeSize.width, y: safeSize.height),
+                    options: []
+                )
+            }
+
+            let scale = min(safeSize.width, safeSize.height) / 390
+            let panelInset = 30 * scale
+            let panel = bounds.insetBy(dx: panelInset, dy: panelInset * 1.25)
+            let panelPath = UIBezierPath(
+                roundedRect: panel,
+                cornerRadius: 26 * scale
+            )
+            panelColor.setFill()
+            panelPath.fill()
+            secondaryColor.withAlphaComponent(0.62).setStroke()
+            panelPath.lineWidth = max(1, 1.2 * scale)
+            panelPath.stroke()
+
+            if settings.endingInfoCardTheme == .treasureMap {
+                cg.saveGState()
+                cg.setStrokeColor(accentColor.withAlphaComponent(0.55).cgColor)
+                cg.setLineWidth(max(1, 1.4 * scale))
+                cg.setLineDash(phase: 0, lengths: [6 * scale, 5 * scale])
+                cg.stroke(panel.insetBy(dx: 12 * scale, dy: 12 * scale))
+                cg.restoreGState()
+                UIImage(systemName: "safari.fill")?
+                    .withTintColor(accentColor, renderingMode: .alwaysOriginal)
+                    .draw(
+                        in: CGRect(
+                            x: panel.maxX - 54 * scale,
+                            y: panel.minY + 22 * scale,
+                            width: 28 * scale,
+                            height: 28 * scale
+                        )
+                    )
+            } else if settings.endingInfoCardTheme == .office {
+                cg.setFillColor(accentColor.cgColor)
+                cg.fill(
+                    CGRect(
+                        x: panel.minX,
+                        y: panel.minY,
+                        width: 7 * scale,
+                        height: panel.height
+                    )
+                )
+            }
+
+            if settings.endingInfoCardTheme == .itinerary {
+                Self.drawTravelItinerary(
+                    data,
+                    in: panel,
+                    scale: scale,
+                    textColor: textColor,
+                    accentColor: accentColor,
+                    secondaryColor: secondaryColor,
+                    context: cg
+                )
+                return
+            }
+            if settings.endingInfoCardTheme == .landmark {
+                Self.drawLandmarkJourney(
+                    data,
+                    in: panel,
+                    scale: scale,
+                    textColor: textColor,
+                    accentColor: accentColor,
+                    secondaryColor: secondaryColor,
+                    context: cg
+                )
+                return
+            }
+            if settings.endingInfoCardTheme == .office {
+                Self.drawOfficeReport(
+                    data,
+                    in: panel,
+                    scale: scale,
+                    textColor: textColor,
+                    accentColor: accentColor,
+                    secondaryColor: secondaryColor,
+                    context: cg
+                )
+                return
+            }
+
+            let captionShadow: NSShadow? = {
+                guard settings.endingInfoCardTheme == .caption else {
+                    return nil
+                }
+                let shadow = NSShadow()
+                shadow.shadowColor = captionShadowColor.withAlphaComponent(
+                    CGFloat(settings.shadowOpacity)
+                )
+                shadow.shadowBlurRadius = 6 * scale
+                shadow.shadowOffset = CGSize(width: 1.5 * scale, height: 2 * scale)
+                return shadow
+            }()
+
+            let titleFont = titleFontName.map {
+                FontRegistry.resolvedUIFont(for: $0, size: 17 * scale)
+            } ?? UIFont.systemFont(ofSize: 17 * scale, weight: .semibold)
+            let title = "여행 기록" as NSString
+            title.draw(
+                at: CGPoint(x: panel.minX + 24 * scale, y: panel.minY + 25 * scale),
+                withAttributes: [
+                    .font: titleFont,
+                    .foregroundColor: settings.endingInfoCardTheme == .caption
+                        ? accentColor
+                        : secondaryColor.withAlphaComponent(0.82),
+                    .shadow: captionShadow ?? NSShadow()
+                ]
+            )
+
+            let dateParagraph = NSMutableParagraphStyle()
+            dateParagraph.alignment = .center
+            (data.dateText as NSString).draw(
+                in: CGRect(
+                    x: panel.minX + 24 * scale,
+                    y: panel.minY
+                        + (settings.endingInfoCardTheme == .office ? 88 : 65)
+                        * scale,
+                    width: panel.width - 48 * scale,
+                    height: 48 * scale
+                ),
+                withAttributes: [
+                    .font: titleFontName.map {
+                        FontRegistry.resolvedUIFont(for: $0, size: 24 * scale)
+                    } ?? UIFont.systemFont(ofSize: 24 * scale, weight: .bold),
+                    .foregroundColor: accentColor,
+                    .paragraphStyle: dateParagraph,
+                    .shadow: captionShadow ?? NSShadow()
+                ]
+            )
+
+            let routeRect = CGRect(
+                x: panel.minX + 32 * scale,
+                y: panel.minY
+                    + (settings.endingInfoCardTheme == .office ? 154 : 126)
+                    * scale,
+                width: panel.width - 64 * scale,
+                height: panel.height
+                    - (settings.endingInfoCardTheme == .office ? 190 : 170)
+                    * scale
+            )
+            if settings.endingInfoCardTheme == .treasureMap {
+                Self.drawTreasureMapRoute(
+                    data.stops,
+                    in: routeRect,
+                    scale: scale,
+                    variation: settings.endingInfoCardVariation,
+                    textColor: textColor,
+                    accentColor: accentColor,
+                    secondaryColor: secondaryColor,
+                    context: cg
+                )
+                return
+            }
+            let route = NSMutableAttributedString()
+            for (index, stop) in data.stops.enumerated() {
+                if index > 0 {
+                    let previous = data.stops[index - 1]
+                    let symbolName = previous.countryCode == stop.countryCode
+                        ? "car.fill"
+                        : "airplane"
+                    let attachment = NSTextAttachment()
+                    attachment.image = UIImage(systemName: symbolName)?
+                        .withTintColor(
+                            secondaryColor,
+                            renderingMode: .alwaysOriginal
+                        )
+                    attachment.bounds = CGRect(
+                        x: 0,
+                        y: -3 * scale,
+                        width: 18 * scale,
+                        height: 18 * scale
+                    )
+                    route.append(NSAttributedString(string: "  "))
+                    route.append(NSAttributedString(attachment: attachment))
+                    route.append(
+                        NSAttributedString(
+                            string: "\u{2060}\u{00A0}\u{2060}"
+                        )
+                    )
+                }
+                route.append(
+                    NSAttributedString(
+                        string: Self.unbreakableEndingInfoLabel(stop.label)
+                    )
+                )
+            }
+
+            var routeFontSize = 23 * scale
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            paragraph.lineBreakMode = .byWordWrapping
+            paragraph.lineSpacing = 12 * scale
+            while routeFontSize > 5 * scale {
+                let routeFont = settings.endingInfoCardTheme == .caption
+                    ? FontRegistry.resolvedUIFont(
+                        for: settings.fontName,
+                        size: routeFontSize
+                    )
+                    : UIFont.systemFont(
+                        ofSize: routeFontSize,
+                        weight: .semibold
+                    )
+                route.addAttributes(
+                    [
+                        .font: routeFont,
+                        .foregroundColor: textColor,
+                        .paragraphStyle: paragraph,
+                        .shadow: captionShadow ?? NSShadow()
+                    ],
+                    range: NSRange(location: 0, length: route.length)
+                )
+                let measured = route.boundingRect(
+                    with: routeRect.size,
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    context: nil
+                )
+                let widestLabel = data.stops.enumerated().map { index, stop in
+                    let labelWidth = (
+                        Self.unbreakableEndingInfoLabel(stop.label) as NSString
+                    )
+                        .size(withAttributes: [.font: routeFont])
+                        .width
+                    return labelWidth + (index == 0 ? 0 : 24 * scale)
+                }.max() ?? 0
+                if measured.height <= routeRect.height,
+                   widestLabel <= routeRect.width {
+                    break
+                }
+                routeFontSize -= 1.5 * scale
+            }
+            route.draw(
+                with: routeRect,
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            )
+        }
+    }
+
+    private static func endingInfoUIColor(hexString: String) -> UIColor? {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        guard hex.count == 6, let value = Int(hex, radix: 16) else {
+            return nil
+        }
+        return UIColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    private static func unbreakableEndingInfoLabel(_ label: String) -> String {
+        let nonBreaking = label.replacingOccurrences(of: " ", with: "\u{00A0}")
+        return nonBreaking.map(String.init).joined(separator: "\u{2060}")
+    }
+
+    private static func drawOfficeReport(
+        _ data: EndingInfoPreviewData,
+        in panel: CGRect,
+        scale: CGFloat,
+        textColor: UIColor,
+        accentColor: UIColor,
+        secondaryColor: UIColor,
+        context: CGContext
+    ) {
+        let content = panel.insetBy(dx: 24 * scale, dy: 20 * scale)
+        context.setFillColor(accentColor.cgColor)
+        context.fill(
+            CGRect(x: content.minX, y: content.minY, width: 5 * scale, height: 48 * scale)
+        )
+        Self.drawSingleLineText(
+            "여행 기록 보고서",
+            in: CGRect(
+                x: content.minX + 14 * scale,
+                y: content.minY,
+                width: content.width * 0.62,
+                height: 26 * scale
+            ),
+            fontSize: 19 * scale,
+            minimumFontSize: 10 * scale,
+            weight: .bold,
+            color: accentColor,
+            alignment: .left
+        )
+        Self.drawSingleLineText(
+            "HANCLIP TRAVEL REPORT",
+            in: CGRect(
+                x: content.minX + 14 * scale,
+                y: content.minY + 26 * scale,
+                width: content.width * 0.62,
+                height: 14 * scale
+            ),
+            fontSize: 7.5 * scale,
+            minimumFontSize: 5 * scale,
+            weight: .semibold,
+            color: secondaryColor,
+            alignment: .left
+        )
+        let documentNumber = String(
+            abs(data.dateText.hashValue) % 100_000
+        )
+        Self.drawSingleLineText(
+            "DOCUMENT  #\(documentNumber)",
+            in: CGRect(
+                x: content.midX,
+                y: content.minY + 4 * scale,
+                width: content.width / 2,
+                height: 16 * scale
+            ),
+            fontSize: 7.5 * scale,
+            minimumFontSize: 5 * scale,
+            weight: .semibold,
+            color: secondaryColor,
+            alignment: .right
+        )
+        Self.drawSingleLineText(
+            "PERIOD  \(data.dateText)",
+            in: CGRect(
+                x: content.midX,
+                y: content.minY + 23 * scale,
+                width: content.width / 2,
+                height: 16 * scale
+            ),
+            fontSize: 8 * scale,
+            minimumFontSize: 5 * scale,
+            weight: .bold,
+            color: textColor,
+            alignment: .right
+        )
+
+        let summaryY = content.minY + 58 * scale
+        context.setFillColor(accentColor.withAlphaComponent(0.08).cgColor)
+        context.fill(
+            CGRect(x: content.minX, y: summaryY, width: content.width, height: 30 * scale)
+        )
+        Self.drawSingleLineText(
+            "방문 지역  \(data.stops.count)곳",
+            in: CGRect(
+                x: content.minX + 10 * scale,
+                y: summaryY + 7 * scale,
+                width: content.width * 0.45,
+                height: 16 * scale
+            ),
+            fontSize: 9 * scale,
+            minimumFontSize: 6 * scale,
+            weight: .bold,
+            color: accentColor,
+            alignment: .left
+        )
+        Self.drawSingleLineText(
+            "작성  HANCLIP",
+            in: CGRect(
+                x: content.midX,
+                y: summaryY + 7 * scale,
+                width: content.width / 2 - 10 * scale,
+                height: 16 * scale
+            ),
+            fontSize: 8 * scale,
+            minimumFontSize: 5 * scale,
+            weight: .medium,
+            color: secondaryColor,
+            alignment: .right
+        )
+
+        let tableY = summaryY + 42 * scale
+        let tableHeight = max(40 * scale, content.maxY - tableY)
+        let headerHeight = min(22 * scale, tableHeight * 0.13)
+        let numberWidth = content.width * 0.10
+        let dateWidth = content.width * 0.22
+        let transferWidth = content.width * 0.18
+        let columns = [
+            content.minX,
+            content.minX + numberWidth,
+            content.minX + numberWidth + dateWidth,
+            content.maxX - transferWidth,
+            content.maxX
+        ]
+        context.setFillColor(accentColor.cgColor)
+        context.fill(
+            CGRect(x: content.minX, y: tableY, width: content.width, height: headerHeight)
+        )
+        let headers = ["NO.", "DATE", "REGION", "MOVE"]
+        for index in headers.indices {
+            Self.drawSingleLineText(
+                headers[index],
+                in: CGRect(
+                    x: columns[index] + 3 * scale,
+                    y: tableY + 4 * scale,
+                    width: columns[index + 1] - columns[index] - 6 * scale,
+                    height: headerHeight - 6 * scale
+                ),
+                fontSize: 7.5 * scale,
+                minimumFontSize: 5 * scale,
+                weight: .bold,
+                color: .white,
+                alignment: index == 2 ? .left : .center
+            )
+        }
+
+        let stops = data.stops
+        let rowHeight = (tableHeight - headerHeight) / CGFloat(max(1, stops.count))
+        for (index, stop) in stops.enumerated() {
+            let y = tableY + headerHeight + CGFloat(index) * rowHeight
+            if index.isMultiple(of: 2) {
+                context.setFillColor(secondaryColor.withAlphaComponent(0.07).cgColor)
+                context.fill(CGRect(x: content.minX, y: y, width: content.width, height: rowHeight))
+            }
+            context.setStrokeColor(secondaryColor.withAlphaComponent(0.22).cgColor)
+            context.setLineWidth(max(0.5, 0.7 * scale))
+            context.stroke(
+                CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
+            )
+            let values = [
+                String(format: "%02d", index + 1),
+                stop.dateText,
+                stop.label,
+                index == 0
+                    ? "시작"
+                    : (stops[index - 1].countryCode == stop.countryCode ? "차량" : "항공")
+            ]
+            for column in values.indices {
+                Self.drawSingleLineText(
+                    values[column],
+                    in: CGRect(
+                        x: columns[column] + 4 * scale,
+                        y: y + rowHeight * 0.28,
+                        width: columns[column + 1] - columns[column] - 8 * scale,
+                        height: rowHeight * 0.50
+                    ),
+                    fontSize: min(9.5 * scale, rowHeight * 0.32),
+                    minimumFontSize: min(4.8 * scale, rowHeight * 0.22),
+                    weight: column == 2 ? .semibold : .medium,
+                    color: column == 2 ? textColor : secondaryColor,
+                    alignment: column == 2 ? .left : .center
+                )
+            }
+        }
+    }
+
+    private static func drawTravelItinerary(
+        _ data: EndingInfoPreviewData,
+        in panel: CGRect,
+        scale: CGFloat,
+        textColor: UIColor,
+        accentColor: UIColor,
+        secondaryColor: UIColor,
+        context: CGContext
+    ) {
+        let headerHeight = min(panel.height * 0.23, 92 * scale)
+        let headerRect = CGRect(
+            x: panel.minX,
+            y: panel.minY,
+            width: panel.width,
+            height: headerHeight
+        )
+        context.setFillColor(
+            UIColor(red: 0.99, green: 0.91, blue: 0.90, alpha: 1).cgColor
+        )
+        context.fill(headerRect)
+
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        centered.lineBreakMode = .byClipping
+        ("여행 일정표" as NSString).draw(
+            in: CGRect(
+                x: panel.minX + 16 * scale,
+                y: panel.minY + 14 * scale,
+                width: panel.width - 32 * scale,
+                height: 32 * scale
+            ),
+            withAttributes: [
+                .font: UIFont.systemFont(ofSize: 23 * scale, weight: .bold),
+                .foregroundColor: accentColor,
+                .paragraphStyle: centered
+            ]
+        )
+        ("TRAVEL SCHEDULE" as NSString).draw(
+            in: CGRect(
+                x: panel.minX + 16 * scale,
+                y: panel.minY + 42 * scale,
+                width: panel.width - 32 * scale,
+                height: 16 * scale
+            ),
+            withAttributes: [
+                .font: UIFont.systemFont(ofSize: 7.5 * scale, weight: .semibold),
+                .foregroundColor: secondaryColor,
+                .kern: 2.2 * scale,
+                .paragraphStyle: centered
+            ]
+        )
+        Self.drawSingleLineText(
+            data.dateText,
+            in: CGRect(
+                x: panel.minX + 18 * scale,
+                y: panel.minY + 61 * scale,
+                width: panel.width - 36 * scale,
+                height: 20 * scale
+            ),
+            fontSize: 10.5 * scale,
+            minimumFontSize: 6.5 * scale,
+            weight: .medium,
+            color: textColor.withAlphaComponent(0.72),
+            alignment: .center
+        )
+
+        let stops = data.stops
+        guard !stops.isEmpty else { return }
+        let routeRect = CGRect(
+            x: panel.minX + 28 * scale,
+            y: headerRect.maxY + 18 * scale,
+            width: panel.width - 56 * scale,
+            height: panel.maxY - headerRect.maxY - 40 * scale
+        )
+        let wide = routeRect.width > routeRect.height * 1.15
+        let columnCount = min(stops.count, wide ? 5 : 3)
+        let rowCount = Int(ceil(Double(stops.count) / Double(max(1, columnCount))))
+        let columnWidth = routeRect.width / CGFloat(max(1, columnCount))
+        let rowHeight = routeRect.height / CGFloat(max(1, rowCount))
+
+        let points: [CGPoint] = stops.indices.map { index in
+            let row = index / columnCount
+            let position = index % columnCount
+            let column = row.isMultiple(of: 2)
+                ? position
+                : columnCount - position - 1
+            return CGPoint(
+                x: routeRect.minX + columnWidth * (CGFloat(column) + 0.5),
+                y: routeRect.minY + rowHeight * (CGFloat(row) + 0.45)
+            )
+        }
+
+        if points.count > 1 {
+            context.saveGState()
+            context.setStrokeColor(secondaryColor.withAlphaComponent(0.82).cgColor)
+            context.setLineWidth(max(5 * scale, min(12 * scale, rowHeight * 0.15)))
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            let path = UIBezierPath()
+            path.move(to: points[0])
+            for point in points.dropFirst() { path.addLine(to: point) }
+            path.stroke()
+            context.restoreGState()
+        }
+
+        let badgeWidth = min(38 * scale, columnWidth * 0.62)
+        let badgeHeight = min(16 * scale, rowHeight * 0.23)
+        let labelHeight = min(25 * scale, rowHeight * 0.32)
+        let iconNames = [
+            "mappin.and.ellipse", "building.2.fill", "beach.umbrella.fill",
+            "fork.knife", "camera.fill", "airplane.departure"
+        ]
+        for (index, stop) in stops.enumerated() {
+            let point = points[index]
+            let badge = CGRect(
+                x: point.x - badgeWidth / 2,
+                y: point.y - badgeHeight / 2,
+                width: badgeWidth,
+                height: badgeHeight
+            )
+            let badgePath = UIBezierPath(
+                roundedRect: badge,
+                cornerRadius: badgeHeight / 2
+            )
+            accentColor.setFill()
+            badgePath.fill()
+            Self.drawSingleLineText(
+                stop.dateText,
+                in: badge,
+                fontSize: min(7.5 * scale, badgeHeight * 0.48),
+                minimumFontSize: 5 * scale,
+                weight: .bold,
+                color: .white,
+                alignment: .center
+            )
+
+            let iconSide = min(18 * scale, rowHeight * 0.23)
+            UIImage(systemName: iconNames[index % iconNames.count])?
+                .withTintColor(textColor.withAlphaComponent(0.78), renderingMode: .alwaysOriginal)
+                .draw(
+                    in: CGRect(
+                        x: point.x - iconSide / 2,
+                        y: badge.minY - iconSide - 4 * scale,
+                        width: iconSide,
+                        height: iconSide
+                    )
+                )
+
+            Self.drawSingleLineText(
+                stop.label,
+                in: CGRect(
+                    x: point.x - columnWidth * 0.47,
+                    y: badge.maxY + 3 * scale,
+                    width: columnWidth * 0.94,
+                    height: labelHeight
+                ),
+                fontSize: min(11 * scale, labelHeight * 0.55),
+                minimumFontSize: 5.5 * scale,
+                weight: .semibold,
+                color: textColor,
+                alignment: .center
+            )
+
+            if index > 0,
+               stops[index - 1].countryCode != stop.countryCode {
+                let previous = points[index - 1]
+                let midpoint = CGPoint(
+                    x: (previous.x + point.x) / 2,
+                    y: (previous.y + point.y) / 2
+                )
+                let side = min(14 * scale, rowHeight * 0.19)
+                UIImage(systemName: "airplane")?
+                    .withTintColor(accentColor, renderingMode: .alwaysOriginal)
+                    .draw(
+                        in: CGRect(
+                            x: midpoint.x - side / 2,
+                            y: midpoint.y - side / 2,
+                            width: side,
+                            height: side
+                        )
+                    )
+            }
+        }
+    }
+
+    private static func drawLandmarkJourney(
+        _ data: EndingInfoPreviewData,
+        in panel: CGRect,
+        scale: CGFloat,
+        textColor: UIColor,
+        accentColor: UIColor,
+        secondaryColor: UIColor,
+        context: CGContext
+    ) {
+        let border = panel.insetBy(dx: 10 * scale, dy: 10 * scale)
+        let borderPath = UIBezierPath(
+            roundedRect: border,
+            cornerRadius: 18 * scale
+        )
+        secondaryColor.withAlphaComponent(0.62).setStroke()
+        borderPath.lineWidth = max(1, 1.4 * scale)
+        borderPath.stroke()
+
+        let stops = data.stops
+        guard !stops.isEmpty else { return }
+        let first = stops.first?.label ?? "여행"
+        let last = stops.last?.label ?? first
+        let title = first == last
+            ? "\(first) 여행"
+            : "\(first) · \(last) 여행"
+        Self.drawSingleLineText(
+            title,
+            in: CGRect(
+                x: panel.minX + 28 * scale,
+                y: panel.minY + 18 * scale,
+                width: panel.width - 56 * scale,
+                height: 34 * scale
+            ),
+            fontSize: 23 * scale,
+            minimumFontSize: 10 * scale,
+            weight: .bold,
+            color: accentColor,
+            alignment: .center
+        )
+        Self.drawSingleLineText(
+            data.dateText,
+            in: CGRect(
+                x: panel.minX + 30 * scale,
+                y: panel.minY + 49 * scale,
+                width: panel.width - 60 * scale,
+                height: 18 * scale
+            ),
+            fontSize: 9.5 * scale,
+            minimumFontSize: 6 * scale,
+            weight: .medium,
+            color: secondaryColor,
+            alignment: .center
+        )
+
+        let ornamentSide = 18 * scale
+        for x in [panel.minX + 24 * scale, panel.maxX - 24 * scale - ornamentSide] {
+            UIImage(systemName: "light.beacon.max.fill")?
+                .withTintColor(secondaryColor, renderingMode: .alwaysOriginal)
+                .draw(
+                    in: CGRect(
+                        x: x,
+                        y: panel.minY + 22 * scale,
+                        width: ornamentSide,
+                        height: ornamentSide
+                    )
+                )
+        }
+
+        let routeRect = CGRect(
+            x: panel.minX + 30 * scale,
+            y: panel.minY + 82 * scale,
+            width: panel.width - 60 * scale,
+            height: panel.height - 112 * scale
+        )
+        let wide = routeRect.width > routeRect.height * 1.12
+        let columnCount = min(stops.count, wide ? 4 : 3)
+        let rowCount = Int(ceil(Double(stops.count) / Double(max(1, columnCount))))
+        let columnWidth = routeRect.width / CGFloat(max(1, columnCount))
+        let rowHeight = routeRect.height / CGFloat(max(1, rowCount))
+        let points: [CGPoint] = stops.indices.map { index in
+            let row = index / columnCount
+            let position = index % columnCount
+            let column = row.isMultiple(of: 2)
+                ? position
+                : columnCount - position - 1
+            return CGPoint(
+                x: routeRect.minX + columnWidth * (CGFloat(column) + 0.5),
+                y: routeRect.minY + rowHeight * (CGFloat(row) + 0.48)
+            )
+        }
+
+        if points.count > 1 {
+            context.saveGState()
+            context.setStrokeColor(secondaryColor.withAlphaComponent(0.68).cgColor)
+            context.setLineWidth(max(1.3, 2.1 * scale))
+            context.setLineCap(.round)
+            context.setLineDash(phase: 0, lengths: [4 * scale, 5.5 * scale])
+            let path = UIBezierPath()
+            path.move(to: points[0])
+            for point in points.dropFirst() { path.addLine(to: point) }
+            path.stroke()
+            context.restoreGState()
+        }
+
+        for (index, stop) in stops.enumerated() {
+            let point = points[index]
+            let landmark = Self.landmarkDescriptor(for: stop.label)
+            let iconSide = min(34 * scale, rowHeight * 0.38, columnWidth * 0.42)
+            let iconRect = CGRect(
+                x: point.x - iconSide / 2,
+                y: point.y - iconSide * 0.82,
+                width: iconSide,
+                height: iconSide
+            )
+            context.setFillColor(
+                UIColor(red: 1, green: 0.97, blue: 0.91, alpha: 0.96).cgColor
+            )
+            context.fillEllipse(in: iconRect.insetBy(dx: -5 * scale, dy: -5 * scale))
+            if let emoji = landmark.emoji {
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = .center
+                (emoji as NSString).draw(
+                    in: iconRect,
+                    withAttributes: [
+                        .font: UIFont.systemFont(ofSize: iconSide * 0.78),
+                        .paragraphStyle: paragraph
+                    ]
+                )
+            } else {
+                UIImage(systemName: landmark.symbol)?
+                    .withTintColor(accentColor, renderingMode: .alwaysOriginal)
+                    .draw(in: iconRect)
+            }
+
+            let labelWidth = columnWidth * 0.92
+            Self.drawSingleLineText(
+                stop.label,
+                in: CGRect(
+                    x: point.x - labelWidth / 2,
+                    y: iconRect.maxY + 4 * scale,
+                    width: labelWidth,
+                    height: 17 * scale
+                ),
+                fontSize: min(10.5 * scale, rowHeight * 0.15),
+                minimumFontSize: 5.2 * scale,
+                weight: .bold,
+                color: textColor,
+                alignment: .center
+            )
+            Self.drawSingleLineText(
+                landmark.name,
+                in: CGRect(
+                    x: point.x - labelWidth / 2,
+                    y: iconRect.maxY + 18 * scale,
+                    width: labelWidth,
+                    height: 15 * scale
+                ),
+                fontSize: min(7.5 * scale, rowHeight * 0.105),
+                minimumFontSize: 4.5 * scale,
+                weight: .medium,
+                color: secondaryColor,
+                alignment: .center
+            )
+
+            let markerSide = 9 * scale
+            context.setFillColor(accentColor.cgColor)
+            context.fillEllipse(
+                in: CGRect(
+                    x: point.x - markerSide / 2,
+                    y: point.y - markerSide / 2,
+                    width: markerSide,
+                    height: markerSide
+                )
+            )
+        }
+    }
+
+    private static func landmarkDescriptor(
+        for label: String
+    ) -> (symbol: String, name: String, emoji: String?) {
+        let value = label.lowercased()
+        let matches: [(
+            keys: [String], symbol: String, name: String, emoji: String?
+        )] = [
+            (["서울", "seoul"], "antenna.radiowaves.left.and.right", "남산서울타워", "🗼"),
+            (["제주", "jeju"], "mountain.2.fill", "한라산·성산일출봉", "🌋"),
+            (["부산", "busan"], "water.waves", "광안대교·해동용궁사", "🌉"),
+            (["인천", "incheon"], "airplane", "인천대교·송도", "🌉"),
+            (["경주", "gyeongju"], "building.columns.fill", "불국사·첨성대", "🏯"),
+            (["전주", "jeonju"], "house.lodge.fill", "전주한옥마을", "🏘️"),
+            (["강릉", "gangneung"], "water.waves", "경포대", "🌊"),
+            (["속초", "sokcho"], "mountain.2.fill", "설악산", "⛰️"),
+            (["수원", "suwon"], "shield.lefthalf.filled", "수원화성", "🏰"),
+            (["여수", "yeosu"], "water.waves", "여수해상케이블카", "🚠"),
+            (["안동", "andong"], "house.lodge.fill", "하회마을", "🏘️"),
+            (["대구", "daegu"], "mountain.2.fill", "팔공산", "⛰️"),
+            (["대전", "daejeon"], "atom", "엑스포과학공원", "🔭"),
+            (["광주", "gwangju"], "building.columns.fill", "국립아시아문화전당", "🏛️"),
+            (["파리", "paris"], "building.columns.fill", "Eiffel Tower", "🗼"),
+            (["런던", "london"], "clock.fill", "Big Ben·Tower Bridge", "🕰️"),
+            (["뉴욕", "new york"], "person.fill", "Statue of Liberty", "🗽"),
+            (["도쿄", "tokyo"], "antenna.radiowaves.left.and.right", "Tokyo Tower·Sensoji", "🗼"),
+            (["교토", "kyoto"], "torii.gate", "Fushimi Inari", "⛩️"),
+            (["오사카", "osaka"], "building.columns.fill", "Osaka Castle", "🏯"),
+            (["나라", "nara"], "leaf.fill", "Todaiji·Nara Park", "🦌"),
+            (["삿포로", "sapporo"], "snowflake", "Sapporo Clock Tower", "❄️"),
+            (["후쿠오카", "fukuoka"], "building.2.fill", "Fukuoka Tower", "🗼"),
+            (["오키나와", "okinawa"], "water.waves", "Shurijo·Blue Cave", "🏝️"),
+            (["로마", "rome", "roma"], "building.columns.fill", "Colosseum", "🏛️"),
+            (["베네치아", "venice", "venezia"], "ferry.fill", "Grand Canal", "🚤"),
+            (["피렌체", "florence", "firenze"], "building.columns.fill", "Florence Cathedral", "⛪"),
+            (["바르셀로나", "barcelona"], "building.columns.fill", "Sagrada Familia", "⛪"),
+            (["마드리드", "madrid"], "crown.fill", "Royal Palace", "🏰"),
+            (["리스본", "lisbon"], "tram.fill", "Belém Tower", "🚋"),
+            (["암스테르담", "amsterdam"], "bicycle", "Canals·Windmills", "🚲"),
+            (["베를린", "berlin"], "building.columns.fill", "Brandenburg Gate", "🏛️"),
+            (["프라하", "prague", "praha"], "clock.fill", "Charles Bridge", "🏰"),
+            (["비엔나", "vienna", "wien"], "music.note", "Schönbrunn Palace", "🎼"),
+            (["아테네", "athens"], "building.columns.fill", "Acropolis", "🏛️"),
+            (["이스탄불", "istanbul"], "moon.stars.fill", "Hagia Sophia", "🕌"),
+            (["취리히", "zurich"], "mountain.2.fill", "Lake Zurich·Alps", "🏔️"),
+            (["클락", "clark"], "airplane", "Clark International Airport", "✈️"),
+            (["마닐라", "manila"], "building.columns.fill", "Intramuros", "🏰"),
+            (["세부", "cebu"], "water.waves", "Magellan's Cross", "🏝️"),
+            (["보라카이", "boracay"], "beach.umbrella.fill", "White Beach", "🏖️"),
+            (["방콕", "bangkok"], "building.columns.fill", "Grand Palace", "🛕"),
+            (["푸껫", "phuket"], "water.waves", "Phang Nga Bay", "🏝️"),
+            (["치앙마이", "chiang mai"], "building.columns.fill", "Doi Suthep", "🛕"),
+            (["싱가포르", "singapore"], "water.waves", "Marina Bay·Merlion", "🌆"),
+            (["쿠알라룸푸르", "kuala lumpur"], "building.2.fill", "Petronas Towers", "🏙️"),
+            (["발리", "bali"], "water.waves", "Uluwatu·Tanah Lot", "🏝️"),
+            (["하노이", "hanoi"], "building.columns.fill", "Hoan Kiem Lake", "🏯"),
+            (["호찌민", "ho chi minh", "saigon"], "building.2.fill", "Central Post Office", "🏛️"),
+            (["다낭", "da nang", "danang"], "water.waves", "Dragon Bridge", "🐉"),
+            (["홍콩", "hong kong"], "building.2.fill", "Victoria Harbour", "🌃"),
+            (["타이베이", "taipei"], "building.2.fill", "Taipei 101", "🏙️"),
+            (["시드니", "sydney"], "theatermasks.fill", "Sydney Opera House", "🎭"),
+            (["멜버른", "melbourne"], "tram.fill", "Flinders Street", "🚋"),
+            (["오클랜드", "auckland"], "antenna.radiowaves.left.and.right", "Sky Tower", "🗼"),
+            (["로스앤젤레스", "los angeles"], "film.fill", "Hollywood Sign", "🎬"),
+            (["샌프란시스코", "san francisco"], "water.waves", "Golden Gate Bridge", "🌉"),
+            (["라스베이거스", "las vegas"], "sparkles", "The Strip", "🎰"),
+            (["워싱턴", "washington"], "building.columns.fill", "U.S. Capitol", "🏛️"),
+            (["시카고", "chicago"], "building.2.fill", "Cloud Gate", "🌆"),
+            (["밴쿠버", "vancouver"], "mountain.2.fill", "Canada Place", "🏔️"),
+            (["토론토", "toronto"], "antenna.radiowaves.left.and.right", "CN Tower", "🗼"),
+            (["리우", "rio de janeiro", "rio"], "figure.arms.open", "Christ the Redeemer", "⛰️"),
+            (["칸쿤", "cancun"], "water.waves", "Caribbean Beach", "🏖️"),
+            (["두바이", "dubai"], "building.2.fill", "Burj Khalifa", "🏙️"),
+            (["아부다비", "abu dhabi"], "moon.stars.fill", "Sheikh Zayed Mosque", "🕌"),
+            (["카이로", "cairo"], "triangle.fill", "Pyramids of Giza", "🔺")
+        ]
+        if let match = matches.first(where: { item in
+            item.keys.contains(where: value.contains)
+        }) {
+            return (match.symbol, match.name, match.emoji)
+        }
+        return ("building.2.fill", "Local Landmark", "📍")
+    }
+
+    private static func drawSingleLineText(
+        _ text: String,
+        in rect: CGRect,
+        fontSize: CGFloat,
+        minimumFontSize: CGFloat,
+        weight: UIFont.Weight,
+        color: UIColor,
+        alignment: NSTextAlignment,
+        fontName: String? = nil
+    ) {
+        let value = text.replacingOccurrences(of: " ", with: "\u{00A0}") as NSString
+        var size = fontSize
+        var font = fontName.map {
+            FontRegistry.resolvedUIFont(for: $0, size: size, weight: weight)
+        } ?? UIFont.systemFont(ofSize: size, weight: weight)
+        while size > minimumFontSize,
+              value.size(withAttributes: [.font: font]).width > rect.width {
+            size -= max(0.5, fontSize * 0.04)
+            font = fontName.map {
+                FontRegistry.resolvedUIFont(for: $0, size: size, weight: weight)
+            } ?? UIFont.systemFont(ofSize: size, weight: weight)
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byClipping
+        value.draw(
+            in: rect,
+            withAttributes: [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
+            ]
+        )
+    }
+
+    private static func drawTreasureMapRoute(
+        _ stops: [EndingInfoRouteStop],
+        in rect: CGRect,
+        scale: CGFloat,
+        variation: Int,
+        textColor: UIColor,
+        accentColor: UIColor,
+        secondaryColor: UIColor,
+        context: CGContext
+    ) {
+        guard !stops.isEmpty, rect.width > 0, rect.height > 0 else { return }
+        let count = stops.count
+        let usableHeight = rect.height * 0.78
+        let top = rect.minY + rect.height * 0.10
+        let points: [CGPoint] = stops.indices.map { index in
+            let progress = count == 1
+                ? 0.5
+                : CGFloat(index) / CGFloat(count - 1)
+            let phase = CGFloat(variation % 9) * 0.42
+            let direction: CGFloat = variation.isMultiple(of: 2) ? 1 : -1
+            let wave = sin(progress * .pi * 2.4 - .pi / 2 + phase)
+            return CGPoint(
+                x: rect.midX + wave * rect.width * 0.28 * direction,
+                y: top + progress * usableHeight
+            )
+        }
+
+        if points.count > 1 {
+            context.saveGState()
+            context.setStrokeColor(secondaryColor.withAlphaComponent(0.82).cgColor)
+            context.setLineWidth(max(1.4, 2.2 * scale))
+            context.setLineCap(.round)
+            context.setLineDash(
+                phase: 0,
+                lengths: [4.5 * scale, 6.5 * scale]
+            )
+            for index in 0..<(points.count - 1) {
+                let start = points[index]
+                let end = points[index + 1]
+                let vertical = (end.y - start.y) * 0.50
+                let path = UIBezierPath()
+                path.move(to: start)
+                path.addCurve(
+                    to: end,
+                    controlPoint1: CGPoint(x: start.x, y: start.y + vertical),
+                    controlPoint2: CGPoint(x: end.x, y: end.y - vertical)
+                )
+                path.stroke()
+
+                let midpoint = CGPoint(
+                    x: (start.x + end.x) / 2,
+                    y: (start.y + end.y) / 2
+                )
+                let symbolName = stops[index].countryCode
+                    == stops[index + 1].countryCode
+                    ? "car.fill"
+                    : "airplane"
+                let symbolSize = 14 * scale
+                UIImage(systemName: symbolName)?
+                    .withTintColor(accentColor, renderingMode: .alwaysOriginal)
+                    .draw(
+                        in: CGRect(
+                            x: midpoint.x - symbolSize / 2,
+                            y: midpoint.y - symbolSize / 2,
+                            width: symbolSize,
+                            height: symbolSize
+                        )
+                    )
+            }
+            context.restoreGState()
+        }
+
+        let fontSize = max(8 * scale, min(15 * scale, 34 * scale / sqrt(CGFloat(count))))
+        for (index, stop) in stops.enumerated() {
+            let point = points[index]
+            let markerSize = index == 0 ? 18 * scale : 11 * scale
+            if index == 0 {
+                let xFont = UIFont.systemFont(
+                    ofSize: markerSize,
+                    weight: .black
+                )
+                ("×" as NSString).draw(
+                    at: CGPoint(
+                        x: point.x - markerSize * 0.36,
+                        y: point.y - markerSize * 0.68
+                    ),
+                    withAttributes: [
+                        .font: xFont,
+                        .foregroundColor: accentColor
+                    ]
+                )
+            } else {
+                context.setFillColor(accentColor.cgColor)
+                context.fillEllipse(
+                    in: CGRect(
+                        x: point.x - markerSize / 2,
+                        y: point.y - markerSize / 2,
+                        width: markerSize,
+                        height: markerSize
+                    )
+                )
+                context.setFillColor(panelColorForTreasureMarker.cgColor)
+                context.fillEllipse(
+                    in: CGRect(
+                        x: point.x - markerSize * 0.20,
+                        y: point.y - markerSize * 0.20,
+                        width: markerSize * 0.40,
+                        height: markerSize * 0.40
+                    )
+                )
+            }
+
+            let labelWidth = rect.width * 0.45
+            let prefersRight = point.x <= rect.midX
+            let labelX = prefersRight
+                ? min(rect.maxX - labelWidth, point.x + 9 * scale)
+                : max(rect.minX, point.x - labelWidth - 9 * scale)
+            let labelRect = CGRect(
+                x: labelX,
+                y: point.y - 11 * scale,
+                width: labelWidth,
+                height: 28 * scale
+            )
+            Self.drawSingleLineText(
+                stop.label,
+                in: labelRect,
+                fontSize: fontSize,
+                minimumFontSize: max(4.5 * scale, fontSize * 0.55),
+                weight: .semibold,
+                color: textColor,
+                alignment: .center,
+                fontName: "maruburi"
+            )
+        }
+    }
+
+    private static var panelColorForTreasureMarker: UIColor {
+        UIColor(red: 0.95, green: 0.84, blue: 0.61, alpha: 1)
+    }
+
     func startPhotoLibraryImport() {
         isImportingPhotoLibraryMedia = true
+        photoLibraryImportProgress = 0.02
+        progressMessage = "선택한 미디어를 불러오는 중…"
+    }
+
+    func updatePhotoLibraryImportProgress(
+        _ progress: Double,
+        message: String
+    ) {
+        photoLibraryImportProgress = min(max(progress, 0), 1)
+        progressMessage = message
     }
 
     func finishPhotoLibraryImport() {
+        photoLibraryImportProgress = 1
         isImportingPhotoLibraryMedia = false
+        progressMessage = ""
+        photoLibraryImportProgress = 0
     }
 
     func cancelPreviewGeneration() {
@@ -1602,6 +3348,9 @@ final class EditorViewModel: ObservableObject {
     private func releaseEditingMemory() {
         clips = []
         WorkingClipSourceStore.clear()
+        isQuickModeProject = false
+        activeMoviePreset = nil
+        isQuickDurationPickerPresented = false
         defaultDuration = Self.storedDefaultDuration()
         defaultVideoSegmentMode = .multiple
         outputAspectRatio = Self.storedDefaultAspectRatio()
@@ -1836,7 +3585,11 @@ final class EditorViewModel: ObservableObject {
             "\(roundedSignatureValue(settings.copyrightShadowOpacity))",
             settings.copyrightIconColorMode.rawValue,
             settings.copyrightIconColorHex,
-            settings.customCopyrightIconPath
+            settings.customCopyrightIconPath,
+            "\(settings.includesEndingInfoCard)",
+            "\(roundedSignatureValue(settings.endingInfoCardDuration))",
+            settings.endingInfoCardTheme.rawValue,
+            "\(settings.endingInfoCardVariation)"
         ].joined(separator: "\u{1F}")
     }
 
@@ -2557,13 +4310,17 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    func importMediaFromCalendarDates(_ dates: Set<Date>) {
+    func importMediaFromCalendarDates(
+        _ dates: Set<Date>,
+        excluding excludedAssetIdentifiers: Set<String> = []
+    ) {
         guard !dates.isEmpty else { return }
         calendarImportTask?.cancel()
         let selectedDates = Set(
             dates.map { Calendar.current.startOfDay(for: $0) }
         )
         isCalendarPickerPresented = false
+        isPickerPresented = false
         isImportingCalendarMedia = true
         calendarImportProgress = 0
         progressMessage = "선택한 날짜의 미디어를 불러오는 중…"
@@ -2572,7 +4329,9 @@ final class EditorViewModel: ObservableObject {
             let assets = PhotoLibraryService.mediaAssets(
                 on: selectedDates,
                 calendar: .current
-            )
+            ).filter {
+                !excludedAssetIdentifiers.contains($0.localIdentifier)
+            }
             var imported: [ClipItem] = []
             imported.reserveCapacity(assets.count)
 
@@ -2636,14 +4395,23 @@ final class EditorViewModel: ObservableObject {
                 return
             }
 
-            alertMessage = imported.isEmpty
-                ? "선택한 날짜에 가져올 수 있는 미디어가 없습니다."
-                : "선택한 날짜의 미디어 \(imported.count)개를 가져왔습니다."
+            await refreshPresetCaptionAfterMediaImport()
+
+            let shouldStartQuickMovie = isQuickModeProject
+                && !imported.isEmpty
+            if !shouldStartQuickMovie {
+                alertMessage = imported.isEmpty
+                    ? "선택한 날짜에 가져올 수 있는 미디어가 없습니다."
+                    : "선택한 날짜의 미디어 \(imported.count)개를 가져왔습니다."
+            }
             calendarImportProgress = 1
             progressMessage = ""
             isImportingCalendarMedia = false
             calendarImportProgress = 0
             calendarImportTask = nil
+            if shouldStartQuickMovie {
+                startQuickMovieIfNeeded()
+            }
         }
     }
 

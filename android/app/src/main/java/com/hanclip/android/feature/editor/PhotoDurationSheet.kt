@@ -235,7 +235,7 @@ private fun PhotoDurationPreview(
         modifier = Modifier
             .fillMaxWidth()
             .height(220.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(palette.chip),
         contentAlignment = Alignment.Center
     ) {

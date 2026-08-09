@@ -1,5 +1,7 @@
 import AVFoundation
 import AVKit
+import CoreTransferable
+import CoreLocation
 import CoreText
 import Photos
 import PhotosUI
@@ -7,6 +9,49 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import WebKit
+
+private struct CollectionVideoTransfer: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent("HanClip-Collection-\(UUID().uuidString)")
+                .appendingPathExtension(
+                    received.file.pathExtension.isEmpty
+                        ? "mov"
+                        : received.file.pathExtension
+                )
+            try FileManager.default.copyItem(
+                at: received.file,
+                to: destination
+            )
+            return CollectionVideoTransfer(url: destination)
+        }
+    }
+}
+
+enum HanClipAudioSession {
+    @discardableResult
+    static func activatePlayback() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if session.category != .playback || session.mode != .moviePlayback {
+                try session.setCategory(
+                    .playback,
+                    mode: .moviePlayback,
+                    options: []
+                )
+            }
+            try session.setActive(true)
+            return true
+        } catch {
+            return false
+        }
+    }
+}
 
 private enum SleepPreventionMode: String, CaseIterable, Identifiable {
     case alwaysOn = "alwaysOn"
@@ -66,6 +111,7 @@ struct EditorView: View {
     }
 
     @StateObject private var model = EditorViewModel()
+    @StateObject private var movieCollection = MovieCollectionStore.shared
     @State private var isReordering = false
     @State private var showResetConfirmation = false
     @State private var showHeaderExitConfirmation = false
@@ -73,6 +119,7 @@ struct EditorView: View {
     @State private var showImportantInfo = false
     @State private var showTextOverlaySettings = false
     @State private var showBackgroundMusicSettings = false
+    @State private var shouldReturnToQuickDurationPicker = false
     @State private var showOnlineMusicBrowser = false
     @State private var showAiShotCamera = false
     @State private var isAiShotRestartPending = false
@@ -98,6 +145,18 @@ struct EditorView: View {
     @State private var selectAllAppliedSignature: [SelectAllClipSnapshot] = []
     @State private var isSelectAllChecked = false
     @State private var expandedMemoProjectID: UUID?
+    @State private var selectedCollectionMovie: CollectedMovie?
+    @State private var collectionPhotoItems: [PhotosPickerItem] = []
+    @State private var isCollectionPhotoPickerPresented = false
+    @State private var isCollectionFileImporterPresented = false
+    @State private var isImportingCollectionMovie = false
+    @State private var collectionImportProgress = 0.0
+    @State private var collectionImportCompletedCount = 0
+    @State private var collectionImportTotalCount = 0
+    @State private var collectionMovieBeingRenamed: CollectedMovie?
+    @State private var collectionTitleDraft = ""
+    @State private var isCollectionTitleEditorPresented = false
+    @State private var collectionTitleEditorHeight: CGFloat = 56
     @FocusState private var focusedMemoProjectID: UUID?
 
     private let aspectRatioPickerAnimation = Animation.snappy
@@ -599,15 +658,80 @@ struct EditorView: View {
     private var presentationConfiguredView: some View {
         modalOverlayConfiguredView
         .fullScreenCover(isPresented: $model.isPickerPresented) {
-            photoPicker
-        }
-        .fullScreenCover(isPresented: $model.isCalendarPickerPresented) {
-            CalendarMediaPickerView(
-                initialMonth: model.initialCalendarMonth,
-                initialMediaDates: model.initialCalendarMediaDates,
-                initialMediaCounts: model.initialCalendarMediaCounts,
-                onConfirm: model.importMediaFromCalendarDates
+            ZStack {
+                if model.isCalendarPickerPresented {
+                    CalendarMediaPickerView(
+                        initialMonth: model.initialCalendarMonth,
+                        initialMediaDates: model.initialCalendarMediaDates,
+                        initialMediaCounts: model.initialCalendarMediaCounts,
+                        initialSelectionIdentifiers: model.mediaPickerSelectionIdentifiers,
+                        onCancel: model.closeMediaPicker,
+                        onShowPhotos: model.switchCalendarPickerToPhotos,
+                        onConfirm: { dates, excludedAssetIdentifiers in
+                            model.mediaPickerSelectionIdentifiers = []
+                            model.importMediaFromCalendarDates(
+                                dates,
+                                excluding: excludedAssetIdentifiers
+                            )
+                        }
+                    )
+                    .transition(.opacity)
+                } else {
+                    photoPicker
+                        .transition(.opacity)
+                }
+            }
+            .animation(
+                .easeInOut(duration: 0.11),
+                value: model.isCalendarPickerPresented
             )
+        }
+        .fullScreenCover(isPresented: $model.isQuickDurationPickerPresented) {
+            QuickMovieDurationPicker(
+                recommendedDuration: model.quickRecommendedDuration,
+                mediaCount: model.selectedSourceMediaCount,
+                textSettings: model.textOverlaySettings,
+                textEnabled: textOverlayBinding(\.isEnabled),
+                musicSettings: model.backgroundMusicSettings,
+                musicEnabled: backgroundMusicBinding(\.isEnabled),
+                onSelectText: openQuickTextSettings,
+                onSelectMusic: openQuickMusicSettings,
+                onMake: model.confirmQuickMovieDuration,
+                onCancel: model.cancelQuickMovieDurationSelection
+            )
+            .interactiveDismissDisabled()
+        }
+        .fullScreenCover(item: $selectedCollectionMovie) { movie in
+            CollectionMoviePlayerView(
+                movie: movie,
+                url: movieCollection.videoURL(for: movie)
+            )
+        }
+        .fileImporter(
+            isPresented: $isCollectionFileImporterPresented,
+            allowedContentTypes: [.movie],
+            allowsMultipleSelection: true
+        ) { result in
+            guard case .success(let urls) = result else {
+                if case .failure(let error) = result {
+                    model.alertMessage = error.localizedDescription
+                }
+                return
+            }
+            importCollectionFiles(urls)
+        }
+        .photosPicker(
+            isPresented: $isCollectionPhotoPickerPresented,
+            selection: $collectionPhotoItems,
+            maxSelectionCount: 0,
+            matching: .videos
+        )
+        .onChange(of: collectionPhotoItems) { _, items in
+            guard !items.isEmpty else { return }
+            importCollectionPhotoItems(items)
+        }
+        .sheet(isPresented: $isCollectionTitleEditorPresented) {
+            collectionTitleEditorSheet
         }
         .fullScreenCover(isPresented: $model.isFileImporterPresented) {
             FilePicker(
@@ -787,7 +911,10 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $showImportantInfo) {
             importantInfoSheet
         }
-        .fullScreenCover(isPresented: $showTextOverlaySettings) {
+        .fullScreenCover(
+            isPresented: $showTextOverlaySettings,
+            onDismiss: restoreQuickDurationPickerIfNeeded
+        ) {
             TextOverlaySettingsSheet(
                 textEnabled: textOverlayBinding(\.isEnabled),
                 text: textOverlayBinding(\.text),
@@ -799,10 +926,34 @@ struct EditorView: View {
                 shadowColorHex: textOverlayBinding(\.shadowColorHex),
                 lineSpacing: textOverlayBinding(\.lineSpacing),
                 lineSpacingScale: textOverlayBinding(\.lineSpacingScale),
-                fontSize: textOverlayBinding(\.fontSize)
+                fontSize: textOverlayBinding(\.fontSize),
+                mediaDateRange: model.selectedMediaDateRange,
+                mediaCount: model.selectedSourceMediaCount,
+                includesEndingInfoCard: textOverlayBinding(
+                    \.includesEndingInfoCard
+                ),
+                endingInfoCardDuration: textOverlayBinding(
+                    \.endingInfoCardDuration
+                ),
+                endingInfoCardTheme: textOverlayBinding(
+                    \.endingInfoCardTheme
+                ),
+                endingInfoCardVariation: textOverlayBinding(
+                    \.endingInfoCardVariation
+                ),
+                hasEndingInfo: model.hasEndingInfoData,
+                loadEndingInfoPreview: {
+                    await model.endingInfoPreviewData()
+                },
+                renderEndingInfoPreview: { data, theme in
+                    model.endingInfoPreviewImage(data, theme: theme)
+                }
             )
         }
-        .fullScreenCover(isPresented: $showBackgroundMusicSettings) {
+        .fullScreenCover(
+            isPresented: $showBackgroundMusicSettings,
+            onDismiss: restoreQuickDurationPickerIfNeeded
+        ) {
             BackgroundMusicSettingsSheet(
                 settings: $model.backgroundMusicSettings,
                 isEnabled: backgroundMusicBinding(\.isEnabled),
@@ -920,11 +1071,19 @@ struct EditorView: View {
 
     private var photoPicker: some View {
         PhotoPicker(
+            initialSelectionIdentifiers: model.mediaPickerSelectionIdentifiers,
             onComplete: handlePhotoPickerComplete,
             onStart: model.startPhotoLibraryImport,
+            onProgress: { progress, message in
+                model.updatePhotoLibraryImportProgress(
+                    progress,
+                    message: message
+                )
+            },
             onDismiss: {
-                model.isPickerPresented = false
-            }
+                model.closeMediaPicker()
+            },
+            onShowCalendar: model.switchPhotoPickerToCalendar
         )
         .ignoresSafeArea()
     }
@@ -1075,8 +1234,16 @@ struct EditorView: View {
     }
 
     private func handlePhotoPickerComplete(_ items: [ClipItem]) {
-        model.addPickedItems(items)
-        model.finishPhotoLibraryImport()
+        model.mediaPickerSelectionIdentifiers = []
+        let thumbnailRefreshTask = model.addPickedItems(items)
+        Task { @MainActor in
+            if let thumbnailRefreshTask {
+                await thumbnailRefreshTask.value
+            }
+            await model.refreshPresetCaptionAfterMediaImport()
+            model.finishPhotoLibraryImport()
+            model.startQuickMovieIfNeeded()
+        }
     }
 
     private func handlePendingQuickAction() {
@@ -2813,10 +2980,10 @@ struct EditorView: View {
     private var homeMoviePresetGrid: some View {
         LazyVGrid(
             columns: Array(
-                repeating: GridItem(.flexible(), spacing: 12),
-                count: 2
+                repeating: GridItem(.flexible(), spacing: 8),
+                count: 3
             ),
-            spacing: 12
+            spacing: 10
         ) {
             homeQuickStartButton(
                 title: "새 영화",
@@ -2826,6 +2993,16 @@ struct EditorView: View {
                 secondaryAccent: HanClipTheme.secondary
             ) {
                 model.openMoviePreset(.newMovie)
+            }
+
+            homeQuickStartButton(
+                title: "퀵모드",
+                subtitle: "고르면 바로 영화로",
+                systemImage: "bolt.fill",
+                accent: HanClipTheme.secondary,
+                secondaryAccent: HanClipTheme.primary
+            ) {
+                model.openMoviePreset(.quick)
             }
 
             homeQuickStartButton(
@@ -2849,6 +3026,16 @@ struct EditorView: View {
             }
 
             homeQuickStartButton(
+                title: "인생 영화",
+                subtitle: "삶의 순간을 한 편으로",
+                systemImage: "heart.fill",
+                accent: HanClipTheme.primary.opacity(0.88),
+                secondaryAccent: HanClipTheme.secondary.opacity(0.92)
+            ) {
+                model.openMoviePreset(.life)
+            }
+
+            homeQuickStartButton(
                 title: "골프 영화",
                 subtitle: "공도 넣고 기억도 넣고",
                 systemImage: "figure.golf",
@@ -2858,7 +3045,7 @@ struct EditorView: View {
                 model.openMoviePreset(.golf)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
     }
 
     private func homeQuickStartButton(
@@ -2878,20 +3065,20 @@ struct EditorView: View {
                         Image(assetImage)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 29, height: 29)
+                            .frame(width: 25, height: 25)
                     } else {
                         Image(systemName: systemImage)
-                            .font(.system(size: 21, weight: .bold))
+                            .font(.system(size: 19, weight: .bold))
                     }
 
                     if let badgeSystemImage {
                         Image(systemName: badgeSystemImage)
                             .font(.system(size: 10, weight: .black))
-                            .offset(x: 13, y: -13)
+                            .offset(x: 11, y: -11)
                     }
                 }
                 .foregroundStyle(HanClipTheme.onSecondary)
-                .frame(width: 46, height: 46)
+                .frame(width: 40, height: 40)
                 .background(
                     LinearGradient(
                         colors: [accent, secondaryAccent],
@@ -2914,29 +3101,29 @@ struct EditorView: View {
                 )
 
                 Text(title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(HanClipTheme.primaryText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .minimumScaleFactor(0.76)
                     .frame(maxWidth: .infinity)
                     .frame(height: 18)
-                    .padding(.top, 8)
+                    .padding(.top, 7)
 
                 Text(subtitle)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .minimumScaleFactor(0.68)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .frame(height: 14)
                     .padding(.top, 2)
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 21)
-            .padding(.bottom, 15)
+            .padding(.horizontal, 5)
+            .padding(.top, 15)
+            .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
-            .frame(height: 124)
+            .frame(height: 108)
             .background(
                 LinearGradient(
                     colors: [
@@ -2981,6 +3168,30 @@ struct EditorView: View {
         Task { @MainActor in
             await Task.yield()
             showAiShotCamera = true
+        }
+    }
+
+    private func openQuickTextSettings() {
+        shouldReturnToQuickDurationPicker = true
+        model.isQuickDurationPickerPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            showTextOverlaySettings = true
+        }
+    }
+
+    private func openQuickMusicSettings() {
+        shouldReturnToQuickDurationPicker = true
+        model.isQuickDurationPickerPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            showBackgroundMusicSettings = true
+        }
+    }
+
+    private func restoreQuickDurationPickerIfNeeded() {
+        guard shouldReturnToQuickDurationPicker else { return }
+        shouldReturnToQuickDurationPicker = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            model.isQuickDurationPickerPresented = true
         }
     }
 
@@ -3101,7 +3312,7 @@ struct EditorView: View {
             savedProjectRows(standardProjects)
             standardEmptyProjectRows(
                 count: min(
-                    4,
+                    2,
                     max(
                         0,
                         ProjectStore.maximumProjectCount
@@ -3109,7 +3320,511 @@ struct EditorView: View {
                     )
                 )
             )
+
+            projectCategoryHeader(
+                title: "컬렉션",
+                count: movieCollection.movies.count,
+                systemImage: "books.vertical.fill"
+            )
+            .padding(.top, 10)
+
+            movieCollectionShelf
         }
+    }
+
+    private var movieCollectionShelf: some View {
+        VStack(spacing: 10) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                alignment: .center,
+                spacing: 12
+            ) {
+                ForEach(movieCollection.movies) { movie in
+                    collectionPosterGridCell(movie)
+                }
+
+                GeometryReader { proxy in
+                    collectionImportCard(width: proxy.size.width)
+                }
+                .aspectRatio(1 / 1.38, contentMode: .fit)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 6)
+
+            if isImportingCollectionMovie {
+                collectionImportProgressPanel
+                    .padding(.horizontal, 18)
+            }
+
+            collectionShelfEdge
+        }
+    }
+
+    private func collectionPosterGridCell(
+        _ movie: CollectedMovie
+    ) -> some View {
+        GeometryReader { proxy in
+            Button {
+                selectedCollectionMovie = movie
+            } label: {
+                collectionMovieCard(movie, width: proxy.size.width)
+            }
+            .buttonStyle(.plain)
+        }
+        .aspectRatio(1 / 1.38, contentMode: .fit)
+        .contextMenu {
+            Button {
+                beginRenamingCollectionMovie(movie)
+            } label: {
+                Label("제목 수정", systemImage: "pencil")
+            }
+
+            ShareLink(item: movieCollection.videoURL(for: movie)) {
+                Label("공유", systemImage: "square.and.arrow.up")
+            }
+
+            Button(role: .destructive) {
+                withAnimation(.snappy) {
+                    movieCollection.remove(movie)
+                }
+            } label: {
+                Label("컬렉션에서 제거", systemImage: "trash")
+            }
+        }
+    }
+
+    private var collectionImportProgressPanel: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(HanClipTheme.primary)
+                Text("컬렉션으로 가져오는 중")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primaryText)
+                Spacer()
+                Text("\(collectionImportCompletedCount)/\(collectionImportTotalCount)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+            }
+
+            ProgressView(value: collectionImportProgress)
+                .tint(HanClipTheme.primary)
+        }
+        .padding(11)
+        .background(
+            HanClipTheme.panelFill,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HanClipTheme.panelStroke.opacity(0.62), lineWidth: 1)
+        }
+    }
+
+    private var collectionShelfEdge: some View {
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            HanClipTheme.primary.opacity(0.76),
+                            HanClipTheme.secondary.opacity(0.50),
+                            HanClipTheme.primary.opacity(0.70)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 9)
+
+            Rectangle()
+                .fill(Color.black.opacity(0.16))
+                .frame(height: 2)
+        }
+        .shadow(color: Color.black.opacity(0.22), radius: 5, y: 4)
+        .padding(.horizontal, 12)
+    }
+
+    private func collectionImportCard(width: CGFloat) -> some View {
+        Menu {
+            Button {
+                isCollectionPhotoPickerPresented = true
+            } label: {
+                Label("사진", systemImage: "photo.on.rectangle")
+            }
+
+            Button {
+                isCollectionFileImporterPresented = true
+            } label: {
+                Label("파일", systemImage: "folder")
+            }
+        } label: {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        HanClipTheme.panelFill,
+                        HanClipTheme.secondary.opacity(0.12),
+                        HanClipTheme.primary.opacity(0.16)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                VStack(spacing: 11) {
+                    Text("HANCLIP")
+                        .font(.system(size: 9, weight: .bold, design: .serif))
+                        .tracking(3)
+
+                    Rectangle()
+                        .fill(HanClipTheme.secondary.opacity(0.46))
+                        .frame(width: width * 0.42, height: 1)
+
+                    Image(systemName: isImportingCollectionMovie ? "hourglass" : "plus")
+                        .font(.system(size: 31, weight: .light))
+
+                    Text(isImportingCollectionMovie ? "IMPORTING" : "ADD A FILM")
+                        .font(.custom("MaruBuri-Regular", size: 15))
+                        .tracking(1.2)
+
+                    Text("COLLECTION")
+                        .font(.system(size: 8, weight: .semibold, design: .serif))
+                        .tracking(2.4)
+                        .opacity(0.72)
+                }
+                .foregroundStyle(HanClipTheme.secondary)
+            }
+            .frame(width: width, height: width * 1.38)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        HanClipTheme.secondary.opacity(0.34),
+                        style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.12), radius: 5, y: 3)
+        }
+        .disabled(isImportingCollectionMovie)
+    }
+
+    private func collectionMovieCard(
+        _ movie: CollectedMovie,
+        width: CGFloat
+    ) -> some View {
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let poster = movieCollection.poster(for: movie) {
+                    Image(uiImage: poster)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: "film.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.secondary)
+                }
+            }
+            .frame(width: width, height: width * 1.38)
+            .background(HanClipTheme.panelFill)
+            .clipped()
+
+            LinearGradient(
+                colors: [
+                    .black.opacity(0.70),
+                    .clear,
+                    .black.opacity(0.16),
+                    .black.opacity(0.90)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(movie.title)
+                    .font(.custom("Cafe24Ssurround", size: 14))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.62)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 12)
+
+                Spacer(minLength: 24)
+
+                if let text = collectionMadeAtText(movie) {
+                    collectionPosterMetadata(text, systemImage: "sparkles")
+                }
+                if let text = collectionShootingPeriodText(movie) {
+                    collectionPosterMetadata(text, systemImage: "calendar")
+                }
+                if let location = movie.locationName, !location.isEmpty {
+                    collectionPosterMetadata(
+                        location,
+                        systemImage: "mappin.and.ellipse",
+                        lineLimit: 2
+                    )
+                }
+                collectionPosterMetadata(
+                    collectionDuration(movie.duration),
+                    systemImage: "play.fill"
+                )
+            }
+            .padding(8)
+        }
+        .frame(width: width, height: width * 1.38)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.34), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.14), radius: 5, y: 3)
+    }
+
+    private func collectionPosterMetadata(
+        _ text: String,
+        systemImage: String,
+        lineLimit: Int = 1
+    ) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage).frame(width: 11)
+            Text(text)
+                .lineLimit(lineLimit)
+                .minimumScaleFactor(0.58)
+        }
+        .font(.system(size: 11.25, weight: .semibold, design: .rounded))
+        .foregroundStyle(.white.opacity(0.84))
+    }
+
+    private func collectionMadeAtText(_ movie: CollectedMovie) -> String? {
+        guard let date = movie.madeAt else { return nil }
+        return "제작 " + Self.collectionDateTimeFormatter.string(from: date)
+    }
+
+    private func collectionShootingPeriodText(
+        _ movie: CollectedMovie
+    ) -> String? {
+        guard let start = movie.shootingStartAt else { return nil }
+        let end = movie.shootingEndAt ?? start
+        let startText = Self.collectionDateFormatter.string(from: start)
+        let endText = Self.collectionDateFormatter.string(from: end)
+        return startText == endText
+            ? "촬영 \(startText)"
+            : "촬영 \(startText)–\(endText)"
+    }
+
+    private static let collectionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yy.M.d"
+        return formatter
+    }()
+
+    private static let collectionDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yy.M.d HH:mm"
+        return formatter
+    }()
+
+    private func beginRenamingCollectionMovie(_ movie: CollectedMovie) {
+        collectionMovieBeingRenamed = movie
+        collectionTitleDraft = movie.title
+        collectionTitleEditorHeight = 56
+        isCollectionTitleEditorPresented = true
+    }
+
+    private var collectionTitleEditorSheet: some View {
+        NavigationStack {
+            GeometryReader { proxy in
+                let maximumEditorHeight = max(56, proxy.size.height - 170)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("포스터에 표시할 제목을 입력하세요.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(HanClipTheme.secondaryText)
+
+                    GrowingCollectionTitleTextView(
+                        text: $collectionTitleDraft,
+                        measuredHeight: $collectionTitleEditorHeight,
+                        maximumHeight: maximumEditorHeight
+                    )
+                    .frame(
+                        height: min(
+                            max(56, collectionTitleEditorHeight),
+                            maximumEditorHeight
+                        )
+                    )
+                    .padding(.horizontal, 12)
+                    .background(
+                        HanClipTheme.panelFill,
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .stroke(HanClipTheme.panelStroke, lineWidth: 1)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(18)
+            }
+            .navigationTitle("포스터 제목")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        collectionMovieBeingRenamed = nil
+                        isCollectionTitleEditorPresented = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        guard let movie = collectionMovieBeingRenamed else {
+                            return
+                        }
+                        movieCollection.updateTitle(
+                            collectionTitleDraft,
+                            for: movie
+                        )
+                        collectionMovieBeingRenamed = nil
+                        isCollectionTitleEditorPresented = false
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func collectionDuration(_ duration: Double) -> String {
+        let seconds = max(0, Int(duration.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func importCollectionFiles(_ urls: [URL]) {
+        Task {
+            beginCollectionImport(totalCount: urls.count)
+            isImportingCollectionMovie = true
+            defer { finishCollectionImport() }
+            do {
+                for (index, url) in urls.enumerated() {
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if accessed { url.stopAccessingSecurityScopedResource() }
+                    }
+                    try await movieCollection.importMovie(from: url)
+                    updateCollectionImportProgress(
+                        completedCount: index + 1
+                    )
+                }
+            } catch {
+                model.alertMessage = "컬렉션으로 가져오지 못했습니다. \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func importCollectionPhotoItems(_ items: [PhotosPickerItem]) {
+        collectionPhotoItems = []
+        Task {
+            beginCollectionImport(totalCount: items.count)
+            isImportingCollectionMovie = true
+            defer { finishCollectionImport() }
+            do {
+                var importedCount = 0
+                for item in items {
+                    if let identifier = item.itemIdentifier,
+                       let source = try? await photoLibraryVideoSource(
+                            identifier: identifier
+                       ) {
+                        try await movieCollection.importMovie(
+                            from: source.url,
+                            madeAt: source.creationDate,
+                            shootingRange: source.creationDate.map { $0...$0 },
+                            location: source.location
+                        )
+                        importedCount += 1
+                        updateCollectionImportProgress(
+                            completedCount: importedCount
+                        )
+                        continue
+                    }
+
+                    guard let transfer = try await item.loadTransferable(
+                        type: CollectionVideoTransfer.self
+                    ) else { continue }
+                    defer { try? FileManager.default.removeItem(at: transfer.url) }
+                    try await movieCollection.importMovie(from: transfer.url)
+                    importedCount += 1
+                    updateCollectionImportProgress(
+                        completedCount: importedCount
+                    )
+                }
+                if importedCount == 0 {
+                    throw CocoaError(.fileReadNoSuchFile)
+                }
+            } catch {
+                model.alertMessage = "컬렉션으로 가져오지 못했습니다. \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func beginCollectionImport(totalCount: Int) {
+        collectionImportTotalCount = max(1, totalCount)
+        collectionImportCompletedCount = 0
+        collectionImportProgress = 0.03
+    }
+
+    private func updateCollectionImportProgress(completedCount: Int) {
+        collectionImportCompletedCount = completedCount
+        collectionImportProgress = min(
+            1,
+            Double(completedCount) / Double(max(1, collectionImportTotalCount))
+        )
+    }
+
+    private func finishCollectionImport() {
+        isImportingCollectionMovie = false
+        if collectionImportCompletedCount >= collectionImportTotalCount {
+            collectionImportProgress = 1
+        }
+    }
+
+    private func photoLibraryVideoSource(
+        identifier: String
+    ) async throws -> (url: URL, creationDate: Date?, location: CLLocation?) {
+        let assets = PHAsset.fetchAssets(
+            withLocalIdentifiers: [identifier],
+            options: nil
+        )
+        guard let asset = assets.firstObject else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let options = PHVideoRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        let avAsset = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<AVAsset, Error>) in
+            PHImageManager.default().requestAVAsset(
+                forVideo: asset,
+                options: options
+            ) { asset, _, info in
+                if let asset {
+                    continuation.resume(returning: asset)
+                } else {
+                    let error = info?[PHImageErrorKey] as? Error
+                        ?? CocoaError(.fileReadUnknown)
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+        guard let urlAsset = avAsset as? AVURLAsset else {
+            throw CocoaError(.fileReadUnsupportedScheme)
+        }
+        return (urlAsset.url, asset.creationDate, asset.location)
     }
 
     private var aiShotProjects: [SavedProjectSummary] {
@@ -4377,7 +5092,48 @@ struct EditorView: View {
 
     private var defaultDurationPanel: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 5) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.left.and.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
+                    .frame(width: 24, alignment: .center)
+                    .accessibilityHidden(true)
+
+                Text("영상 길이")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+
+                Spacer()
+
+                VideoRangeSegmentedControl(
+                    usesFullVideo: Binding(
+                        get: { isSelectAllChecked },
+                        set: { usesFullVideo in
+                            guard usesFullVideo != isSelectAllChecked else {
+                                return
+                            }
+                            toggleSelectAllFullRange()
+                        }
+                    ),
+                    tint: HanClipTheme.secondary,
+                    width: 112,
+                    height: 24
+                )
+                .accessibilityLabel("모든 영상 길이")
+                .accessibilityValue(
+                    isSelectAllChecked ? "전체영상" : "선택구간"
+                )
+                .accessibilityHint(
+                    "모든 영상의 선택 구간만 쓰거나 전체 길이를 사용합니다."
+                )
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .frame(height: 42)
+
+            settingsPanelDivider
+
+            HStack(spacing: 8) {
                 Image(systemName: "stopwatch")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
@@ -4385,15 +5141,12 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("기본시간")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
 
-                Spacer(minLength: 0)
-
-                HStack(spacing: 6) {
-                    HStack(spacing: 0) {
+                HStack(spacing: 0) {
                         Button {
                             adjustDefaultDuration(by: -0.1)
                         } label: {
@@ -4425,9 +5178,9 @@ struct EditorView: View {
                         .buttonStyle(.plain)
                         .disabled(model.defaultDuration >= 30)
                         .accessibilityLabel("기본시간 늘리기")
-                    }
-                    .foregroundStyle(HanClipTheme.secondaryText)
-                    .frame(height: 44)
+                }
+                .foregroundStyle(HanClipTheme.secondaryText)
+                .frame(width: 118, height: 44)
                     .background {
                         Capsule()
                             .fill(HanClipTheme.secondary.opacity(0.09))
@@ -4441,7 +5194,9 @@ struct EditorView: View {
                             )
                             .frame(height: 24)
                     }
-                    Button {
+                Spacer(minLength: 4)
+
+                Button {
                         model.applyDefaultDurationToAll()
                         UIImpactFeedbackGenerator(style: .light)
                             .impactOccurred()
@@ -4485,55 +5240,13 @@ struct EditorView: View {
                                 radius: 6,
                                 y: 2
                             )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("기본시간 전체 적용")
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("기본시간 전체 적용")
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
             .frame(height: 48)
-
-            settingsPanelDivider
-
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.left.and.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
-                .frame(width: 24, alignment: .center)
-                .accessibilityHidden(true)
-
-                Text("영상 길이")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.secondaryText)
-
-                Spacer()
-
-                VideoRangeSegmentedControl(
-                    usesFullVideo: Binding(
-                        get: { isSelectAllChecked },
-                        set: { usesFullVideo in
-                            guard usesFullVideo != isSelectAllChecked else {
-                                return
-                            }
-                            toggleSelectAllFullRange()
-                        }
-                    ),
-                    tint: HanClipTheme.secondary,
-                    width: 112,
-                    height: 24
-                )
-                .accessibilityLabel("모든 영상 길이")
-                .accessibilityValue(
-                    isSelectAllChecked ? "전체영상" : "선택구간"
-                )
-                .accessibilityHint(
-                    "모든 영상의 선택 구간만 쓰거나 전체 길이를 사용합니다."
-                )
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 12)
-            .frame(height: 42)
 
             settingsPanelDivider
 
@@ -4642,7 +5355,7 @@ struct EditorView: View {
                     } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 9, weight: .bold))
-                            .frame(width: 44, height: 44)
+                            .frame(width: 40, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -4654,7 +5367,7 @@ struct EditorView: View {
                     )
                     .font(.system(size: 10, weight: .semibold))
                     .monospacedDigit()
-                    .frame(minWidth: 28)
+                    .frame(width: 38)
                     .accessibilityLabel(
                         "\(model.similarPhotoRepresentativeInterval)장 중 1장"
                     )
@@ -4666,7 +5379,7 @@ struct EditorView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 9, weight: .bold))
-                            .frame(width: 44, height: 44)
+                            .frame(width: 40, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -4674,7 +5387,7 @@ struct EditorView: View {
                     .accessibilityLabel("대표사진 간격 늘리기")
                 }
                 .foregroundStyle(HanClipTheme.secondaryText)
-                .frame(height: 44)
+                .frame(width: 118, height: 44)
                 .background {
                     Capsule()
                         .fill(HanClipTheme.secondary.opacity(0.09))
@@ -4688,8 +5401,6 @@ struct EditorView: View {
                         )
                         .frame(height: 24)
                 }
-                .offset(x: 8)
-
                 Spacer(minLength: 4)
 
                 SimilarPhotoGroupModeSegmentedControl(
@@ -5800,6 +6511,7 @@ struct EditorView: View {
                 AspectRatioIcon(
                     ratio: ratio,
                     isSelected: false,
+                    usesPrimaryShapeColor: true,
                     themeModeRaw: themeModeRaw
                 )
                 .frame(width: 34, height: 34)
@@ -5808,11 +6520,11 @@ struct EditorView: View {
                     .font(.system(size: 10, weight: .bold))
                     .multilineTextAlignment(.center)
                     .lineSpacing(0)
-                    .foregroundStyle(HanClipTheme.secondary)
+                    .foregroundStyle(HanClipTheme.primary)
                     .frame(width: 34, height: 34)
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(HanClipTheme.secondary.opacity(0.72), lineWidth: 1)
+                            .stroke(HanClipTheme.primary, lineWidth: 2)
                     }
             }
         }
@@ -5891,6 +6603,8 @@ struct EditorView: View {
                                     ? "영화 불러오는 중"
                                 : model.isSavingProject
                                     ? "영화 저장 중"
+                                : model.isImportingPhotoLibraryMedia
+                                    ? "미디어 불러오는 중"
                                 : model.isImportingSharedItems
                                     ? "공유 미디어 불러오는 중"
                                     : "준비하고 있습니다"
@@ -5941,6 +6655,13 @@ struct EditorView: View {
                             ProgressView(value: model.projectSaveProgress, total: 1)
                                 .progressViewStyle(.linear)
                                 .tint(HanClipTheme.primary)
+                        } else if model.isImportingPhotoLibraryMedia {
+                            ProgressView(
+                                value: model.photoLibraryImportProgress,
+                                total: 1
+                            )
+                            .progressViewStyle(.linear)
+                            .tint(HanClipTheme.primary)
                         } else if model.isImportingSharedItems {
                             ProgressView(value: model.sharedImportProgress, total: 1)
                                 .progressViewStyle(.linear)
@@ -6067,6 +6788,9 @@ struct EditorView: View {
         if model.isImportingSharedItems {
             return model.sharedImportProgress
         }
+        if model.isImportingPhotoLibraryMedia {
+            return model.photoLibraryImportProgress
+        }
         if model.isLoadingCalendarPicker {
             return model.calendarPickerLoadProgress
         }
@@ -6079,6 +6803,7 @@ struct EditorView: View {
     private var isBusyOverlayVisible: Bool {
         model.isExporting
             || model.isLoadingProject
+            || model.isImportingPhotoLibraryMedia
             || model.isImportingSharedItems
             || model.isLoadingCalendarPicker
             || model.isImportingCalendarMedia
@@ -6495,7 +7220,10 @@ private struct ImportantInfoSheet: View {
         ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 설정과 설정 정보를 보여주는 창입니다."),
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다."),
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
-        ("영화 프리셋", "첫 화면 상단에서 새 영화, Ai, 여행 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
+        ("영화 프리셋", "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
+        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.1초로 계산합니다. 선택한 미디어가 많으면 400개에서 30초를 고를 때 40초가 되는 것처럼 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 일반 영화 화면으로 돌아갑니다."),
+        ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 정보 카드는 보물지도를 기본으로 사용합니다."),
+        ("인생 영화", "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다."),
         ("Ai", """
         한클립 안에서 가장 행복하고, 가장 흥분되고, 꼭 기억하고 싶은 순간을 더 잘 찾기 위해 계속 개발하고 있는 판단 능력입니다.
 
@@ -6539,6 +7267,10 @@ private struct ImportantInfoSheet: View {
         ("개봉하기 창", "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다."),
         ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
         ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다."),
+        ("촬영 기간 삽입", "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣는 기능입니다. 기본 자막이면 기존 문구를 바꾸고, 사용자가 편집한 자막이면 현재 커서 위치에 삽입합니다."),
+        ("정보 삽입", "촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣는 기능입니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 정보 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다."),
+        ("정보 카드 테마", "영화 마지막 여행 기록 카드의 디자인입니다. 설정 위쪽에서 테마와 표시 시간을 고르고 현재 영화 화면 비율 그대로 실제 결과를 미리 봅니다. 자막은 현재 자막 서체·글자색·그림자를 이어받습니다. 보물지도는 고전 서체와 점선 경로를 사용하며 선택된 보물지도를 다시 누르면 새 경로로 재생성합니다. 여행일정은 DAY 번호 대신 각 지역의 실제 촬영 날짜를 표시합니다. 랜드마크는 국내외 주요 도시의 대표 명소와 iPhone 기본 그림문자를 자동 조합하고 미등록 지역에는 대표 여행 아이콘을 사용합니다. 오피스는 문서번호, 촬영기간, 날짜·지역·이동수단 표가 있는 정형 보고서입니다."),
+        ("컬렉션 포스터", "컬렉션은 영화 포스터를 세로로 이어지는 2열 배열로 보여주며 영화 추가 포스터는 목록의 마지막에 배치합니다. 사진에서는 영상만 선택할 수 있고 파일에서도 동영상만 가져옵니다. 가져오는 동안 진행바와 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용하며 제목 수정 입력창은 글의 줄 수에 맞춰 커지고 키보드 위 가용 높이를 넘으면 내부에서 스크롤합니다."),
         ("워터마크", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다."),
         ("외부 호출 주소", "Ai  hanclip://aishot\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
         ("샘플 음악", """
@@ -7528,6 +8260,9 @@ private struct ImportantInfoSheet: View {
         case "카피라이터": "info.circle.fill"
         case "첫 화면": "house.fill"
         case "영화 프리셋": "square.grid.2x2.fill"
+        case "퀵모드": "bolt.fill"
+        case "여행 영화": "airplane"
+        case "인생 영화": "heart.fill"
         case "Ai": "sparkles"
         case "AiShot": "camera.fill"
         case "영화 목록": "rectangle.stack.fill"
@@ -7637,6 +8372,10 @@ private struct TextOverlaySettingsSheet: View {
         var lineSpacing: WatermarkLineSpacing
         var lineSpacingScale: Double
         var fontSize: WatermarkFontSize
+        var includesEndingInfoCard: Bool
+        var endingInfoCardDuration: Double
+        var endingInfoCardTheme: EndingInfoCardTheme
+        var endingInfoCardVariation: Int
 
         func matchesContent(of other: SessionState) -> Bool {
             text == other.text
@@ -7649,6 +8388,12 @@ private struct TextOverlaySettingsSheet: View {
                 && lineSpacing == other.lineSpacing
                 && abs(lineSpacingScale - other.lineSpacingScale) < 0.001
                 && fontSize == other.fontSize
+                && includesEndingInfoCard == other.includesEndingInfoCard
+                && abs(
+                    endingInfoCardDuration - other.endingInfoCardDuration
+                ) < 0.001
+                && endingInfoCardTheme == other.endingInfoCardTheme
+                && endingInfoCardVariation == other.endingInfoCardVariation
         }
     }
 
@@ -7660,6 +8405,8 @@ private struct TextOverlaySettingsSheet: View {
     @State private var textInputBackgroundHex =
         TextOverlaySettingsSheet.randomTextInputBackgroundHex()
     @State private var expandedTextInputHeight: CGFloat = 0
+    @State private var textSelectionRange = NSRange(location: 0, length: 0)
+    @State private var hasUserEditedCaptionText = false
     @State private var originalSessionState: SessionState?
     @State private var activeFontPresetID: String?
     @State private var suppressNextResetTap = false
@@ -7677,6 +8424,20 @@ private struct TextOverlaySettingsSheet: View {
     @Binding var lineSpacing: WatermarkLineSpacing
     @Binding var lineSpacingScale: Double
     @Binding var fontSize: WatermarkFontSize
+    let mediaDateRange: ClosedRange<Date>?
+    let mediaCount: Int
+    @Binding var includesEndingInfoCard: Bool
+    @Binding var endingInfoCardDuration: Double
+    @Binding var endingInfoCardTheme: EndingInfoCardTheme
+    @Binding var endingInfoCardVariation: Int
+    let hasEndingInfo: Bool
+    let loadEndingInfoPreview: () async -> EndingInfoPreviewData?
+    let renderEndingInfoPreview: (
+        EndingInfoPreviewData,
+        EndingInfoCardTheme
+    ) -> UIImage
+    @State private var endingInfoPreview: EndingInfoPreviewData?
+    @State private var renderedEndingInfoPreview: UIImage?
 
     private var allowedTextFontNames: Set<String> {
         Set(FontRegistry.availableFonts.map(\.id))
@@ -7698,6 +8459,11 @@ private struct TextOverlaySettingsSheet: View {
 
                     if textEnabled {
                         textInputSection
+                    }
+
+                    dateCaptionSettings
+
+                    if textEnabled {
                         fontSettings
                         appearanceSettings
                         positionSettings
@@ -7790,9 +8556,13 @@ private struct TextOverlaySettingsSheet: View {
             }
         }
         .onAppear {
+            if !hasEndingInfo {
+                includesEndingInfoCard = false
+            }
             applyDefaultSettingsIfNeeded()
             normalizeSelectedFont()
             beginEditingSessionIfNeeded()
+            hasUserEditedCaptionText = !isBasicDateCaptionText
             refreshTextInputBackground()
         }
         .onDisappear {
@@ -7828,6 +8598,33 @@ private struct TextOverlaySettingsSheet: View {
                 WatermarkSettings.normalizedLineSpacingScale(newValue)
             rememberActiveFontPresetAppearance()
         }
+        .task(id: includesEndingInfoCard) {
+            guard includesEndingInfoCard, hasEndingInfo else {
+                endingInfoPreview = nil
+                return
+            }
+            endingInfoPreview = await loadEndingInfoPreview()
+            if endingInfoPreview == nil {
+                includesEndingInfoCard = false
+            } else {
+                refreshRenderedEndingInfoPreview()
+            }
+        }
+        .onChange(of: endingInfoCardTheme) { _, _ in
+            refreshRenderedEndingInfoPreview()
+        }
+        .onChange(of: endingInfoCardVariation) { _, _ in
+            refreshRenderedEndingInfoPreview()
+        }
+        .onChange(of: fontName) { _, _ in
+            refreshRenderedEndingInfoPreview()
+        }
+        .onChange(of: textColorHex) { _, _ in
+            refreshRenderedEndingInfoPreview()
+        }
+        .onChange(of: shadowColorHex) { _, _ in
+            refreshRenderedEndingInfoPreview()
+        }
     }
 
     private var textInputSection: some View {
@@ -7837,9 +8634,336 @@ private struct TextOverlaySettingsSheet: View {
         .textOverlaySectionStyle()
     }
 
+    private var dateCaptionSettings: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                dateCaptionButton(
+                    title: "오늘 날짜 삽입",
+                    value: WatermarkSettings.dateCaptionText()
+                )
+
+                dateCaptionButton(
+                    title: "촬영 기간 삽입",
+                    value: mediaDateCaptionText
+                )
+
+                endingInfoButton
+            }
+
+            if includesEndingInfoCard {
+                endingInfoCardPreview
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        .padding(.horizontal, 8)
+        .animation(.snappy, value: includesEndingInfoCard)
+    }
+
+    @ViewBuilder
+    private var endingInfoCardPreview: some View {
+        if endingInfoPreview != nil {
+            VStack(spacing: 9) {
+                endingInfoThemePicker
+                endingInfoDurationControl
+
+                if let renderedEndingInfoPreview {
+                    Image(uiImage: renderedEndingInfoPreview)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: 13,
+                                style: .continuous
+                            )
+                        )
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: 13,
+                                style: .continuous
+                            )
+                            .stroke(
+                                endingInfoPreviewAccentColor.opacity(0.38),
+                                lineWidth: 1
+                            )
+                        }
+                        .shadow(
+                            color: endingInfoPreviewAccentColor.opacity(0.12),
+                            radius: 8,
+                            y: 3
+                        )
+                        .accessibilityLabel(
+                            "\(endingInfoCardTheme.title) 정보 카드 실제 미리보기"
+                        )
+                } else {
+                    ProgressView()
+                        .tint(endingInfoPreviewAccentColor)
+                        .frame(maxWidth: .infinity, minHeight: 110)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(10)
+            .background(HanClipTheme.panelFill, in: RoundedRectangle(cornerRadius: 15))
+        } else {
+            ProgressView("정보를 확인하는 중…")
+                .font(.system(size: 11, weight: .medium))
+                .tint(HanClipTheme.primary)
+                .foregroundStyle(HanClipTheme.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    HanClipTheme.panelFill,
+                    in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                )
+        }
+    }
+
+    private func refreshRenderedEndingInfoPreview() {
+        guard let endingInfoPreview else {
+            renderedEndingInfoPreview = nil
+            return
+        }
+        renderedEndingInfoPreview = renderEndingInfoPreview(
+            endingInfoPreview,
+            endingInfoCardTheme
+        )
+    }
+
+    private var endingInfoThemePicker: some View {
+        HStack(spacing: 5) {
+            ForEach(EndingInfoCardTheme.allCases) { theme in
+                Button {
+                    if theme == .treasureMap,
+                       endingInfoCardTheme == .treasureMap {
+                        endingInfoCardVariation += 1
+                        refreshRenderedEndingInfoPreview()
+                    } else {
+                        endingInfoCardTheme = theme
+                    }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: theme.systemImage)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(theme.title)
+                            .font(.system(size: 8.5, weight: .bold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(
+                        endingInfoCardTheme == theme
+                            ? endingInfoPreviewAccentColor
+                            : endingInfoPreviewSecondaryColor
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 35)
+                    .background(
+                        endingInfoCardTheme == theme
+                            ? endingInfoPreviewAccentColor.opacity(0.15)
+                            : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 9)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9)
+                            .stroke(
+                                endingInfoCardTheme == theme
+                                    ? endingInfoPreviewAccentColor.opacity(0.42)
+                                    : endingInfoPreviewSecondaryColor.opacity(0.20),
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var endingInfoDurationControl: some View {
+        HStack(spacing: 12) {
+            Text("표시 시간")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(endingInfoPreviewSecondaryColor)
+
+            Spacer(minLength: 0)
+
+            Button {
+                endingInfoCardDuration =
+                    WatermarkSettings.normalizedEndingInfoCardDuration(
+                        endingInfoCardDuration - 0.5
+                    )
+            } label: {
+                Image(systemName: "minus")
+                    .frame(width: 30, height: 28)
+            }
+            .disabled(endingInfoCardDuration <= 1)
+
+            Text(String(format: "%.1f초", endingInfoCardDuration))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(endingInfoPreviewTextColor)
+                .frame(width: 45)
+
+            Button {
+                endingInfoCardDuration =
+                    WatermarkSettings.normalizedEndingInfoCardDuration(
+                        endingInfoCardDuration + 0.5
+                    )
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 30, height: 28)
+            }
+            .disabled(endingInfoCardDuration >= 10)
+        }
+        .font(.system(size: 11, weight: .bold))
+        .foregroundStyle(endingInfoPreviewAccentColor)
+        .buttonStyle(.plain)
+    }
+
+    private var endingInfoPreviewAccentColor: Color {
+        HanClipTheme.primary
+    }
+
+    private var endingInfoPreviewTextColor: Color {
+        HanClipTheme.primaryText
+    }
+
+    private var endingInfoPreviewSecondaryColor: Color {
+        HanClipTheme.secondaryText
+    }
+
+    private var endingInfoButton: some View {
+        Button {
+            guard hasEndingInfo else { return }
+            includesEndingInfoCard.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(
+                    systemName: includesEndingInfoCard
+                        ? "circle.inset.filled"
+                        : "circle"
+                )
+                .font(.system(size: 9.5, weight: .bold))
+                Text("정보 삽입")
+                    .font(.system(size: 10.5, weight: .bold))
+            }
+            .foregroundStyle(
+                includesEndingInfoCard
+                    ? HanClipTheme.primary
+                    : HanClipTheme.primary.opacity(0.58)
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 21)
+            .background(
+                includesEndingInfoCard
+                    ? HanClipTheme.primary.opacity(0.13)
+                    : HanClipTheme.panelFill,
+                in: Capsule()
+            )
+            .overlay {
+                Capsule().stroke(
+                    includesEndingInfoCard
+                        ? HanClipTheme.primary.opacity(0.30)
+                        : HanClipTheme.panelStroke.opacity(0.62),
+                    lineWidth: 1
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasEndingInfo)
+        .opacity(hasEndingInfo ? 1 : 0.36)
+        .accessibilityLabel("마지막 정보 카드 삽입")
+        .accessibilityValue(includesEndingInfoCard ? "선택됨" : "선택 안 됨")
+    }
+
+    private var mediaDateCaptionText: String? {
+        if mediaCount <= 1 {
+            return WatermarkSettings.dateRangeCaptionText(
+                from: Date(),
+                to: Date()
+            )
+        }
+        guard let mediaDateRange else {
+            return WatermarkSettings.dateRangeCaptionText(
+                from: Date(),
+                to: Date()
+            )
+        }
+        return WatermarkSettings.dateRangeCaptionText(
+            from: mediaDateRange.lowerBound,
+            to: mediaDateRange.upperBound
+        )
+    }
+
+    private func dateCaptionButton(
+        title: String,
+        value: String?
+    ) -> some View {
+        let isSelected = value != nil && text == value
+        return Button {
+            guard let value else { return }
+            insertDateCaption(value)
+            textEnabled = true
+        } label: {
+            Text(title)
+                .font(.system(size: 10.5, weight: .bold))
+                .foregroundStyle(
+                    isSelected
+                        ? HanClipTheme.primary
+                        : HanClipTheme.primary.opacity(0.58)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 21)
+                .background(
+                    isSelected
+                        ? HanClipTheme.primary.opacity(0.13)
+                        : HanClipTheme.panelFill,
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            isSelected
+                                ? HanClipTheme.primary.opacity(0.30)
+                                : HanClipTheme.panelStroke.opacity(0.62),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(value == nil)
+        .opacity(value == nil ? 0.36 : 1)
+    }
+
+    private var isBasicDateCaptionText: Bool {
+        text == WatermarkSettings.dateCaptionText()
+            || text == mediaDateCaptionText
+            || text == WatermarkSettings.legacyDefaultText
+    }
+
+    private func insertDateCaption(_ value: String) {
+        guard hasUserEditedCaptionText || !isBasicDateCaptionText else {
+            text = value
+            textSelectionRange = NSRange(
+                location: (value as NSString).length,
+                length: 0
+            )
+            hasUserEditedCaptionText = false
+            return
+        }
+
+        let source = text as NSString
+        let location = min(textSelectionRange.location, source.length)
+        let length = min(textSelectionRange.length, source.length - location)
+        let insertionRange = NSRange(location: location, length: length)
+        text = source.replacingCharacters(in: insertionRange, with: value)
+        textSelectionRange = NSRange(
+            location: location + (value as NSString).length,
+            length: 0
+        )
+        hasUserEditedCaptionText = true
+    }
+
     private var textInput: some View {
         ShadowedCaptionTextView(
             text: $text,
+            selectedRange: $textSelectionRange,
             font: textEditorUIFont(size: textEditorBaseSize),
             textColor: Self.uiColor(textColorHex)
                 ?? HanClipTheme.primaryUIColor,
@@ -7849,6 +8973,9 @@ private struct TextOverlaySettingsSheet: View {
             textAlignment: textEditorNSTextAlignment,
             lineSpacing: textEditorLineSpacing(size: textEditorBaseSize),
             onBeginEditing: clearSampleTextIfNeeded,
+            onUserTextChange: {
+                hasUserEditedCaptionText = true
+            },
             onRequiredHeightChange: growTextInputIfNeeded
         )
             .padding(.horizontal, 14)
@@ -9035,11 +10162,7 @@ private struct TextOverlaySettingsSheet: View {
     }
 
     private func clearSampleTextIfNeeded() {
-        let sampleTexts = [
-            WatermarkSettings.defaultText,
-            WatermarkSettings.legacyDefaultText
-        ]
-        guard sampleTexts.contains(text) else { return }
+        guard text == WatermarkSettings.legacyDefaultText else { return }
         text = ""
     }
 
@@ -9096,6 +10219,10 @@ private struct TextOverlaySettingsSheet: View {
         lineSpacing = state.lineSpacing
         lineSpacingScale = state.lineSpacingScale
         fontSize = state.fontSize
+        includesEndingInfoCard = state.includesEndingInfoCard
+        endingInfoCardDuration = state.endingInfoCardDuration
+        endingInfoCardTheme = state.endingInfoCardTheme
+        endingInfoCardVariation = state.endingInfoCardVariation
     }
 
     private var hasSessionChanges: Bool {
@@ -9123,7 +10250,11 @@ private struct TextOverlaySettingsSheet: View {
             shadowColorHex: Self.normalizedHex(shadowColorHex),
             lineSpacing: lineSpacing,
             lineSpacingScale: lineSpacingScale,
-            fontSize: fontSize
+            fontSize: fontSize,
+            includesEndingInfoCard: includesEndingInfoCard,
+            endingInfoCardDuration: endingInfoCardDuration,
+            endingInfoCardTheme: endingInfoCardTheme,
+            endingInfoCardVariation: endingInfoCardVariation
         )
     }
 
@@ -9295,8 +10426,84 @@ private extension View {
     }
 }
 
+private struct GrowingCollectionTitleTextView: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var measuredHeight: CGFloat
+    let maximumHeight: CGFloat
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.font = UIFont(
+            name: "Cafe24Ssurround",
+            size: 19
+        ) ?? .systemFont(ofSize: 19, weight: .semibold)
+        textView.textColor = HanClipTheme.primaryUIColor
+        textView.textContainerInset = UIEdgeInsets(
+            top: 10,
+            left: 0,
+            bottom: 10,
+            right: 0
+        )
+        textView.textContainer.lineFragmentPadding = 0
+        textView.autocorrectionType = .yes
+        textView.returnKeyType = .default
+        textView.setContentCompressionResistancePriority(
+            .defaultLow,
+            for: .horizontal
+        )
+        DispatchQueue.main.async {
+            textView.becomeFirstResponder()
+        }
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        context.coordinator.parent = self
+        if textView.text != text {
+            textView.text = text
+        }
+        context.coordinator.reportHeight(for: textView)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: GrowingCollectionTitleTextView
+
+        init(parent: GrowingCollectionTitleTextView) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            reportHeight(for: textView)
+        }
+
+        func reportHeight(for textView: UITextView) {
+            guard textView.bounds.width > 0 else { return }
+            let required = textView.sizeThatFits(
+                CGSize(
+                    width: textView.bounds.width,
+                    height: .greatestFiniteMagnitude
+                )
+            ).height
+            let clamped = min(max(56, required), parent.maximumHeight)
+            textView.isScrollEnabled = required > parent.maximumHeight
+            guard abs(parent.measuredHeight - clamped) > 0.5 else { return }
+            DispatchQueue.main.async {
+                self.parent.measuredHeight = clamped
+            }
+        }
+    }
+}
+
 private struct ShadowedCaptionTextView: UIViewRepresentable {
     @Binding var text: String
+    @Binding var selectedRange: NSRange
     let font: UIFont
     let textColor: UIColor
     let shadowColor: UIColor
@@ -9304,6 +10511,7 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
     let textAlignment: NSTextAlignment
     let lineSpacing: CGFloat
     let onBeginEditing: () -> Void
+    let onUserTextChange: () -> Void
     let onRequiredHeightChange: (CGFloat) -> Void
 
     func makeUIView(context: Context) -> UITextView {
@@ -9333,7 +10541,9 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.isApplyingUpdate = true
         applyAttributes(to: textView)
+        context.coordinator.isApplyingUpdate = false
         DispatchQueue.main.async {
             [weak textView, weak coordinator = context.coordinator] in
             guard let textView, let coordinator else { return }
@@ -9346,7 +10556,6 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
     }
 
     private func applyAttributes(to textView: UITextView) {
-        let selectedRange = textView.selectedRange
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = textAlignment
         paragraphStyle.lineSpacing = lineSpacing
@@ -9395,6 +10604,7 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ShadowedCaptionTextView
+        var isApplyingUpdate = false
 
         init(parent: ShadowedCaptionTextView) {
             self.parent = parent
@@ -9406,7 +10616,14 @@ private struct ShadowedCaptionTextView: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
+            parent.selectedRange = textView.selectedRange
+            parent.onUserTextChange()
             reportRequiredHeight(for: textView)
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard !isApplyingUpdate else { return }
+            parent.selectedRange = textView.selectedRange
         }
 
         func reportRequiredHeight(for textView: UITextView) {
@@ -10333,7 +11550,7 @@ private struct BackgroundMusicSettingsSheet: View {
     private func togglePreview(id: String, url: URL?) {
         guard let url else { return }
 
-        if activePreviewID == id {
+        if activePreviewID == id, previewPlayer?.isPlaying == true {
             stopPreview()
             return
         }
@@ -10341,6 +11558,7 @@ private struct BackgroundMusicSettingsSheet: View {
         stopPreview()
 
         do {
+            guard HanClipAudioSession.activatePlayback() else { return }
             let player = try AVAudioPlayer(contentsOf: url)
             player.numberOfLoops = -1
             player.volume = previewVolume(for: musicVolume)
@@ -10961,11 +12179,13 @@ private struct OnlineMusicBrowserView: View {
     }
 
     private var favoritePanelTopPadding: CGFloat { 8 }
-    private var favoritePanelSidePadding: CGFloat { 12 }
-    private var favoritePanelBottomPadding: CGFloat { 12 }
+    private var favoritePanelSidePadding: CGFloat { 0 }
+    private var favoritePanelBottomPadding: CGFloat { 0 }
     private var favoritePanelHeaderHeight: CGFloat { 53 }
     private var favoritePanelEmptyHeight: CGFloat { 112 }
-    private var favoritePanelRowHeight: CGFloat { 54 }
+    private var favoritePanelRowHeight: CGFloat { 50 }
+    private var favoritePanelRowSpacing: CGFloat { 4 }
+    private var favoritePanelListVerticalPadding: CGFloat { 16 }
 
     private func favoritePanel(
         width: CGFloat,
@@ -11007,7 +12227,7 @@ private struct OnlineMusicBrowserView: View {
                         availableHeight: height
                     )
                 ) {
-                    LazyVStack(spacing: 4) {
+                    LazyVStack(spacing: favoritePanelRowSpacing) {
                         ForEach(favoriteMusicSites, id: \.self) { favorite in
                             favoritePanelRow(favorite)
                         }
@@ -11057,7 +12277,10 @@ private struct OnlineMusicBrowserView: View {
             return favoritePanelEmptyHeight
         }
         return favoritePanelHeaderHeight
+            + favoritePanelListVerticalPadding
             + CGFloat(favoriteMusicSites.count) * favoritePanelRowHeight
+            + CGFloat(max(favoriteMusicSites.count - 1, 0))
+                * favoritePanelRowSpacing
     }
 
     private func shouldShowFavoriteScrollbar(availableHeight: CGFloat) -> Bool {
@@ -12556,9 +13779,40 @@ private struct ThumbnailScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-private struct CalendarThumbnailItem {
+private struct CalendarThumbnailItem: Identifiable {
+    let id: String
     let thumbnail: UIImage
     let mediaKind: ClipMediaKind
+}
+
+private struct CalendarMediaPreviewController: UIViewControllerRepresentable {
+    let assetIdentifier: String
+    let sourcePoint: CGPoint
+    let onDelete: () -> Void
+    let onDismiss: () -> Void
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let result = PHAsset.fetchAssets(
+            withLocalIdentifiers: [assetIdentifier],
+            options: nil
+        )
+        guard let asset = result.firstObject else {
+            return UIViewController()
+        }
+        return PhotoPicker.MediaAssetPreviewViewController(
+            asset: asset,
+            imageManager: PHCachingImageManager(),
+            showsCloseButton: false,
+            sourcePoint: sourcePoint,
+            onDelete: onDelete,
+            onDismiss: onDismiss
+        )
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIViewController,
+        context: Context
+    ) {}
 }
 
 private struct CalendarActionButtonStyle: ViewModifier {
@@ -12777,6 +14031,7 @@ private struct VideoSegmentChildOrderDropDelegate: DropDelegate {
 private struct AspectRatioIcon: View {
     let ratio: OutputAspectRatio
     let isSelected: Bool
+    var usesPrimaryShapeColor = false
     let themeModeRaw: String
 
     private var rectangleSize: CGSize {
@@ -12808,7 +14063,9 @@ private struct AspectRatioIcon: View {
 
             RoundedRectangle(cornerRadius: 2)
                 .stroke(
-                    isSelected ? HanClipTheme.primary : HanClipTheme.secondary,
+                    isSelected || usesPrimaryShapeColor
+                        ? HanClipTheme.primary
+                        : HanClipTheme.secondary,
                     lineWidth: 2
                 )
                 .frame(
@@ -13060,6 +14317,307 @@ private extension OutputAspectRatio {
     }
 }
 
+private struct QuickMovieDurationPicker: View {
+    let recommendedDuration: Double
+    let mediaCount: Int
+    let textSettings: WatermarkSettings
+    @Binding var textEnabled: Bool
+    let musicSettings: BackgroundMusicSettings
+    @Binding var musicEnabled: Bool
+    let onSelectText: () -> Void
+    let onSelectMusic: () -> Void
+    let onMake: (Double?) -> Void
+    let onCancel: () -> Void
+
+    @State private var selectedDuration: Double
+    @State private var usesRecommendedDuration = true
+
+    init(
+        recommendedDuration: Double,
+        mediaCount: Int,
+        textSettings: WatermarkSettings,
+        textEnabled: Binding<Bool>,
+        musicSettings: BackgroundMusicSettings,
+        musicEnabled: Binding<Bool>,
+        onSelectText: @escaping () -> Void,
+        onSelectMusic: @escaping () -> Void,
+        onMake: @escaping (Double?) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.recommendedDuration = max(1, recommendedDuration)
+        self.mediaCount = mediaCount
+        self.textSettings = textSettings
+        _textEnabled = textEnabled
+        self.musicSettings = musicSettings
+        _musicEnabled = musicEnabled
+        self.onSelectText = onSelectText
+        self.onSelectMusic = onSelectMusic
+        self.onMake = onMake
+        self.onCancel = onCancel
+        _selectedDuration = State(initialValue: max(1, recommendedDuration))
+    }
+
+    var body: some View {
+        ZStack {
+            HanClipTheme.backgroundGradient.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                HStack {
+                    Button(action: onCancel) {
+                        Text("취소")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(minWidth: 52, minHeight: 52)
+                            .contentShape(Rectangle())
+                    }
+                    .foregroundStyle(HanClipTheme.secondaryText)
+
+                    Spacer()
+
+                    Text("퀵모드 영상 길이")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(HanClipTheme.primaryText)
+
+                    Spacer()
+
+                    Color.clear.frame(width: 52, height: 52)
+                }
+
+                VStack(spacing: 16) {
+                    HStack(spacing: 9) {
+                        Rectangle()
+                            .fill(HanClipTheme.secondary.opacity(0.18))
+                            .frame(height: 1)
+                        Text("시간 변경")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(HanClipTheme.secondaryText)
+                            .fixedSize()
+                        Rectangle()
+                            .fill(HanClipTheme.secondary.opacity(0.18))
+                            .frame(height: 1)
+                    }
+
+                    LazyVGrid(
+                        columns: Array(
+                            repeating: GridItem(.flexible(), spacing: 8),
+                            count: 2
+                        ),
+                        spacing: 12
+                    ) {
+                        durationChoice("30초", seconds: 30)
+                        durationChoice("45초", seconds: 45)
+                        durationChoice("1분", seconds: 60)
+                        durationChoice("2분", seconds: 120)
+                        durationChoice("3분", seconds: 180)
+                        durationChoice("5분", seconds: 300)
+                        specialDurationChoice(
+                            title: "추천시간",
+                            duration: recommendedDuration,
+                            usesDefaultDuration: true
+                        )
+                        specialDurationChoice(
+                            title: "최소시간",
+                            duration: minimumSelectableDuration,
+                            usesDefaultDuration: false
+                        )
+                    }
+
+                    HStack(spacing: 8) {
+                        Button {
+                            usesRecommendedDuration = false
+                            selectedDuration = max(
+                                minimumSelectableDuration,
+                                selectedDuration - 5
+                            )
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.system(size: 18, weight: .bold))
+                                .frame(width: 72, height: 64)
+                                .contentShape(Rectangle())
+                        }
+                        .disabled(
+                            selectedDuration <= minimumSelectableDuration
+                        )
+
+                        VStack(spacing: 2) {
+                            Text("선택시간")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(durationText(selectedDuration))
+                                .font(.system(size: 20, weight: .black, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 64)
+
+                        Button {
+                            usesRecommendedDuration = false
+                            selectedDuration = min(3_600, selectedDuration + 5)
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 18, weight: .bold))
+                                .frame(width: 72, height: 64)
+                                .contentShape(Rectangle())
+                        }
+                    }
+                    .padding(.top, 18)
+                    .foregroundStyle(HanClipTheme.primary)
+                    .background(
+                        HanClipTheme.secondary.opacity(0.08),
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule().stroke(
+                            usesRecommendedDuration
+                                ? HanClipTheme.primary.opacity(0.42)
+                                : HanClipTheme.secondary.opacity(0.20),
+                            lineWidth: 1
+                        )
+                    }
+
+                    VStack(spacing: 0) {
+                        TextOverlaySummaryRow(
+                            settings: textSettings,
+                            isEnabled: $textEnabled,
+                            onSelect: onSelectText
+                        )
+                        .padding(.horizontal, 12)
+
+                        Rectangle()
+                            .fill(HanClipTheme.secondary.opacity(0.16))
+                            .frame(height: 0.8)
+
+                        BackgroundMusicSummaryRow(
+                            settings: musicSettings,
+                            isEnabled: $musicEnabled,
+                            onSelect: onSelectMusic
+                        )
+                        .padding(.horizontal, 12)
+                    }
+                    .background(
+                        HanClipTheme.panelFill,
+                        in: RoundedRectangle(
+                            cornerRadius: 14,
+                            style: .continuous
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(
+                                HanClipTheme.secondary.opacity(0.18),
+                                lineWidth: 1
+                            )
+                    }
+
+                }
+                .padding(.top, 10)
+
+                Spacer(minLength: 20)
+
+                Button {
+                    onMake(usesRecommendedDuration ? nil : selectedDuration)
+                } label: {
+                    Text("이 시간으로 만들기")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 116)
+                        .background(HanClipTheme.primary, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
+            }
+            .padding(.horizontal, 20)
+        }
+        .buttonStyle(.plain)
+        .safeAreaPadding(.top, 6)
+        .safeAreaPadding(.bottom, 6)
+    }
+
+    private func durationChoice(
+        _ title: String,
+        seconds: Double
+    ) -> some View {
+        let adjustedSeconds = max(seconds, minimumSelectableDuration)
+        let isSelected = !usesRecommendedDuration
+            && abs(selectedDuration - adjustedSeconds) < 0.01
+        let maximumMediaCount = Int(seconds * 10)
+        return Button {
+            usesRecommendedDuration = false
+            selectedDuration = adjustedSeconds
+        } label: {
+            VStack(spacing: 3) {
+                Text(title)
+                    .font(.system(size: 16, weight: .bold))
+                Text(
+                    adjustedSeconds <= seconds
+                        ? "최대 \(maximumMediaCount)개"
+                        : "최소 \(durationText(adjustedSeconds))로 적용"
+                )
+                .font(.system(size: 10, weight: .semibold))
+                .opacity(0.70)
+            }
+                .foregroundStyle(
+                    isSelected ? Color.white : HanClipTheme.primaryText
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 68)
+                .background(
+                    isSelected
+                        ? HanClipTheme.primary
+                        : HanClipTheme.secondary.opacity(0.08),
+                    in: Capsule()
+                )
+        }
+    }
+
+    private var minimumSelectableDuration: Double {
+        max(0.1, Double(mediaCount) * 0.1)
+    }
+
+    private func specialDurationChoice(
+        title: String,
+        duration: Double,
+        usesDefaultDuration: Bool
+    ) -> some View {
+        let isSelected = usesRecommendedDuration == usesDefaultDuration
+            && abs(selectedDuration - duration) < 0.01
+        return Button {
+            usesRecommendedDuration = usesDefaultDuration
+            selectedDuration = duration
+        } label: {
+            VStack(spacing: 3) {
+                Text(title)
+                    .font(.system(size: 16, weight: .bold))
+                Text(durationText(duration))
+                    .font(.system(size: 10, weight: .semibold))
+                    .opacity(0.70)
+            }
+            .foregroundStyle(
+                isSelected ? Color.white : HanClipTheme.primaryText
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 68)
+            .background(
+                isSelected
+                    ? HanClipTheme.primary
+                    : HanClipTheme.secondary.opacity(0.08),
+                in: Capsule()
+            )
+        }
+    }
+
+    private func durationText(_ seconds: Double) -> String {
+        if seconds < 1 {
+            return String(format: "%.1f초", seconds)
+        }
+        let rounded = max(1, Int(seconds.rounded()))
+        let minutes = rounded / 60
+        let remainingSeconds = rounded % 60
+        if minutes == 0 { return "\(remainingSeconds)초" }
+        if remainingSeconds == 0 { return "\(minutes)분" }
+        return "\(minutes)분 \(remainingSeconds)초"
+    }
+}
+
 private struct VideoPreviewView: View {
     let url: URL
     let onEdit: () -> Void
@@ -13144,6 +14702,7 @@ private struct VideoPreviewView: View {
         }
         .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
         .onAppear {
+            HanClipAudioSession.activatePlayback()
             player.seek(to: .zero)
             player.play()
         }
@@ -13154,6 +14713,7 @@ private struct VideoPreviewView: View {
         .fullScreenCover(
             isPresented: $isSharePresented,
             onDismiss: {
+                HanClipAudioSession.activatePlayback()
                 player.play()
             }
         ) {
@@ -13162,6 +14722,7 @@ private struct VideoPreviewView: View {
         .fullScreenCover(
             isPresented: $isFullscreenPreviewPresented,
             onDismiss: {
+                HanClipAudioSession.activatePlayback()
                 player.play()
             }
         ) {
@@ -13575,6 +15136,7 @@ private struct VideoPreviewView: View {
            player.currentTime().seconds >= duration - 0.05 {
             player.seek(to: .zero)
         }
+        HanClipAudioSession.activatePlayback()
         player.play()
     }
 
@@ -13590,6 +15152,7 @@ private struct VideoPreviewView: View {
         withAnimation(.snappy) {
             showSaveOptions = false
         }
+        HanClipAudioSession.activatePlayback()
         player.play()
     }
 }
@@ -13719,6 +15282,7 @@ private struct FullscreenVideoPreview: View {
             .accessibilityLabel("전체 화면 닫기")
         }
         .onAppear {
+            HanClipAudioSession.activatePlayback()
             installOrientationObserverIfNeeded()
             updateVideoOrientation()
             installLoopObserverIfNeeded()
@@ -13854,6 +15418,7 @@ private struct FullscreenVideoPreview: View {
                player.currentTime() >= duration {
                 player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
             }
+            HanClipAudioSession.activatePlayback()
             player.play()
             isPlaying = true
             isPlaybackControlVisible = true
@@ -14476,6 +16041,65 @@ private struct PersistentVideoProgressBar: View {
     }
 }
 
+private struct CollectionMoviePlayerView: View {
+    @Environment(\.dismiss) private var dismiss
+    let movie: CollectedMovie
+    let url: URL
+    @State private var player: AVPlayer
+
+    init(movie: CollectedMovie, url: URL) {
+        self.movie = movie
+        self.url = url
+        _player = State(initialValue: AVPlayer(url: url))
+    }
+
+    var body: some View {
+        ZStack {
+            HanClipTheme.backgroundGradient.ignoresSafeArea()
+
+            VideoPlayer(player: player)
+                .ignoresSafeArea(edges: .horizontal)
+
+            VStack {
+                HStack(spacing: 12) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 42, height: 42)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+
+                    Text(movie.title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 42, height: 42)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                }
+                .foregroundStyle(HanClipTheme.text)
+                .padding(16)
+
+                Spacer()
+            }
+        }
+        .onAppear {
+            HanClipAudioSession.activatePlayback()
+            player.play()
+        }
+        .onDisappear {
+            player.pause()
+        }
+    }
+}
+
 private struct CalendarMediaPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -14494,14 +16118,20 @@ private struct CalendarMediaPickerView: View {
     @State private var draftMonth: Int
     @State private var selectedThumbnails: [CalendarThumbnailItem] = []
     @State private var previewedThumbnailItem: CalendarThumbnailItem?
+    @State private var previewSourcePoint: CGPoint = .zero
+    @State private var excludedAssetIdentifiers: Set<String> = []
     @State private var thumbnailLoadTask: Task<Void, Never>?
     @State private var thumbnailColumnCount = 6
     @State private var thumbnailMagnificationCheckpoint: CGFloat = 1
     @State private var thumbnailScrollOffset: CGFloat = 0
     @State private var areThumbnailScrollButtonsVisible = false
     @State private var thumbnailScrollButtonsHideTask: Task<Void, Never>?
+    @State private var didApplyInitialSharedSelection = false
 
-    let onConfirm: (Set<Date>) -> Void
+    let onConfirm: (Set<Date>, Set<String>) -> Void
+    let onCancel: () -> Void
+    let onShowPhotos: ([String]) -> Void
+    private let initialSelectionIdentifiers: Set<String>
 
     private let calendar = Calendar.current
     private let calendarBaseRowHeight: CGFloat = 46
@@ -14520,7 +16150,10 @@ private struct CalendarMediaPickerView: View {
         initialMonth: Date,
         initialMediaDates: Set<Date>,
         initialMediaCounts: [Date: Int],
-        onConfirm: @escaping (Set<Date>) -> Void
+        initialSelectionIdentifiers: [String],
+        onCancel: @escaping () -> Void,
+        onShowPhotos: @escaping ([String]) -> Void,
+        onConfirm: @escaping (Set<Date>, Set<String>) -> Void
     ) {
         let calendar = Calendar.current
         let month = calendar.date(
@@ -14530,12 +16163,26 @@ private struct CalendarMediaPickerView: View {
         _mediaDates = State(initialValue: initialMediaDates)
         _mediaCountsByDate = State(initialValue: initialMediaCounts)
         _loadedMediaMonth = State(initialValue: month)
+        let initialAssets = PHAsset.fetchAssets(
+            withLocalIdentifiers: initialSelectionIdentifiers,
+            options: nil
+        )
+        var initialDates: Set<Date> = []
+        initialAssets.enumerateObjects { asset, _, _ in
+            if let date = asset.creationDate {
+                initialDates.insert(calendar.startOfDay(for: date))
+            }
+        }
+        _selectedDates = State(initialValue: initialDates)
         _draftYear = State(
             initialValue: calendar.component(.year, from: month)
         )
         _draftMonth = State(
             initialValue: calendar.component(.month, from: month)
         )
+        self.onShowPhotos = onShowPhotos
+        self.onCancel = onCancel
+        self.initialSelectionIdentifiers = Set(initialSelectionIdentifiers)
         self.onConfirm = onConfirm
     }
 
@@ -14553,12 +16200,17 @@ private struct CalendarMediaPickerView: View {
 
                 selectionSummary
             }
+            .overlay(alignment: .bottom) {
+                calendarQuickSelectionButtons
+                    .padding(.bottom, 16)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
             .interactiveDismissDisabled(true)
             .task(id: visibleMonth) {
                 await loadHolidayDates()
                 await loadMediaDates()
+                applyInitialSharedSelectionIfNeeded()
             }
             .onChange(of: selectedDates) { _, _ in
                 reloadSelectedThumbnails()
@@ -14571,54 +16223,24 @@ private struct CalendarMediaPickerView: View {
                 monthYearPicker
             }
             .overlay {
-                thumbnailPreviewOverlay
-            }
-            }
-    }
-
-    private var thumbnailPreviewOverlay: some View {
-        GeometryReader { geometry in
-            if let previewedThumbnailItem {
-                let previewWidth = geometry.size.width * 0.7
-                let iconBaseWidth = max(
-                    geometry.size.width - 28 - 4 * CGFloat(6 - 1),
-                    0
-                ) / 6
-                let iconSize = iconBaseWidth / 3
-
-                Image(uiImage: previewedThumbnailItem.thumbnail)
-                    .resizable()
-                    .scaledToFit()
-                    .padding(8)
-                    .frame(width: previewWidth, height: previewWidth)
-                    .background(HanClipTheme.secondary.opacity(0.82))
-                    .clipShape(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                if let item = previewedThumbnailItem {
+                    CalendarMediaPreviewController(
+                        assetIdentifier: item.id,
+                        sourcePoint: previewSourcePoint,
+                        onDelete: {
+                            excludedAssetIdentifiers.insert(item.id)
+                            selectedThumbnails.removeAll { $0.id == item.id }
+                            previewedThumbnailItem = nil
+                        },
+                        onDismiss: {
+                            previewedThumbnailItem = nil
+                        }
                     )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(.white.opacity(0.38), lineWidth: 1)
-                    }
-                    .overlay(alignment: .top) {
-                        calendarThumbnailMediaIcon(
-                            for: previewedThumbnailItem.mediaKind,
-                            size: iconSize,
-                            opacity: thumbnailMediaIconOpacity(
-                                for: thumbnailColumnCount
-                            )
-                        )
-                        .padding(.top, 14)
-                    }
-                    .shadow(color: .black.opacity(0.32), radius: 18, y: 8)
-                    .position(
-                        x: geometry.size.width / 2,
-                        y: geometry.size.height / 2
-                    )
-                    .transition(.scale(scale: 0.96).combined(with: .opacity))
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                }
             }
         }
-        .allowsHitTesting(false)
-        .animation(.snappy(duration: 0.16), value: previewedThumbnailItem != nil)
     }
 
     private var calendarTable: some View {
@@ -14801,30 +16423,30 @@ private struct CalendarMediaPickerView: View {
     private var calendarActionBar: some View {
         HStack(spacing: 10) {
             Button("취소") {
-                dismiss()
+                onCancel()
             }
             .foregroundStyle(HanClipTheme.text.opacity(0.72))
             .calendarActionButtonStyle()
 
             Spacer()
 
-            Button("오늘") {
-                withAnimation(.snappy) {
-                    handleTodayButtonTap()
-                }
+            Button("달력") {
+                thumbnailLoadTask?.cancel()
+                onShowPhotos(resolvedSelectedAssetIdentifiers())
             }
-            .foregroundStyle(HanClipTheme.primary)
+            .foregroundStyle(HanClipTheme.text)
             .calendarActionButtonStyle()
 
             Spacer()
 
             Button("확인") {
                 let confirmedDates = selectedDates
+                let excludedIdentifiers = excludedAssetIdentifiers
                 thumbnailLoadTask?.cancel()
                 thumbnailLoadTask = nil
                 previewedThumbnailItem = nil
                 selectedThumbnails.removeAll(keepingCapacity: false)
-                onConfirm(confirmedDates)
+                onConfirm(confirmedDates, excludedIdentifiers)
             }
             .foregroundStyle(
                 selectedDates.isEmpty
@@ -15000,6 +16622,112 @@ private struct CalendarMediaPickerView: View {
     private func clearSelectedCalendarMedia() {
         selectedDates.removeAll()
         selectedThumbnails.removeAll()
+        excludedAssetIdentifiers.removeAll()
+    }
+
+    private func applyInitialSharedSelectionIfNeeded() {
+        guard !didApplyInitialSharedSelection else { return }
+        didApplyInitialSharedSelection = true
+        guard !initialSelectionIdentifiers.isEmpty,
+              !selectedDates.isEmpty else { return }
+
+        let allIdentifiers = Set(
+            assetsForSelectedDates().map(\.localIdentifier)
+        )
+        excludedAssetIdentifiers = allIdentifiers
+            .subtracting(initialSelectionIdentifiers)
+        reloadSelectedThumbnails()
+    }
+
+    private func resolvedSelectedAssetIdentifiers() -> [String] {
+        assetsForSelectedDates()
+            .map(\.localIdentifier)
+            .filter { !excludedAssetIdentifiers.contains($0) }
+    }
+
+    private func assetsForSelectedDates() -> [PHAsset] {
+        guard let firstDate = selectedDates.min(),
+              let lastDate = selectedDates.max(),
+              let endDate = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: lastDate
+              ) else { return [] }
+
+        let options = PHFetchOptions()
+        options.sortDescriptors = [
+            NSSortDescriptor(key: "creationDate", ascending: true)
+        ]
+        options.predicate = NSPredicate(
+            format: "creationDate >= %@ AND creationDate < %@ AND (mediaType == %d OR mediaType == %d)",
+            firstDate as NSDate,
+            endDate as NSDate,
+            PHAssetMediaType.image.rawValue,
+            PHAssetMediaType.video.rawValue
+        )
+        let result = PHAsset.fetchAssets(with: options)
+        var assets: [PHAsset] = []
+        result.enumerateObjects { asset, _, _ in
+            guard let date = asset.creationDate,
+                  selectedDates.contains(calendar.startOfDay(for: date))
+            else { return }
+            assets.append(asset)
+        }
+        return assets
+    }
+
+    private var calendarQuickSelectionButtons: some View {
+        HStack {
+            calendarQuickSelectionButton(title: "전날") {
+                handleTodayDoubleTap()
+            }
+
+            Spacer()
+
+            calendarQuickSelectionButton(title: "오늘") {
+                handleTodayButtonTap()
+            }
+
+            Spacer()
+
+            calendarQuickSelectionButton(
+                title: "해제",
+                isEnabled: !selectedDates.isEmpty
+            ) {
+                clearSelectedCalendarMedia()
+            }
+        }
+        .padding(.horizontal, 18)
+    }
+
+    private func calendarQuickSelectionButton(
+        title: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+                .frame(width: 58, height: 58)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(
+                            HanClipTheme.secondary.opacity(0.34),
+                            lineWidth: 1.25
+                        )
+                }
+                .shadow(
+                    color: HanClipTheme.secondary.opacity(0.18),
+                    radius: 10,
+                    y: 5
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.34)
+        .accessibilityLabel(title == "해제" ? "선택 해제" : title)
     }
 
     private var selectedThumbnailGrid: some View {
@@ -15008,7 +16736,7 @@ private struct CalendarMediaPickerView: View {
             let horizontalPadding: CGFloat = 14
             let cornerRadius: CGFloat = 16
             let fadeHeight: CGFloat = 50
-            let bottomThumbnailPadding = fadeHeight + spacing
+            let bottomThumbnailPadding: CGFloat = 96
             let availableWidth = max(
                 geometry.size.width - (horizontalPadding * 2),
                 0
@@ -15071,35 +16799,45 @@ private struct CalendarMediaPickerView: View {
                                 Array(selectedThumbnails.enumerated()),
                                 id: \.offset
                             ) { _, item in
-                                Image(uiImage: item.thumbnail)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: itemSize, height: itemSize)
-                                    .clipShape(
-                                        RoundedRectangle(
-                                            cornerRadius: max(2, itemSize * 0.035),
-                                            style: .continuous
+                                GeometryReader { itemGeometry in
+                                    Image(uiImage: item.thumbnail)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: itemSize, height: itemSize)
+                                        .clipShape(
+                                            RoundedRectangle(
+                                                cornerRadius: max(
+                                                    2,
+                                                    itemSize * 0.035
+                                                ),
+                                                style: .continuous
+                                            )
                                         )
-                                    )
-                                    .overlay(alignment: .bottomLeading) {
-                                        calendarThumbnailMediaIcon(
-                                            for: item.mediaKind,
-                                            size: mediaIconSize,
-                                            opacity: mediaIconOpacity
-                                        )
-                                        .padding(sixColumnThumbnailSize * 0.06)
-                                    }
-                                    .onLongPressGesture(
-                                        minimumDuration: 0.22,
-                                        maximumDistance: 14,
-                                        pressing: { isPressing in
-                                            if !isPressing {
-                                                previewedThumbnailItem = nil
-                                            }
+                                        .overlay(alignment: .bottomLeading) {
+                                            calendarThumbnailMediaIcon(
+                                                for: item.mediaKind,
+                                                size: mediaIconSize,
+                                                opacity: mediaIconOpacity
+                                            )
+                                            .padding(
+                                                sixColumnThumbnailSize * 0.06
+                                            )
                                         }
-                                    ) {
-                                        previewedThumbnailItem = item
-                                    }
+                                        .onLongPressGesture(
+                                            minimumDuration: 0.45,
+                                            maximumDistance: 16
+                                        ) {
+                                            let frame = itemGeometry.frame(
+                                                in: .global
+                                            )
+                                            previewSourcePoint = CGPoint(
+                                                x: frame.midX,
+                                                y: frame.midY
+                                            )
+                                            previewedThumbnailItem = item
+                                        }
+                                }
+                                .frame(width: itemSize, height: itemSize)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -15444,9 +17182,10 @@ private struct CalendarMediaPickerView: View {
     }
 
     private var selectedMediaCount: Int {
-        selectedDates.reduce(0) { partialResult, date in
+        let total = selectedDates.reduce(0) { partialResult, date in
             partialResult + (mediaCountsByDate[date] ?? 0)
         }
+        return max(0, total - excludedAssetIdentifiers.count)
     }
 
     private func dateTextColor(for date: Date) -> Color {
@@ -15649,6 +17388,7 @@ private struct CalendarMediaPickerView: View {
         }
 
         let dates = selectedDates
+        let excludedIdentifiers = excludedAssetIdentifiers
         thumbnailLoadTask = Task {
             let assets = await Task.detached {
                 PhotoLibraryService.mediaAssets(
@@ -15660,6 +17400,7 @@ private struct CalendarMediaPickerView: View {
             var thumbnails: [CalendarThumbnailItem] = []
             for asset in assets {
                 guard !Task.isCancelled,
+                      !excludedIdentifiers.contains(asset.localIdentifier),
                       let thumbnail = try? await PhotoLibraryService
                         .thumbnail(
                             for: asset,
@@ -15668,6 +17409,7 @@ private struct CalendarMediaPickerView: View {
                 else { continue }
                 thumbnails.append(
                     CalendarThumbnailItem(
+                        id: asset.localIdentifier,
                         thumbnail: thumbnail,
                         mediaKind: calendarThumbnailMediaKind(for: asset)
                     )
