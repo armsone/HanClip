@@ -85,6 +85,235 @@ private final class PhotoPickerGlassButton: UIButton {
     }
 }
 
+private struct PhotoDurationFilterEditor: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var minutes: Int
+    @State private var seconds: Int
+
+    private let maximumMinutes: Int
+    let onApply: (TimeInterval) -> Void
+    let onClear: () -> Void
+
+    init(
+        currentSeconds: TimeInterval?,
+        onApply: @escaping (TimeInterval) -> Void,
+        onClear: @escaping () -> Void
+    ) {
+        let initialSeconds = max(Int((currentSeconds ?? 180).rounded()), 0)
+        _minutes = State(initialValue: initialSeconds / 60)
+        _seconds = State(initialValue: initialSeconds % 60)
+        maximumMinutes = max(180, initialSeconds / 60 + 30)
+        self.onApply = onApply
+        self.onClear = onClear
+    }
+
+    private var totalSeconds: Int {
+        minutes * 60 + seconds
+    }
+
+    private var resultText: String {
+        "\(formattedDuration(totalSeconds)) 이상인 영상만 표시"
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            header
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("빠른 선택")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.72))
+
+                HStack(spacing: 8) {
+                    presetButton("1분", seconds: 60)
+                    presetButton("3분", seconds: 180)
+                    presetButton("5분", seconds: 300)
+                    presetButton("10분", seconds: 600)
+                }
+            }
+
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    timePicker(
+                        title: "분",
+                        selection: $minutes,
+                        values: 0...maximumMinutes
+                    )
+                    timePicker(
+                        title: "초",
+                        selection: $seconds,
+                        values: 0...59
+                    )
+                }
+
+                Label(resultText, systemImage: "video.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        HanClipTheme.primary.opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
+            }
+            .padding(14)
+            .background(
+                HanClipTheme.panelFill,
+                in: RoundedRectangle(cornerRadius: 20)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(HanClipTheme.secondary.opacity(0.22))
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    onClear()
+                    dismiss()
+                } label: {
+                    Text("필터 해제")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.76))
+                .padding(.vertical, 14)
+                .background(
+                    HanClipTheme.secondary.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+
+                Button {
+                    onApply(TimeInterval(totalSeconds))
+                    dismiss()
+                } label: {
+                    Text("이상 영상 보기")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(HanClipTheme.onSecondary)
+                .padding(.vertical, 14)
+                .background(
+                    HanClipTheme.primary,
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+                .disabled(totalSeconds == 0)
+                .opacity(totalSeconds == 0 ? 0.38 : 1)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
+        .background(HanClipTheme.background.ignoresSafeArea())
+        .presentationDragIndicator(.visible)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "clock.badge.checkmark.fill")
+                .font(.system(size: 21, weight: .bold))
+                .foregroundStyle(HanClipTheme.primary)
+                .frame(width: 42, height: 42)
+                .background(
+                    HanClipTheme.primary.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("영상 시간 필터")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(HanClipTheme.text)
+                Text("설정한 시간 이상인 영상만 찾습니다.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.62))
+            }
+
+            Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(HanClipTheme.text)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        HanClipTheme.secondary.opacity(0.12),
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("닫기")
+        }
+    }
+
+    private func presetButton(
+        _ title: String,
+        seconds presetSeconds: Int
+    ) -> some View {
+        let isSelected = totalSeconds == presetSeconds
+        return Button {
+            minutes = presetSeconds / 60
+            seconds = presetSeconds % 60
+        } label: {
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(
+                    isSelected ? HanClipTheme.onSecondary : HanClipTheme.text
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(
+                    isSelected
+                        ? HanClipTheme.primary
+                        : HanClipTheme.secondary.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 13)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func timePicker(
+        title: String,
+        selection: Binding<Int>,
+        values: ClosedRange<Int>
+    ) -> some View {
+        HStack(spacing: 4) {
+            Picker(title, selection: selection) {
+                ForEach(Array(values), id: \.self) { value in
+                    Text("\(value)").tag(value)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(HanClipTheme.primary)
+
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(HanClipTheme.text.opacity(0.68))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(
+            HanClipTheme.background.opacity(0.78),
+            in: RoundedRectangle(cornerRadius: 14)
+        )
+    }
+
+    private func formattedDuration(_ totalSeconds: Int) -> String {
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        if minutes > 0, seconds > 0 {
+            return "\(minutes)분 \(seconds)초"
+        }
+        if minutes > 0 {
+            return "\(minutes)분"
+        }
+        return "\(seconds)초"
+    }
+}
+
 struct PhotoPicker: UIViewControllerRepresentable {
     let initialSelectionIdentifiers: [String]
     let excludedImportIdentifiers: Set<String>
@@ -149,6 +378,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         ]
         private var durationFilterSeconds: TimeInterval?
         private var durationFilterComparison: DurationFilterComparison = .atLeast
+        private var mediaFiltersBeforeDurationFilter: Set<MediaFilter>?
         private var selectedIdentifiers: [String] = []
         private var selectedIdentifierSet: Set<String> = []
         private var dragShouldSelect = true
@@ -684,19 +914,32 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 guard let self else { return }
                 selectedMediaFilters = [.photo, .livePhoto, .video]
                 durationFilterSeconds = nil
+                mediaFiltersBeforeDurationFilter = nil
                 applyMediaFilters()
             }
-            let actions = [
-                MediaFilter.photo,
-                MediaFilter.livePhoto,
-                MediaFilter.video
-            ].map { filter in
-                UIAction(
-                    title: filter.title,
-                    image: UIImage(systemName: filter.symbolName),
-                    state: selectedMediaFilters.contains(filter) ? .on : .off
-                ) { [weak self] _ in
-                    self?.toggleMediaFilter(filter)
+            let actions: [UIMenuElement]
+            if durationFilterSeconds != nil {
+                actions = [
+                    UIAction(
+                        title: "영상만",
+                        image: UIImage(systemName: "video.fill"),
+                        attributes: [.disabled],
+                        state: .on
+                    ) { _ in }
+                ]
+            } else {
+                actions = [
+                    MediaFilter.photo,
+                    MediaFilter.livePhoto,
+                    MediaFilter.video
+                ].map { filter in
+                    UIAction(
+                        title: filter.title,
+                        image: UIImage(systemName: filter.symbolName),
+                        state: selectedMediaFilters.contains(filter) ? .on : .off
+                    ) { [weak self] _ in
+                        self?.toggleMediaFilter(filter)
+                    }
                 }
             }
             let durationAction = UIAction(
@@ -742,56 +985,47 @@ struct PhotoPicker: UIViewControllerRepresentable {
             } else {
                 timeText = "\(remainingSeconds)초"
             }
-            return "시간: \(timeText) \(durationFilterComparison.title)"
+            return "\(timeText) 이상 영상"
         }
 
         private func presentDurationFilterEditor() {
-            let alert = UIAlertController(
-                title: "영상 시간 필터",
-                message: "분과 초를 입력한 뒤 이상 또는 이하를 선택하세요.",
-                preferredStyle: .alert
+            let editor = PhotoDurationFilterEditor(
+                currentSeconds: durationFilterSeconds,
+                onApply: { [weak self] seconds in
+                    self?.activateDurationFilter(seconds: seconds)
+                },
+                onClear: { [weak self] in
+                    self?.clearDurationFilter()
+                }
             )
-            let currentSeconds = max(Int((durationFilterSeconds ?? 0).rounded()), 0)
-            alert.addTextField { textField in
-                textField.placeholder = "분"
-                textField.keyboardType = .numberPad
-                textField.text = currentSeconds > 0
-                    ? String(currentSeconds / 60)
-                    : nil
-                textField.accessibilityLabel = "분"
+            let controller = UIHostingController(rootView: editor)
+            controller.modalPresentationStyle = .pageSheet
+            if let sheet = controller.sheetPresentationController {
+                sheet.detents = [.medium(), .large()]
+                sheet.selectedDetentIdentifier = .medium
+                sheet.prefersGrabberVisible = false
+                sheet.preferredCornerRadius = 28
             }
-            alert.addTextField { textField in
-                textField.placeholder = "초"
-                textField.keyboardType = .numberPad
-                textField.text = currentSeconds > 0
-                    ? String(currentSeconds % 60)
-                    : nil
-                textField.accessibilityLabel = "초"
-            }
+            present(controller, animated: true)
+        }
 
-            func apply(_ comparison: DurationFilterComparison) {
-                let minutes = Int(alert.textFields?.first?.text ?? "") ?? 0
-                let seconds = Int(alert.textFields?.last?.text ?? "") ?? 0
-                durationFilterSeconds = TimeInterval(
-                    max(minutes, 0) * 60 + max(seconds, 0)
-                )
-                durationFilterComparison = comparison
-                applyMediaFilters()
+        private func activateDurationFilter(seconds: TimeInterval) {
+            if durationFilterSeconds == nil {
+                mediaFiltersBeforeDurationFilter = selectedMediaFilters
             }
+            durationFilterSeconds = max(seconds, 1)
+            durationFilterComparison = .atLeast
+            selectedMediaFilters = [.video]
+            applyMediaFilters()
+        }
 
-            alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-            alert.addAction(UIAlertAction(title: "해제", style: .destructive) {
-                [weak self] _ in
-                self?.durationFilterSeconds = nil
-                self?.applyMediaFilters()
-            })
-            alert.addAction(UIAlertAction(title: "이상 적용", style: .default) {
-                _ in apply(.atLeast)
-            })
-            alert.addAction(UIAlertAction(title: "이하 적용", style: .default) {
-                _ in apply(.atMost)
-            })
-            present(alert, animated: true)
+        private func clearDurationFilter() {
+            durationFilterSeconds = nil
+            durationFilterComparison = .atLeast
+            selectedMediaFilters = mediaFiltersBeforeDurationFilter
+                ?? [.photo, .livePhoto, .video]
+            mediaFiltersBeforeDurationFilter = nil
+            applyMediaFilters()
         }
 
         private func applyMediaFilters() {
