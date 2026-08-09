@@ -341,6 +341,8 @@ private struct PhotoDurationFilterEditor: View {
 struct PhotoPicker: UIViewControllerRepresentable {
     let initialSelectionIdentifiers: [String]
     let excludedImportIdentifiers: Set<String>
+    let videoOnly: Bool
+    let onSelectionIdentifiers: (([String]) -> Void)?
     let onComplete: ([ClipItem], [String]) -> Void
     let onStart: () -> Void
     let onProgress: (Double, String) -> Void
@@ -349,11 +351,38 @@ struct PhotoPicker: UIViewControllerRepresentable {
     let onDismiss: () -> Void
     let onShowCalendar: ([String]) -> Void
 
+    init(
+        initialSelectionIdentifiers: [String],
+        excludedImportIdentifiers: Set<String>,
+        videoOnly: Bool = false,
+        onSelectionIdentifiers: (([String]) -> Void)? = nil,
+        onComplete: @escaping ([ClipItem], [String]) -> Void,
+        onStart: @escaping () -> Void,
+        onProgress: @escaping (Double, String) -> Void,
+        onRegisterCancellation: @escaping (@escaping () -> Void) -> Void,
+        onCancel: @escaping () -> Void,
+        onDismiss: @escaping () -> Void,
+        onShowCalendar: @escaping ([String]) -> Void
+    ) {
+        self.initialSelectionIdentifiers = initialSelectionIdentifiers
+        self.excludedImportIdentifiers = excludedImportIdentifiers
+        self.videoOnly = videoOnly
+        self.onSelectionIdentifiers = onSelectionIdentifiers
+        self.onComplete = onComplete
+        self.onStart = onStart
+        self.onProgress = onProgress
+        self.onRegisterCancellation = onRegisterCancellation
+        self.onCancel = onCancel
+        self.onDismiss = onDismiss
+        self.onShowCalendar = onShowCalendar
+    }
+
     func makeUIViewController(
         context: Context
     ) -> DragSelectionPhotoPickerViewController {
         let container = DragSelectionPhotoPickerViewController(
             initialSelectionIdentifiers: initialSelectionIdentifiers,
+            videoOnly: videoOnly,
             onCancel: {
                 context.coordinator.cancelPicking()
             },
@@ -375,6 +404,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             excludedImportIdentifiers: excludedImportIdentifiers,
+            onSelectionIdentifiers: onSelectionIdentifiers,
             onStart: onStart,
             onProgress: onProgress,
             onRegisterCancellation: onRegisterCancellation,
@@ -392,6 +422,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private let onCancel: () -> Void
         private let onShowCalendar: ([String]) -> Void
         private let onDone: ([String]) -> Void
+        private let videoOnly: Bool
         private let imageManager = PHCachingImageManager()
         private var assets: PHFetchResult<PHAsset>?
         private var assetSections: [AssetDaySection] = []
@@ -403,6 +434,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private var durationFilterSeconds: TimeInterval?
         private var durationFilterComparison: PhotoDurationFilterComparison = .atLeast
         private var mediaFiltersBeforeDurationFilter: Set<MediaFilter>?
+        private var mediaSortMode: MediaSortMode = .captureDate
+        private var isMediaSortAscending = true
         private var selectedIdentifiers: [String] = []
         private var selectedIdentifierSet: Set<String> = []
         private var dragShouldSelect = true
@@ -443,6 +476,25 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
         }
 
+        private enum MediaSortMode: Int {
+            case captureDate
+            case addedDate
+
+            var title: String {
+                switch self {
+                case .captureDate: "날짜순"
+                case .addedDate: "추가순"
+                }
+            }
+
+            var symbolName: String {
+                switch self {
+                case .captureDate: "calendar"
+                case .addedDate: "tray.and.arrow.down"
+                }
+            }
+        }
+
         private struct AssetDaySection {
             let date: Date
             let assets: [PHAsset]
@@ -450,6 +502,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         init(
             initialSelectionIdentifiers: [String],
+            videoOnly: Bool,
             onCancel: @escaping () -> Void,
             onShowCalendar: @escaping ([String]) -> Void,
             onDone: @escaping ([String]) -> Void
@@ -457,6 +510,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
             self.onCancel = onCancel
             self.onShowCalendar = onShowCalendar
             self.onDone = onDone
+            self.videoOnly = videoOnly
+            if videoOnly {
+                selectedMediaFilters = [.video]
+            }
             selectedIdentifiers = initialSelectionIdentifiers
             selectedIdentifierSet = Set(initialSelectionIdentifiers)
             let layout = UICollectionViewFlowLayout()
@@ -885,24 +942,24 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     // the newest items at the bottom.
                     NSSortDescriptor(key: "creationDate", ascending: true)
                 ]
-                options.predicate = NSPredicate(
-                    format: "mediaType == %d OR mediaType == %d",
-                    PHAssetMediaType.image.rawValue,
-                    PHAssetMediaType.video.rawValue
-                )
+                if videoOnly {
+                    options.predicate = NSPredicate(
+                        format: "mediaType == %d",
+                        PHAssetMediaType.video.rawValue
+                    )
+                } else {
+                    options.predicate = NSPredicate(
+                        format: "mediaType == %d OR mediaType == %d",
+                        PHAssetMediaType.image.rawValue,
+                        PHAssetMediaType.video.rawValue
+                    )
+                }
                 assets = PHAsset.fetchAssets(with: options)
                 rebuildAssetSections()
                 updateSelectionCount()
                 collectionView.reloadData()
                 collectionView.layoutIfNeeded()
-                if let lastSection = assetSections.indices.last,
-                   let lastItem = assetSections[lastSection].assets.indices.last {
-                    collectionView.scrollToItem(
-                        at: IndexPath(item: lastItem, section: lastSection),
-                        at: .bottom,
-                        animated: false
-                    )
-                }
+                scrollToInitialMediaPosition(animated: false)
             }
         }
 
@@ -918,19 +975,23 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         private func updateFilterMenu() {
             let allAction = UIAction(
-                title: "전체",
+                title: videoOnly ? "전체 영상" : "전체",
                 image: UIImage(systemName: "square.grid.2x2.fill"),
-                state: selectedMediaFilters.count == 3
+                state: (videoOnly
+                    ? selectedMediaFilters == [.video]
+                    : selectedMediaFilters.count == 3)
                     && durationFilterSeconds == nil ? .on : .off
             ) { [weak self] _ in
                 guard let self else { return }
-                selectedMediaFilters = [.photo, .livePhoto, .video]
+                selectedMediaFilters = videoOnly
+                    ? [.video]
+                    : [.photo, .livePhoto, .video]
                 durationFilterSeconds = nil
                 mediaFiltersBeforeDurationFilter = nil
                 applyMediaFilters()
             }
             let actions: [UIMenuElement]
-            if durationFilterSeconds != nil {
+            if videoOnly || durationFilterSeconds != nil {
                 actions = [
                     UIAction(
                         title: "영상만",
@@ -963,13 +1024,32 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     self?.presentDurationFilterEditor()
                 }
             }
+            let sortActions: [UIMenuElement] = [
+                MediaSortMode.captureDate,
+                MediaSortMode.addedDate
+            ].map { mode in
+                let isSelected = mediaSortMode == mode
+                let arrow = isSelected && !isMediaSortAscending ? "↓" : "↑"
+                return UIAction(
+                    title: "\(mode.title) \(arrow)",
+                    image: UIImage(systemName: mode.symbolName),
+                    state: isSelected ? .on : .off
+                ) { [weak self] _ in
+                    self?.selectMediaSort(mode)
+                }
+            }
             filterButton.menu = UIMenu(
                 title: "필터",
                 options: .displayInline,
                 children: [
                     allAction,
                     UIMenu(options: .displayInline, children: actions),
-                    UIMenu(options: .displayInline, children: [durationAction])
+                    UIMenu(options: .displayInline, children: [durationAction]),
+                    UIMenu(
+                        title: "정렬",
+                        options: .displayInline,
+                        children: sortActions
+                    )
                 ]
             )
             var accessibilityValue = selectedMediaFilters
@@ -979,7 +1059,18 @@ struct PhotoPicker: UIViewControllerRepresentable {
             if durationFilterSeconds != nil {
                 accessibilityValue += ", \(durationFilterMenuTitle)"
             }
+            accessibilityValue += ", \(mediaSortMode.title) "
+                + (isMediaSortAscending ? "오름차순" : "내림차순")
             filterButton.accessibilityValue = accessibilityValue
+        }
+
+        private func selectMediaSort(_ mode: MediaSortMode) {
+            if mediaSortMode == mode {
+                isMediaSortAscending.toggle()
+            } else {
+                mediaSortMode = mode
+            }
+            applyMediaFilters()
         }
 
         private var durationFilterMenuTitle: String {
@@ -1042,7 +1133,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             durationFilterSeconds = nil
             durationFilterComparison = .atLeast
             selectedMediaFilters = mediaFiltersBeforeDurationFilter
-                ?? [.photo, .livePhoto, .video]
+                ?? (videoOnly ? [.video] : [.photo, .livePhoto, .video])
             mediaFiltersBeforeDurationFilter = nil
             applyMediaFilters()
         }
@@ -1053,14 +1144,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             rebuildAssetSections()
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
-            if let lastSection = assetSections.indices.last,
-               let lastItem = assetSections[lastSection].assets.indices.last {
-                collectionView.scrollToItem(
-                    at: IndexPath(item: lastItem, section: lastSection),
-                    at: .bottom,
-                    animated: false
-                )
-            }
+            scrollToInitialMediaPosition(animated: false)
         }
 
         private func rebuildAssetSections() {
@@ -1069,12 +1153,28 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 return
             }
             let calendar = Calendar.current
+            var filteredAssets: [PHAsset] = []
+            assets.enumerateObjects { asset, _, _ in
+                guard self.includesAsset(asset) else { return }
+                filteredAssets.append(asset)
+            }
+            filteredAssets.sort { lhs, rhs in
+                let leftDate = sortingDate(for: lhs)
+                let rightDate = sortingDate(for: rhs)
+                if leftDate == rightDate {
+                    return isMediaSortAscending
+                        ? lhs.localIdentifier < rhs.localIdentifier
+                        : lhs.localIdentifier > rhs.localIdentifier
+                }
+                return isMediaSortAscending
+                    ? leftDate < rightDate
+                    : leftDate > rightDate
+            }
+
             var dates: [Date] = []
             var grouped: [Date: [PHAsset]] = [:]
-            assets.enumerateObjects { asset, _, _ in
-                guard self.includesAsset(asset),
-                      let creationDate = asset.creationDate else { return }
-                let day = calendar.startOfDay(for: creationDate)
+            for asset in filteredAssets {
+                let day = calendar.startOfDay(for: sortingDate(for: asset))
                 if grouped[day] == nil {
                     dates.append(day)
                     grouped[day] = []
@@ -1087,6 +1187,41 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 }
                 return AssetDaySection(date: date, assets: dayAssets)
             }
+        }
+
+        private func sortingDate(for asset: PHAsset) -> Date {
+            switch mediaSortMode {
+            case .captureDate:
+                return asset.creationDate
+                    ?? asset.modificationDate
+                    ?? .distantPast
+            case .addedDate:
+                return asset.modificationDate
+                    ?? asset.creationDate
+                    ?? .distantPast
+            }
+        }
+
+        private func scrollToInitialMediaPosition(animated: Bool) {
+            guard !assetSections.isEmpty else { return }
+            if isMediaSortAscending,
+               let lastSection = assetSections.indices.last,
+               let lastItem = assetSections[lastSection].assets.indices.last {
+                collectionView.scrollToItem(
+                    at: IndexPath(item: lastItem, section: lastSection),
+                    at: .bottom,
+                    animated: animated
+                )
+                return
+            }
+            guard let firstItem = assetSections[0].assets.indices.first else {
+                return
+            }
+            collectionView.scrollToItem(
+                at: IndexPath(item: firstItem, section: 0),
+                at: .top,
+                animated: animated
+            )
         }
 
         private func includesAsset(_ asset: PHAsset) -> Bool {
@@ -2725,6 +2860,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private let onStart: () -> Void
         private let onProgress: (Double, String) -> Void
         private let onRegisterCancellation: (@escaping () -> Void) -> Void
+        private let onSelectionIdentifiers: (([String]) -> Void)?
         private let onComplete: ([ClipItem], [String]) -> Void
         private let onCancel: () -> Void
         private let onDismiss: () -> Void
@@ -2734,6 +2870,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         init(
             excludedImportIdentifiers: Set<String>,
+            onSelectionIdentifiers: (([String]) -> Void)?,
             onStart: @escaping () -> Void,
             onProgress: @escaping (Double, String) -> Void,
             onRegisterCancellation: @escaping (
@@ -2744,6 +2881,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             onDismiss: @escaping () -> Void
         ) {
             self.excludedImportIdentifiers = excludedImportIdentifiers
+            self.onSelectionIdentifiers = onSelectionIdentifiers
             self.onStart = onStart
             self.onProgress = onProgress
             self.onRegisterCancellation = onRegisterCancellation
@@ -2770,6 +2908,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 !excludedImportIdentifiers.contains($0)
             }
             onDismiss()
+            if let onSelectionIdentifiers {
+                onSelectionIdentifiers(identifiersToImport)
+                return
+            }
             guard !identifiersToImport.isEmpty else {
                 onComplete([], assetIdentifiers)
                 return

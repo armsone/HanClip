@@ -10,29 +10,6 @@ import UIKit
 import UniformTypeIdentifiers
 import WebKit
 
-private struct CollectionVideoTransfer: Transferable {
-    let url: URL
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(contentType: .movie) { video in
-            SentTransferredFile(video.url)
-        } importing: { received in
-            let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("HanClip-Collection-\(UUID().uuidString)")
-                .appendingPathExtension(
-                    received.file.pathExtension.isEmpty
-                        ? "mov"
-                        : received.file.pathExtension
-                )
-            try FileManager.default.copyItem(
-                at: received.file,
-                to: destination
-            )
-            return CollectionVideoTransfer(url: destination)
-        }
-    }
-}
-
 enum HanClipAudioSession {
     @discardableResult
     static func activatePlayback() -> Bool {
@@ -149,8 +126,9 @@ struct EditorView: View {
     @State private var isSelectAllChecked = false
     @State private var expandedMemoProjectID: UUID?
     @State private var selectedCollectionMovie: CollectedMovie?
-    @State private var collectionPhotoItems: [PhotosPickerItem] = []
-    @State private var isCollectionPhotoPickerPresented = false
+    @State private var collectionMediaSelectionIdentifiers: [String] = []
+    @State private var isCollectionMediaPickerPresented = false
+    @State private var isCollectionCalendarPickerPresented = false
     @State private var isCollectionFileImporterPresented = false
     @State private var isImportingCollectionMovie = false
     @State private var collectionImportProgress = 0.0
@@ -741,15 +719,8 @@ struct EditorView: View {
             }
             importCollectionFiles(urls)
         }
-        .photosPicker(
-            isPresented: $isCollectionPhotoPickerPresented,
-            selection: $collectionPhotoItems,
-            maxSelectionCount: 0,
-            matching: .videos
-        )
-        .onChange(of: collectionPhotoItems) { _, items in
-            guard !items.isEmpty else { return }
-            importCollectionPhotoItems(items)
+        .fullScreenCover(isPresented: $isCollectionMediaPickerPresented) {
+            collectionMediaPicker
         }
         .sheet(isPresented: $isCollectionTitleEditorPresented) {
             collectionTitleEditorSheet
@@ -1142,6 +1113,85 @@ struct EditorView: View {
             onShowCalendar: model.switchPhotoPickerToCalendar
         )
         .ignoresSafeArea()
+    }
+
+    private var collectionMediaPicker: some View {
+        ZStack {
+            if isCollectionCalendarPickerPresented {
+                CalendarMediaPickerView(
+                    initialMonth: Date(),
+                    initialMediaDates: [],
+                    initialMediaCounts: [:],
+                    initialSelectionIdentifiers:
+                        collectionMediaSelectionIdentifiers,
+                    videoOnly: true,
+                    onCancel: closeCollectionMediaPicker,
+                    onShowPhotos: { identifiers in
+                        collectionMediaSelectionIdentifiers = identifiers
+                        isCollectionCalendarPickerPresented = false
+                    },
+                    onConfirm: { dates, excludedIdentifiers in
+                        let identifiers = collectionVideoIdentifiers(
+                            on: dates,
+                            excluding: excludedIdentifiers
+                        )
+                        finishCollectionMediaSelection(identifiers)
+                    }
+                )
+                .transition(.opacity)
+            } else {
+                PhotoPicker(
+                    initialSelectionIdentifiers:
+                        collectionMediaSelectionIdentifiers,
+                    excludedImportIdentifiers: [],
+                    videoOnly: true,
+                    onSelectionIdentifiers: {
+                        finishCollectionMediaSelection($0)
+                    },
+                    onComplete: { _, _ in },
+                    onStart: {},
+                    onProgress: { _, _ in },
+                    onRegisterCancellation: { _ in },
+                    onCancel: closeCollectionMediaPicker,
+                    onDismiss: {},
+                    onShowCalendar: { identifiers in
+                        collectionMediaSelectionIdentifiers = identifiers
+                        isCollectionCalendarPickerPresented = true
+                    }
+                )
+                .ignoresSafeArea()
+                .transition(.opacity)
+            }
+        }
+        .animation(
+            .easeInOut(duration: 0.11),
+            value: isCollectionCalendarPickerPresented
+        )
+    }
+
+    private func closeCollectionMediaPicker() {
+        collectionMediaSelectionIdentifiers = []
+        isCollectionCalendarPickerPresented = false
+        isCollectionMediaPickerPresented = false
+    }
+
+    private func finishCollectionMediaSelection(_ identifiers: [String]) {
+        closeCollectionMediaPicker()
+        guard !identifiers.isEmpty else { return }
+        importCollectionAssetIdentifiers(identifiers)
+    }
+
+    private func collectionVideoIdentifiers(
+        on dates: Set<Date>,
+        excluding excludedIdentifiers: Set<String>
+    ) -> [String] {
+        PhotoLibraryService.mediaAssets(
+            on: dates,
+            calendar: .current,
+            mediaType: .video
+        )
+        .map(\.localIdentifier)
+        .filter { !excludedIdentifiers.contains($0) }
     }
 
     private var rootTopHeader: some View {
@@ -3649,7 +3699,9 @@ struct EditorView: View {
     private func collectionImportCard(width: CGFloat) -> some View {
         Menu {
             Button {
-                isCollectionPhotoPickerPresented = true
+                collectionMediaSelectionIdentifiers = []
+                isCollectionCalendarPickerPresented = false
+                isCollectionMediaPickerPresented = true
             } label: {
                 Label("사진", systemImage: "photo.on.rectangle")
             }
@@ -3924,37 +3976,23 @@ struct EditorView: View {
         }
     }
 
-    private func importCollectionPhotoItems(_ items: [PhotosPickerItem]) {
-        collectionPhotoItems = []
+    private func importCollectionAssetIdentifiers(_ identifiers: [String]) {
         Task {
-            beginCollectionImport(totalCount: items.count)
+            beginCollectionImport(totalCount: identifiers.count)
             isImportingCollectionMovie = true
             defer { finishCollectionImport() }
             do {
                 var importedCount = 0
-                for item in items {
-                    if let identifier = item.itemIdentifier,
-                       let source = try? await photoLibraryVideoSource(
-                            identifier: identifier
-                       ) {
-                        try await movieCollection.importMovie(
-                            from: source.url,
-                            madeAt: source.creationDate,
-                            shootingRange: source.creationDate.map { $0...$0 },
-                            location: source.location
-                        )
-                        importedCount += 1
-                        updateCollectionImportProgress(
-                            completedCount: importedCount
-                        )
-                        continue
-                    }
-
-                    guard let transfer = try await item.loadTransferable(
-                        type: CollectionVideoTransfer.self
-                    ) else { continue }
-                    defer { try? FileManager.default.removeItem(at: transfer.url) }
-                    try await movieCollection.importMovie(from: transfer.url)
+                for identifier in identifiers {
+                    let source = try await photoLibraryVideoSource(
+                        identifier: identifier
+                    )
+                    try await movieCollection.importMovie(
+                        from: source.url,
+                        madeAt: source.creationDate,
+                        shootingRange: source.creationDate.map { $0...$0 },
+                        location: source.location
+                    )
                     importedCount += 1
                     updateCollectionImportProgress(
                         completedCount: importedCount
@@ -7542,6 +7580,7 @@ private struct ImportantInfoSheet: View {
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
         ("영상 시간 필터", "사진 화면의 필터에서 설정한 시간 이상 또는 이하인 영상을 찾는 기능입니다. 시간 필터를 적용하는 동안에는 사진과 라이브포토를 숨기고 영상만 표시합니다. 1분, 3분, 5분, 10분을 빠르게 고르거나 분과 초를 직접 선택할 수 있으며, 필터를 해제하면 이전에 선택했던 미디어 종류가 복원됩니다."),
+        ("사진 정렬", "사진 화면의 필터에서 날짜순 또는 추가순을 선택합니다. 선택된 정렬을 다시 누르면 글자 옆 화살표가 바뀌며 오름차순과 내림차순이 전환됩니다. 날짜순은 촬영일을 사용하고, 추가순은 사진 보관함의 추가·변경 시각을 사용합니다. 영화 제작, 퀵모드와 컬렉션의 공용 사진 화면에 동일하게 적용됩니다."),
         ("영화 설정", "영화 화면의 로고 아래에 있는 클립 설정 패널입니다. 처음에는 제목 행만 보이도록 접혀 있으며, 클립 설정 행 어디를 눌러도 펼치거나 다시 접을 수 있습니다. 오른쪽 표시판은 이 영화가 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화 또는 골프 영화 중 어떤 프리셋으로 시작했는지 보여주며 프로젝트를 다시 불러와도 유지됩니다. 기존 버전에서 저장해 시작 프리셋 정보가 없는 영화는 기존 영화로 표시합니다. 영상 길이, 기본시간, 라이브포토, 영상 분할, 묶음사진, 자막, 음악과 엔딩을 설정합니다."),
         ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시되며, 아래에 들어 있는 자사진에서 실제 사용할 컷을 확인합니다."),
         ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 촬영 시각, 화면 비율, 밝기와 화면 구도가 모두 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 클립설정의 ‘1/6’은 6장마다 1장을 자동으로 고른다는 뜻이며, −와 +로 비율을 조절할 수 있습니다. 수동은 묶음을 펼쳐 사용할 사진을 직접 고르며, 전체는 모든 사진을 사용합니다."),
@@ -7568,7 +7607,7 @@ private struct ImportantInfoSheet: View {
         ("촬영 기간 삽입", "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣는 기능입니다. 기본 자막이면 기존 문구를 바꾸고, 사용자가 편집한 자막이면 현재 커서 위치에 삽입합니다."),
         ("엔딩", "클립 설정의 음악 아래에 독립된 행으로 표시되며 기본값은 안함입니다. 지도 아이콘과 현재 테마명, 표시 시간 조절, 사용·안함 상태를 한 행에서 설정합니다. 현재 위치 정보가 없어도 사용과 테마를 미리 설정할 수 있고, 이후 위치 정보가 있는 미디어를 추가하면 저장된 설정이 적용됩니다. 촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 엔딩 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다. 퀵모드에서도 같은 행과 설정 화면을 사용합니다."),
         ("엔딩 카드 테마", "영화 마지막 여행 기록 카드의 디자인입니다. 설정 위쪽에서 테마와 표시 시간을 고르고 현재 영화 화면 비율 그대로 실제 결과를 미리 봅니다. 자막은 현재 자막 서체·글자색·그림자를 이어받습니다. 보물지도는 고전 서체와 점선 경로를 사용하며 선택된 보물지도를 다시 누르면 새 경로로 재생성합니다. 여행일정은 DAY 번호 대신 각 지역의 실제 촬영 날짜를 표시합니다. 랜드마크는 국내외 주요 도시의 대표 명소와 iPhone 기본 그림문자를 자동 조합하고 미등록 지역에는 대표 여행 아이콘을 사용합니다. 오피스는 문서번호, 촬영기간, 날짜·지역·이동수단 표가 있는 정형 보고서입니다."),
-        ("컬렉션 포스터", "컬렉션은 영화 포스터를 세로로 이어지는 2열 배열로 보여주며 영화 추가 포스터는 목록의 마지막에 배치합니다. 사진에서는 영상만 선택할 수 있고 파일에서도 동영상만 가져옵니다. 가져오는 동안 진행바와 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용하며 제목 수정 입력창은 글의 줄 수에 맞춰 커지고 키보드 위 가용 높이를 넘으면 내부에서 스크롤합니다."),
+        ("컬렉션 포스터", "컬렉션은 영화 포스터를 세로로 이어지는 2열 배열로 보여주며 영화 추가 포스터는 목록의 마지막에 배치합니다. 사진은 영화 제작과 같은 사진·달력 전환 화면을 사용하되 완성 영화를 가져오는 용도이므로 영상만 표시하고 선택합니다. 파일에서도 동영상만 가져옵니다. 가져오는 동안 진행바와 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용하며 제목 수정 입력창은 글의 줄 수에 맞춰 커지고 키보드 위 가용 높이를 넘으면 내부에서 스크롤합니다."),
         ("워터마크", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다."),
         ("외부 호출 주소", "Ai  hanclip://aishot\n퀵모드  hanclip://quick\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
         ("샘플 음악", """
@@ -17032,6 +17071,7 @@ private struct CalendarMediaPickerView: View {
     let onConfirm: (Set<Date>, Set<String>) -> Void
     let onCancel: () -> Void
     let onShowPhotos: ([String]) -> Void
+    private let videoOnly: Bool
     private let initialSelectionIdentifiers: Set<String>
 
     private let calendar = Calendar.current
@@ -17052,6 +17092,7 @@ private struct CalendarMediaPickerView: View {
         initialMediaDates: Set<Date>,
         initialMediaCounts: [Date: Int],
         initialSelectionIdentifiers: [String],
+        videoOnly: Bool = false,
         onCancel: @escaping () -> Void,
         onShowPhotos: @escaping ([String]) -> Void,
         onConfirm: @escaping (Set<Date>, Set<String>) -> Void
@@ -17063,7 +17104,9 @@ private struct CalendarMediaPickerView: View {
         _visibleMonth = State(initialValue: month)
         _mediaDates = State(initialValue: initialMediaDates)
         _mediaCountsByDate = State(initialValue: initialMediaCounts)
-        _loadedMediaMonth = State(initialValue: month)
+        _loadedMediaMonth = State(
+            initialValue: initialMediaCounts.isEmpty ? nil : month
+        )
         let initialAssets = PHAsset.fetchAssets(
             withLocalIdentifiers: initialSelectionIdentifiers,
             options: nil
@@ -17083,6 +17126,7 @@ private struct CalendarMediaPickerView: View {
         )
         self.onShowPhotos = onShowPhotos
         self.onCancel = onCancel
+        self.videoOnly = videoOnly
         self.initialSelectionIdentifiers = Set(initialSelectionIdentifiers)
         self.onConfirm = onConfirm
     }
@@ -17549,13 +17593,22 @@ private struct CalendarMediaPickerView: View {
         options.sortDescriptors = [
             NSSortDescriptor(key: "creationDate", ascending: true)
         ]
-        options.predicate = NSPredicate(
-            format: "creationDate >= %@ AND creationDate < %@ AND (mediaType == %d OR mediaType == %d)",
-            firstDate as NSDate,
-            endDate as NSDate,
-            PHAssetMediaType.image.rawValue,
-            PHAssetMediaType.video.rawValue
-        )
+        if videoOnly {
+            options.predicate = NSPredicate(
+                format: "creationDate >= %@ AND creationDate < %@ AND mediaType == %d",
+                firstDate as NSDate,
+                endDate as NSDate,
+                PHAssetMediaType.video.rawValue
+            )
+        } else {
+            options.predicate = NSPredicate(
+                format: "creationDate >= %@ AND creationDate < %@ AND (mediaType == %d OR mediaType == %d)",
+                firstDate as NSDate,
+                endDate as NSDate,
+                PHAssetMediaType.image.rawValue,
+                PHAssetMediaType.video.rawValue
+            )
+        }
         let result = PHAsset.fetchAssets(with: options)
         var assets: [PHAsset] = []
         result.enumerateObjects { asset, _, _ in
@@ -18216,7 +18269,8 @@ private struct CalendarMediaPickerView: View {
             let closestDate = await Task.detached {
                 PhotoLibraryService.closestMediaDate(
                     to: yesterday,
-                    calendar: Calendar.current
+                    calendar: Calendar.current,
+                    mediaType: videoOnly ? .video : nil
                 )
             }.value
             guard let date = closestDate else { return }
@@ -18234,7 +18288,8 @@ private struct CalendarMediaPickerView: View {
             let previousDate = await Task.detached {
                 PhotoLibraryService.previousMediaDate(
                     before: baseDate,
-                    calendar: Calendar.current
+                    calendar: Calendar.current,
+                    mediaType: videoOnly ? .video : nil
                 )
             }.value
             guard let date = previousDate else { return }
@@ -18303,7 +18358,8 @@ private struct CalendarMediaPickerView: View {
             let assets = await Task.detached {
                 PhotoLibraryService.mediaAssets(
                     on: dates,
-                    calendar: Calendar.current
+                    calendar: Calendar.current,
+                    mediaType: videoOnly ? .video : nil
                 )
             }.value
 
@@ -18378,7 +18434,8 @@ private struct CalendarMediaPickerView: View {
         let counts = await Task.detached {
             PhotoLibraryService.mediaCounts(
                 in: month,
-                calendar: Calendar.current
+                calendar: Calendar.current,
+                mediaType: videoOnly ? .video : nil
             ) { progress in
                 Task { @MainActor in
                     monthLoadProgress = progress

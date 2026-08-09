@@ -27,6 +27,7 @@ enum PhotoLibraryService {
     static func mediaCounts(
         in month: Date,
         calendar: Calendar,
+        mediaType: PHAssetMediaType? = nil,
         progress: (@MainActor (Double) -> Void)?
     ) -> [Date: Int] {
         guard let interval = calendar.dateInterval(of: .month, for: month)
@@ -35,7 +36,8 @@ enum PhotoLibraryService {
         let options = PHFetchOptions()
         options.predicate = mediaPredicate(
             from: interval.start,
-            to: interval.end
+            to: interval.end,
+            mediaType: mediaType
         )
         options.sortDescriptors = [
             NSSortDescriptor(key: "creationDate", ascending: true)
@@ -64,7 +66,8 @@ enum PhotoLibraryService {
 
     static func mediaAssets(
         on dates: Set<Date>,
-        calendar: Calendar
+        calendar: Calendar,
+        mediaType: PHAssetMediaType? = nil
     ) -> [PHAsset] {
         dates
             .sorted()
@@ -76,7 +79,11 @@ enum PhotoLibraryService {
                 ) else { return [PHAsset]() }
 
                 let options = PHFetchOptions()
-                options.predicate = mediaPredicate(from: date, to: nextDay)
+                options.predicate = mediaPredicate(
+                    from: date,
+                    to: nextDay,
+                    mediaType: mediaType
+                )
                 options.sortDescriptors = [
                     NSSortDescriptor(key: "creationDate", ascending: true)
                 ]
@@ -90,7 +97,11 @@ enum PhotoLibraryService {
             }
     }
 
-    static func closestMediaDate(to targetDate: Date, calendar: Calendar)
+    static func closestMediaDate(
+        to targetDate: Date,
+        calendar: Calendar,
+        mediaType: PHAssetMediaType? = nil
+    )
         -> Date?
     {
         let targetDay = calendar.startOfDay(for: targetDate)
@@ -100,20 +111,27 @@ enum PhotoLibraryService {
             to: targetDay
         ) else { return nil }
 
-        if mediaAssetDate(from: targetDay, to: nextDay, ascending: true)
+        if mediaAssetDate(
+            from: targetDay,
+            to: nextDay,
+            ascending: true,
+            mediaType: mediaType
+        )
             != nil {
             return targetDay
         }
 
         let previousDate = previousMediaDate(
             before: targetDay,
-            calendar: calendar
+            calendar: calendar,
+            mediaType: mediaType
         )
         let nextDate = mediaAssetDate(
             from: nextDay,
             to: Date.distantFuture,
             ascending: true,
-            calendar: calendar
+            calendar: calendar,
+            mediaType: mediaType
         )
 
         switch (previousDate, nextDate) {
@@ -130,14 +148,19 @@ enum PhotoLibraryService {
         }
     }
 
-    static func previousMediaDate(before targetDate: Date, calendar: Calendar)
+    static func previousMediaDate(
+        before targetDate: Date,
+        calendar: Calendar,
+        mediaType: PHAssetMediaType? = nil
+    )
         -> Date?
     {
         let targetDay = calendar.startOfDay(for: targetDate)
         let options = PHFetchOptions()
         options.predicate = mediaPredicate(
             from: Date.distantPast,
-            to: targetDay
+            to: targetDay,
+            mediaType: mediaType
         )
         options.sortDescriptors = [
             NSSortDescriptor(key: "creationDate", ascending: false)
@@ -155,10 +178,15 @@ enum PhotoLibraryService {
         from start: Date,
         to end: Date,
         ascending: Bool,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        mediaType: PHAssetMediaType? = nil
     ) -> Date? {
         let options = PHFetchOptions()
-        options.predicate = mediaPredicate(from: start, to: end)
+        options.predicate = mediaPredicate(
+            from: start,
+            to: end,
+            mediaType: mediaType
+        )
         options.sortDescriptors = [
             NSSortDescriptor(key: "creationDate", ascending: ascending)
         ]
@@ -171,10 +199,23 @@ enum PhotoLibraryService {
         return calendar.startOfDay(for: creationDate)
     }
 
-    private static func mediaPredicate(from start: Date, to end: Date)
+    private static func mediaPredicate(
+        from start: Date,
+        to end: Date,
+        mediaType: PHAssetMediaType? = nil
+    )
         -> NSPredicate
     {
-        NSPredicate(
+        if let mediaType {
+            return NSPredicate(
+                format: "creationDate >= %@ AND creationDate < %@ AND "
+                    + "mediaType == %d",
+                start as NSDate,
+                end as NSDate,
+                mediaType.rawValue
+            )
+        }
+        return NSPredicate(
             format: "creationDate >= %@ AND creationDate < %@ AND "
                 + "(mediaType == %d OR mediaType == %d)",
             start as NSDate,
