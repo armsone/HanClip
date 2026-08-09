@@ -92,7 +92,7 @@ fun VideoTrimSheet(
     Surface(
         modifier = Modifier.fillMaxSize(),
         shape = RoundedCornerShape(0.dp),
-        color = palette.panel
+        color = palette.solidPanel
     ) {
         Column(
             modifier = Modifier

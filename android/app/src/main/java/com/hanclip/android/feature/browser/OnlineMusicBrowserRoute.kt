@@ -164,7 +164,7 @@ fun OnlineMusicBrowserRoute(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = palette.panel
+        color = palette.solidPanel
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Column(

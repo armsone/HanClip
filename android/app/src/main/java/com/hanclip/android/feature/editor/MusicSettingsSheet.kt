@@ -2,6 +2,7 @@ package com.hanclip.android.feature.editor
 
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -84,6 +85,11 @@ fun MusicSettingsSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val initialMusicVolume = remember { musicVolume }
+    val initialOriginalAudioVolume = remember { originalAudioVolume }
+    val initialLoopsToFillVideo = remember { loopsToFillVideo }
+    val initialFadeInEnabled = remember { fadeInEnabled }
+    val initialFadeOutEnabled = remember { fadeOutEnabled }
     var previewTarget by remember { mutableStateOf<MusicPreviewTarget?>(null) }
     val previewPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -112,37 +118,55 @@ fun MusicSettingsSheet(
     Surface(
         modifier = if (fullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
         shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        color = palette.panel
+        color = if (fullScreen) palette.solidPanel else palette.panel
     ) {
         Column(
             modifier = Modifier
                 .then(if (fullScreen) Modifier.fillMaxSize().statusBarsPadding() else Modifier.fillMaxWidth())
+                .then(if (fullScreen) Modifier.background(palette.background) else Modifier)
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        "음악",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.text
-                    )
-                    Text(
-                        currentTitle ?: "배경음악은 낮게 얹고 스윙 타격음은 선명하게 남깁니다.",
-                        color = palette.subText,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
+            if (fullScreen) {
+                FullScreenSettingsHeader(
+                    title = "음악",
+                    titleIcon = Icons.Outlined.MusicNote,
+                    resetDescription = "음악 설정 되돌리기",
+                    palette = palette,
+                    onReset = {
+                        onMusicVolumeChange(initialMusicVolume)
+                        onOriginalAudioVolumeChange(initialOriginalAudioVolume)
+                        onLoopingChange(initialLoopsToFillVideo)
+                        onFadeInChange(initialFadeInEnabled)
+                        onFadeOutChange(initialFadeOutEnabled)
+                    },
+                    onDismiss = onDismiss
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "음악",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.text
+                        )
+                        Text(
+                            currentTitle ?: "배경음악은 낮게 얹고 스윙 타격음은 선명하게 남깁니다.",
+                            color = palette.subText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
+                    }
                 }
             }
 

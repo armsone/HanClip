@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -172,32 +173,44 @@ fun TextOverlaySheet(
     Surface(
         modifier = if (fullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
         shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        color = palette.panel
+        color = if (fullScreen) palette.solidPanel else palette.panel
     ) {
         Column(
             modifier = Modifier
                 .then(if (fullScreen) Modifier.fillMaxSize().statusBarsPadding() else Modifier.fillMaxWidth())
+                .then(if (fullScreen) Modifier.background(palette.background) else Modifier)
                 .verticalScroll(scrollState)
                 .navigationBarsPadding()
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        "자막/로고",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.text
-                    )
-                    Text("미리보기 위치 그대로 완성 MP4에 합성할 자막과 HanClip 로고를 정합니다.", color = palette.subText)
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
+            if (fullScreen) {
+                FullScreenSettingsHeader(
+                    title = "자막",
+                    titleIcon = Icons.Outlined.TextFields,
+                    resetDescription = "자막 설정 되돌리기",
+                    palette = palette,
+                    onReset = { draft = settings },
+                    onDismiss = onDismiss
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "자막/로고",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.text
+                        )
+                        Text("미리보기 위치 그대로 완성 MP4에 합성할 자막과 HanClip 로고를 정합니다.", color = palette.subText)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
+                    }
                 }
             }
 
@@ -222,7 +235,7 @@ fun TextOverlaySheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("워터마크", fontWeight = FontWeight.SemiBold, color = SheetText)
                     Text("완성 MP4에 선택한 플랫폼과 주소를 작게 합성합니다.", color = SheetSubText)
                 }
