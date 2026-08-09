@@ -53,6 +53,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,11 +67,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.hanclip.android.core.media.MediaImportReader
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.theme.HanClipPalette
@@ -648,6 +655,7 @@ private fun RecentSelectionPreview(
     }
 }
 
+@UnstableApi
 @Composable
 private fun CalendarMediaPreviewDialog(
     palette: HanClipPalette,
@@ -656,80 +664,79 @@ private fun CalendarMediaPreviewDialog(
     onRemove: () -> Unit
 ) {
     val context = LocalContext.current
-    val thumbnail by produceState<Bitmap?>(null, item.uri) {
-        value = MediaImportReader.loadThumbnailBitmap(
-            context = context,
-            uri = item.uri,
-            mediaKind = item.kind,
-            targetSize = 1200
-        )
+    val isVideo = item.kind == ClipMediaKind.Video
+    val thumbnail by produceState<Bitmap?>(null, item.uri, isVideo) {
+        if (!isVideo) {
+            value = MediaImportReader.loadThumbnailBitmap(
+                context = context,
+                uri = item.uri,
+                mediaKind = item.kind,
+                targetSize = 1200
+            )
+        }
+    }
+    val player = remember(item.uri, isVideo) {
+        if (isVideo) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(item.uri))
+                repeatMode = Player.REPEAT_MODE_ALL
+                playWhenReady = true
+                prepare()
+            }
+        } else {
+            null
+        }
+    }
+    DisposableEffect(player) {
+        onDispose { player?.release() }
     }
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = palette.solidPanel,
-            border = BorderStroke(1.dp, palette.border)
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Button(
+                onClick = onRemove,
+                modifier = Modifier.fillMaxWidth(0.70f),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(palette.chip),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (thumbnail == null) {
-                        CircularProgressIndicator(color = palette.primary)
-                    } else {
+                Icon(Icons.Outlined.Delete, contentDescription = null)
+                Spacer(Modifier.width(5.dp))
+                Text("선택에서 제거")
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.70f)
+                    .aspectRatio(1f),
+                shape = RoundedCornerShape(18.dp),
+                color = if (isVideo) Color.Black else palette.solidPanel,
+                border = BorderStroke(1.25.dp, palette.border)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (isVideo && player != null) {
+                        AndroidView(
+                            factory = { viewContext ->
+                                PlayerView(viewContext).apply {
+                                    this.player = player
+                                    useController = true
+                                    controllerAutoShow = true
+                                    contentDescription = "${item.displayName} 영상 미리보기"
+                                }
+                            },
+                            update = { view -> view.player = player },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (thumbnail != null) {
                         Image(
                             bitmap = thumbnail!!.asImageBitmap(),
                             contentDescription = "${item.displayName} 크게 보기",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
                         )
-                    }
-                    if (item.kind == ClipMediaKind.Video) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.58f)
-                        ) {
-                            Icon(
-                                Icons.Outlined.MovieCreation,
-                                contentDescription = "영상",
-                                modifier = Modifier.padding(12.dp).size(28.dp),
-                                tint = Color.White
-                            )
-                        }
-                    }
-                }
-                Text(
-                    item.displayName,
-                    color = palette.text,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        border = BorderStroke(1.dp, palette.border)
-                    ) {
-                        Text("닫기", color = palette.text)
-                    }
-                    Button(
-                        onClick = onRemove,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
-                    ) {
-                        Icon(Icons.Outlined.Delete, contentDescription = null)
-                        Spacer(Modifier.width(5.dp))
-                        Text("선택 제외")
+                    } else {
+                        CircularProgressIndicator(color = palette.primary)
                     }
                 }
             }
