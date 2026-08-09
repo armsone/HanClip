@@ -167,6 +167,8 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var isQuickModeProject = false
     @Published private(set) var activeMoviePreset: MoviePreset?
     @Published var isQuickDurationPickerPresented = false
+    private var shouldReturnToQuickDurationPickerAfterPreview = false
+    private var photoLibraryImportCancellationHandler: (() -> Void)?
     @Published private var expandedSimilarPhotoGroupIDs: Set<UUID> = []
 
     var isActiveAiShotProject: Bool {
@@ -624,6 +626,14 @@ final class EditorViewModel: ObservableObject {
         isCalendarPickerPresented = false
     }
 
+    func cancelMediaPicker() {
+        if isQuickModeProject {
+            reset()
+        } else {
+            closeMediaPicker()
+        }
+    }
+
     private func prepareCalendarPicker() async {
         let calendar = Calendar.current
         let month = calendar.date(
@@ -746,11 +756,12 @@ final class EditorViewModel: ObservableObject {
                 clips.filter { !$0.isVideoSegmentChild }.count
             )
             defaultDuration = max(
-                0.1,
+                0.2,
                 targetDuration / Double(sourceMediaCount)
             )
             applyDefaultDurationToAll()
         }
+        shouldReturnToQuickDurationPickerAfterPreview = true
         isQuickModeProject = false
         saveProjectAndOpenPreview()
     }
@@ -1633,6 +1644,8 @@ final class EditorViewModel: ObservableObject {
         previewSaveRequest = nil
         showFileExporter = false
         alertMessage = nil
+        shouldReturnToQuickDurationPickerAfterPreview = false
+        photoLibraryImportCancellationHandler = nil
         activeProjectID = nil
         openedProjectSignature = nil
         isProjectOpen = false
@@ -3319,10 +3332,40 @@ final class EditorViewModel: ObservableObject {
     }
 
     func finishPhotoLibraryImport() {
+        photoLibraryImportCancellationHandler = nil
         photoLibraryImportProgress = 1
         isImportingPhotoLibraryMedia = false
         progressMessage = ""
         photoLibraryImportProgress = 0
+    }
+
+    func registerPhotoLibraryImportCancellation(
+        _ handler: @escaping () -> Void
+    ) {
+        photoLibraryImportCancellationHandler = handler
+    }
+
+    func cancelPhotoLibraryImport() {
+        guard isImportingPhotoLibraryMedia else { return }
+        progressMessage = "미디어 불러오기를 취소하는 중…"
+        photoLibraryImportCancellationHandler?()
+        photoLibraryImportCancellationHandler = nil
+        isImportingPhotoLibraryMedia = false
+        photoLibraryImportProgress = 0
+        progressMessage = ""
+        alertMessage = "미디어 불러오기를 취소했습니다."
+    }
+
+    func rollbackPhotoLibraryImport(_ importedIDs: Set<UUID>) {
+        let removedClips = clips.filter { clip in
+            importedIDs.contains(clip.id)
+                || clip.videoSegmentParentID.map(importedIDs.contains) == true
+        }
+        removedClips.forEach { WorkingClipSourceStore.remove($0.source) }
+        clips.removeAll { clip in
+            importedIDs.contains(clip.id)
+                || clip.videoSegmentParentID.map(importedIDs.contains) == true
+        }
     }
 
     func cancelPreviewGeneration() {
@@ -3450,12 +3493,20 @@ final class EditorViewModel: ObservableObject {
     func editLastSavedProject() {
         showPreview = false
         guard !isLoadingProject else { return }
+        let shouldReturnToQuickPicker =
+            shouldReturnToQuickDurationPickerAfterPreview
+        shouldReturnToQuickDurationPickerAfterPreview = false
         let projectID = activeProjectID
             ?? savedProjects.max(by: {
                 $0.updatedAt < $1.updatedAt
             })?.id
         guard let projectID else { return }
-        loadProject(id: projectID)
+        loadProject(id: projectID) { [weak self] didLoad in
+            guard let self, didLoad, shouldReturnToQuickPicker else { return }
+            activeMoviePreset = .quick
+            isQuickModeProject = true
+            isQuickDurationPickerPresented = true
+        }
     }
 
     func toggleProjectPin(id: UUID) {

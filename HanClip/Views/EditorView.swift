@@ -665,7 +665,7 @@ struct EditorView: View {
                         initialMediaDates: model.initialCalendarMediaDates,
                         initialMediaCounts: model.initialCalendarMediaCounts,
                         initialSelectionIdentifiers: model.mediaPickerSelectionIdentifiers,
-                        onCancel: model.closeMediaPicker,
+                        onCancel: model.cancelMediaPicker,
                         onShowPhotos: model.switchCalendarPickerToPhotos,
                         onConfirm: { dates, excludedAssetIdentifiers in
                             model.mediaPickerSelectionIdentifiers = []
@@ -1080,6 +1080,9 @@ struct EditorView: View {
                     message: message
                 )
             },
+            onRegisterCancellation:
+                model.registerPhotoLibraryImportCancellation,
+            onCancel: model.cancelMediaPicker,
             onDismiss: {
                 model.closeMediaPicker()
             },
@@ -1235,14 +1238,22 @@ struct EditorView: View {
 
     private func handlePhotoPickerComplete(_ items: [ClipItem]) {
         model.mediaPickerSelectionIdentifiers = []
+        let importedIDs = Set(items.map(\.id))
         let thumbnailRefreshTask = model.addPickedItems(items)
-        Task { @MainActor in
+        let completionTask = Task { @MainActor in
             if let thumbnailRefreshTask {
                 await thumbnailRefreshTask.value
             }
+            guard !Task.isCancelled else { return }
             await model.refreshPresetCaptionAfterMediaImport()
+            guard !Task.isCancelled else { return }
             model.finishPhotoLibraryImport()
             model.startQuickMovieIfNeeded()
+        }
+        model.registerPhotoLibraryImportCancellation {
+            thumbnailRefreshTask?.cancel()
+            completionTask.cancel()
+            model.rollbackPhotoLibraryImport(importedIDs)
         }
     }
 
@@ -3311,14 +3322,7 @@ struct EditorView: View {
 
             savedProjectRows(standardProjects)
             standardEmptyProjectRows(
-                count: min(
-                    2,
-                    max(
-                        0,
-                        ProjectStore.maximumProjectCount
-                            - model.savedProjects.count
-                    )
-                )
+                count: max(0, 2 - standardProjects.count)
             )
 
             projectCategoryHeader(
@@ -6732,6 +6736,7 @@ struct EditorView: View {
 
                 if model.isPreviewRendering
                     || model.isImportingCalendarMedia
+                    || model.isImportingPhotoLibraryMedia
                     || model.isImportingSharedItems
                     || model.isSavingProject
                     || model.isLoadingProject {
@@ -6744,6 +6749,8 @@ struct EditorView: View {
                             model.cancelProjectSave()
                         } else if model.isImportingSharedItems {
                             model.cancelSharedItemImport()
+                        } else if model.isImportingPhotoLibraryMedia {
+                            model.cancelPhotoLibraryImport()
                         } else {
                             model.cancelCalendarMediaImport()
                         }
@@ -7221,7 +7228,7 @@ private struct ImportantInfoSheet: View {
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다."),
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
         ("영화 프리셋", "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
-        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.1초로 계산합니다. 선택한 미디어가 많으면 400개에서 30초를 고를 때 40초가 되는 것처럼 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 일반 영화 화면으로 돌아갑니다."),
+        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 정해진 시간보다 최소시간이 길 때 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 퀵모드 영상 길이 화면으로 돌아갑니다."),
         ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 정보 카드는 보물지도를 기본으로 사용합니다."),
         ("인생 영화", "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다."),
         ("Ai", """
@@ -14383,6 +14390,8 @@ private struct QuickMovieDurationPicker: View {
                 }
 
                 VStack(spacing: 16) {
+                    durationStepper
+
                     HStack(spacing: 9) {
                         Rectangle()
                             .fill(HanClipTheme.secondary.opacity(0.18))
@@ -14418,58 +14427,6 @@ private struct QuickMovieDurationPicker: View {
                             title: "최소시간",
                             duration: minimumSelectableDuration,
                             usesDefaultDuration: false
-                        )
-                    }
-
-                    HStack(spacing: 8) {
-                        Button {
-                            usesRecommendedDuration = false
-                            selectedDuration = max(
-                                minimumSelectableDuration,
-                                selectedDuration - 5
-                            )
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 18, weight: .bold))
-                                .frame(width: 72, height: 64)
-                                .contentShape(Rectangle())
-                        }
-                        .disabled(
-                            selectedDuration <= minimumSelectableDuration
-                        )
-
-                        VStack(spacing: 2) {
-                            Text("선택시간")
-                                .font(.system(size: 12, weight: .bold))
-                            Text(durationText(selectedDuration))
-                                .font(.system(size: 20, weight: .black, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 64)
-
-                        Button {
-                            usesRecommendedDuration = false
-                            selectedDuration = min(3_600, selectedDuration + 5)
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .bold))
-                                .frame(width: 72, height: 64)
-                                .contentShape(Rectangle())
-                        }
-                    }
-                    .padding(.top, 18)
-                    .foregroundStyle(HanClipTheme.primary)
-                    .background(
-                        HanClipTheme.secondary.opacity(0.08),
-                        in: Capsule()
-                    )
-                    .overlay {
-                        Capsule().stroke(
-                            usesRecommendedDuration
-                                ? HanClipTheme.primary.opacity(0.42)
-                                : HanClipTheme.secondary.opacity(0.20),
-                            lineWidth: 1
                         )
                     }
 
@@ -14532,6 +14489,58 @@ private struct QuickMovieDurationPicker: View {
         .safeAreaPadding(.bottom, 6)
     }
 
+    private var durationStepper: some View {
+        HStack(spacing: 8) {
+            Button {
+                usesRecommendedDuration = false
+                selectedDuration = max(
+                    minimumSelectableDuration,
+                    selectedDuration - 5
+                )
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 18, weight: .bold))
+                    .frame(width: 72, height: 64)
+                    .contentShape(Rectangle())
+            }
+            .disabled(selectedDuration <= minimumSelectableDuration)
+
+            VStack(spacing: 2) {
+                Text("선택시간")
+                    .font(.system(size: 12, weight: .bold))
+                Text(durationText(selectedDuration))
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
+
+            Button {
+                usesRecommendedDuration = false
+                selectedDuration = min(3_600, selectedDuration + 5)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .bold))
+                    .frame(width: 72, height: 64)
+                    .contentShape(Rectangle())
+            }
+        }
+        .padding(.top, 10)
+        .foregroundStyle(HanClipTheme.primary)
+        .background(
+            HanClipTheme.secondary.opacity(0.08),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule().stroke(
+                usesRecommendedDuration
+                    ? HanClipTheme.primary.opacity(0.42)
+                    : HanClipTheme.secondary.opacity(0.20),
+                lineWidth: 1
+            )
+        }
+    }
+
     private func durationChoice(
         _ title: String,
         seconds: Double
@@ -14539,7 +14548,7 @@ private struct QuickMovieDurationPicker: View {
         let adjustedSeconds = max(seconds, minimumSelectableDuration)
         let isSelected = !usesRecommendedDuration
             && abs(selectedDuration - adjustedSeconds) < 0.01
-        let maximumMediaCount = Int(seconds * 10)
+        let maximumMediaCount = Int(seconds * 5)
         return Button {
             usesRecommendedDuration = false
             selectedDuration = adjustedSeconds
@@ -14570,7 +14579,7 @@ private struct QuickMovieDurationPicker: View {
     }
 
     private var minimumSelectableDuration: Double {
-        max(0.1, Double(mediaCount) * 0.1)
+        max(0.2, Double(mediaCount) * 0.2)
     }
 
     private func specialDurationChoice(
@@ -16439,22 +16448,8 @@ private struct CalendarMediaPickerView: View {
 
             Spacer()
 
-            Button("확인") {
-                let confirmedDates = selectedDates
-                let excludedIdentifiers = excludedAssetIdentifiers
-                thumbnailLoadTask?.cancel()
-                thumbnailLoadTask = nil
-                previewedThumbnailItem = nil
-                selectedThumbnails.removeAll(keepingCapacity: false)
-                onConfirm(confirmedDates, excludedIdentifiers)
-            }
-            .foregroundStyle(
-                selectedDates.isEmpty
-                    ? HanClipTheme.text.opacity(0.35)
-                    : HanClipTheme.secondary
-            )
-            .disabled(selectedDates.isEmpty)
-            .calendarActionButtonStyle()
+            Color.clear
+                .frame(width: 68, height: 40)
         }
         .font(.system(size: 16, weight: .semibold))
         .padding(.horizontal, 18)
@@ -16696,8 +16691,27 @@ private struct CalendarMediaPickerView: View {
             ) {
                 clearSelectedCalendarMedia()
             }
+
+            Spacer()
+
+            calendarQuickSelectionButton(
+                title: "확인",
+                isEnabled: !selectedDates.isEmpty
+            ) {
+                confirmCalendarSelection()
+            }
         }
         .padding(.horizontal, 18)
+    }
+
+    private func confirmCalendarSelection() {
+        let confirmedDates = selectedDates
+        let excludedIdentifiers = excludedAssetIdentifiers
+        thumbnailLoadTask?.cancel()
+        thumbnailLoadTask = nil
+        previewedThumbnailItem = nil
+        selectedThumbnails.removeAll(keepingCapacity: false)
+        onConfirm(confirmedDates, excludedIdentifiers)
     }
 
     private func calendarQuickSelectionButton(

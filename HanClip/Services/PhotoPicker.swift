@@ -90,6 +90,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
     let onComplete: ([ClipItem]) -> Void
     let onStart: () -> Void
     let onProgress: (Double, String) -> Void
+    let onRegisterCancellation: (@escaping () -> Void) -> Void
+    let onCancel: () -> Void
     let onDismiss: () -> Void
     let onShowCalendar: ([String]) -> Void
 
@@ -120,7 +122,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
         Coordinator(
             onStart: onStart,
             onProgress: onProgress,
+            onRegisterCancellation: onRegisterCancellation,
             onComplete: onComplete,
+            onCancel: onCancel,
             onDismiss: onDismiss
         )
     }
@@ -154,7 +158,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private var lastAutoScrollTimestamp: CFTimeInterval?
         private let filterButton = UIButton(type: .system)
         private let clearSelectionButton = UIButton(type: .system)
-        private let doneButton = PhotoPickerGlassButton(type: .system)
+        private let doneButton = UIButton(type: .system)
         private let previousDayButton = UIButton(type: .system)
         private let todayButton = UIButton(type: .system)
         private var isTodayButtonArmedForSelection = false
@@ -298,33 +302,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             cancelButton.layer.shadowRadius = 8
             cancelButton.layer.shadowOffset = CGSize(width: 0, height: 4)
 
-            configureCompactButton(
-                doneButton,
-                title: "0개 추가",
-                symbolName: nil,
-                fontSize: 16,
-                foregroundColor: UIColor(HanClipTheme.text)
-                    .withAlphaComponent(0.35),
-                backgroundColor: .clear,
-                borderColor: UIColor.white.withAlphaComponent(0.52)
-            )
-            doneButton.isEnabled = false
-            doneButton.alpha = 1
-            doneButton.addTarget(
-                self,
-                action: #selector(doneTapped),
-                for: .touchUpInside
-            )
-            doneButton.backgroundColor = .clear
-            doneButton.layer.shadowColor = HanClipTheme.secondaryUIColor.cgColor
-            doneButton.layer.shadowOpacity = 0.08
-            doneButton.layer.shadowRadius = 8
-            doneButton.layer.shadowOffset = CGSize(width: 0, height: 4)
-
             cancelButton.translatesAutoresizingMaskIntoConstraints = false
-            doneButton.translatesAutoresizingMaskIntoConstraints = false
             header.addSubview(cancelButton)
-            header.addSubview(doneButton)
 
             NSLayoutConstraint.activate([
                 header.topAnchor.constraint(equalTo: view.topAnchor),
@@ -344,16 +323,6 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 ),
                 cancelButton.widthAnchor.constraint(equalToConstant: 88),
                 cancelButton.heightAnchor.constraint(equalToConstant: 40),
-                doneButton.trailingAnchor.constraint(
-                    equalTo: header.trailingAnchor,
-                    constant: -18
-                ),
-                doneButton.topAnchor.constraint(
-                    equalTo: view.safeAreaLayoutGuide.topAnchor,
-                    constant: 14
-                ),
-                doneButton.widthAnchor.constraint(equalToConstant: 88),
-                doneButton.heightAnchor.constraint(equalToConstant: 40),
                 titleButton.centerXAnchor.constraint(equalTo: header.centerXAnchor),
                 titleButton.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
                 titleButton.widthAnchor.constraint(equalToConstant: 88),
@@ -363,8 +332,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     constant: 8
                 ),
                 titleButton.trailingAnchor.constraint(
-                    lessThanOrEqualTo: doneButton.leadingAnchor,
-                    constant: -8
+                    lessThanOrEqualTo: header.trailingAnchor,
+                    constant: -18
                 )
             ])
             header.tag = 101
@@ -543,11 +512,25 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 for: .touchUpInside
             )
 
+            configureFloatingDayButton(
+                doneButton,
+                title: "추가",
+                accessibilityHint: "선택한 미디어를 영화에 추가합니다."
+            )
+            doneButton.isEnabled = false
+            doneButton.alpha = 0.34
+            doneButton.addTarget(
+                self,
+                action: #selector(doneTapped),
+                for: .touchUpInside
+            )
+
             let buttonStack = UIStackView(arrangedSubviews: [
                 filterButton,
                 previousDayButton,
                 todayButton,
-                clearSelectionButton
+                clearSelectionButton,
+                doneButton
             ])
             buttonStack.axis = .horizontal
             buttonStack.alignment = .center
@@ -567,14 +550,16 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     equalTo: view.safeAreaLayoutGuide.bottomAnchor,
                     constant: -16
                 ),
-                filterButton.widthAnchor.constraint(equalToConstant: 58),
-                filterButton.heightAnchor.constraint(equalToConstant: 58),
-                previousDayButton.widthAnchor.constraint(equalToConstant: 58),
-                previousDayButton.heightAnchor.constraint(equalToConstant: 58),
-                todayButton.widthAnchor.constraint(equalToConstant: 58),
-                todayButton.heightAnchor.constraint(equalToConstant: 58),
-                clearSelectionButton.widthAnchor.constraint(equalToConstant: 58),
-                clearSelectionButton.heightAnchor.constraint(equalToConstant: 58)
+                filterButton.widthAnchor.constraint(equalToConstant: 54),
+                filterButton.heightAnchor.constraint(equalToConstant: 54),
+                previousDayButton.widthAnchor.constraint(equalToConstant: 54),
+                previousDayButton.heightAnchor.constraint(equalToConstant: 54),
+                todayButton.widthAnchor.constraint(equalToConstant: 54),
+                todayButton.heightAnchor.constraint(equalToConstant: 54),
+                clearSelectionButton.widthAnchor.constraint(equalToConstant: 54),
+                clearSelectionButton.heightAnchor.constraint(equalToConstant: 54),
+                doneButton.widthAnchor.constraint(equalToConstant: 54),
+                doneButton.heightAnchor.constraint(equalToConstant: 54)
             ])
         }
 
@@ -1197,9 +1182,10 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         private func updateSelectionCount() {
             let count = selectedIdentifiers.count
-            updateDoneButtonTitle("\(count)개 추가")
+            updateDoneButtonTitle("추가")
             doneButton.isEnabled = count > 0
-            doneButton.alpha = 1
+            doneButton.alpha = count > 0 ? 1 : 0.34
+            doneButton.accessibilityValue = "\(count)개 선택"
             doneButton.setTitleColor(
                 count > 0
                     ? HanClipTheme.secondaryUIColor
@@ -2435,20 +2421,29 @@ struct PhotoPicker: UIViewControllerRepresentable {
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         private let onStart: () -> Void
         private let onProgress: (Double, String) -> Void
+        private let onRegisterCancellation: (@escaping () -> Void) -> Void
         private let onComplete: ([ClipItem]) -> Void
+        private let onCancel: () -> Void
         private let onDismiss: () -> Void
         private var selectedResults: [PHPickerResult] = []
+        private var importTask: Task<Void, Never>?
         weak var container: PhotoPickerContainerViewController?
 
         init(
             onStart: @escaping () -> Void,
             onProgress: @escaping (Double, String) -> Void,
+            onRegisterCancellation: @escaping (
+                @escaping () -> Void
+            ) -> Void,
             onComplete: @escaping ([ClipItem]) -> Void,
+            onCancel: @escaping () -> Void,
             onDismiss: @escaping () -> Void
         ) {
             self.onStart = onStart
             self.onProgress = onProgress
+            self.onRegisterCancellation = onRegisterCancellation
             self.onComplete = onComplete
+            self.onCancel = onCancel
             self.onDismiss = onDismiss
         }
 
@@ -2462,7 +2457,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         func cancelPicking() {
             selectedResults = []
-            onDismiss()
+            onCancel()
         }
 
         func finishPicking(assetIdentifiers: [String]) {
@@ -2470,10 +2465,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
             onDismiss()
             onStart()
 
-            Task { @MainActor in
+            importTask?.cancel()
+            importTask = Task { @MainActor [weak self] in
+                guard let self else { return }
                 var items: [ClipItem] = []
                 items.reserveCapacity(assetIdentifiers.count)
                 for (index, identifier) in assetIdentifiers.enumerated() {
+                    guard !Task.isCancelled else { return }
                     defer {
                         let completed = index + 1
                         onProgress(
@@ -2521,7 +2519,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
                         )
                     )
                 }
+                guard !Task.isCancelled else { return }
                 onComplete(items)
+                importTask = nil
+            }
+            onRegisterCancellation { [weak self] in
+                self?.importTask?.cancel()
             }
         }
 
@@ -2532,9 +2535,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
             onDismiss()
             onStart()
 
-            Task { @MainActor in
+            importTask?.cancel()
+            importTask = Task { @MainActor [weak self] in
+                guard let self else { return }
                 var items: [ClipItem] = []
                 for (index, result) in results.enumerated() {
+                    guard !Task.isCancelled else { return }
                     defer {
                         let completed = index + 1
                         onProgress(
@@ -2587,7 +2593,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
                         items.append(contentsOf: fallbackItems)
                     }
                 }
+                guard !Task.isCancelled else { return }
                 onComplete(items)
+                importTask = nil
+            }
+            onRegisterCancellation { [weak self] in
+                self?.importTask?.cancel()
             }
         }
 
