@@ -223,6 +223,45 @@ final class MovieCollectionStore: ObservableObject {
         }
     }
 
+    func posterCandidatesWithAI(
+        for movie: CollectedMovie,
+        count: Int = 6
+    ) async -> [Data] {
+        guard activePosterSelections.insert(movie.id).inserted,
+              movies.contains(where: { $0.id == movie.id })
+        else { return [] }
+        defer { activePosterSelections.remove(movie.id) }
+
+        let videoURL = videoURL(for: movie)
+        let posterURL = collectionDirectory
+            .appendingPathComponent(movie.posterFilename)
+        let currentPosterData = try? Data(contentsOf: posterURL)
+        return await Task.detached(priority: .userInitiated) {
+            let asset = AVURLAsset(url: videoURL)
+            let loadedDuration = try? await asset.load(.duration).seconds
+            let duration = loadedDuration?.isFinite == true
+                ? max(0, loadedDuration ?? 0)
+                : 0
+            return await Self.makePosterCandidates(
+                from: asset,
+                duration: duration,
+                count: count,
+                avoidingPosterData: currentPosterData
+            )
+        }.value
+    }
+
+    func applyPosterCandidate(_ data: Data, to movie: CollectedMovie) throws {
+        guard let index = movies.firstIndex(where: { $0.id == movie.id })
+        else { return }
+        let posterURL = collectionDirectory
+            .appendingPathComponent(movies[index].posterFilename)
+        try data.write(to: posterURL, options: .atomic)
+        movies[index].posterSelectionVersion = Self.currentPosterSelectionVersion
+        try save()
+        objectWillChange.send()
+    }
+
     private func regenerateOutdatedPosters() async {
         let movieIDs = movies.filter {
             ($0.posterSelectionVersion ?? 0)
@@ -249,6 +288,33 @@ final class MovieCollectionStore: ObservableObject {
         duration: Double,
         avoidingPosterData: Data? = nil
     ) async -> Data? {
+        if let candidate = await makePosterCandidates(
+            from: asset,
+            duration: duration,
+            count: 1,
+            avoidingPosterData: avoidingPosterData
+        ).first {
+            return candidate
+        }
+
+        let request = QLThumbnailGenerator.Request(
+            fileAt: sourceURL,
+            size: CGSize(width: 720, height: 1_080),
+            scale: 1,
+            representationTypes: .thumbnail
+        )
+        guard let representation = try? await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request)
+        else { return nil }
+        return representation.uiImage.jpegData(compressionQuality: 0.84)
+    }
+
+    private nonisolated static func makePosterCandidates(
+        from asset: AVAsset,
+        duration: Double,
+        count: Int,
+        avoidingPosterData: Data?
+    ) async -> [Data] {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 720, height: 1_080)
@@ -262,15 +328,16 @@ final class MovieCollectionStore: ObservableObject {
         )
 
         let safeDuration = max(duration, 0)
-        let samplingPositions = [
-            0.02, 0.06, 0.12, 0.20, 0.29, 0.39, 0.50,
-            0.61, 0.71, 0.80, 0.88, 0.94, 0.98
-        ]
+        let samplingPositions = stride(from: 0.02, through: 0.98, by: 0.04)
         let rawCandidates = safeDuration > 0
             ? samplingPositions.map { safeDuration * $0 }
             : [0]
         var visitedTimes: Set<Int64> = []
-        var bestPoster: (data: Data, score: Double)?
+        var candidates: [(
+            data: Data,
+            score: Double,
+            featurePrint: VNFeaturePrintObservation?
+        )] = []
         let avoidedFeaturePrint: VNFeaturePrintObservation?
         if let avoidingPosterData,
            let avoidedImage = UIImage(data: avoidingPosterData)?.cgImage {
@@ -291,8 +358,9 @@ final class MovieCollectionStore: ObservableObject {
             else { continue }
 
             var score = aiPosterScore(for: cgImage)
+            let candidateFeaturePrint = featurePrint(for: cgImage)
             if let avoidedFeaturePrint,
-               let candidateFeaturePrint = featurePrint(for: cgImage) {
+               let candidateFeaturePrint {
                 var distance: Float = 0
                 if (try? avoidedFeaturePrint.computeDistance(
                     &distance,
@@ -305,24 +373,61 @@ final class MovieCollectionStore: ObservableObject {
                     }
                 }
             }
-            if bestPoster == nil || score > bestPoster?.score ?? 0 {
-                bestPoster = (data, score)
-            }
+            candidates.append((data, score, candidateFeaturePrint))
         }
-        if let bestPoster, bestPoster.score > -40 {
-            return bestPoster.data
-        }
+        guard !candidates.isEmpty else { return [] }
 
-        let request = QLThumbnailGenerator.Request(
-            fileAt: sourceURL,
-            size: CGSize(width: 720, height: 1_080),
-            scale: 1,
-            representationTypes: .thumbnail
-        )
-        guard let representation = try? await QLThumbnailGenerator.shared
-            .generateBestRepresentation(for: request)
-        else { return bestPoster?.data }
-        return representation.uiImage.jpegData(compressionQuality: 0.84)
+        var remaining = candidates.sorted { $0.score > $1.score }
+        var selected: [(
+            data: Data,
+            score: Double,
+            featurePrint: VNFeaturePrintObservation?
+        )] = []
+        while selected.count < max(1, count), !remaining.isEmpty {
+            let selectedIndex: Int
+            if selected.isEmpty {
+                selectedIndex = 0
+            } else {
+                selectedIndex = remaining.indices.max { lhs, rhs in
+                    diverseCandidateScore(remaining[lhs], selected: selected)
+                        < diverseCandidateScore(remaining[rhs], selected: selected)
+                } ?? 0
+            }
+            selected.append(remaining.remove(at: selectedIndex))
+        }
+        return selected.map(\.data)
+    }
+
+    private nonisolated static func diverseCandidateScore(
+        _ candidate: (
+            data: Data,
+            score: Double,
+            featurePrint: VNFeaturePrintObservation?
+        ),
+        selected: [(
+            data: Data,
+            score: Double,
+            featurePrint: VNFeaturePrintObservation?
+        )]
+    ) -> Double {
+        guard let featurePrint = candidate.featurePrint else {
+            return candidate.score
+        }
+        let distances = selected.compactMap { selectedCandidate -> Double? in
+            guard let selectedPrint = selectedCandidate.featurePrint else {
+                return nil
+            }
+            var distance: Float = 0
+            guard (try? featurePrint.computeDistance(
+                &distance,
+                to: selectedPrint
+            )) != nil else { return nil }
+            return Double(distance)
+        }
+        let minimumDistance = distances.min() ?? 0
+        let diversityBonus = min(max(minimumDistance, 0), 0.8) * 220
+        let similarityPenalty = minimumDistance < 0.08 ? 160.0 : 0
+        return candidate.score + diversityBonus - similarityPenalty
     }
 
     private nonisolated static func posterScore(for image: UIImage) -> Double {

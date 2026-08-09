@@ -138,6 +138,9 @@ struct EditorView: View {
     @State private var collectionTitleDraft = ""
     @State private var isCollectionTitleEditorPresented = false
     @State private var collectionTitleEditorHeight: CGFloat = 56
+    @State private var collectionPosterCandidateMovie: CollectedMovie?
+    @State private var collectionPosterCandidates: [Data] = []
+    @State private var isLoadingCollectionPosterCandidates = false
     @FocusState private var focusedMemoProjectID: UUID?
 
     private let aspectRatioPickerAnimation = Animation.snappy
@@ -724,6 +727,11 @@ struct EditorView: View {
         }
         .sheet(isPresented: $isCollectionTitleEditorPresented) {
             collectionTitleEditorSheet
+        }
+        .sheet(item: $collectionPosterCandidateMovie) { movie in
+            collectionPosterCandidateSheet(movie)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
         }
         .fullScreenCover(isPresented: $model.isFileImporterPresented) {
             FilePicker(
@@ -3691,12 +3699,9 @@ struct EditorView: View {
             }
 
             Button {
-                Task {
-                    await movieCollection.reselectPosterWithAI(
-                        for: movie,
-                        preferDifferentFromCurrent: true
-                    )
-                }
+                collectionPosterCandidates = []
+                isLoadingCollectionPosterCandidates = true
+                collectionPosterCandidateMovie = movie
             } label: {
                 Label("썸네일 AI 재선택", systemImage: "sparkles")
             }
@@ -3864,11 +3869,13 @@ struct EditorView: View {
 
     private func collectionMovieCard(
         _ movie: CollectedMovie,
-        width: CGFloat
+        width: CGFloat,
+        posterOverride: UIImage? = nil
     ) -> some View {
         ZStack(alignment: .topLeading) {
             Group {
-                if let poster = movieCollection.poster(for: movie) {
+                if let poster = posterOverride
+                    ?? movieCollection.poster(for: movie) {
                     Image(uiImage: poster)
                         .resizable()
                         .scaledToFill()
@@ -3932,6 +3939,141 @@ struct EditorView: View {
                 .stroke(Color.white.opacity(0.34), lineWidth: 1)
         }
         .shadow(color: Color.black.opacity(0.14), radius: 5, y: 3)
+    }
+
+    private func collectionPosterCandidateSheet(
+        _ movie: CollectedMovie
+    ) -> some View {
+        NavigationStack {
+            ZStack {
+                HanClipTheme.backgroundGradient.ignoresSafeArea()
+
+                if isLoadingCollectionPosterCandidates {
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(HanClipTheme.primary)
+                        Text("AI가 서로 다른 장면 6개를 고르는 중")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(HanClipTheme.primaryText)
+                    }
+                } else if collectionPosterCandidates.isEmpty {
+                    ContentUnavailableView(
+                        "썸네일 후보를 만들지 못했습니다",
+                        systemImage: "photo.badge.exclamationmark",
+                        description: Text("영상을 다시 확인한 뒤 시도해 주세요.")
+                    )
+                } else {
+                    ScrollView {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12)
+                            ],
+                            spacing: 18
+                        ) {
+                            ForEach(
+                                Array(collectionPosterCandidates.enumerated()),
+                                id: \.offset
+                            ) { index, data in
+                                GeometryReader { proxy in
+                                    let width = proxy.size.width
+                                    Button {
+                                        applyCollectionPosterCandidate(
+                                            data,
+                                            to: movie
+                                        )
+                                    } label: {
+                                        collectionPosterCandidateCard(
+                                            movie,
+                                            imageData: data,
+                                            width: width,
+                                            number: index + 1
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .aspectRatio(1 / 1.48, contentMode: .fit)
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 18)
+                        .padding(.bottom, 28)
+                    }
+                }
+            }
+            .navigationTitle("AI 썸네일 선택")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("취소") {
+                        collectionPosterCandidateMovie = nil
+                    }
+                }
+            }
+        }
+        .task(id: movie.id) {
+            collectionPosterCandidates = await movieCollection
+                .posterCandidatesWithAI(for: movie, count: 6)
+            isLoadingCollectionPosterCandidates = false
+        }
+    }
+
+    private func collectionPosterCandidateCard(
+        _ movie: CollectedMovie,
+        imageData: Data,
+        width: CGFloat,
+        number: Int
+    ) -> some View {
+        ZStack(alignment: .top) {
+            collectionMovieCard(
+                movie,
+                width: width,
+                posterOverride: UIImage(data: imageData)
+            )
+            .padding(.top, 16)
+
+            if movie.isPinned == true {
+                Image("CollectionPin")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 46, height: 46)
+                    .brightness(0.10)
+                    .saturation(1.10)
+                    .shadow(color: .black.opacity(0.34), radius: 4, y: 3)
+            } else {
+                Circle()
+                    .fill(Color.black.opacity(0.82))
+                    .overlay {
+                        Circle().stroke(Color.white.opacity(0.32), lineWidth: 0.8)
+                    }
+                    .frame(width: 14, height: 14)
+                    .padding(.top, 27)
+            }
+
+            Text("\(number)")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(HanClipTheme.primary, in: Circle())
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: .bottomTrailing)
+                .padding(.trailing, 8)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private func applyCollectionPosterCandidate(
+        _ data: Data,
+        to movie: CollectedMovie
+    ) {
+        do {
+            try movieCollection.applyPosterCandidate(data, to: movie)
+            collectionPosterCandidateMovie = nil
+            collectionPosterCandidates = []
+        } catch {
+            model.alertMessage = error.localizedDescription
+        }
     }
 
     private func collectionPosterMetadata(
@@ -7677,7 +7819,7 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 현재 포스터의 Vision 특징값과 다른 장면을 우선해 새로운 느낌의 썸네일을 고릅니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 검정 배경의 전체화면으로 재생하며 기기 회전에 맞춰 세로·가로 보기를 전환합니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 현재 포스터와 서로 다른 결의 후보 6개를 만들며, 각 후보에 실제 제목·핀·제작·촬영·위치·재생시간을 적용한 모습을 보고 직접 선택할 수 있습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
@@ -17088,6 +17230,10 @@ private struct CollectionMoviePlayerView: View {
     let movie: CollectedMovie
     let url: URL
     @State private var player: AVPlayer
+    @State private var deviceOrientation = UIDeviceOrientation.portrait
+    @State private var orientationObserver: NSObjectProtocol?
+    @State private var timeObserver: Any?
+    @State private var isPlaying = true
 
     init(movie: CollectedMovie, url: URL) {
         self.movie = movie
@@ -17096,102 +17242,181 @@ private struct CollectionMoviePlayerView: View {
     }
 
     var body: some View {
+        GeometryReader { proxy in
+            let displaySize = collectionDisplaySize(for: proxy.size)
+
+            collectionPlayerContent
+                .frame(width: displaySize.width, height: displaySize.height)
+                .rotationEffect(.degrees(displayRotationDegrees))
+                .position(
+                    x: proxy.size.width / 2,
+                    y: proxy.size.height / 2
+                )
+        }
+        .background(Color.black)
+        .ignoresSafeArea()
+        .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
+        .onAppear {
+            HanClipAudioSession.activatePlayback()
+            installOrientationObserver()
+            installPlaybackObserver()
+            player.play()
+            isPlaying = true
+        }
+        .onDisappear {
+            player.pause()
+            removePlaybackObserver()
+            removeOrientationObserver()
+        }
+    }
+
+    private var collectionPlayerContent: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black
 
-            VideoPlayer(player: player)
-                .background(Color.black)
-                .ignoresSafeArea()
+            PreviewPlayerSurface(player: player, videoGravity: .resizeAspect)
 
-            VStack {
+            VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Button {
+                    playerCircleButton(
+                        systemImage: "xmark",
+                        accessibilityLabel: "컬렉션 닫기"
+                    ) {
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 42, height: 42)
-                            .background(
-                                Color.black.opacity(0.54),
-                                in: Circle()
-                            )
                     }
 
                     Text(movie.title)
                         .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
                         .lineLimit(1)
 
-                    Spacer()
+                    Spacer(minLength: 12)
 
                     ShareLink(item: url) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 42, height: 42)
-                            .background(
-                                Color.black.opacity(0.54),
-                                in: Circle()
-                            )
+                        playerCircleLabel(systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("컬렉션 영화 공유")
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+
+                Spacer(minLength: 16)
+
+                HStack(spacing: 10) {
+                    FullscreenVideoProgressBar(player: player)
+
+                    playerCircleButton(
+                        systemImage: isPlaying ? "pause.fill" : "play.fill",
+                        accessibilityLabel: isPlaying ? "일시정지" : "재생"
+                    ) {
+                        togglePlayback()
                     }
                 }
-                .foregroundStyle(.white)
-                .padding(16)
-
-                Spacer()
+                .padding(.horizontal, 18)
+                .padding(.bottom, 24)
             }
         }
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
-        .onAppear {
-            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-            updateCollectionPlayerOrientation(.allButUpsideDown)
-            updateCollectionPlayerForCurrentDeviceOrientation()
+    }
+
+    private func playerCircleButton(
+        systemImage: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            playerCircleLabel(systemImage: systemImage)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func playerCircleLabel(systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .background(.ultraThinMaterial, in: Circle())
+            .overlay {
+                Circle().stroke(Color.white.opacity(0.28), lineWidth: 1)
+            }
+    }
+
+    private func collectionDisplaySize(for viewportSize: CGSize) -> CGSize {
+        guard deviceOrientation.isLandscape else { return viewportSize }
+        return CGSize(width: viewportSize.height, height: viewportSize.width)
+    }
+
+    private var displayRotationDegrees: Double {
+        guard deviceOrientation.isLandscape else { return 0 }
+        return deviceOrientation == .landscapeRight ? -90 : 90
+    }
+
+    private func togglePlayback() {
+        if player.timeControlStatus == .playing {
+            player.pause()
+            isPlaying = false
+        } else {
+            if let duration = player.currentItem?.duration,
+               player.currentTime() >= duration {
+                player.seek(to: .zero)
+            }
             HanClipAudioSession.activatePlayback()
             player.play()
+            isPlaying = true
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIDevice.orientationDidChangeNotification
-            )
+    }
+
+    private func installOrientationObserver() {
+        guard orientationObserver == nil else { return }
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        updateDeviceOrientation(UIDevice.current.orientation)
+        orientationObserver = NotificationCenter.default.addObserver(
+            forName: UIDevice.orientationDidChangeNotification,
+            object: nil,
+            queue: .main
         ) { _ in
-            updateCollectionPlayerForCurrentDeviceOrientation()
-        }
-        .onDisappear {
-            player.pause()
-            updateCollectionPlayerOrientation(.portrait)
-            UIDevice.current.endGeneratingDeviceOrientationNotifications()
+            Task { @MainActor in
+                updateDeviceOrientation(UIDevice.current.orientation)
+            }
         }
     }
 
-    private func updateCollectionPlayerForCurrentDeviceOrientation() {
-        switch UIDevice.current.orientation {
-        case .landscapeLeft:
-            updateCollectionPlayerOrientation(.landscapeRight)
-        case .landscapeRight:
-            updateCollectionPlayerOrientation(.landscapeLeft)
-        case .portrait:
-            updateCollectionPlayerOrientation(.portrait)
-        default:
-            break
+    private func removeOrientationObserver() {
+        if let orientationObserver {
+            NotificationCenter.default.removeObserver(orientationObserver)
+            self.orientationObserver = nil
         }
+        UIDevice.current.endGeneratingDeviceOrientationNotifications()
     }
 
-    private func updateCollectionPlayerOrientation(
-        _ mask: UIInterfaceOrientationMask
-    ) {
-        guard let delegate = UIApplication.shared.delegate
-                as? HanClipAppDelegate,
-              let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive })
+    private func updateDeviceOrientation(_ orientation: UIDeviceOrientation) {
+        guard orientation == .portrait
+                || orientation == .portraitUpsideDown
+                || orientation.isLandscape
         else { return }
-        delegate.supportedOrientationMask = mask
-        windowScene.windows.forEach {
-            $0.rootViewController?
-                .setNeedsUpdateOfSupportedInterfaceOrientations()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            deviceOrientation = orientation
         }
-        windowScene.requestGeometryUpdate(
-            .iOS(interfaceOrientations: mask)
-        ) { _ in }
+    }
+
+    private func installPlaybackObserver() {
+        guard timeObserver == nil else { return }
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.2, preferredTimescale: 600),
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                isPlaying = player.timeControlStatus == .playing
+            }
+        }
+    }
+
+    private func removePlaybackObserver() {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
     }
 }
 
