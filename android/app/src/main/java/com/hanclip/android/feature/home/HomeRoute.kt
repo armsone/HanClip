@@ -329,6 +329,10 @@ fun HomeRoute(
             onImportCollection = { showCollectionImportSource = true },
             onCancelCollectionImport = { collectionImportJob?.cancel() },
             onOpenCollectionMovie = onOpenCollectionMovie,
+            onToggleCollectionMoviePin = { movie ->
+                MovieCollectionStore.togglePin(context, movie.id)
+                onCollectionChanged()
+            },
             onRenameCollectionMovie = { movie, title ->
                 MovieCollectionStore.updateTitle(context, movie.id, title)
                 onCollectionChanged()
@@ -1730,6 +1734,7 @@ private fun LazyListScope.savedProjectItems(
     onImportCollection: () -> Unit,
     onCancelCollectionImport: () -> Unit,
     onOpenCollectionMovie: (CollectedMovie) -> Unit,
+    onToggleCollectionMoviePin: (CollectedMovie) -> Unit,
     onRenameCollectionMovie: (CollectedMovie, String) -> Unit,
     onRemoveCollectionMovie: (CollectedMovie) -> Unit
 ) {
@@ -1741,8 +1746,7 @@ private fun LazyListScope.savedProjectItems(
     ) {
         SavedProjectHeader(
             palette = palette,
-            hasDraftProject = hasDraftProject,
-            onOpenProject = onOpenProject
+            count = editableProjectSummaries.size
         )
     }
     item(key = "aishot-category-header", contentType = "saved-category-header") {
@@ -1801,6 +1805,7 @@ private fun LazyListScope.savedProjectItems(
         onImport = onImportCollection,
         onCancelImport = onCancelCollectionImport,
         onOpen = onOpenCollectionMovie,
+        onTogglePin = onToggleCollectionMoviePin,
         onRename = onRenameCollectionMovie,
         onRemove = onRemoveCollectionMovie
     )
@@ -1809,10 +1814,39 @@ private fun LazyListScope.savedProjectItems(
 @Composable
 private fun SavedProjectHeader(
     palette: HanClipPalette,
-    hasDraftProject: Boolean,
-    onOpenProject: () -> Unit
+    count: Int
 ) {
-    HomeSectionTitle("영화 목록", Icons.Outlined.FolderOpen, palette)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Text(
+            "$count/$HomeSavedMovieSlotCount",
+            color = palette.subText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.weight(1f))
+        Surface(
+            modifier = Modifier.size(22.dp),
+            shape = RoundedCornerShape(6.dp),
+            color = palette.secondary.copy(alpha = 0.10f)
+        ) {
+            Icon(
+                Icons.Outlined.FolderOpen,
+                contentDescription = null,
+                tint = palette.primary.copy(alpha = 0.72f),
+                modifier = Modifier.padding(5.dp)
+            )
+        }
+        Text(
+            "영화 목록",
+            color = palette.text.copy(alpha = 0.76f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
 }
 
 @Composable
@@ -1915,12 +1949,10 @@ private fun AiShotProjectCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        editableProjectDetailText(summary, includeByteCount = false),
-                        color = palette.subText,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    EditableProjectDetail(
+                        summary = summary,
+                        includeByteCount = false,
+                        palette = palette
                     )
                     EditableProjectThumbnailStrip(summary, maxFrames = 2, frameWidth = 24, frameHeight = 20)
                 }
@@ -2226,12 +2258,10 @@ private fun DraftProjectRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    editableProjectDetailText(summary, includeByteCount = true),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = palette.subText,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                EditableProjectDetail(
+                    summary = summary,
+                    includeByteCount = true,
+                    palette = palette
                 )
                 EditableProjectThumbnailStrip(summary, maxFrames = 8, frameWidth = 18, frameHeight = 18)
             }
@@ -2376,15 +2406,51 @@ private fun draftSummaryText(summary: DraftProjectSummary): String {
     return "${homeProjectDateText(summary.savedAtMillis)} 저장 · 완성본 만들기 전 상태 보관 · 사진/영상, 순서, 자막, 음악 · ${summary.outputText}"
 }
 
-private fun editableProjectDetailText(
+@Composable
+private fun EditableProjectDetail(
     summary: DraftProjectSummary,
-    includeByteCount: Boolean
-): String {
-    return buildList {
-        add("클립 ${summary.clipCount}개")
-        add(movieDurationText(summary.totalDurationSeconds))
-        if (includeByteCount && summary.displayByteCount > 0L) add(fileSizeText(summary.displayByteCount))
-    }.joinToString(" · ")
+    includeByteCount: Boolean,
+    palette: HanClipPalette
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            "클립 ${summary.clipCount}개 ·",
+            color = palette.subText,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1
+        )
+        Icon(
+            summary.preset.homePresetIcon(),
+            contentDescription = summary.preset.title,
+            tint = palette.primary.copy(alpha = 0.78f),
+            modifier = Modifier.size(12.dp)
+        )
+        Text(
+            buildString {
+                append(movieDurationText(summary.totalDurationSeconds))
+                if (includeByteCount && summary.displayByteCount > 0L) {
+                    append(" · ")
+                    append(fileSizeText(summary.displayByteCount))
+                }
+            },
+            color = palette.subText,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun MoviePreset.homePresetIcon(): ImageVector = when (this) {
+    MoviePreset.NewMovie -> Icons.Outlined.Movie
+    MoviePreset.Quick -> Icons.Outlined.AutoFixHigh
+    MoviePreset.AiShot -> Icons.Outlined.AddPhotoAlternate
+    MoviePreset.Travel -> Icons.Outlined.Flight
+    MoviePreset.Life -> Icons.Outlined.Favorite
+    MoviePreset.Golf -> Icons.Outlined.SportsGolf
 }
 
 @Composable

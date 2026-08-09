@@ -37,7 +37,8 @@ data class CollectedMovie(
     val shootingStartAtMillis: Long?,
     val shootingEndAtMillis: Long?,
     val locationName: String?,
-    val contentSha256: String? = null
+    val contentSha256: String? = null,
+    val isPinned: Boolean = false
 )
 
 data class CollectionMigrationResult(
@@ -51,12 +52,13 @@ data class CollectionImportOutcome(
 )
 
 object MovieCollectionStore {
+    const val MaximumMovieCount = 20
     private const val DirectoryName = "movie-collection"
     private const val IndexFilename = "collection.json"
     private const val MigrationPreferences = "hanclip_movie_collection_migration"
     private const val LegacyMigrationCompletedKey = "export_history_v1_completed"
     private const val MigratedLegacyUrisKey = "export_history_v1_imported_uris"
-    private const val SchemaVersion = 2
+    private const val SchemaVersion = 3
     private val collectionWriteLock = Any()
 
     fun list(context: Context): List<CollectedMovie> {
@@ -114,6 +116,9 @@ object MovieCollectionStore {
             val destination = File(collectionDirectory(appContext), videoFilename)
             val poster = File(collectionDirectory(appContext), posterFilename)
             val existing = list(appContext)
+            check(existing.size < MaximumMovieCount) {
+                "컬렉션에는 영화를 최대 ${MaximumMovieCount}개까지 보관할 수 있습니다."
+            }
 
             try {
                 val sourceHash = copySource(appContext, sourceUri, destination, cancellationContext)
@@ -152,9 +157,10 @@ object MovieCollectionStore {
                     shootingEndAtMillis = resolvedEndAt,
                     locationName = locationName?.trim()?.takeIf(String::isNotEmpty)
                         ?: metadata.locationName,
-                    contentSha256 = sourceHash
+                    contentSha256 = sourceHash,
+                    isPinned = false
                 )
-                save(appContext, listOf(movie) + existingWithHashes)
+                save(appContext, existingWithHashes + movie)
                 CollectionImportOutcome(movie, wasDuplicate = false)
             } catch (error: Throwable) {
                 destination.delete()
@@ -220,6 +226,15 @@ object MovieCollectionStore {
         }
     }
 
+    fun togglePin(context: Context, movieId: String) {
+        synchronized(collectionWriteLock) {
+            val updated = list(context).map { movie ->
+                if (movie.id == movieId) movie.copy(isPinned = !movie.isPinned) else movie
+            }
+            save(context, updated)
+        }
+    }
+
     fun remove(context: Context, movieId: String) {
         synchronized(collectionWriteLock) {
             val movies = list(context)
@@ -237,7 +252,7 @@ object MovieCollectionStore {
         val root = JSONObject()
             .put("schemaVersion", SchemaVersion)
             .put("movies", JSONArray().apply {
-                movies.sortedByDescending(CollectedMovie::createdAtMillis).forEach { movie ->
+                movies.sortedForDisplay().forEach { movie ->
                     put(movie.toJson())
                 }
             })
@@ -275,7 +290,7 @@ object MovieCollectionStore {
             .filter { movie ->
                 videoFile(context, movie).isFile && videoFile(context, movie).canRead()
             }
-            .sortedByDescending(CollectedMovie::createdAtMillis)
+            .sortedForDisplay()
     }.getOrNull()
 
     private fun copySource(
@@ -581,6 +596,7 @@ object MovieCollectionStore {
         .putNullable("shootingEndAtMillis", shootingEndAtMillis)
         .putNullable("locationName", locationName)
         .putNullable("contentSha256", contentSha256)
+        .put("isPinned", isPinned)
 
     private fun JSONObject.toCollectedMovie(): CollectedMovie = CollectedMovie(
         id = getString("id"),
@@ -599,8 +615,15 @@ object MovieCollectionStore {
         } else {
             null
         },
-        contentSha256 = optionalString("contentSha256")
+        contentSha256 = optionalString("contentSha256"),
+        isPinned = optBoolean("isPinned", false)
     )
+
+    private fun List<CollectedMovie>.sortedForDisplay(): List<CollectedMovie> =
+        sortedWith(
+            compareByDescending<CollectedMovie> { it.isPinned }
+                .thenByDescending { it.createdAtMillis }
+        )
 
     private fun JSONObject.optionalString(key: String): String? =
         if (!has(key) || isNull(key)) null else optString(key, "")

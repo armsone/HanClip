@@ -55,6 +55,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddCircle
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -156,12 +157,13 @@ fun EditorRoute(
     var photoDurationClipID by remember { mutableStateOf<String?>(null) }
     var previewClipID by remember { mutableStateOf<String?>(null) }
     var isTextOverlaySheetVisible by remember { mutableStateOf(false) }
-    var textOverlayFocusEndingInfo by remember { mutableStateOf(false) }
+    var isEndingInfoSettingsSheetVisible by remember { mutableStateOf(false) }
     var isMusicSettingsSheetVisible by remember { mutableStateOf(false) }
     var isCalendarPickerVisible by remember { mutableStateOf(false) }
     var mediaPickerTitle by remember { mutableStateOf("날짜별") }
     var isReorderMode by remember { mutableStateOf(false) }
     var isAdvancedSettingsExpanded by remember { mutableStateOf(false) }
+    var isClipSettingsExpanded by remember(state.activeProjectId) { mutableStateOf(false) }
     var isResetConfirmationVisible by remember { mutableStateOf(false) }
     var isExitConfirmationVisible by remember { mutableStateOf(false) }
     var isExportConfirmationVisible by remember { mutableStateOf(false) }
@@ -356,6 +358,7 @@ fun EditorRoute(
             item {
                 ProjectControls(
                     defaultDuration = state.defaultDurationSeconds,
+                    preset = state.preset,
                     defaultVideoSegmentMode = state.defaultVideoSegmentMode,
                     usesFullVideoRange = state.renderableClips
                         .filter { it.mediaKind == ClipMediaKind.Video }
@@ -375,6 +378,9 @@ fun EditorRoute(
                     hasTextOverlay = state.watermarkSettings.shouldRenderText,
                     hasLogoOverlay = state.watermarkSettings.logoEnabled,
                     hasMusic = state.backgroundMusicUri != null,
+                    hasEnding = state.watermarkSettings.includesEndingInfoCard,
+                    endingDuration = state.watermarkSettings.normalizedEndingInfoCardDuration,
+                    endingThemeTitle = state.watermarkSettings.endingInfoCardTheme.title,
                     musicTitle = state.backgroundMusicTitle,
                     musicVolume = state.backgroundMusicVolume,
                     originalAudioVolume = state.originalAudioVolume,
@@ -387,6 +393,7 @@ fun EditorRoute(
                         .singleOrNull() ?: VideoSegmentMode.Single,
                     isReorderMode = isReorderMode,
                     isAdvancedSettingsExpanded = isAdvancedSettingsExpanded,
+                    isClipSettingsExpanded = isClipSettingsExpanded,
                     sleepPreventionMode = sleepPreventionMode,
                     hasClips = state.clips.isNotEmpty(),
                     onSelectRatio = { ratio -> viewModel.selectAspectRatio(context, ratio) },
@@ -398,10 +405,29 @@ fun EditorRoute(
                     onSetVideoSegmentMode = viewModel::setVideoSegmentModeForAll,
                     onSetLivePhotoMotion = viewModel::setLivePhotoMotionForAll,
                     onOpenTextOverlay = {
-                        textOverlayFocusEndingInfo = false
                         isTextOverlaySheetVisible = true
                     },
                     onOpenMusicSettings = { isMusicSettingsSheetVisible = true },
+                    onToggleEnding = { enabled ->
+                        viewModel.updateWatermark(
+                            state.watermarkSettings.copy(includesEndingInfoCard = enabled)
+                        )
+                    },
+                    onDecreaseEndingDuration = {
+                        viewModel.updateWatermark(
+                            state.watermarkSettings.copy(
+                                endingInfoCardDuration = state.watermarkSettings.normalizedEndingInfoCardDuration - 0.5
+                            )
+                        )
+                    },
+                    onIncreaseEndingDuration = {
+                        viewModel.updateWatermark(
+                            state.watermarkSettings.copy(
+                                endingInfoCardDuration = state.watermarkSettings.normalizedEndingInfoCardDuration + 0.5
+                            )
+                        )
+                    },
+                    onOpenEndingSettings = { isEndingInfoSettingsSheetVisible = true },
                     onSetSimilarPhotoInterval = { value ->
                         viewModel.setSimilarPhotoRepresentativeInterval(context, value)
                     },
@@ -409,6 +435,9 @@ fun EditorRoute(
                     onToggleReorder = { isReorderMode = !isReorderMode },
                     onToggleAdvancedSettings = {
                         isAdvancedSettingsExpanded = !isAdvancedSettingsExpanded
+                    },
+                    onToggleClipSettings = {
+                        isClipSettingsExpanded = !isClipSettingsExpanded
                     },
                     onCycleSleepPrevention = {
                         onSleepPreventionModeChange(sleepPreventionMode.next())
@@ -711,14 +740,12 @@ fun EditorRoute(
                 onOpenText = {
                     isQuickDurationVisible = false
                     reopenQuickAfterSettings = true
-                    textOverlayFocusEndingInfo = false
                     isTextOverlaySheetVisible = true
                 },
                 onOpenEnding = {
                     isQuickDurationVisible = false
                     reopenQuickAfterSettings = true
-                    textOverlayFocusEndingInfo = true
-                    isTextOverlaySheetVisible = true
+                    isEndingInfoSettingsSheetVisible = true
                 },
                 onOpenMusic = {
                     isQuickDurationVisible = false
@@ -794,7 +821,6 @@ fun EditorRoute(
         if (isTextOverlaySheetVisible) {
             fun closeTextOverlay() {
                 isTextOverlaySheetVisible = false
-                textOverlayFocusEndingInfo = false
                 if (reopenQuickAfterSettings) {
                     reopenQuickAfterSettings = false
                     isQuickDurationVisible = true
@@ -810,22 +836,32 @@ fun EditorRoute(
                 TextOverlaySheet(
                     settings = state.watermarkSettings,
                     palette = palette,
-                    endingInfoStops = state.renderableClips.filter(ClipItem::hasUsableSourceLocation).mapNotNull { clip ->
-                        clip.sourceLocationName
-                            ?.trim()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let { location ->
-                                EndingInfoStop(
-                                    location = location,
-                                    dateText = clip.sourceCreatedAtMillis?.let { value ->
-                                        SimpleDateFormat("M. d.", Locale.KOREAN).format(Date(value))
-                                    }.orEmpty()
-                                )
-                            }
-                    }.distinctBy { it.location },
                     fullScreen = true,
-                    focusEndingInfo = textOverlayFocusEndingInfo,
                     onDismiss = ::closeTextOverlay,
+                    onApply = viewModel::updateWatermark
+                )
+            }
+        }
+        if (isEndingInfoSettingsSheetVisible) {
+            fun closeEndingSettings() {
+                isEndingInfoSettingsSheetVisible = false
+                if (reopenQuickAfterSettings) {
+                    reopenQuickAfterSettings = false
+                    isQuickDurationVisible = true
+                }
+            }
+            Dialog(
+                onDismissRequest = ::closeEndingSettings,
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
+            ) {
+                EndingInfoSettingsSheet(
+                    settings = state.watermarkSettings,
+                    stops = state.endingInfoStops(),
+                    palette = palette,
+                    onDismiss = ::closeEndingSettings,
                     onApply = viewModel::updateWatermark
                 )
             }
@@ -2491,6 +2527,7 @@ private fun progressDetail(message: String, isExporting: Boolean): String {
 @Composable
 private fun ProjectControls(
     defaultDuration: Double,
+    preset: MoviePreset,
     defaultVideoSegmentMode: VideoSegmentMode,
     usesFullVideoRange: Boolean,
     hasLivePhotos: Boolean,
@@ -2501,6 +2538,9 @@ private fun ProjectControls(
     hasTextOverlay: Boolean,
     hasLogoOverlay: Boolean,
     hasMusic: Boolean,
+    hasEnding: Boolean,
+    endingDuration: Double,
+    endingThemeTitle: String,
     musicTitle: String?,
     musicVolume: Double,
     originalAudioVolume: Double,
@@ -2509,6 +2549,7 @@ private fun ProjectControls(
     similarPhotoGroupMode: VideoSegmentMode,
     isReorderMode: Boolean,
     isAdvancedSettingsExpanded: Boolean,
+    isClipSettingsExpanded: Boolean,
     sleepPreventionMode: SleepPreventionMode,
     hasClips: Boolean,
     onSelectRatio: (OutputAspectRatio?) -> Unit,
@@ -2521,16 +2562,24 @@ private fun ProjectControls(
     onSetLivePhotoMotion: (Boolean) -> Unit,
     onOpenTextOverlay: () -> Unit,
     onOpenMusicSettings: () -> Unit,
+    onToggleEnding: (Boolean) -> Unit,
+    onDecreaseEndingDuration: () -> Unit,
+    onIncreaseEndingDuration: () -> Unit,
+    onOpenEndingSettings: () -> Unit,
     onSetSimilarPhotoInterval: (Int) -> Unit,
     onSetSimilarPhotoMode: (VideoSegmentMode) -> Unit,
     onToggleReorder: () -> Unit,
     onToggleAdvancedSettings: () -> Unit,
+    onToggleClipSettings: () -> Unit,
     onCycleSleepPrevention: () -> Unit,
     onResetProject: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleClipSettings)
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -2555,8 +2604,40 @@ private fun ProjectControls(
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.Bold
             )
+            Spacer(Modifier.weight(1f))
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = palette.chip,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        preset.settingIcon(),
+                        contentDescription = null,
+                        tint = palette.subText,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        preset.title,
+                        color = palette.subText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                }
+            }
+            Icon(
+                if (isClipSettingsExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                contentDescription = if (isClipSettingsExpanded) "클립 설정 접기" else "클립 설정 펼치기",
+                tint = palette.subText,
+                modifier = Modifier.size(24.dp)
+            )
         }
-        Surface(
+        if (isClipSettingsExpanded) Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
             color = palette.panel,
@@ -2641,9 +2722,20 @@ private fun ProjectControls(
                     CompactChoice("사용", hasMusic, palette, onOpenMusicSettings)
                     CompactChoice("안함", !hasMusic, palette, onOpenMusicSettings)
                 }
+                SettingDivider(palette)
+                EndingSettingRow(
+                    enabled = hasEnding,
+                    duration = endingDuration,
+                    themeTitle = endingThemeTitle,
+                    palette = palette,
+                    onOpen = onOpenEndingSettings,
+                    onToggle = onToggleEnding,
+                    onDecreaseDuration = onDecreaseEndingDuration,
+                    onIncreaseDuration = onIncreaseEndingDuration
+                )
             }
         }
-        Surface(
+        if (isClipSettingsExpanded) Surface(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleAdvancedSettings),
             shape = RoundedCornerShape(16.dp),
             color = palette.chip,
@@ -2666,7 +2758,7 @@ private fun ProjectControls(
                 )
             }
         }
-        if (isAdvancedSettingsExpanded) {
+        if (isClipSettingsExpanded && isAdvancedSettingsExpanded) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutputQualityPreset.entries.forEach { quality ->
                     FilterChip(
@@ -2734,6 +2826,99 @@ private fun VideoSegmentMode.next(): VideoSegmentMode = when (this) {
     VideoSegmentMode.Multiple -> VideoSegmentMode.All
     VideoSegmentMode.All -> VideoSegmentMode.Single
 }
+
+private fun MoviePreset.settingIcon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
+    MoviePreset.NewMovie -> Icons.Outlined.MovieCreation
+    MoviePreset.Quick -> Icons.Outlined.AutoFixHigh
+    MoviePreset.AiShot -> Icons.Outlined.AddPhotoAlternate
+    MoviePreset.Travel -> Icons.Outlined.Map
+    MoviePreset.Life -> Icons.Outlined.Collections
+    MoviePreset.Golf -> Icons.Outlined.PlayCircle
+}
+
+@Composable
+private fun EndingSettingRow(
+    enabled: Boolean,
+    duration: Double,
+    themeTitle: String,
+    palette: HanClipPalette,
+    onOpen: () -> Unit,
+    onToggle: (Boolean) -> Unit,
+    onDecreaseDuration: () -> Unit,
+    onIncreaseDuration: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            Icons.Outlined.Map,
+            contentDescription = null,
+            tint = palette.subText,
+            modifier = Modifier.size(18.dp)
+        )
+        Column(
+            modifier = Modifier
+                .width(62.dp)
+                .clickable(onClick = onOpen),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            Text("엔딩 :", color = palette.subText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(
+                themeTitle,
+                color = palette.subText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = palette.chip,
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDecreaseDuration, modifier = Modifier.size(27.dp)) {
+                    Icon(Icons.Outlined.Remove, contentDescription = "엔딩 시간 줄이기", modifier = Modifier.size(13.dp))
+                }
+                Text(
+                    "%.1f초".format(duration),
+                    color = palette.text,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onIncreaseDuration, modifier = Modifier.size(27.dp)) {
+                    Icon(Icons.Outlined.Add, contentDescription = "엔딩 시간 늘리기", modifier = Modifier.size(13.dp))
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        CompactChoice("사용", enabled, palette, onClick = { onToggle(true) })
+        CompactChoice("안함", !enabled, palette, onClick = { onToggle(false) })
+    }
+}
+
+private fun EditorUiState.endingInfoStops(): List<EndingInfoStop> =
+    renderableClips
+        .filter(ClipItem::hasUsableSourceLocation)
+        .mapNotNull { clip ->
+            clip.sourceLocationName
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?.let { location ->
+                    EndingInfoStop(
+                        location = location,
+                        dateText = clip.sourceCreatedAtMillis?.let { value ->
+                            SimpleDateFormat("M. d.", Locale.KOREAN).format(Date(value))
+                        }.orEmpty()
+                    )
+                }
+        }
+        .distinctBy { "${it.dateText}|${it.location}" }
 
 @Composable
 private fun CompactSettingRow(

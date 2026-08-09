@@ -26,8 +26,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Add
@@ -65,7 +63,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -82,7 +79,6 @@ import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ImportedFontStore
 import com.hanclip.android.core.theme.HanClipPalette
-import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -103,16 +99,12 @@ data class EndingInfoStop(
 fun TextOverlaySheet(
     settings: WatermarkSettings,
     palette: HanClipPalette,
-    endingInfoStops: List<EndingInfoStop> = emptyList(),
     fullScreen: Boolean = false,
-    focusEndingInfo: Boolean = false,
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    val endingFocusAdvancePx = with(LocalDensity.current) { 620.dp.roundToPx() }
-    val endingInfoRequester = remember { BringIntoViewRequester() }
     var draft by remember(settings) { mutableStateOf(settings) }
     var importedFonts by remember { mutableStateOf(ImportedFontStore.list(context)) }
     val fontPicker = rememberLauncherForActivityResult(
@@ -159,17 +151,6 @@ fun TextOverlaySheet(
             }
         }
     }
-    LaunchedEffect(focusEndingInfo) {
-        if (focusEndingInfo) {
-            delay(120)
-            endingInfoRequester.bringIntoView()
-            delay(60)
-            scrollState.animateScrollTo(
-                (scrollState.value + endingFocusAdvancePx).coerceAtMost(scrollState.maxValue)
-            )
-        }
-    }
-
     Surface(
         modifier = if (fullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
         shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
@@ -291,19 +272,6 @@ fun TextOverlaySheet(
             CaptionPreview(draft)
 
             CaptionStateSummary(draft, palette)
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .bringIntoViewRequester(endingInfoRequester)
-            ) {
-                EndingInfoCardSettings(
-                    settings = draft,
-                    stops = endingInfoStops,
-                    palette = palette,
-                    onChange = { draft = it }
-                )
-            }
 
             Button(
                 onClick = { draft = hanClipDefaultWatermark(draft) },
@@ -733,13 +701,19 @@ fun TextOverlaySheet(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EndingInfoCardSettings(
+internal fun EndingInfoCardSettings(
     settings: WatermarkSettings,
     stops: List<EndingInfoStop>,
     palette: HanClipPalette,
     onChange: (WatermarkSettings) -> Unit
 ) {
-    val available = stops.isNotEmpty()
+    val previewStops = stops.ifEmpty {
+        listOf(
+            EndingInfoStop("서울", "8. 7."),
+            EndingInfoStop("덕양구", "8. 8."),
+            EndingInfoStop("Philippines Clark", "8. 9.")
+        )
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -758,14 +732,13 @@ private fun EndingInfoCardSettings(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("▤  정보 삽입", fontWeight = FontWeight.Bold, color = palette.text)
                     Text(
-                        if (available) "날짜와 촬영 위치를 마지막 장면에 넣습니다."
-                        else "위치 정보가 있는 미디어가 있어야 사용할 수 있습니다.",
+                        if (stops.isNotEmpty()) "날짜와 촬영 위치를 마지막 장면에 넣습니다."
+                        else "미리 설정해 두면 위치 미디어를 추가할 때 적용됩니다.",
                         color = palette.subText
                     )
                 }
                 Switch(
-                    checked = settings.includesEndingInfoCard && available,
-                    enabled = available,
+                    checked = settings.includesEndingInfoCard,
                     onCheckedChange = { onChange(settings.copy(includesEndingInfoCard = it)) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
@@ -774,7 +747,7 @@ private fun EndingInfoCardSettings(
                 )
             }
 
-            if (settings.includesEndingInfoCard && available) {
+            if (settings.includesEndingInfoCard) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -820,14 +793,14 @@ private fun EndingInfoCardSettings(
                     }
                 }
 
-                EndingInfoCardPreview(settings.endingInfoCardTheme, stops, palette)
+                EndingInfoCardPreview(settings.endingInfoCardTheme, previewStops, palette)
             }
         }
     }
 }
 
 @Composable
-private fun EndingInfoCardPreview(
+internal fun EndingInfoCardPreview(
     theme: EndingInfoCardTheme,
     stops: List<EndingInfoStop>,
     palette: HanClipPalette
@@ -885,7 +858,7 @@ private fun EndingInfoCardPreview(
     }
 }
 
-private fun endingThemeMark(theme: EndingInfoCardTheme): String = when (theme) {
+internal fun endingThemeMark(theme: EndingInfoCardTheme): String = when (theme) {
     EndingInfoCardTheme.Caption -> "가"
     EndingInfoCardTheme.TreasureMap -> "⌖"
     EndingInfoCardTheme.Itinerary -> "≡"

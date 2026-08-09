@@ -11,6 +11,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.location.Geocoder
 import android.net.Uri
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.EndingInfoCardTheme
@@ -35,9 +36,9 @@ internal object EndingInfoCardRenderer {
         val bitmap = Bitmap.createBitmap(max(2, width), max(2, height), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val theme = settings.endingInfoCardTheme
-        val colors = colors(theme)
+        val colors = colors(theme, settings)
         drawBackground(context, canvas, bitmap, clips, theme, colors)
-        drawCard(canvas, bitmap, located, settings, colors)
+        drawCard(context, canvas, bitmap, located, settings, colors)
         val output = File(
             context.cacheDir,
             "ending-info/hanclip-ending-${System.currentTimeMillis()}.jpg"
@@ -94,6 +95,7 @@ internal object EndingInfoCardRenderer {
     }
 
     private fun drawCard(
+        context: Context,
         canvas: Canvas,
         bitmap: Bitmap,
         clips: List<ClipItem>,
@@ -113,14 +115,7 @@ internal object EndingInfoCardRenderer {
 
         val dates = clips.mapNotNull(ClipItem::sourceCreatedAtMillis)
         val dateText = dateRange(dates)
-        val stops = clips
-            .mapNotNull { clip ->
-                clip.sourceLocationName?.takeIf(String::isNotBlank)?.let { location ->
-                    location to clip.sourceCreatedAtMillis?.let(::shortDate).orEmpty()
-                }
-            }
-            .distinctBy { it.first }
-            .take(6)
+        val stops = endingStops(context, clips).take(8)
         val heading = when (settings.endingInfoCardTheme) {
             EndingInfoCardTheme.Caption -> "여행의 기록"
             EndingInfoCardTheme.TreasureMap -> "TREASURE MAP"
@@ -140,6 +135,24 @@ internal object EndingInfoCardRenderer {
         paint.color = colors.secondary
         canvas.drawText(dateText, panel.centerX(), panel.top + 17f * unit, paint)
 
+        when (settings.endingInfoCardTheme) {
+            EndingInfoCardTheme.Itinerary -> {
+                drawItinerary(canvas, panel, stops, colors, unit)
+                drawFooter(canvas, panel, colors, unit)
+                return
+            }
+            EndingInfoCardTheme.Landmark -> {
+                drawLandmarkJourney(canvas, panel, stops, colors, unit)
+                drawFooter(canvas, panel, colors, unit)
+                return
+            }
+            EndingInfoCardTheme.Office -> {
+                drawOfficeReport(canvas, panel, dateText, stops, colors, unit)
+                return
+            }
+            else -> Unit
+        }
+
         val routeTop = panel.top + 25f * unit
         val routeBottom = panel.bottom - 12f * unit
         val gap = (routeBottom - routeTop) / max(1, stops.size)
@@ -157,8 +170,18 @@ internal object EndingInfoCardRenderer {
                 }
             )
         }
-        stops.forEachIndexed { index, (location, stopDate) ->
+        stops.forEachIndexed { index, stop ->
             val y = routeTop + gap * index
+            if (index > 0) {
+                drawTransportMark(
+                    canvas = canvas,
+                    centerX = routeX,
+                    centerY = y - gap / 2f,
+                    flies = stops[index - 1].countryCode != stop.countryCode,
+                    color = colors.secondary,
+                    unit = unit
+                )
+            }
             canvas.drawCircle(routeX, y, 2.3f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = colors.accent
             })
@@ -166,13 +189,13 @@ internal object EndingInfoCardRenderer {
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             paint.textSize = 3.8f * unit
             paint.color = colors.text
-            canvas.drawText(location.take(24), routeX + 5f * unit, y + 0.8f * unit, paint)
-            if (stopDate.isNotBlank()) {
+            canvas.drawText(stop.label.take(28), routeX + 5f * unit, y + 0.8f * unit, paint)
+            if (stop.dateText.isNotBlank()) {
                 paint.textAlign = Paint.Align.RIGHT
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
                 paint.textSize = 2.7f * unit
                 paint.color = colors.secondary
-                canvas.drawText(stopDate, panel.right - 6f * unit, y + 0.6f * unit, paint)
+                canvas.drawText(stop.dateText, panel.right - 6f * unit, y + 0.6f * unit, paint)
             }
         }
 
@@ -196,11 +219,237 @@ internal object EndingInfoCardRenderer {
             canvas.drawPath(roof, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colors.secondary })
         }
 
-        paint.textAlign = Paint.Align.CENTER
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 2.6f * unit
-        paint.color = colors.accent
-        canvas.drawText("HANCLIP", panel.centerX(), panel.bottom - 4.2f * unit, paint)
+        drawFooter(canvas, panel, colors, unit)
+    }
+
+    private fun drawItinerary(
+        canvas: Canvas,
+        panel: RectF,
+        stops: List<RouteStop>,
+        colors: CardColors,
+        unit: Float
+    ) {
+        val top = panel.top + 24f * unit
+        val bottom = panel.bottom - 10f * unit
+        val rowHeight = (bottom - top) / max(1, stops.size)
+        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.secondary
+            strokeWidth = max(1f, 0.25f * unit)
+        }
+        val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.accent
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 3.0f * unit
+            textAlign = Paint.Align.LEFT
+        }
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.text
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 3.8f * unit
+            textAlign = Paint.Align.LEFT
+        }
+        stops.forEachIndexed { index, stop ->
+            val y = top + rowHeight * index
+            canvas.drawLine(panel.left + 6f * unit, y + rowHeight * 0.72f, panel.right - 6f * unit, y + rowHeight * 0.72f, linePaint)
+            canvas.drawText(stop.dateText.ifBlank { "–" }, panel.left + 7f * unit, y + 3.2f * unit, datePaint)
+            canvas.drawText(stop.label.take(30), panel.left + 24f * unit, y + 3.2f * unit, labelPaint)
+            if (index > 0) {
+                drawTransportMark(
+                    canvas,
+                    panel.right - 9f * unit,
+                    y + 1.5f * unit,
+                    stops[index - 1].countryCode != stop.countryCode,
+                    colors.secondary,
+                    unit
+                )
+            }
+        }
+    }
+
+    private fun drawLandmarkJourney(
+        canvas: Canvas,
+        panel: RectF,
+        stops: List<RouteStop>,
+        colors: CardColors,
+        unit: Float
+    ) {
+        val visible = stops.take(4)
+        val top = panel.top + 25f * unit
+        val cellGap = 3f * unit
+        val cellWidth = (panel.width() - 15f * unit) / 2f
+        val cellHeight = (panel.bottom - top - 12f * unit) / 2f
+        visible.forEachIndexed { index, stop ->
+            val column = index % 2
+            val row = index / 2
+            val left = panel.left + 5f * unit + column * (cellWidth + cellGap)
+            val card = RectF(left, top + row * (cellHeight + cellGap), left + cellWidth, top + row * (cellHeight + cellGap) + cellHeight)
+            canvas.drawRoundRect(card, 2.5f * unit, 2.5f * unit, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(105, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent))
+            })
+            val skyline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colors.secondary }
+            val baseline = card.top + cellHeight * 0.48f
+            repeat(4) { tower ->
+                val towerWidth = cellWidth / 10f
+                val towerLeft = card.left + 4f * unit + tower * (towerWidth + 1.2f * unit)
+                val height = (4 + (tower + index) % 4 * 2) * unit
+                canvas.drawRect(towerLeft, baseline - height, towerLeft + towerWidth, baseline, skyline)
+            }
+            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors.text
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+                textSize = 3.1f * unit
+            }
+            canvas.drawText(stop.label.take(20), card.centerX(), card.bottom - 5f * unit, labelPaint)
+            labelPaint.color = colors.accent
+            labelPaint.textSize = 2.3f * unit
+            canvas.drawText(stop.dateText, card.centerX(), card.bottom - 2f * unit, labelPaint)
+        }
+    }
+
+    private fun drawOfficeReport(
+        canvas: Canvas,
+        panel: RectF,
+        dateText: String,
+        stops: List<RouteStop>,
+        colors: CardColors,
+        unit: Float
+    ) {
+        canvas.drawRect(panel.left, panel.top, panel.left + 2f * unit, panel.bottom, Paint().apply { color = colors.accent })
+        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.accent
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            textSize = 2.7f * unit
+            textAlign = Paint.Align.LEFT
+        }
+        canvas.drawText("HANCLIP / TRIP REPORT", panel.left + 7f * unit, panel.top + 8f * unit, headerPaint)
+        headerPaint.textAlign = Paint.Align.RIGHT
+        canvas.drawText("NO. ${dateText.filter(Char::isDigit).takeLast(6).ifBlank { "000001" }}", panel.right - 6f * unit, panel.top + 8f * unit, headerPaint)
+        val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors.text
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            textSize = 2.7f * unit
+            textAlign = Paint.Align.LEFT
+        }
+        canvas.drawText("촬영기간  $dateText", panel.left + 7f * unit, panel.top + 16f * unit, bodyPaint)
+        val top = panel.top + 23f * unit
+        val rowHeight = (panel.bottom - top - 9f * unit) / max(1, stops.size)
+        stops.forEachIndexed { index, stop ->
+            val y = top + rowHeight * index
+            canvas.drawLine(panel.left + 6f * unit, y + rowHeight * 0.70f, panel.right - 6f * unit, y + rowHeight * 0.70f, Paint().apply {
+                color = colors.secondary
+                strokeWidth = max(1f, 0.22f * unit)
+            })
+            bodyPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            canvas.drawText(stop.dateText.ifBlank { "–" }, panel.left + 7f * unit, y + 3f * unit, bodyPaint)
+            bodyPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText(stop.label.take(30), panel.left + 24f * unit, y + 3f * unit, bodyPaint)
+            if (index > 0) {
+                val movement = if (stops[index - 1].countryCode == stop.countryCode) "차량" else "항공"
+                bodyPaint.textAlign = Paint.Align.RIGHT
+                bodyPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+                canvas.drawText(movement, panel.right - 7f * unit, y + 3f * unit, bodyPaint)
+                bodyPaint.textAlign = Paint.Align.LEFT
+            }
+        }
+        drawFooter(canvas, panel, colors, unit)
+    }
+
+    private fun drawFooter(canvas: Canvas, panel: RectF, colors: CardColors, unit: Float) {
+        canvas.drawText(
+            "HANCLIP",
+            panel.centerX(),
+            panel.bottom - 4.2f * unit,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textSize = 2.6f * unit
+                color = colors.accent
+            }
+        )
+    }
+
+    private data class RouteStop(
+        val countryCode: String,
+        val label: String,
+        val dateText: String,
+        val dayKey: String
+    )
+
+    private fun endingStops(context: Context, clips: List<ClipItem>): List<RouteStop> {
+        val result = mutableListOf<RouteStop>()
+        clips.forEach { clip ->
+            val rawLabel = clip.sourceLocationName?.trim().orEmpty()
+            if (rawLabel.isEmpty()) return@forEach
+            val date = clip.sourceCreatedAtMillis
+            val countryCode = countryCode(context, clip)
+            val stop = RouteStop(
+                countryCode = countryCode,
+                label = rawLabel,
+                dateText = date?.let(::shortDate).orEmpty(),
+                dayKey = date?.let(::dayKey).orEmpty()
+            )
+            val previous = result.lastOrNull()
+            if (previous?.countryCode == stop.countryCode &&
+                previous.label == stop.label &&
+                previous.dayKey == stop.dayKey
+            ) return@forEach
+            result += stop
+        }
+        return result
+    }
+
+    @Suppress("DEPRECATION")
+    private fun countryCode(context: Context, clip: ClipItem): String {
+        val latitude = clip.sourceLatitude
+        val longitude = clip.sourceLongitude
+        if (latitude != null && longitude != null) {
+            runCatching {
+                Geocoder(context, Locale.ENGLISH)
+                    .getFromLocation(latitude, longitude, 1)
+                    ?.firstOrNull()
+                    ?.countryCode
+                    ?.uppercase(Locale.US)
+            }.getOrNull()?.takeIf(String::isNotBlank)?.let { return it }
+            if (latitude in 33.0..39.5 && longitude in 124.0..132.0) return "KR"
+        }
+        return if (clip.sourceLocationName.orEmpty().any { it.code in 0xAC00..0xD7A3 }) "KR" else "ZZ"
+    }
+
+    private fun dayKey(value: Long): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(value))
+
+    private fun drawTransportMark(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        flies: Boolean,
+        color: Int,
+        unit: Float
+    ) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            strokeWidth = max(1f, 0.7f * unit)
+            strokeCap = Paint.Cap.ROUND
+            style = Paint.Style.STROKE
+        }
+        if (flies) {
+            val wing = 2.0f * unit
+            canvas.drawLine(centerX, centerY - wing, centerX, centerY + wing, paint)
+            canvas.drawLine(centerX - wing, centerY, centerX + wing, centerY, paint)
+            canvas.drawLine(centerX, centerY + wing, centerX - unit, centerY + 3f * unit, paint)
+            canvas.drawLine(centerX, centerY + wing, centerX + unit, centerY + 3f * unit, paint)
+        } else {
+            val body = RectF(
+                centerX - 2.4f * unit,
+                centerY - 1.3f * unit,
+                centerX + 2.4f * unit,
+                centerY + 1.1f * unit
+            )
+            canvas.drawRoundRect(body, 0.7f * unit, 0.7f * unit, paint)
+            canvas.drawCircle(centerX - 1.4f * unit, centerY + 1.5f * unit, 0.55f * unit, paint)
+            canvas.drawCircle(centerX + 1.4f * unit, centerY + 1.5f * unit, 0.55f * unit, paint)
+        }
     }
 
     private fun loadFirstThumbnail(context: Context, clips: List<ClipItem>): Bitmap? {
@@ -225,10 +474,12 @@ internal object EndingInfoCardRenderer {
     private fun shortDate(value: Long): String =
         SimpleDateFormat("M. d.", Locale.KOREAN).format(Date(value))
 
-    private fun colors(theme: EndingInfoCardTheme): CardColors = when (theme) {
+    private fun colors(theme: EndingInfoCardTheme, settings: WatermarkSettings): CardColors = when (theme) {
         EndingInfoCardTheme.Caption -> CardColors(
             Color.rgb(18, 22, 23), Color.rgb(34, 49, 47), Color.argb(150, 238, 246, 242),
-            Color.WHITE, Color.rgb(222, 244, 236), Color.rgb(160, 205, 190)
+            safeColor(settings.textColorHex, Color.WHITE),
+            safeColor(settings.textColorHex, Color.rgb(222, 244, 236)),
+            safeColor(settings.shadowColorHex, Color.rgb(160, 205, 190))
         )
         EndingInfoCardTheme.TreasureMap -> CardColors(
             Color.rgb(122, 74, 31), Color.rgb(232, 194, 122), Color.argb(235, 242, 214, 156),
@@ -247,6 +498,9 @@ internal object EndingInfoCardRenderer {
             Color.rgb(36, 41, 51), Color.rgb(33, 61, 102), Color.rgb(110, 122, 138)
         )
     }
+
+    private fun safeColor(value: String, fallback: Int): Int =
+        runCatching { Color.parseColor(value) }.getOrDefault(fallback)
 
     private data class CardColors(
         val backgroundStart: Int,

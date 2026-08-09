@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -86,6 +87,7 @@ internal fun LazyListScope.movieCollectionItems(
     onImport: () -> Unit,
     onCancelImport: () -> Unit,
     onOpen: (CollectedMovie) -> Unit,
+    onTogglePin: (CollectedMovie) -> Unit,
     onRename: (CollectedMovie, String) -> Unit,
     onRemove: (CollectedMovie) -> Unit
 ) {
@@ -95,7 +97,7 @@ internal fun LazyListScope.movieCollectionItems(
 
     val cells = buildList<CollectedMovie?> {
         addAll(movies)
-        add(null)
+        if (movies.size < MovieCollectionStore.MaximumMovieCount) add(null)
         if (size % 2 != 0) add(CollectionSpacer)
     }
     items(
@@ -120,6 +122,7 @@ internal fun LazyListScope.movieCollectionItems(
                         modifier = Modifier.weight(1f),
                         movie = movie,
                         onOpen = { onOpen(movie) },
+                        onTogglePin = { onTogglePin(movie) },
                         onRename = { onRename(movie, it) },
                         onRemove = { onRemove(movie) },
                         palette = palette
@@ -182,33 +185,31 @@ private fun CollectionHeader(count: Int, palette: HanClipPalette) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        Text(
+            text = "$count/${MovieCollectionStore.MaximumMovieCount}",
+            color = palette.subText,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.weight(1f))
         Surface(
-            modifier = Modifier.size(27.dp),
-            shape = RoundedCornerShape(7.dp),
-            color = palette.primary
+            modifier = Modifier.size(22.dp),
+            shape = RoundedCornerShape(6.dp),
+            color = palette.secondary.copy(alpha = 0.10f)
         ) {
             Icon(
                 Icons.Outlined.FolderOpen,
                 contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.padding(6.dp)
+                tint = palette.primary.copy(alpha = 0.72f),
+                modifier = Modifier.padding(5.dp)
             )
         }
         Text(
             text = "컬렉션",
-            color = palette.text,
+            color = palette.text.copy(alpha = 0.76f),
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp
+            fontSize = 12.sp
         )
-        Surface(shape = RoundedCornerShape(50), color = palette.chip) {
-            Text(
-                text = count.toString(),
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                color = palette.primary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp
-            )
-        }
     }
 }
 
@@ -285,6 +286,7 @@ private fun CollectionMovieCard(
     modifier: Modifier,
     movie: CollectedMovie,
     onOpen: () -> Unit,
+    onTogglePin: () -> Unit,
     onRename: (String) -> Unit,
     onRemove: () -> Unit,
     palette: HanClipPalette
@@ -347,7 +349,7 @@ private fun CollectionMovieCard(
         ) {
             Text(
                 text = movie.title,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 34.dp),
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
@@ -375,12 +377,43 @@ private fun CollectionMovieCard(
         ) {
             Icon(Icons.Outlined.MoreVert, contentDescription = "컬렉션 메뉴", tint = Color.White)
         }
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .size(44.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = Color.Transparent,
+            onClick = onTogglePin
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (movie.isPinned) {
+                    Icon(
+                        Icons.Outlined.PushPin,
+                        contentDescription = "컬렉션 핀 해제",
+                        tint = Color(0xFFF2545B),
+                        modifier = Modifier.size(30.dp)
+                    )
+                } else {
+                    Surface(
+                        modifier = Modifier.size(18.dp),
+                        shape = RoundedCornerShape(9.dp),
+                        color = Color.Black.copy(alpha = 0.90f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f))
+                    ) {}
+                }
+            }
+        }
         DropdownMenu(
             expanded = showActions,
             onDismissRequest = { showActions = false },
             shape = RoundedCornerShape(16.dp),
             containerColor = palette.solidPanel
         ) {
+            DropdownMenuItem(
+                text = { Text(if (movie.isPinned) "핀 해제" else "핀 고정") },
+                leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
+                onClick = { showActions = false; onTogglePin() }
+            )
             DropdownMenuItem(
                 text = { Text("제목 수정") },
                 leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
