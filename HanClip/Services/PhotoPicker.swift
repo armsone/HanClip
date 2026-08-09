@@ -87,6 +87,7 @@ private final class PhotoPickerGlassButton: UIButton {
 
 struct PhotoPicker: UIViewControllerRepresentable {
     let initialSelectionIdentifiers: [String]
+    let excludedImportIdentifiers: Set<String>
     let onComplete: ([ClipItem]) -> Void
     let onStart: () -> Void
     let onProgress: (Double, String) -> Void
@@ -120,6 +121,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
+            excludedImportIdentifiers: excludedImportIdentifiers,
             onStart: onStart,
             onProgress: onProgress,
             onRegisterCancellation: onRegisterCancellation,
@@ -159,6 +161,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private let filterButton = UIButton(type: .system)
         private let clearSelectionButton = UIButton(type: .system)
         private let doneButton = UIButton(type: .system)
+        private let headerDoneButton = PhotoPickerGlassButton(type: .system)
         private let previousDayButton = UIButton(type: .system)
         private let todayButton = UIButton(type: .system)
         private var isTodayButtonArmedForSelection = false
@@ -302,8 +305,37 @@ struct PhotoPicker: UIViewControllerRepresentable {
             cancelButton.layer.shadowRadius = 8
             cancelButton.layer.shadowOffset = CGSize(width: 0, height: 4)
 
+            configureCompactButton(
+                headerDoneButton,
+                title: "0개 추가",
+                symbolName: nil,
+                fontSize: 16,
+                foregroundColor: UIColor(HanClipTheme.text)
+                    .withAlphaComponent(0.72),
+                backgroundColor: UIColor.white.withAlphaComponent(0.14),
+                borderColor: UIColor.white.withAlphaComponent(0.52)
+            )
+            headerDoneButton.setTitleColor(
+                UIColor(HanClipTheme.text).withAlphaComponent(0.72),
+                for: .disabled
+            )
+            headerDoneButton.isEnabled = false
+            headerDoneButton.addTarget(
+                self,
+                action: #selector(doneTapped),
+                for: .touchUpInside
+            )
+            headerDoneButton.backgroundColor = .clear
+            headerDoneButton.layer.shadowColor =
+                HanClipTheme.secondaryUIColor.cgColor
+            headerDoneButton.layer.shadowOpacity = 0.08
+            headerDoneButton.layer.shadowRadius = 8
+            headerDoneButton.layer.shadowOffset = CGSize(width: 0, height: 4)
+
             cancelButton.translatesAutoresizingMaskIntoConstraints = false
+            headerDoneButton.translatesAutoresizingMaskIntoConstraints = false
             header.addSubview(cancelButton)
+            header.addSubview(headerDoneButton)
 
             NSLayoutConstraint.activate([
                 header.topAnchor.constraint(equalTo: view.topAnchor),
@@ -323,6 +355,16 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 ),
                 cancelButton.widthAnchor.constraint(equalToConstant: 88),
                 cancelButton.heightAnchor.constraint(equalToConstant: 40),
+                headerDoneButton.trailingAnchor.constraint(
+                    equalTo: header.trailingAnchor,
+                    constant: -18
+                ),
+                headerDoneButton.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor,
+                    constant: 14
+                ),
+                headerDoneButton.widthAnchor.constraint(equalToConstant: 88),
+                headerDoneButton.heightAnchor.constraint(equalToConstant: 40),
                 titleButton.centerXAnchor.constraint(equalTo: header.centerXAnchor),
                 titleButton.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
                 titleButton.widthAnchor.constraint(equalToConstant: 88),
@@ -332,8 +374,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     constant: 8
                 ),
                 titleButton.trailingAnchor.constraint(
-                    lessThanOrEqualTo: header.trailingAnchor,
-                    constant: -18
+                    lessThanOrEqualTo: headerDoneButton.leadingAnchor,
+                    constant: -8
                 )
             ])
             header.tag = 101
@@ -1192,12 +1234,19 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     : UIColor(HanClipTheme.text).withAlphaComponent(0.35),
                 for: .normal
             )
+            headerDoneButton.setTitle("\(count)개 추가", for: .normal)
+            headerDoneButton.isEnabled = count > 0
+            headerDoneButton.setTitleColor(
+                UIColor(HanClipTheme.text).withAlphaComponent(0.72),
+                for: .normal
+            )
             clearSelectionButton.isEnabled = count > 0
             clearSelectionButton.alpha = count > 0 ? 1 : 0.34
         }
 
         private func updateDoneButtonTitle(_ title: String) {
             doneButton.setTitle(title, for: .normal)
+            headerDoneButton.setTitle(title, for: .normal)
         }
 
         @objc private func todayTapped() {
@@ -2419,6 +2468,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
     }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        private let excludedImportIdentifiers: Set<String>
         private let onStart: () -> Void
         private let onProgress: (Double, String) -> Void
         private let onRegisterCancellation: (@escaping () -> Void) -> Void
@@ -2430,6 +2480,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
         weak var container: PhotoPickerContainerViewController?
 
         init(
+            excludedImportIdentifiers: Set<String>,
             onStart: @escaping () -> Void,
             onProgress: @escaping (Double, String) -> Void,
             onRegisterCancellation: @escaping (
@@ -2439,6 +2490,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             onCancel: @escaping () -> Void,
             onDismiss: @escaping () -> Void
         ) {
+            self.excludedImportIdentifiers = excludedImportIdentifiers
             self.onStart = onStart
             self.onProgress = onProgress
             self.onRegisterCancellation = onRegisterCancellation
@@ -2462,21 +2514,28 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
         func finishPicking(assetIdentifiers: [String]) {
             guard !assetIdentifiers.isEmpty else { return }
+            let identifiersToImport = assetIdentifiers.filter {
+                !excludedImportIdentifiers.contains($0)
+            }
             onDismiss()
+            guard !identifiersToImport.isEmpty else {
+                onComplete([])
+                return
+            }
             onStart()
 
             importTask?.cancel()
             importTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 var items: [ClipItem] = []
-                items.reserveCapacity(assetIdentifiers.count)
-                for (index, identifier) in assetIdentifiers.enumerated() {
+                items.reserveCapacity(identifiersToImport.count)
+                for (index, identifier) in identifiersToImport.enumerated() {
                     guard !Task.isCancelled else { return }
                     defer {
                         let completed = index + 1
                         onProgress(
-                            Double(completed) / Double(assetIdentifiers.count),
-                            "미디어 \(completed)/\(assetIdentifiers.count)개를 불러오는 중…"
+                            Double(completed) / Double(identifiersToImport.count),
+                            "미디어 \(completed)/\(identifiersToImport.count)개를 불러오는 중…"
                         )
                     }
                     guard let asset = PhotoLibraryService.asset(

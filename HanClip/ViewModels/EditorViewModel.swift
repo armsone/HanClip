@@ -565,6 +565,7 @@ final class EditorViewModel: ObservableObject {
             beginNewProject()
             importPendingItemsIntoNewProject()
         }
+        prepareCurrentMediaPickerSelection()
         Task {
             if await PhotoLibraryService.requestReadAccess() {
                 isCalendarPickerPresented = false
@@ -592,6 +593,7 @@ final class EditorViewModel: ObservableObject {
             beginNewProject()
             importPendingItemsIntoNewProject()
         }
+        prepareCurrentMediaPickerSelection()
         Task {
             if await PhotoLibraryService.requestReadAccess() {
                 await prepareCalendarPicker()
@@ -619,6 +621,20 @@ final class EditorViewModel: ObservableObject {
         withAnimation(.easeInOut(duration: 0.11)) {
             isCalendarPickerPresented = false
         }
+    }
+
+    var currentPhotoAssetIdentifiers: [String] {
+        var seen: Set<String> = []
+        return clips.compactMap { clip in
+            guard case .photoAsset(let identifier) = clip.source,
+                  seen.insert(identifier).inserted
+            else { return nil }
+            return identifier
+        }
+    }
+
+    func prepareCurrentMediaPickerSelection() {
+        mediaPickerSelectionIdentifiers = currentPhotoAssetIdentifiers
     }
 
     func closeMediaPicker() {
@@ -1903,6 +1919,7 @@ final class EditorViewModel: ObservableObject {
                 isPreviewRendering = false
                 previewThumbnail = nil
                 previewTask = nil
+                restoreQuickModeAfterPreviewCancellationIfNeeded()
             } catch {
                 progressMessage = ""
                 previewProgress = 0
@@ -1913,6 +1930,14 @@ final class EditorViewModel: ObservableObject {
                 alertMessage = error.localizedDescription
             }
         }
+    }
+
+    private func restoreQuickModeAfterPreviewCancellationIfNeeded() {
+        guard shouldReturnToQuickDurationPickerAfterPreview else { return }
+        shouldReturnToQuickDurationPickerAfterPreview = false
+        activeMoviePreset = .quick
+        isQuickModeProject = true
+        isQuickDurationPickerPresented = true
     }
 
     private func firstPhotoLocation(in items: [ClipItem]) -> CLLocation? {
@@ -4357,6 +4382,8 @@ final class EditorViewModel: ObservableObject {
             addPickedItems(imported)
             if imported.isEmpty {
                 alertMessage = "선택한 영상 파일을 가져올 수 없습니다."
+            } else if isQuickModeProject {
+                startQuickMovieIfNeeded()
             }
         }
     }
@@ -4370,6 +4397,7 @@ final class EditorViewModel: ObservableObject {
         let selectedDates = Set(
             dates.map { Calendar.current.startOfDay(for: $0) }
         )
+        let existingAssetIdentifiers = Set(currentPhotoAssetIdentifiers)
         isCalendarPickerPresented = false
         isPickerPresented = false
         isImportingCalendarMedia = true
@@ -4382,6 +4410,7 @@ final class EditorViewModel: ObservableObject {
                 calendar: .current
             ).filter {
                 !excludedAssetIdentifiers.contains($0.localIdentifier)
+                    && !existingAssetIdentifiers.contains($0.localIdentifier)
             }
             var imported: [ClipItem] = []
             imported.reserveCapacity(assets.count)

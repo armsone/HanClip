@@ -120,6 +120,7 @@ struct EditorView: View {
     @State private var showTextOverlaySettings = false
     @State private var showBackgroundMusicSettings = false
     @State private var shouldReturnToQuickDurationPicker = false
+    @State private var isAddingQuickMedia = false
     @State private var showOnlineMusicBrowser = false
     @State private var showAiShotCamera = false
     @State private var isAiShotRestartPending = false
@@ -665,7 +666,7 @@ struct EditorView: View {
                         initialMediaDates: model.initialCalendarMediaDates,
                         initialMediaCounts: model.initialCalendarMediaCounts,
                         initialSelectionIdentifiers: model.mediaPickerSelectionIdentifiers,
-                        onCancel: model.cancelMediaPicker,
+                        onCancel: cancelMediaPicker,
                         onShowPhotos: model.switchCalendarPickerToPhotos,
                         onConfirm: { dates, excludedAssetIdentifiers in
                             model.mediaPickerSelectionIdentifiers = []
@@ -694,12 +695,23 @@ struct EditorView: View {
                 textEnabled: textOverlayBinding(\.isEnabled),
                 musicSettings: model.backgroundMusicSettings,
                 musicEnabled: backgroundMusicBinding(\.isEnabled),
+                aspectRatio: Binding(
+                    get: { model.outputAspectRatio },
+                    set: { model.selectOutputAspectRatio($0) }
+                ),
                 onSelectText: openQuickTextSettings,
                 onSelectMusic: openQuickMusicSettings,
+                onAddPhoto: openQuickMediaPicker,
+                onAddFile: openQuickFilePicker,
                 onMake: model.confirmQuickMovieDuration,
                 onCancel: model.cancelQuickMovieDurationSelection
             )
             .interactiveDismissDisabled()
+        }
+        .onChange(of: model.isQuickDurationPickerPresented) { _, isPresented in
+            if isPresented {
+                isAddingQuickMedia = false
+            }
         }
         .fullScreenCover(item: $selectedCollectionMovie) { movie in
             CollectionMoviePlayerView(
@@ -743,7 +755,11 @@ struct EditorView: View {
                 case .success(let urls):
                     model.importFiles(urls)
                 case .failure(let error):
-                    model.alertMessage = error.localizedDescription
+                    if isAddingQuickMedia {
+                        restoreQuickDurationPickerAfterMediaCancellation()
+                    } else {
+                        model.alertMessage = error.localizedDescription
+                    }
                 }
             }
             .ignoresSafeArea()
@@ -1072,6 +1088,9 @@ struct EditorView: View {
     private var photoPicker: some View {
         PhotoPicker(
             initialSelectionIdentifiers: model.mediaPickerSelectionIdentifiers,
+            excludedImportIdentifiers: Set(
+                model.currentPhotoAssetIdentifiers
+            ),
             onComplete: handlePhotoPickerComplete,
             onStart: model.startPhotoLibraryImport,
             onProgress: { progress, message in
@@ -1082,7 +1101,7 @@ struct EditorView: View {
             },
             onRegisterCancellation:
                 model.registerPhotoLibraryImportCancellation,
-            onCancel: model.cancelMediaPicker,
+            onCancel: cancelMediaPicker,
             onDismiss: {
                 model.closeMediaPicker()
             },
@@ -1248,6 +1267,7 @@ struct EditorView: View {
             await model.refreshPresetCaptionAfterMediaImport()
             guard !Task.isCancelled else { return }
             model.finishPhotoLibraryImport()
+            isAddingQuickMedia = false
             model.startQuickMovieIfNeeded()
         }
         model.registerPhotoLibraryImportCancellation {
@@ -3195,6 +3215,41 @@ struct EditorView: View {
         model.isQuickDurationPickerPresented = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
             showBackgroundMusicSettings = true
+        }
+    }
+
+    private func openQuickMediaPicker() {
+        isAddingQuickMedia = true
+        model.prepareCurrentMediaPickerSelection()
+        model.isQuickDurationPickerPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            model.openPicker()
+        }
+    }
+
+    private func openQuickFilePicker() {
+        isAddingQuickMedia = true
+        model.isQuickDurationPickerPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            model.openFilePicker()
+        }
+    }
+
+    private func cancelMediaPicker() {
+        guard isAddingQuickMedia else {
+            model.cancelMediaPicker()
+            return
+        }
+
+        isAddingQuickMedia = false
+        model.closeMediaPicker()
+        restoreQuickDurationPickerAfterMediaCancellation()
+    }
+
+    private func restoreQuickDurationPickerAfterMediaCancellation() {
+        isAddingQuickMedia = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            model.isQuickDurationPickerPresented = true
         }
     }
 
@@ -14331,13 +14386,18 @@ private struct QuickMovieDurationPicker: View {
     @Binding var textEnabled: Bool
     let musicSettings: BackgroundMusicSettings
     @Binding var musicEnabled: Bool
+    @Binding var aspectRatio: OutputAspectRatio?
     let onSelectText: () -> Void
     let onSelectMusic: () -> Void
+    let onAddPhoto: () -> Void
+    let onAddFile: () -> Void
     let onMake: (Double?) -> Void
     let onCancel: () -> Void
 
     @State private var selectedDuration: Double
     @State private var usesRecommendedDuration = true
+    @AppStorage("hanClipThemeMode") private var themeModeRaw =
+        HanClipThemeMode.automatic.rawValue
 
     init(
         recommendedDuration: Double,
@@ -14346,8 +14406,11 @@ private struct QuickMovieDurationPicker: View {
         textEnabled: Binding<Bool>,
         musicSettings: BackgroundMusicSettings,
         musicEnabled: Binding<Bool>,
+        aspectRatio: Binding<OutputAspectRatio?>,
         onSelectText: @escaping () -> Void,
         onSelectMusic: @escaping () -> Void,
+        onAddPhoto: @escaping () -> Void,
+        onAddFile: @escaping () -> Void,
         onMake: @escaping (Double?) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -14357,8 +14420,11 @@ private struct QuickMovieDurationPicker: View {
         _textEnabled = textEnabled
         self.musicSettings = musicSettings
         _musicEnabled = musicEnabled
+        _aspectRatio = aspectRatio
         self.onSelectText = onSelectText
         self.onSelectMusic = onSelectMusic
+        self.onAddPhoto = onAddPhoto
+        self.onAddFile = onAddFile
         self.onMake = onMake
         self.onCancel = onCancel
         _selectedDuration = State(initialValue: max(1, recommendedDuration))
@@ -14371,12 +14437,12 @@ private struct QuickMovieDurationPicker: View {
             VStack(spacing: 0) {
                 HStack {
                     Button(action: onCancel) {
-                        Text("취소")
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(minWidth: 52, minHeight: 52)
-                            .contentShape(Rectangle())
+                        HanClipHeaderActionCluster {
+                            Image(systemName: "xmark")
+                        }
                     }
-                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("취소")
 
                     Spacer()
 
@@ -14386,7 +14452,20 @@ private struct QuickMovieDurationPicker: View {
 
                     Spacer()
 
-                    Color.clear.frame(width: 52, height: 52)
+                    Menu {
+                        Button(action: onAddPhoto) {
+                            Label("사진", systemImage: "photo.on.rectangle")
+                        }
+
+                        Button(action: onAddFile) {
+                            Label("파일", systemImage: "folder")
+                        }
+                    } label: {
+                        HanClipHeaderActionCluster {
+                            Image(systemName: "photo.badge.plus")
+                        }
+                    }
+                    .accessibilityLabel("미디어 추가")
                 }
 
                 VStack(spacing: 16) {
@@ -14430,44 +14509,14 @@ private struct QuickMovieDurationPicker: View {
                         )
                     }
 
-                    VStack(spacing: 0) {
-                        TextOverlaySummaryRow(
-                            settings: textSettings,
-                            isEnabled: $textEnabled,
-                            onSelect: onSelectText
-                        )
-                        .padding(.horizontal, 12)
-
-                        Rectangle()
-                            .fill(HanClipTheme.secondary.opacity(0.16))
-                            .frame(height: 0.8)
-
-                        BackgroundMusicSummaryRow(
-                            settings: musicSettings,
-                            isEnabled: $musicEnabled,
-                            onSelect: onSelectMusic
-                        )
-                        .padding(.horizontal, 12)
-                    }
-                    .background(
-                        HanClipTheme.panelFill,
-                        in: RoundedRectangle(
-                            cornerRadius: 14,
-                            style: .continuous
-                        )
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(
-                                HanClipTheme.secondary.opacity(0.18),
-                                lineWidth: 1
-                            )
-                    }
-
                 }
-                .padding(.top, 10)
+                .padding(.top, 24)
 
-                Spacer(minLength: 20)
+                Spacer(minLength: 8)
+
+                quickSettingsGroup
+
+                Spacer(minLength: 8)
 
                 Button {
                     onMake(usesRecommendedDuration ? nil : selectedDuration)
@@ -14476,7 +14525,7 @@ private struct QuickMovieDurationPicker: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 116)
+                        .frame(height: 93)
                         .background(HanClipTheme.primary, in: Capsule())
                 }
                 .buttonStyle(.plain)
@@ -14487,6 +14536,46 @@ private struct QuickMovieDurationPicker: View {
         .buttonStyle(.plain)
         .safeAreaPadding(.top, 6)
         .safeAreaPadding(.bottom, 6)
+    }
+
+    private var quickSettingsGroup: some View {
+        VStack(spacing: 10) {
+            VStack(spacing: 0) {
+                TextOverlaySummaryRow(
+                    settings: textSettings,
+                    isEnabled: $textEnabled,
+                    onSelect: onSelectText
+                )
+                .padding(.horizontal, 12)
+
+                Rectangle()
+                    .fill(HanClipTheme.secondary.opacity(0.16))
+                    .frame(height: 0.8)
+
+                BackgroundMusicSummaryRow(
+                    settings: musicSettings,
+                    isEnabled: $musicEnabled,
+                    onSelect: onSelectMusic
+                )
+                .padding(.horizontal, 12)
+            }
+            .background(
+                HanClipTheme.panelFill,
+                in: RoundedRectangle(
+                    cornerRadius: 14,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(
+                        HanClipTheme.secondary.opacity(0.18),
+                        lineWidth: 1
+                    )
+            }
+
+            aspectRatioPanel
+        }
     }
 
     private var durationStepper: some View {
@@ -14500,7 +14589,7 @@ private struct QuickMovieDurationPicker: View {
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 18, weight: .bold))
-                    .frame(width: 72, height: 64)
+                    .frame(width: 72, height: 51)
                     .contentShape(Rectangle())
             }
             .disabled(selectedDuration <= minimumSelectableDuration)
@@ -14513,7 +14602,7 @@ private struct QuickMovieDurationPicker: View {
                     .monospacedDigit()
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 64)
+            .frame(height: 51)
 
             Button {
                 usesRecommendedDuration = false
@@ -14521,11 +14610,10 @@ private struct QuickMovieDurationPicker: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .bold))
-                    .frame(width: 72, height: 64)
+                    .frame(width: 72, height: 51)
                     .contentShape(Rectangle())
             }
         }
-        .padding(.top, 10)
         .foregroundStyle(HanClipTheme.primary)
         .background(
             HanClipTheme.secondary.opacity(0.08),
@@ -14568,7 +14656,7 @@ private struct QuickMovieDurationPicker: View {
                     isSelected ? Color.white : HanClipTheme.primaryText
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 68)
+                .frame(height: 54)
                 .background(
                     isSelected
                         ? HanClipTheme.primary
@@ -14604,7 +14692,7 @@ private struct QuickMovieDurationPicker: View {
                 isSelected ? Color.white : HanClipTheme.primaryText
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 68)
+            .frame(height: 54)
             .background(
                 isSelected
                     ? HanClipTheme.primary
@@ -14624,6 +14712,154 @@ private struct QuickMovieDurationPicker: View {
         if minutes == 0 { return "\(remainingSeconds)초" }
         if remainingSeconds == 0 { return "\(minutes)분" }
         return "\(minutes)분 \(remainingSeconds)초"
+    }
+
+    @ViewBuilder
+    private var aspectRatioPanel: some View {
+        if #available(iOS 26.0, *) {
+            quickAspectRatioButtons
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .padding(5)
+                .padding(.horizontal, 9)
+                .glassEffect(
+                    .regular
+                        .tint(HanClipTheme.secondary.opacity(0.16))
+                        .interactive(),
+                    in: Capsule()
+                )
+                .shadow(
+                    color: HanClipTheme.primary.opacity(0.10),
+                    radius: 6,
+                    y: 2
+                )
+                .id("quick-aspect-ratio-picker-\(themeModeRaw)")
+        } else {
+            quickAspectRatioButtons
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .padding(5)
+                .padding(.horizontal, 9)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            HanClipTheme.secondary.opacity(0.32),
+                            lineWidth: 1
+                        )
+                }
+                .shadow(
+                    color: HanClipTheme.primary.opacity(0.08),
+                    radius: 5,
+                    y: 2
+                )
+                .id("quick-aspect-ratio-picker-\(themeModeRaw)")
+        }
+    }
+
+    private var quickAspectRatioButtons: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 4) {
+                Button {
+                    aspectRatio = nil
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(
+                                aspectRatio == nil
+                                    ? HanClipTheme.primary.opacity(0.14)
+                                    : Color.clear
+                            )
+
+                        Text("첫\n사진")
+                            .font(.system(size: 10, weight: .semibold))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(0)
+                            .foregroundStyle(
+                                aspectRatio == nil
+                                    ? HanClipTheme.primary
+                                    : HanClipTheme.secondary
+                            )
+                    }
+                    .frame(width: 32, height: 32)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                aspectRatio == nil
+                                    ? HanClipTheme.primary
+                                    : HanClipTheme.secondary.opacity(0.72),
+                                lineWidth: aspectRatio == nil ? 2 : 1
+                            )
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 32)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("첫 사진 비율")
+                .accessibilityAddTraits(aspectRatio == nil ? .isSelected : [])
+
+                ForEach(OutputAspectRatio.allCases) { ratio in
+                    Button {
+                        aspectRatio = ratio
+                    } label: {
+                        AspectRatioIcon(
+                            ratio: ratio,
+                            isSelected: aspectRatio == ratio,
+                            themeModeRaw: themeModeRaw
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(ratio.accessibilityTitle)
+                    .accessibilityAddTraits(
+                        aspectRatio == ratio ? .isSelected : []
+                    )
+                }
+            }
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 4)
+                    .onChanged { value in
+                        selectQuickAspectRatio(
+                            at: value.location.x,
+                            totalWidth: proxy.size.width
+                        )
+                    }
+                    .onEnded { value in
+                        selectQuickAspectRatio(
+                            at: value.location.x,
+                            totalWidth: proxy.size.width
+                        )
+                    }
+            )
+        }
+        .frame(height: 32)
+    }
+
+    private func selectQuickAspectRatio(
+        at horizontalPosition: CGFloat,
+        totalWidth: CGFloat
+    ) {
+        let ratios = OutputAspectRatio.allCases
+        let selectionCount = ratios.count + 1
+        guard totalWidth > 0, selectionCount > 0 else { return }
+
+        let itemWidth = totalWidth / CGFloat(selectionCount)
+        let clampedPosition = min(
+            max(horizontalPosition, 0),
+            totalWidth - 0.001
+        )
+        let selectedIndex = min(
+            Int(clampedPosition / itemWidth),
+            selectionCount - 1
+        )
+
+        if selectedIndex == 0 {
+            aspectRatio = nil
+        } else {
+            aspectRatio = ratios[selectedIndex - 1]
+        }
     }
 }
 
@@ -16448,8 +16684,12 @@ private struct CalendarMediaPickerView: View {
 
             Spacer()
 
-            Color.clear
-                .frame(width: 68, height: 40)
+            Button("추가") {
+                confirmCalendarSelection()
+            }
+            .foregroundStyle(HanClipTheme.text.opacity(0.72))
+            .disabled(selectedDates.isEmpty)
+            .calendarActionButtonStyle()
         }
         .font(.system(size: 16, weight: .semibold))
         .padding(.horizontal, 18)
@@ -16510,7 +16750,7 @@ private struct CalendarMediaPickerView: View {
                                 alignment: .leading
                             )
 
-                        Label("지우기", systemImage: "trash")
+                        Label("해제", systemImage: "trash")
                             .font(.system(size: 13, weight: .semibold))
                             .frame(
                                 width: rightWidth,
@@ -16568,7 +16808,7 @@ private struct CalendarMediaPickerView: View {
                     handleTodayDoubleTap()
                 }
             }
-            .accessibilityAction(named: "지우기") {
+            .accessibilityAction(named: "해제") {
                 guard !selectedDates.isEmpty else { return }
                 clearSelectedCalendarMedia()
             }
@@ -16695,7 +16935,7 @@ private struct CalendarMediaPickerView: View {
             Spacer()
 
             calendarQuickSelectionButton(
-                title: "확인",
+                title: "추가",
                 isEnabled: !selectedDates.isEmpty
             ) {
                 confirmCalendarSelection()
