@@ -18,6 +18,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -109,6 +110,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -146,6 +150,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -180,6 +185,9 @@ fun HomeRoute(
     val coroutineScope = rememberCoroutineScope()
     var themeMode by remember {
         mutableStateOf(HanClipThemeStore.load(context))
+    }
+    var orderedThemeModes by remember {
+        mutableStateOf(HanClipThemeStore.loadVisibleOrder(context))
     }
     var showThemeSelection by remember { mutableStateOf(false) }
     var showSettingsInfo by remember { mutableStateOf(false) }
@@ -276,7 +284,7 @@ fun HomeRoute(
             HomeHeader(
                 palette = palette,
                 onCycleTheme = {
-                    val modes = HanClipThemeMode.visibleModes
+                    val modes = orderedThemeModes
                     val currentIndex = modes.indexOf(themeMode).coerceAtLeast(0)
                     themeMode = modes[(currentIndex + 1) % modes.size]
                     HanClipThemeStore.save(context, themeMode)
@@ -385,9 +393,23 @@ fun HomeRoute(
     if (showThemeSelection) {
         ThemeSelectionDialog(
             selectedMode = themeMode,
+            orderedModes = orderedThemeModes,
             onSelect = { mode ->
                 themeMode = mode
                 HanClipThemeStore.save(context, mode)
+            },
+            onMoveCustomTheme = { mode, direction ->
+                val customOrder = orderedThemeModes
+                    .filter { it in HanClipThemeMode.customModes }
+                    .toMutableList()
+                val fromIndex = customOrder.indexOf(mode)
+                val toIndex = (fromIndex + direction).coerceIn(customOrder.indices)
+                if (fromIndex >= 0 && fromIndex != toIndex) {
+                    customOrder.removeAt(fromIndex)
+                    customOrder.add(toIndex, mode)
+                    orderedThemeModes = HanClipThemeMode.baseModes + customOrder
+                    HanClipThemeStore.saveCustomOrder(context, customOrder)
+                }
             },
             onDismiss = { showThemeSelection = false }
         )
@@ -715,7 +737,9 @@ private fun Bitmap.scaledDownToLongEdge(targetLongEdgePx: Int): Bitmap {
 @Composable
 private fun ThemeSelectionDialog(
     selectedMode: HanClipThemeMode,
+    orderedModes: List<HanClipThemeMode>,
     onSelect: (HanClipThemeMode) -> Unit,
+    onMoveCustomTheme: (HanClipThemeMode, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     val selectedPalette = selectedMode.palette
@@ -738,12 +762,14 @@ private fun ThemeSelectionDialog(
                 )
                 ThemePaletteSummary(selectedMode)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    HanClipThemeMode.visibleModes.forEach { mode ->
+                    orderedModes.forEach { mode ->
                         ThemeSelectionRow(
                             mode = mode,
                             selected = mode == selectedMode,
                             textColor = selectedPalette.text,
-                            onClick = { onSelect(mode) }
+                            onClick = { onSelect(mode) },
+                            canReorder = mode in HanClipThemeMode.customModes,
+                            onMove = { direction -> onMoveCustomTheme(mode, direction) }
                         )
                     }
                 }
@@ -843,9 +869,13 @@ private fun ThemeSelectionRow(
     mode: HanClipThemeMode,
     selected: Boolean,
     textColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    canReorder: Boolean,
+    onMove: (Int) -> Unit
 ) {
     val palette = mode.palette
+    val hapticFeedback = LocalHapticFeedback.current
+    val dragThreshold = with(LocalDensity.current) { 28.dp.toPx() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -875,8 +905,47 @@ private fun ThemeSelectionRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        ThemeColorSwatch(palette.primary)
-        ThemeColorSwatch(palette.secondary)
+        Row(
+            modifier = Modifier
+                .then(
+                    if (canReorder) {
+                        Modifier.pointerInput(mode, dragThreshold) {
+                            var accumulatedY = 0f
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    accumulatedY = 0f
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDragEnd = { accumulatedY = 0f },
+                                onDragCancel = { accumulatedY = 0f },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    accumulatedY += dragAmount.y
+                                    if (abs(accumulatedY) >= dragThreshold) {
+                                        onMove(if (accumulatedY > 0) 1 else -1)
+                                        accumulatedY = 0f
+                                    }
+                                }
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ThemeColorSwatch(palette.primary)
+            ThemeColorSwatch(palette.secondary)
+            if (canReorder) {
+                Icon(
+                    Icons.Outlined.DragIndicator,
+                    contentDescription = "길게 눌러 테마 순서 변경",
+                    tint = textColor.copy(alpha = 0.58f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
     }
 }
 

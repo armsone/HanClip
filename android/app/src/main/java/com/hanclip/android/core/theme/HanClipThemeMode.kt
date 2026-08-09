@@ -101,7 +101,12 @@ enum class HanClipThemeMode(
     );
 
     companion object {
-        val visibleModes = entries
+        val baseModes = listOf(Automatic, Light, Dark)
+        val customModes = listOf(BlossomGlow, GrayscalePlay, PixelPop)
+        val visibleModes = baseModes + customModes
+
+        fun fromStoredValueOrNull(value: String): HanClipThemeMode? =
+            entries.firstOrNull { it.storageValue == value }
 
         fun fromStoredValue(value: String?): HanClipThemeMode {
             return entries.firstOrNull { it.storageValue == value }
@@ -129,6 +134,7 @@ data class HanClipPalette(
 object HanClipThemeStore {
     private const val PreferencesName = "hanclip_home_theme_preferences"
     private const val ThemeModeKey = "hanClipThemeMode"
+    private const val CustomThemeOrderKey = "hanClipCustomThemeOrder"
 
     fun load(context: Context): HanClipThemeMode {
         val raw = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
@@ -140,6 +146,27 @@ object HanClipThemeStore {
         context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
             .edit()
             .putString(ThemeModeKey, mode.storageValue)
+            .apply()
+    }
+
+    fun loadVisibleOrder(context: Context): List<HanClipThemeMode> {
+        val storedModes = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .getString(CustomThemeOrderKey, null)
+            .orEmpty()
+            .split(',')
+            .mapNotNull(HanClipThemeMode::fromStoredValueOrNull)
+            .filter { it in HanClipThemeMode.customModes }
+            .distinct()
+        return HanClipThemeMode.baseModes + storedModes +
+            HanClipThemeMode.customModes.filterNot(storedModes::contains)
+    }
+
+    fun saveCustomOrder(context: Context, modes: List<HanClipThemeMode>) {
+        val normalized = modes.filter { it in HanClipThemeMode.customModes }.distinct() +
+            HanClipThemeMode.customModes.filterNot(modes::contains)
+        context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(CustomThemeOrderKey, normalized.joinToString(",") { it.storageValue })
             .apply()
     }
 }
