@@ -3965,7 +3965,7 @@ struct EditorView: View {
                         ProgressView()
                             .controlSize(.large)
                             .tint(HanClipTheme.primary)
-                        Text("두 AI가 서로 다른 장면 8개를 고르는 중")
+                        Text("두 AI가 서로 다른 장면 16개를 고르는 중")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(HanClipTheme.primaryText)
                     }
@@ -7939,7 +7939,7 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 4개와 한클립 AI 후보 4개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 8개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
@@ -17345,6 +17345,11 @@ private struct PersistentVideoProgressBar: View {
     }
 }
 
+private enum CollectionPlayerDragAxis {
+    case horizontal
+    case vertical
+}
+
 private struct CollectionMoviePlayerView: View {
     @Environment(\.dismiss) private var dismiss
     let movie: CollectedMovie
@@ -17354,6 +17359,10 @@ private struct CollectionMoviePlayerView: View {
     @State private var orientationObserver: NSObjectProtocol?
     @State private var timeObserver: Any?
     @State private var isPlaying = true
+    @State private var playerDragAxis: CollectionPlayerDragAxis?
+    @State private var dragStartSeconds = 0.0
+    @State private var dragPreviewSeconds: Double?
+    @State private var downwardDragOffset = 0.0
 
     init(movie: CollectedMovie, url: URL) {
         self.movie = movie
@@ -17372,6 +17381,8 @@ private struct CollectionMoviePlayerView: View {
                     x: proxy.size.width / 2,
                     y: proxy.size.height / 2
                 )
+                .offset(y: downwardDragOffset)
+                .opacity(dismissDragOpacity(for: proxy.size.height))
         }
         .background(Color.black)
         .ignoresSafeArea()
@@ -17395,7 +17406,23 @@ private struct CollectionMoviePlayerView: View {
         ZStack {
             Color.black
 
-            PreviewPlayerSurface(player: player, videoGravity: .resizeAspect)
+            GeometryReader { proxy in
+                PreviewPlayerSurface(player: player, videoGravity: .resizeAspect)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        collectionPlaybackGesture(viewportSize: proxy.size)
+                    )
+            }
+
+            if let dragPreviewSeconds {
+                Text(collectionPlaybackTime(dragPreviewSeconds))
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .allowsHitTesting(false)
+            }
 
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
@@ -17485,6 +17512,74 @@ private struct CollectionMoviePlayerView: View {
             player.play()
             isPlaying = true
         }
+    }
+
+    private func collectionPlaybackGesture(
+        viewportSize: CGSize
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .onChanged { value in
+                if playerDragAxis == nil {
+                    let horizontalDistance = abs(value.translation.width)
+                    let verticalDistance = abs(value.translation.height)
+                    playerDragAxis = horizontalDistance >= verticalDistance
+                        ? .horizontal
+                        : .vertical
+                    dragStartSeconds = player.currentTime().seconds.isFinite
+                        ? max(player.currentTime().seconds, 0)
+                        : 0
+                }
+
+                switch playerDragAxis {
+                case .horizontal:
+                    guard let duration = player.currentItem?.duration.seconds,
+                          duration.isFinite,
+                          duration > 0
+                    else { return }
+                    let width = max(viewportSize.width, 1)
+                    let delta = Double(value.translation.width / width) * duration
+                    let target = min(max(dragStartSeconds + delta, 0), duration)
+                    dragPreviewSeconds = target
+                    player.seek(
+                        to: CMTime(seconds: target, preferredTimescale: 600),
+                        toleranceBefore: .zero,
+                        toleranceAfter: .zero
+                    )
+
+                case .vertical:
+                    downwardDragOffset = max(value.translation.height, 0)
+
+                case nil:
+                    break
+                }
+            }
+            .onEnded { value in
+                let shouldDismiss = playerDragAxis == .vertical
+                    && value.translation.height
+                        > max(110, viewportSize.height * 0.18)
+
+                playerDragAxis = nil
+                dragPreviewSeconds = nil
+
+                if shouldDismiss {
+                    player.pause()
+                    dismiss()
+                } else {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        downwardDragOffset = 0
+                    }
+                }
+            }
+    }
+
+    private func dismissDragOpacity(for height: CGFloat) -> Double {
+        guard height > 0 else { return 1 }
+        return max(0.55, 1 - Double(downwardDragOffset / height) * 0.9)
+    }
+
+    private func collectionPlaybackTime(_ seconds: Double) -> String {
+        let totalSeconds = max(Int(seconds.rounded()), 0)
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 
     private func installOrientationObserver() {

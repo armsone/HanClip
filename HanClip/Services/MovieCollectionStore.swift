@@ -55,7 +55,7 @@ private struct AnalyzedPosterFrame {
 @MainActor
 final class MovieCollectionStore: ObservableObject {
     static let shared = MovieCollectionStore()
-    static let maximumMovieCount = 20
+    static let maximumMovieCount = 30
     private nonisolated static let currentPosterSelectionVersion = 2
 
     @Published private(set) var movies: [CollectedMovie] = []
@@ -372,7 +372,7 @@ final class MovieCollectionStore: ObservableObject {
         )
         let deviceFrames = selectDiverseFrames(
             from: analyzed,
-            count: 4,
+            count: 8,
             score: \.deviceScore,
             alreadySelected: []
         )
@@ -382,7 +382,7 @@ final class MovieCollectionStore: ObservableObject {
                     abs($0.timeSeconds - frame.timeSeconds) < 0.001
                 })
             },
-            count: 4,
+            count: 8,
             score: \.hanClipScore,
             alreadySelected: deviceFrames
         )
@@ -979,7 +979,7 @@ private enum MovieCollectionStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .collectionFull:
-            return "컬렉션에는 영화를 최대 20개까지 보관할 수 있습니다."
+            return "컬렉션에는 영화를 최대 30개까지 보관할 수 있습니다."
         }
     }
 }
