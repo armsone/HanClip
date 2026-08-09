@@ -6,13 +6,13 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.location.Geocoder
-import android.media.ExifInterface
 import android.media.FaceDetector
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
+import androidx.exifinterface.media.ExifInterface
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.LivePhotoMode
@@ -404,16 +404,31 @@ object MediaImportReader {
     }
 
     @Suppress("DEPRECATION")
-    private fun readImageLocation(context: Context, uri: Uri): GeoPoint? = runCatching {
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            val coordinates = FloatArray(2)
-            if (ExifInterface(input).getLatLong(coordinates)) {
-                GeoPoint(coordinates[0].toDouble(), coordinates[1].toDouble()).takeIf { it.isValid }
-            } else {
-                null
-            }
+    private fun readImageLocation(context: Context, uri: Uri): GeoPoint? {
+        val metadataUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            uri.scheme == "content" &&
+            uri.authority?.startsWith("media") == true
+        ) {
+            runCatching { MediaStore.setRequireOriginal(uri) }.getOrDefault(uri)
+        } else {
+            uri
         }
-    }.getOrNull()
+        val descriptorLocation = runCatching {
+            context.contentResolver.openFileDescriptor(metadataUri, "r")?.use { descriptor ->
+                ExifInterface(descriptor.fileDescriptor).latLong?.let { coordinates ->
+                    GeoPoint(coordinates[0], coordinates[1]).takeIf { it.isValid }
+                }
+            }
+        }.getOrNull()
+        if (descriptorLocation != null) return descriptorLocation
+        return runCatching {
+            context.contentResolver.openInputStream(metadataUri)?.use { input ->
+                ExifInterface(input).latLong?.let { coordinates ->
+                    GeoPoint(coordinates[0], coordinates[1]).takeIf { it.isValid }
+                }
+            }
+        }.getOrNull()
+    }
 
     private fun parseLocation(value: String): GeoPoint? {
         val normalized = value.trim().removeSuffix("/")

@@ -410,19 +410,19 @@ fun EditorRoute(
                     },
                     onOpenMusicSettings = { isMusicSettingsSheetVisible = true },
                     onToggleEnding = { enabled ->
-                        viewModel.updateWatermark(
+                        viewModel.updateEndingInfo(
                             state.watermarkSettings.copy(includesEndingInfoCard = enabled)
                         )
                     },
                     onDecreaseEndingDuration = {
-                        viewModel.updateWatermark(
+                        viewModel.updateEndingInfo(
                             state.watermarkSettings.copy(
                                 endingInfoCardDuration = state.watermarkSettings.normalizedEndingInfoCardDuration - 0.5
                             )
                         )
                     },
                     onIncreaseEndingDuration = {
-                        viewModel.updateWatermark(
+                        viewModel.updateEndingInfo(
                             state.watermarkSettings.copy(
                                 endingInfoCardDuration = state.watermarkSettings.normalizedEndingInfoCardDuration + 0.5
                             )
@@ -726,7 +726,7 @@ fun EditorRoute(
                     viewModel.updateWatermark(state.watermarkSettings.copy(isEnabled = enabled))
                 },
                 onToggleEnding = { enabled ->
-                    viewModel.updateWatermark(state.watermarkSettings.copy(includesEndingInfoCard = enabled))
+                    viewModel.updateEndingInfo(state.watermarkSettings.copy(includesEndingInfoCard = enabled))
                 },
                 onToggleMusic = { enabled ->
                     if (enabled && state.backgroundMusicUri == null) {
@@ -864,7 +864,7 @@ fun EditorRoute(
                     stops = state.endingInfoStops(),
                     palette = palette,
                     onDismiss = ::closeEndingSettings,
-                    onApply = viewModel::updateWatermark
+                    onApply = viewModel::updateEndingInfo
                 )
             }
         }
@@ -968,7 +968,7 @@ enum class EditorImportAction {
 }
 
 private fun calendarMediaPermissions(): List<String> {
-    return when {
+    val galleryPermissions = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> listOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO,
@@ -979,6 +979,11 @@ private fun calendarMediaPermissions(): List<String> {
             Manifest.permission.READ_MEDIA_VIDEO
         )
         else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        galleryPermissions + Manifest.permission.ACCESS_MEDIA_LOCATION
+    } else {
+        galleryPermissions
     }
 }
 

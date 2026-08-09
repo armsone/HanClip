@@ -612,6 +612,20 @@ class EditorViewModel : ViewModel() {
         }
     }
 
+    fun updateEndingInfo(settings: WatermarkSettings) {
+        _uiState.update {
+            it.copy(
+                watermarkSettings = settings,
+                alertMessage = if (settings.includesEndingInfoCard) {
+                    "엔딩 ${settings.endingInfoCardTheme.title} · ${"%.1f".format(settings.normalizedEndingInfoCardDuration)}초를 MP4 완성본에 적용했습니다. 현재 작업도 자동 저장됩니다."
+                } else {
+                    "MP4 완성본에서 엔딩을 사용하지 않도록 설정했습니다. 현재 작업도 자동 저장됩니다."
+                },
+                undoDeleteMessage = null
+            )
+        }
+    }
+
     fun setBackgroundMusic(context: Context, uri: Uri?) {
         if (uri == null) {
             _uiState.update {
