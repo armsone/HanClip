@@ -123,6 +123,7 @@ import com.hanclip.android.core.model.VideoSegmentMode
 import com.hanclip.android.core.settings.SleepPreventionMode
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeStore
+import com.hanclip.android.feature.home.HanClipBrandCapsule
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
@@ -406,14 +407,22 @@ fun EditorRoute(
                     ) {
                         Text(
                             text = "클립 ${state.renderableClips.size}개",
-                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = palette.text
                         )
                         AssistChip(
                             onClick = { isReorderMode = !isReorderMode },
                             leadingIcon = { Icon(Icons.Outlined.DragIndicator, contentDescription = null) },
-                            label = { Text(if (isReorderMode) "완료" else "순서 변경", fontWeight = FontWeight.Bold) },
+                            label = {
+                                Text(
+                                    if (isReorderMode) "완료" else "순서 변경",
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
                             colors = clearAssistChipColors(isReorderMode, palette),
                             border = BorderStroke(1.dp, if (isReorderMode) palette.primary else palette.border)
                         )
@@ -851,59 +860,47 @@ private fun EditorHeader(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                modifier = Modifier.clickable(onClick = onBackHome),
-                shape = RoundedCornerShape(34.dp),
-                color = palette.panel,
-                border = BorderStroke(1.dp, palette.border)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.logo_mark),
-                        contentDescription = null,
-                        modifier = Modifier.size(34.dp),
-                        contentScale = ContentScale.Fit,
-                        colorFilter = ColorFilter.tint(Color(0xFF07323A))
-                    )
-                    Text(
-                        "HanClip",
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF07323A)
-                    )
-                }
+            Box(modifier = Modifier.clickable(onClick = onBackHome)) {
+                HanClipBrandCapsule(palette)
             }
             Surface(
                 modifier = Modifier
                     .size(58.dp)
                     .clickable(onClick = onAddMedia),
                 shape = androidx.compose.foundation.shape.CircleShape,
-                color = palette.chip,
-                border = BorderStroke(1.dp, palette.border)
+                color = palette.panel.copy(alpha = palette.panel.alpha * 0.72f),
+                border = BorderStroke(
+                    1.dp,
+                    palette.border.copy(alpha = palette.border.alpha * 0.62f)
+                )
             ) {
                 Icon(
                     Icons.Outlined.AddPhotoAlternate,
                     contentDescription = "미디어 추가",
-                    tint = Color(0xFF07323A),
+                    tint = palette.primary,
                     modifier = Modifier.padding(15.dp)
                 )
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = 2.dp),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Outlined.MovieCreation, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
-            Text("영화 제작", color = palette.subText, fontWeight = FontWeight.Bold)
+            Text(
+                "영화 제작",
+                color = palette.text.copy(alpha = 0.76f),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Black
+            )
         }
     }
 }
@@ -2029,14 +2026,30 @@ private fun ProjectControls(
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.AutoFixHigh, contentDescription = null, tint = palette.secondary)
-                Spacer(Modifier.width(8.dp))
-                Text("클립 설정", color = palette.text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.secondary.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.AutoFixHigh,
+                    contentDescription = null,
+                    tint = palette.primary.copy(alpha = 0.86f),
+                    modifier = Modifier.size(16.dp)
+                )
             }
+            Spacer(Modifier.width(9.dp))
+            Text(
+                "클립 설정",
+                color = palette.text.copy(alpha = 0.88f),
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -2229,12 +2242,19 @@ private fun CompactSettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = palette.subText, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = palette.subText, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(9.dp))
-        Text(label, color = palette.subText, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Text(
+            label,
+            color = palette.subText,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }
@@ -2255,10 +2275,11 @@ private fun CompactChoice(
     ) {
         Text(
             text,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             color = if (!enabled) palette.subText.copy(alpha = 0.45f) else if (selected) Color.White else palette.text,
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.labelLarge
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -2272,12 +2293,18 @@ private fun StepperPill(
 ) {
     Surface(shape = RoundedCornerShape(50), color = palette.chip, border = BorderStroke(1.dp, palette.border)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onDecrease, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Outlined.Remove, contentDescription = "줄이기", modifier = Modifier.size(18.dp))
+            IconButton(onClick = onDecrease, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Outlined.Remove, contentDescription = "줄이기", modifier = Modifier.size(16.dp))
             }
-            Text(value, color = palette.text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
-            IconButton(onClick = onIncrease, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Outlined.Add, contentDescription = "늘리기", modifier = Modifier.size(18.dp))
+            Text(
+                value,
+                color = palette.text,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            IconButton(onClick = onIncrease, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Outlined.Add, contentDescription = "늘리기", modifier = Modifier.size(16.dp))
             }
         }
     }
