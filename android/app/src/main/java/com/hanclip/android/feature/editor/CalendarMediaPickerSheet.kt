@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -1155,6 +1156,13 @@ private fun CalendarMediaStrip(
     onToggle: (Uri) -> Unit
 ) {
     var previewItem by remember { mutableStateOf<CalendarMediaItem?>(null) }
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val mediaColumnCount = when {
+        screenWidthDp >= 1_200 -> 12
+        screenWidthDp >= 840 -> 10
+        screenWidthDp >= 600 -> 8
+        else -> 5
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (mode != MediaPickerSheetMode.Calendar) Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1220,7 +1228,7 @@ private fun CalendarMediaStrip(
             )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
+                columns = GridCells.Fixed(mediaColumnCount),
                 modifier = Modifier.height(gridHeight),
                 contentPadding = PaddingValues(bottom = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
