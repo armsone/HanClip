@@ -11,7 +11,7 @@ enum class HanClipThemeMode(
 ) {
     Automatic(
         "automatic",
-        "자동 모드",
+        "Automatic Mode",
         HanClipPalette(
             primary = Color(0xFF072931),
             secondary = Color(0xFF007E81),
@@ -26,7 +26,7 @@ enum class HanClipThemeMode(
     ),
     Light(
         "light",
-        "밝은 모드",
+        "Light Mode",
         HanClipPalette(
             primary = Color(0xFF002228),
             secondary = Color(0xFF005C60),
@@ -41,7 +41,7 @@ enum class HanClipThemeMode(
     ),
     Dark(
         "dark",
-        "어두운 모드",
+        "Dark Mode",
         HanClipPalette(
             primary = Color(0xFF67E8F9),
             secondary = Color(0xFF527387),
@@ -56,7 +56,7 @@ enum class HanClipThemeMode(
     ),
     BlossomGlow(
         "blossomGlow",
-        "블라썸 글로우",
+        "Blossom Glow",
         HanClipPalette(
             primary = Color(0xFFD65E7A),
             secondary = Color(0xFF8B6897),
@@ -71,7 +71,7 @@ enum class HanClipThemeMode(
     ),
     GrayscalePlay(
         "grayscalePlay",
-        "그레이스케일",
+        "Grayscale Play",
         HanClipPalette(
             primary = Color(0xFF1C1C1E),
             secondary = Color(0xFF787880),
@@ -86,7 +86,7 @@ enum class HanClipThemeMode(
     ),
     PixelPop(
         "pixelPop",
-        "픽셀 팝",
+        "Pixel Pop",
         HanClipPalette(
             primary = Color(0xFF2652FF),
             secondary = Color(0xFFDC2F65),

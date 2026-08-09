@@ -755,7 +755,7 @@ private fun ThemeSelectionDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    "테마 선택",
+                    "SELECT THEME",
                     color = selectedPalette.text,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleMedium
@@ -806,7 +806,7 @@ private fun ThemePaletteSummary(mode: HanClipThemeMode) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    "색상 구성",
+                    "COLOR SYSTEM",
                     color = palette.subText,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.labelSmall
@@ -819,10 +819,10 @@ private fun ThemePaletteSummary(mode: HanClipThemeMode) {
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ThemePaletteChip("주색", "선택/실행", palette.primary, palette)
-                ThemePaletteChip("보조", "구조/그룹", palette.secondary, palette)
-                ThemePaletteChip("배경", "화면", palette.chip, palette)
-                ThemePaletteChip("글자", "정보", palette.text, palette)
+                ThemePaletteChip("Main", "선택/실행", palette.primary, palette)
+                ThemePaletteChip("Sub", "구조/그룹", palette.secondary, palette)
+                ThemePaletteChip("BG", "배경", palette.chip, palette)
+                ThemePaletteChip("Text", "정보", palette.text, palette)
             }
         }
     }
@@ -905,7 +905,7 @@ private fun ThemeSelectionRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Row(
+        if (mode != HanClipThemeMode.Automatic) Row(
             modifier = Modifier
                 .then(
                     if (canReorder) {
