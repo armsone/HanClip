@@ -20,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -610,9 +611,12 @@ fun EditorRoute(
             )
         }
         trimmingClip?.let { clip ->
-            ModalBottomSheet(
+            Dialog(
                 onDismissRequest = { trimmingClipID = null },
-                containerColor = Color.Transparent
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
             ) {
                 VideoTrimSheet(
                     clip = clip,
@@ -629,9 +633,12 @@ fun EditorRoute(
             }
         }
         photoDurationClip?.let { clip ->
-            ModalBottomSheet(
+            Dialog(
                 onDismissRequest = { photoDurationClipID = null },
-                containerColor = Color.Transparent
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
             ) {
                 PhotoDurationSheet(
                     clip = clip,
@@ -1611,57 +1618,57 @@ private fun ReorderStrip(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = palette.chip,
+        color = palette.panel,
         border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.38f))
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        "완성본 순서 변경",
-                        color = palette.text,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        "왼쪽 1번부터 MP4 완성본에 이어집니다. 위/아래 버튼으로 번호순을 조정합니다.",
-                        color = palette.subText,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+                Text(
+                    "순서 변경 · 앞/뒤/삭제",
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall
+                )
                 Button(
                     onClick = onDone,
+                    modifier = Modifier.height(36.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = palette.primary,
                         contentColor = Color.White
                     )
                 ) {
-                    Text("번호순 적용")
+                    Text("완료")
                 }
             }
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(end = 4.dp)
-            ) {
-                itemsIndexed(clips, key = { _, clip -> clip.id }) { index, clip ->
-                    ReorderTile(
-                        clip = clip,
-                        index = index,
-                        totalCount = clips.size,
-                        palette = palette,
-                        canMoveUp = index > 0,
-                        canMoveDown = index < clips.lastIndex,
-                        onMoveUp = { onMoveUp(clip.id) },
-                        onMoveDown = { onMoveDown(clip.id) },
-                        onDelete = { onDelete(clip.id) }
-                    )
+            clips.chunked(4).forEachIndexed { rowIndex, rowClips ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    rowClips.forEachIndexed { columnIndex, clip ->
+                        val index = rowIndex * 4 + columnIndex
+                        ReorderTile(
+                            modifier = Modifier.weight(1f),
+                            clip = clip,
+                            index = index,
+                            palette = palette,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < clips.lastIndex,
+                            onMoveUp = { onMoveUp(clip.id) },
+                            onMoveDown = { onMoveDown(clip.id) },
+                            onDelete = { onDelete(clip.id) }
+                        )
+                    }
+                    repeat(4 - rowClips.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -1670,9 +1677,9 @@ private fun ReorderStrip(
 
 @Composable
 private fun ReorderTile(
+    modifier: Modifier = Modifier,
     clip: ClipItem,
     index: Int,
-    totalCount: Int,
     palette: HanClipPalette,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
@@ -1681,76 +1688,96 @@ private fun ReorderTile(
     onDelete: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.width(148.dp),
+        modifier = modifier.aspectRatio(1f),
         shape = RoundedCornerShape(8.dp),
         color = palette.panel,
         border = BorderStroke(1.dp, clipRowBorder(clip, palette))
     ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+        Box(
+            modifier = Modifier.fillMaxSize().background(clipFallbackBrush(clip, palette)),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(86.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(clipFallbackBrush(clip, palette)),
-                contentAlignment = Alignment.Center
+            ClipThumbnail(clip = clip, modifier = Modifier.matchParentSize())
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(23.dp),
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.44f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.34f))
             ) {
-                ClipThumbnail(
-                    clip = clip,
-                    modifier = Modifier.matchParentSize()
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Text("${index + 1}", color = Color.White, fontWeight = FontWeight.Black, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = 0.38f)
+            ) {
                 Text(
-                    text = reorderTileBadge(clip, index),
+                    reorderTileTitle(clip),
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                     color = Color.White,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelSmall
                 )
             }
             Text(
-                text = "완성본 ${index + 1}/$totalCount  ${clipTitle(clip, null)}",
-                color = palette.text,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = formatClipSeconds(clip.durationSeconds),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(bottom = 25.dp)
+                    .background(Color.Black.copy(alpha = 0.34f))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.42f)),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 IconButton(
                     onClick = onMoveUp,
                     enabled = canMoveUp,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(25.dp)
                 ) {
                     Icon(
                         Icons.Outlined.KeyboardArrowUp,
                         contentDescription = "앞으로",
-                        tint = if (canMoveUp) palette.text else palette.subText.copy(alpha = 0.35f)
+                        tint = if (canMoveUp) Color.White else Color.White.copy(alpha = 0.30f),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
                 IconButton(
                     onClick = onMoveDown,
                     enabled = canMoveDown,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(25.dp)
                 ) {
                     Icon(
                         Icons.Outlined.KeyboardArrowDown,
                         contentDescription = "뒤로",
-                        tint = if (canMoveDown) palette.text else palette.subText.copy(alpha = 0.35f)
+                        tint = if (canMoveDown) Color.White else Color.White.copy(alpha = 0.30f),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Outlined.Delete, contentDescription = "삭제", tint = palette.secondary)
+                IconButton(onClick = onDelete, modifier = Modifier.size(25.dp)) {
+                    Icon(Icons.Outlined.Delete, contentDescription = "삭제", tint = Color.White, modifier = Modifier.size(16.dp))
                 }
             }
         }
     }
 }
 
-private fun reorderTileBadge(clip: ClipItem, index: Int): String {
+private fun reorderTileTitle(clip: ClipItem): String {
     return when {
-        clip.isVideoSegmentParent -> "원본"
-        clip.isVideoSegmentChild -> "자동"
-        else -> "${index + 1}"
+        clip.isSimilarPhotoGroupParent -> "묶음"
+        clip.isVideoSegmentParent -> "분할"
+        clip.mediaKind == ClipMediaKind.Video -> "영상"
+        clip.isLivePhoto -> "라이브"
+        else -> "사진"
     }
 }
 

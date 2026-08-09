@@ -18,12 +18,33 @@ import com.hanclip.android.core.model.VideoSegmentMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
+import java.io.RandomAccessFile
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
 
 object MediaImportReader {
     private const val MaxWorkingMediaFiles = 80
+
+    fun isMotionPhoto(context: Context, uri: Uri): Boolean {
+        return runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                FileInputStream(descriptor.fileDescriptor).use { input ->
+                    val probe = ByteArray(512 * 1024)
+                    val read = input.read(probe)
+                    if (read <= 0) {
+                        false
+                    } else {
+                        val header = String(probe, 0, read, StandardCharsets.ISO_8859_1)
+                        header.contains("MotionPhoto", ignoreCase = true) ||
+                            header.contains("MicroVideo", ignoreCase = true)
+                    }
+                }
+            } ?: false
+        }.getOrDefault(false)
+    }
 
     suspend fun makeClip(
         context: Context,
@@ -93,30 +114,15 @@ object MediaImportReader {
     private fun extractMotionPhoto(imageUri: Uri): MotionPhotoInfo? {
         val imageFile = imageUri.takeIf { it.scheme == "file" }?.path?.let(::File) ?: return null
         if (!imageFile.isFile || imageFile.length() < 16L) return null
-        val bytes = runCatching { imageFile.readBytes() }.getOrNull() ?: return null
-        var mp4Start = -1
-        for (index in bytes.size - 8 downTo 4) {
-            if (bytes[index] == 'f'.code.toByte() &&
-                bytes[index + 1] == 't'.code.toByte() &&
-                bytes[index + 2] == 'y'.code.toByte() &&
-                bytes[index + 3] == 'p'.code.toByte()
-            ) {
-                val candidate = index - 4
-                val boxSize = ((bytes[candidate].toInt() and 0xFF) shl 24) or
-                    ((bytes[candidate + 1].toInt() and 0xFF) shl 16) or
-                    ((bytes[candidate + 2].toInt() and 0xFF) shl 8) or
-                    (bytes[candidate + 3].toInt() and 0xFF)
-                if (boxSize in 8..1_048_576 && candidate > bytes.size / 3) {
-                    mp4Start = candidate
-                    break
-                }
-            }
-        }
-        if (mp4Start < 0) return null
+        val mp4Start = findMotionVideoOffset(imageFile) ?: return null
         val videoFile = File(imageFile.parentFile, "motion-${imageFile.nameWithoutExtension}.mp4")
         runCatching {
+            val input = FileInputStream(imageFile)
             videoFile.outputStream().use { output ->
-                output.write(bytes, mp4Start, bytes.size - mp4Start)
+                input.use { source ->
+                    source.channel.position(mp4Start)
+                    source.copyTo(output)
+                }
             }
         }.getOrElse { return null }
         val durationSeconds = runCatching {
@@ -135,6 +141,40 @@ object MediaImportReader {
             return null
         }
         return MotionPhotoInfo(Uri.fromFile(videoFile), durationSeconds)
+    }
+
+    private fun findMotionVideoOffset(imageFile: File): Long? {
+        val length = imageFile.length()
+        val scanStart = length / 3L
+        val buffer = ByteArray(1024 * 1024)
+        return runCatching {
+            RandomAccessFile(imageFile, "r").use { input ->
+                var position = scanStart
+                while (position < length - 8L) {
+                    input.seek(position)
+                    val count = input.read(buffer)
+                    if (count < 8) break
+                    for (index in 4 until count - 3) {
+                        if (buffer[index] == 'f'.code.toByte() &&
+                            buffer[index + 1] == 't'.code.toByte() &&
+                            buffer[index + 2] == 'y'.code.toByte() &&
+                            buffer[index + 3] == 'p'.code.toByte()
+                        ) {
+                            val boxSize = ((buffer[index - 4].toInt() and 0xFF) shl 24) or
+                                ((buffer[index - 3].toInt() and 0xFF) shl 16) or
+                                ((buffer[index - 2].toInt() and 0xFF) shl 8) or
+                                (buffer[index - 1].toInt() and 0xFF)
+                            val candidate = position + index - 4L
+                            if (boxSize in 8..1_048_576 && candidate > scanStart) {
+                                return@use candidate
+                            }
+                        }
+                    }
+                    position += (count - 8).coerceAtLeast(1)
+                }
+                null
+            }
+        }.getOrNull()
     }
 
     private data class MotionPhotoInfo(

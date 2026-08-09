@@ -227,6 +227,7 @@ fun CalendarMediaPickerSheet(
                 items = visibleItems,
                 selectedUris = selectedUris,
                 sortOrder = sortOrder,
+                recentFilter = recentFilter,
                 onToggleSortOrder = {
                     sortOrder = sortOrder.next()
                     selectedUris = emptyList()
@@ -872,6 +873,7 @@ private fun CalendarMediaStrip(
     items: List<CalendarMediaItem>,
     selectedUris: List<Uri>,
     sortOrder: MediaSortOrder,
+    recentFilter: RecentMediaFilter,
     onToggleSortOrder: () -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
@@ -888,7 +890,8 @@ private fun CalendarMediaStrip(
                     mode = mode,
                     visibleMonth = visibleMonth,
                     selectedDates = selectedDates,
-                    items = items
+                    items = items,
+                    recentFilter = recentFilter
                 ),
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall
@@ -936,6 +939,7 @@ private fun CalendarMediaStrip(
         if (items.isEmpty()) {
             EmptyMediaStrip(
                 mode = mode,
+                recentFilter = recentFilter,
                 palette = palette,
                 modifier = Modifier.height(gridHeight)
             )
@@ -1073,6 +1077,7 @@ private fun MediaSelectionSummaryPill(
 @Composable
 private fun EmptyMediaStrip(
     mode: MediaPickerSheetMode,
+    recentFilter: RecentMediaFilter,
     palette: HanClipPalette,
     modifier: Modifier = Modifier
 ) {
@@ -1088,7 +1093,9 @@ private fun EmptyMediaStrip(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = if (mode == MediaPickerSheetMode.Videos) {
+                imageVector = if (
+                    mode == MediaPickerSheetMode.Videos || recentFilter == RecentMediaFilter.Video
+                ) {
                     Icons.Outlined.MovieCreation
                 } else {
                     Icons.Outlined.Photo
@@ -1099,10 +1106,12 @@ private fun EmptyMediaStrip(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = if (mode == MediaPickerSheetMode.Videos) {
-                    "이번 달 기본 사진첩에는 영상이 없습니다."
-                } else {
-                    "이번 달 기본 사진첩에는 사진이나 영상이 없습니다."
+                text = when {
+                    mode == MediaPickerSheetMode.Videos || recentFilter == RecentMediaFilter.Video ->
+                        "이번 달 기본 사진첩에는 영상이 없습니다."
+                    mode == MediaPickerSheetMode.Recent && recentFilter == RecentMediaFilter.LivePhoto ->
+                        "이번 달 기본 사진첩에는 Live Photo가 없습니다."
+                    else -> "이번 달 기본 사진첩에는 사진이나 영상이 없습니다."
                 },
                 color = palette.text,
                 fontWeight = FontWeight.Bold,
@@ -1122,14 +1131,19 @@ private fun mediaStripTitle(
     mode: MediaPickerSheetMode,
     visibleMonth: YearMonth,
     selectedDates: Set<LocalDate>,
-    items: List<CalendarMediaItem>
+    items: List<CalendarMediaItem>,
+    recentFilter: RecentMediaFilter
 ): String {
     val photoCount = items.count { it.kind != ClipMediaKind.Video }
     val videoCount = items.count { it.kind == ClipMediaKind.Video }
     val count = items.size
     if (mode == MediaPickerSheetMode.Recent) {
         return if (count == 0) {
-            "${visibleMonth.monthValue}월 기본 사진첩에는 사진이나 영상이 없습니다."
+            when (recentFilter) {
+                RecentMediaFilter.Photo -> "${visibleMonth.monthValue}월 기본 사진첩에는 사진이 없습니다."
+                RecentMediaFilter.LivePhoto -> "${visibleMonth.monthValue}월 기본 사진첩에는 Live Photo가 없습니다."
+                RecentMediaFilter.Video -> "${visibleMonth.monthValue}월 기본 사진첩에는 영상이 없습니다."
+            }
         } else {
             mediaCountText("이번 달", photoCount, videoCount)
         }
@@ -1353,11 +1367,20 @@ private object CalendarMediaRepository {
                             val date = Instant.ofEpochMilli(takenMillis)
                                 .atZone(ZoneId.systemDefault())
                                 .toLocalDate()
+                            val itemUri = ContentUris.withAppendedId(collection, id)
+                            val resolvedKind = if (
+                                kind == ClipMediaKind.Photo &&
+                                MediaImportReader.isMotionPhoto(context, itemUri)
+                            ) {
+                                ClipMediaKind.LivePhoto
+                            } else {
+                                kind
+                            }
                             add(
                                 CalendarMediaItem(
-                                    uri = ContentUris.withAppendedId(collection, id),
+                                    uri = itemUri,
                                     date = date,
-                                    kind = kind,
+                                    kind = resolvedKind,
                                     takenMillis = takenMillis,
                                     displayName = cursor.getString(nameColumn)
                                         ?.takeIf { it.isNotBlank() }

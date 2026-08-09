@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -88,13 +90,16 @@ fun VideoTrimSheet(
     }
 
     Surface(
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        modifier = Modifier.fillMaxSize(),
+        shape = RoundedCornerShape(0.dp),
         color = palette.panel
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .background(palette.background)
                 .verticalScroll(rememberScrollState())
+                .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

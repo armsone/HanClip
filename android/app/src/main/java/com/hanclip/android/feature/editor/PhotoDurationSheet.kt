@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,13 +69,16 @@ fun PhotoDurationSheet(
     }
 
     Surface(
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        modifier = Modifier.fillMaxSize(),
+        shape = RoundedCornerShape(0.dp),
         color = palette.panel
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .background(palette.background)
                 .verticalScroll(rememberScrollState())
+                .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
