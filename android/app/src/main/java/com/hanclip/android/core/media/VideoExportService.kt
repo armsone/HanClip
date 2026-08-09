@@ -584,6 +584,9 @@ class Media3TransformerExportService(
             "black_han_sans" -> "fonts/black_han_sans_regular.ttf"
             "maruburi" -> "fonts/maru_buri_regular.ttf"
             "ddulgi_mayo" -> "fonts/ddulgi_mayo.otf"
+            "paperlogy_bold" -> "fonts/paperlogy_bold.ttf"
+            "nexon_lv1_gothic" -> "fonts/nexon_lv1_gothic.ttf"
+            "poppins" -> "fonts/poppins_regular.ttf"
             "pretendard" -> "fonts/pretendard_regular.otf"
             else -> "fonts/pretendard_regular.otf"
         }

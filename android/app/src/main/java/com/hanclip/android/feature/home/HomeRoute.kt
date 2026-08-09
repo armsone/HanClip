@@ -1070,11 +1070,15 @@ private fun SettingsInfoScreen(
                 item { SpecialThanksCard(palette) }
                 importantInfoItems().forEach { item ->
                     item {
-                        ImportantInfoRow(
-                            title = item.first,
-                            body = item.second,
-                            palette = palette
-                        )
+                        if (item.first == "내장 서체 저작권") {
+                            EmbeddedFontCopyrightRow(body = item.second, palette = palette)
+                        } else {
+                            ImportantInfoRow(
+                                title = item.first,
+                                body = item.second,
+                                palette = palette
+                            )
+                        }
                     }
                 }
                 item {
@@ -1396,18 +1400,147 @@ private fun ImportantInfoRow(
     }
 }
 
+private data class EmbeddedFontSizeRow(
+    val name: String,
+    val size: String,
+    val fontId: String
+)
+
+private val EmbeddedFontSizeRows = listOf(
+    EmbeddedFontSizeRow("고운바탕", "8.0 MB", "gowun_batang"),
+    EmbeddedFontSizeRow("마루부리", "7.6 MB", "maruburi"),
+    EmbeddedFontSizeRow("고운돋움", "6.9 MB", "gowun_dodum"),
+    EmbeddedFontSizeRow("써라운드", "3.7 MB", "cafe24_ssurround"),
+    EmbeddedFontSizeRow("프리텐다드B", "2.5 MB", "pretendard_bold"),
+    EmbeddedFontSizeRow("넥슨 Lv.1 고딕", "1.8 MB", "nexon_lv1_gothic"),
+    EmbeddedFontSizeRow("나눔고딕", "2.0 MB", "nanum_gothic"),
+    EmbeddedFontSizeRow("프리텐다드 Regular", "1.5 MB", "pretendard"),
+    EmbeddedFontSizeRow("카카오", "1.5 MB", "kakao_big_sans"),
+    EmbeddedFontSizeRow("페이퍼로지 Bold", "1.2 MB", "paperlogy_bold"),
+    EmbeddedFontSizeRow("젠틀고딕", "1.1 MB", "puradak_gentle_gothic"),
+    EmbeddedFontSizeRow("검은고딕", "975 KB", "black_han_sans"),
+    EmbeddedFontSizeRow("태나다", "973 KB", "tenada"),
+    EmbeddedFontSizeRow("도현", "859 KB", "do_hyeon"),
+    EmbeddedFontSizeRow("둘기마요", "743 KB", "ddulgi_mayo"),
+    EmbeddedFontSizeRow("Poppins", "157 KB", "poppins")
+)
+
+@Composable
+private fun EmbeddedFontCopyrightRow(
+    body: String,
+    palette: HanClipPalette
+) {
+    val context = LocalContext.current
+    val paragraphs = remember(body) { body.split("\n\n") }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.TextFields,
+                contentDescription = null,
+                tint = palette.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("내장 서체 저작권", color = palette.text, fontWeight = FontWeight.Bold)
+                paragraphs.forEachIndexed { index, paragraph ->
+                    Text(paragraph, color = palette.subText, style = MaterialTheme.typography.bodySmall)
+                    if (index == 0) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(palette.chip)
+                                .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Row(Modifier.fillMaxWidth()) {
+                                EmbeddedFontTableText("서체명", Modifier.weight(1.25f), palette, true)
+                                EmbeddedFontTableText("파일크기", Modifier.weight(0.72f), palette, true)
+                                EmbeddedFontTableText("샘플", Modifier.weight(1f), palette, true)
+                            }
+                            EmbeddedFontSizeRows.forEach { row ->
+                                val sampleFontFamily = remember(row.fontId) {
+                                    com.hanclip.android.feature.editor.fontFamilyForName(context, row.fontId)
+                                }
+                                Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    EmbeddedFontTableText(row.name, Modifier.weight(1.25f), palette)
+                                    EmbeddedFontTableText(row.size, Modifier.weight(0.72f), palette)
+                                    Text(
+                                        "안녕하세요",
+                                        modifier = Modifier.weight(1f),
+                                        color = palette.primary,
+                                        fontSize = 12.sp,
+                                        fontFamily = sampleFontFamily,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmbeddedFontTableText(
+    text: String,
+    modifier: Modifier,
+    palette: HanClipPalette,
+    header: Boolean = false
+) {
+    Text(
+        text,
+        modifier = modifier,
+        color = palette.subText,
+        fontSize = if (header) 11.sp else 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
 private fun importantInfoIcon(title: String): ImageVector = when (title) {
     "카피라이터" -> Icons.Outlined.Info
+    "워터마크" -> Icons.Outlined.Badge
     "첫 화면" -> Icons.Outlined.Home
     "영화 프리셋" -> Icons.Outlined.GridView
+    "퀵모드" -> Icons.Outlined.AutoFixHigh
+    "여행 영화" -> Icons.Outlined.Flight
     "Quick" -> Icons.Outlined.AutoFixHigh
     "인생 영화" -> Icons.Outlined.Favorite
+    "Ai" -> Icons.Outlined.AutoFixHigh
+    "AiShot" -> Icons.Outlined.AddPhotoAlternate
     "영화 목록" -> Icons.Outlined.Collections
     "컬렉션" -> Icons.Outlined.FolderOpen
+    "컬렉션 포스터" -> Icons.Outlined.Movie
     "영화 화면" -> Icons.Outlined.Movie
     "영화 설정" -> Icons.Outlined.Tune
+    "클립목록" -> Icons.Outlined.VideoFile
     "클립 리스트" -> Icons.Outlined.VideoFile
+    "묶음사진" -> Icons.Outlined.Collections
+    "자동 / 수동 / 전체" -> Icons.Outlined.SwapHoriz
+    "사용 / 제외" -> Icons.Outlined.SwapHoriz
+    "사진 / 영상" -> Icons.Outlined.PlayCircle
     "순서변경 상태" -> Icons.Outlined.DragIndicator
+    "한컷 / 분할" -> Icons.Outlined.MovieCreation
+    "자사진" -> Icons.Outlined.AddPhotoAlternate
     "편집 영역 / 편집 모드" -> Icons.Outlined.Tune
     "시사회" -> Icons.Outlined.PlayCircle
     "만들기" -> Icons.Outlined.AutoFixHigh
@@ -1425,7 +1558,11 @@ private fun importantInfoIcon(title: String): ImageVector = when (title) {
     "선택바" -> Icons.Outlined.SwapHoriz
     "자동 진행" -> Icons.Outlined.Repeat
     "달력 썸네일 버튼" -> Icons.Outlined.CalendarMonth
+    "브라우저" -> Icons.Outlined.Public
     "자막" -> Icons.Outlined.TextFields
+    "촬영 기간 삽입" -> Icons.Outlined.CalendarMonth
+    "엔딩" -> Icons.Outlined.TravelExplore
+    "엔딩 카드 테마" -> Icons.Outlined.Palette
     "외부 호출 주소" -> Icons.Outlined.TravelExplore
     "샘플 음악" -> Icons.Outlined.LibraryMusic
     "외부 음악" -> Icons.Outlined.Public
@@ -1434,36 +1571,57 @@ private fun importantInfoIcon(title: String): ImageVector = when (title) {
 }
 
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
-    "카피라이터" to "첫 화면 하단의 i 원형 유리 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 설정 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
+    "카피라이터" to "첫 화면 하단의 i 원형 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 앱 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
+    "로고" to "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다.",
     "첫 화면" to "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다.",
     "영화 프리셋" to "첫 화면 상단에서 새 영화, Quick, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
-    "Quick" to "선택한 원본 개수를 권장 전체 초로 제안하고, 지정한 목표 길이를 원본 개수로 나눠 각 클립을 최소 0.2초 이상으로 자동 맞춘 뒤 빠르게 영화를 만드는 프리셋입니다.",
-    "인생 영화" to "사진과 영상을 2초 기본 리듬으로 구성하고 비슷한 사진은 3장 간격의 대표 사진으로 정리하는 일상 영화 프리셋입니다.",
-    "영화 목록" to "첫 화면에 저장된 영화들이 표시되는 영역입니다.",
-    "컬렉션" to "완성하거나 외부에서 가져온 영화를 앱 내부에 원본 그대로 보관하고 2열 책 포스터로 보여주는 영역입니다. 포스터를 누르면 재생하고, 길게 누르면 제목 수정·공유·컬렉션 제거를 사용할 수 있습니다. 추가 포스터에서 사진 또는 파일의 동영상을 여러 개 가져올 수 있습니다.",
-    "영화 화면" to "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립 리스트 등을 편집하는 화면입니다.",
-    "영화 설정" to "영화 화면의 로고 아래, 기본 시간과 자막, 음악을 설정하는 패널입니다.",
-    "클립 리스트" to "선택한 Photo, Live, Clip이 순서대로 표시되는 목록입니다. 썸네일, 시간, 아이콘, 세그먼트 컨트롤, +/- 버튼이 있는 영역입니다.",
-    "순서변경 상태" to "썸네일을 한 줄에 여러 개 표시하고 드래그해서 클립 순서를 변경하는 상태입니다.",
-    "편집 영역 / 편집 모드" to "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다.",
-    "시사회" to "만들기 완료 후, 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다.",
-    "만들기" to "전체 클립을 하나의 영상으로 생성하는 액션과 버튼입니다.",
-    "영상 생성 진행창" to "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다.",
-    "개봉하기 창" to "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다.",
-    "테마 선택창" to "로고를 길게 눌렀을 때 테마를 선택하는 창입니다.",
-    "첫 화면 이동 팝업" to "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다.",
-    "로고" to "상단의 앱 심볼과 HanClip 글자 부분입니다.",
-    "카피라이터 입력" to "카피라이터에서 설정하는 기능입니다. HanClip 로고 또는 SNS/기타 표시를 결과 영상에 합성할지 결정합니다.",
-    "세그먼트 컨트롤" to "포토 / Live, 단일 / 다중처럼 두 옵션 중 하나를 고르는 스위치형 컨트롤입니다.",
-    "단일 / 다중" to "클립을 하나의 구간으로 쓸지, 사운드 피크 기준으로 여러 자클립으로 나눌지 정하는 클립 분할 모드입니다.",
+    "퀵모드" to "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 같은 화면에서 자막·음악·엔딩·화면비와 미디어를 설정하고, 확정하면 목표 시간÷원본 미디어 수로 기본시간을 정해 영화를 만듭니다. hanclip://quick으로 바로 실행할 수 있습니다.",
+    "여행 영화" to "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역을 자막과 엔딩에 사용하며 보물지도 테마를 기본으로 준비합니다.",
+    "인생 영화" to "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다.",
+    "Ai" to """
+        HanClip 안에서 가장 행복하고, 가장 흥분되고, 꼭 기억하고 싶은 순간을 더 잘 찾기 위해 계속 개발하는 판단 기능입니다.
+
+        AiShot 촬영뿐 아니라 여러 영상의 자클립 선택과 사진 묶음의 대표 컷 선택에도 함께 사용합니다. 현재 Android Ai 버전은 0.2.1이며, 큰 소리 자체보다 그 뒤에 이어지는 반응과 화면 변화를 함께 봅니다.
+    """.trimIndent(),
+    "AiShot" to """
+        필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며 만들어진 클립은 Ai 영화에 차례로 추가됩니다.
+
+        감지 중, 감지 됨, 저장 중으로 상태를 보여주고 시끄러움, 일반, 조용함, 자동 감도를 선택합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 고릅니다. 전면·후면 카메라와 줌 배율을 선택하고 필요한 순간에는 촬영 버튼으로 수동 클립도 남길 수 있습니다.
+    """.trimIndent(),
+    "영화 목록" to "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽 숫자는 최대 10개 중 현재 저장 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋을 보여줍니다.",
+    "컬렉션" to "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 왼쪽 숫자는 현재 보관 수를 뜻합니다. 포스터 상단 중앙의 작은 구멍을 누르면 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 다시 누르면 해제됩니다.",
+    "테마 선택창" to "첫 화면 로고를 길게 눌렀을 때 테마를 직접 선택하는 플로팅 패널입니다. 로고를 짧게 누르면 테마가 순서대로 바뀝니다.",
+    "첫 화면 이동 팝업" to "편집 중 로고를 눌렀을 때 저장하고 첫 화면으로 이동하거나 저장 없이 이동하는 방법을 고르는 창입니다.",
+    "영화 화면" to "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다.",
+    "영화 설정" to "영화 화면의 로고 아래에 있는 클립 설정 패널입니다. 처음에는 제목 행만 보이며 행 어디를 눌러도 펼치거나 접을 수 있습니다. 오른쪽 표시판은 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 시작 프리셋을 보여주고 프로젝트에 저장합니다. 영상 길이, 기본시간, 라이브포토, 영상 분할, 묶음사진, 자막, 음악과 엔딩을 설정합니다.",
+    "클립목록" to "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 비슷한 사진들을 담는 행으로 표시하며, 아래 자사진에서 실제 사용할 컷을 확인합니다.",
+    "묶음사진" to "연속 촬영 미디어 중 촬영 시각, 화면 비율, 밝기와 구도가 비슷한 장면을 하나로 담아 중복을 줄입니다. 묶음 숫자는 영상에 사용하기로 선택된 자사진 수입니다. 1/6은 6장마다 1장을 자동 선택한다는 뜻이며, 수동은 직접 고르고 전체는 모두 사용합니다.",
+    "자동 / 수동 / 전체" to "묶음사진에서 사용할 사진을 Ai가 고르게 할지, 사용자가 직접 고를지, 모든 사진을 사용할지 정합니다.",
+    "사용 / 제외" to "수동으로 펼친 자사진 행에서 해당 사진 또는 라이브포토를 영상에 넣을지 뺄지 정합니다.",
+    "사진 / 영상" to "라이브포토를 일반 사진으로 쓸지 짧은 영상으로 쓸지 정합니다.",
+    "순서변경 상태" to "큰 단위의 순서를 바꾸는 화면입니다. 묶음사진은 안의 자사진을 흩어 놓지 않고 하나의 묶음 타일로 이동하며 숫자는 선택된 자사진 수를 뜻합니다.",
+    "세그먼트 컨트롤" to "자동 / 수동 / 전체, 사진 / 영상, 한컷 / 분할처럼 사용 방식을 고르는 스위치형 컨트롤입니다.",
+    "한컷 / 분할" to "영상 클립을 하나의 구간으로 쓸지, Ai가 찾은 피크 기준으로 여러 자클립으로 나눌지 정합니다.",
     "모클립" to "다중 분할을 만들 때 원본 역할로 남는 부모 클립입니다.",
-    "자클립" to "모클립에서 사운드 피크 기준으로 만들어진 하위 클립입니다.",
-    "웨이브 / 웨이브 인디케이터" to "영상/Live Photo 편집에서 소리 파형을 보여주는 영역입니다.",
-    "선택바" to "웨이브 인디케이터의 좌우 끝에 있는 드래그 바입니다.",
-    "자동 진행" to "편집에서 클립 재생이 끝나면 다음 클립으로 이어지고, 마지막 클립 뒤에는 처음 클립으로 계속 이어지는 기능입니다.",
-    "달력 썸네일 버튼" to "달력에서 미디어를 고르는 화면에 있는 위/아래 이동 버튼입니다.",
-    "자막" to "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다.",
-    "외부 호출 주소" to "hanclip://files\nhanclip://calendar\nhanclip://photo\nhanclip://search\nhanclip://open",
+    "자클립" to "모클립에서 Ai가 찾은 피크 기준으로 만들어진 하위 클립입니다. 삭제는 원본 삭제가 아니라 비선택으로 처리하며, 비선택 자클립은 클립목록에서 다시 선택할 수 있습니다.",
+    "자사진" to "묶음사진 안에 들어 있는 실제 사진 또는 라이브포토입니다. 수동 모드에서 사용 또는 제외 상태를 고릅니다.",
+    "편집 영역 / 편집 모드" to "개별 클립을 누르면 열리는 구간 선택 및 재생 화면입니다.",
+    "웨이브 / 웨이브 인디케이터" to "영상과 라이브포토 편집에서 소리 파형을 보여주는 영역입니다.",
+    "선택바" to "웨이브 인디케이터 양끝의 드래그 바로 사용할 영상 구간을 정합니다.",
+    "자동 진행" to "편집에서 클립 재생이 끝나면 다음 클립으로 이어지고 마지막 클립 뒤에는 처음부터 반복하는 기능입니다.",
+    "달력 썸네일 버튼" to "달력 미디어 화면에서 날짜와 썸네일 목록을 오가는 이동 버튼입니다.",
+    "만들기" to "전체 클립을 하나의 MP4 영상으로 생성하는 액션과 버튼입니다.",
+    "영상 생성 진행창" to "영상을 만드는 동안 썸네일, 진행바, 진행률과 취소 버튼이 표시되는 창입니다.",
+    "시사회" to "만들기 완료 후 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다.",
+    "개봉하기 창" to "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다.",
+    "브라우저" to "외부 웹페이지를 이용하는 HanClip 내부 브라우저입니다. 북마크를 길게 눌러 즐겨찾기에 등록하고 즐겨찾기 파비콘을 누르면 열 수 있습니다. 관리 화면에서 삭제·순서 변경·파일 저장을 하며 저장 파일을 HanClip으로 공유해 다시 불러올 수 있습니다.",
+    "자막" to "영화 화면에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다. 자막 문구가 비어 있어도 사용 상태와 엔딩 설정은 따로 유지할 수 있습니다.",
+    "촬영 기간 삽입" to "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣습니다.",
+    "엔딩" to "클립 설정의 음악 아래 독립 행이며 기본값은 안함입니다. 현재 테마명, 1~10초 표시 시간과 사용 상태를 설정합니다. 위치가 없어도 미리 테마를 고를 수 있고, 날짜와 위치가 있는 영화에는 촬영기간과 도시 이동 경로를 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정이며 지역 이동은 차량, 국가 이동은 비행기로 연결합니다. 자막, 보물지도, 여행일정, 랜드마크, 오피스 5개 테마를 Quick에서도 그대로 사용합니다.",
+    "엔딩 카드 테마" to "영화 마지막 여행 기록 카드의 디자인입니다. 자막은 현재 자막 스타일을 이어받고, 보물지도는 점선 경로, 여행일정은 실제 촬영 날짜, 랜드마크는 지역별 명소, 오피스는 문서번호·촬영기간·이동수단 보고서로 표시합니다.",
+    "컬렉션 포스터" to "컬렉션은 영화 포스터를 2열로 보여주며 영화 추가 포스터는 마지막에 배치합니다. 사진과 파일에서 동영상만 가져오고 진행률과 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용합니다.",
+    "워터마크" to "카피라이터에서 설정합니다. HanClip 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다.",
+    "외부 호출 주소" to "Ai  hanclip://aishot\n퀵모드  hanclip://quick\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open",
     "샘플 음악" to """
         HanClip에 포함된 샘플 음악은 앱 기능 검증과 사용자의 일상 영상 배경음악을 위해 인공지능 생성 및 합성 방식으로 만든 샘플 음악입니다.
 
@@ -1474,26 +1632,30 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
         영화 프리셋의 '햇살 한 컷', '여행의 설렘', '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 Quick, 여행 영화, 골프 영화에서 각각 자동으로 선택됩니다.
     """.trimIndent(),
     "외부 음악" to """
-        음악 설정 화면의 '온라인 음악 찾기'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
+        음악 설정 화면의 '브라우저'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
 
         Pixabay Music과 Mixkit Music에서 다운로드한 음악은 HanClip 내장 샘플 음악이 아니며, 각 음원의 권리와 이용 조건은 해당 사이트의 라이선스와 곡별 안내를 따릅니다. 사용자는 다운로드 시점의 Pixabay Content License, Mixkit License, 곡별 안내, 다운로드 기록을 확인하고 보관한 뒤 자신이 만든 영상에 사용할 책임이 있습니다.
 
         HanClip은 외부 음원 파일을 독립 음원으로 판매, 배포, 재라이선스하거나 음악 라이브러리 형태로 제공하지 않습니다. 외부 음원은 사용자가 선택한 영상 결과물 안에 배경음악으로 합성될 때만 사용되며, TV/라디오 방송, 게임, CD/DVD, 음원 단독 배포 등 각 사이트가 제한하는 용도에는 사용자가 별도 라이선스 확인 또는 권리자의 허락을 받아야 합니다.
     """.trimIndent(),
     "내장 서체 저작권" to """
-        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
+        HanClip에는 사용자가 영상 위에 짧은 문구나 자막을 넣을 때 선택할 수 있도록 Kakao Big Sans, Nanum Gothic, Pretendard, MaruBuri, Puradak Gentle Gothic, Tenada, Cafe24 Ssurround, Ddulgi Mayo, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon, Paperlogy, NEXON Lv.1 Gothic, Poppins 서체가 포함되어 있습니다. 이 서체들은 앱 전체 UI 기본 서체가 아니라, 자막 편집 미리보기와 최종 영상 렌더링 과정에서만 선택적으로 사용됩니다.
 
-        내장 자막 서체 파일의 원본 크기 합계는 약 38 MB입니다. 앱 번들, 압축, 스토어 처리 방식에 따라 최종 설치 크기와 다운로드 크기는 달라질 수 있습니다.
+        내장 자막 서체 파일의 원본 크기 합계는 약 41.5 MB입니다. 앱 번들, 압축, Google Play 처리 방식에 따라 최종 설치 크기와 다운로드 크기는 달라질 수 있습니다.
 
-        Kakao Big Sans, Nanum Gothic, Pretendard, Tenada, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 SIL Open Font License 1.1로 제공되는 서체입니다. OFL은 서체 파일을 단독으로 판매하지 않는 조건에서 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
+        Kakao Big Sans, Nanum Gothic, Pretendard, Tenada, Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon, Paperlogy, Poppins는 SIL Open Font License 1.1로 제공되는 서체입니다. OFL은 서체 파일을 단독으로 판매하지 않는 조건에서 사용, 복사, 앱 또는 소프트웨어 번들, 임베딩, 재배포를 허용합니다. 또한 이 서체를 사용해 만든 영상, 이미지, 문서 같은 결과물 자체는 서체 라이선스의 적용 대상이 아니므로 HanClip으로 만든 영상 결과물의 저작권이나 이용 조건은 사용자가 정한 조건을 따릅니다.
 
         MaruBuri의 저작권은 NAVER 및 NAVER Cultural Foundation에 있습니다. NAVER 안내에 따라 개인과 기업을 포함한 모든 사용자가 무료로 사용할 수 있고 상업적 사용이 가능하며, 글꼴 자체를 유료로 판매하는 행위를 제외하고 저작권 안내와 라이선스 전문을 포함해 다른 소프트웨어와 번들하거나 재배포할 수 있다고 설명합니다.
 
         Pretendard는 Kil Hyung-jin 및 원 기반 서체 저작권자의 저작권 고지와 함께 SIL Open Font License 1.1로 제공됩니다. Pretendard, Source, Inter, M PLUS 1 등 예약된 서체명은 수정본에 임의로 사용할 수 없습니다. HanClip은 공식 배포 파일을 수정하지 않고 앱에 포함합니다.
 
-        Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 Google Fonts의 공식 google/fonts 저장소에서 제공되는 SIL Open Font License 1.1 서체입니다. Google Fonts 안내에 따라 상업적 제품, 앱, 웹사이트, 인쇄물, 영상 등에서 사용할 수 있으며, HanClip은 공식 저장소의 원본 TTF 파일을 포함합니다. 수정본을 배포하는 경우에는 OFL 조건과 예약 서체명 제한을 별도로 확인해야 합니다.
+        Gowun Dodum, Gowun Batang, Black Han Sans, Do Hyeon은 Google Fonts의 공식 google/fonts 저장소에서 제공되는 SIL Open Font License 1.1 서체입니다. Google Fonts 안내에 따라 상업적 제품, 앱, 웹사이트, 인쇄물, 영상 등에서 사용할 수 있으며, HanClip은 공식 저장소의 원본 TTF 파일과 OFL 라이선스 전문을 함께 포함합니다. 수정본을 배포하는 경우에는 OFL 조건과 예약 서체명 제한을 별도로 확인해야 합니다.
 
         Tenada는 공식 배포 페이지에서 SIL Open Font License 1.1로 제공됩니다. 앱에 포함된 Tenada.ttf는 공식 배포본의 원본 파일이며, HanClip에서는 골프 기록, 홀 정보, 스코어 같은 제목형 자막에 사용할 수 있도록 제공합니다.
+
+        Paperlogy는 제작자의 공식 저장소에서 배포한 1.001 버전의 Bold 원본 파일이며, Poppins는 Google Fonts 공식 저장소의 Regular 원본 파일입니다. 두 파일 모두 SIL Open Font License 1.1 전문과 저작권 고지를 함께 포함합니다.
+
+        NEXON Lv.1 Gothic의 저작권은 NEXON Korea에 있습니다. 넥슨의 공식 이용 조건에 따라 원본 파일을 수정하지 않고 저작권 안내와 함께 앱에 번들했으며, 글꼴 파일 자체를 단독 판매하지 않습니다.
 
         Cafe24 Ssurround는 Cafe24 공식 안내에 따라 개인 및 기업 사용자를 포함한 모든 사용자에게 무료로 제공되며 상업적 사용이 가능합니다. Cafe24는 영상 제작 및 자막, 소프트웨어 번들, 특정 프로그램 임베드 등 사용 범위 제한 없이 이용할 수 있다고 안내합니다. 단, 글꼴 파일 자체를 유료로 판매하는 행위는 금지됩니다.
 
@@ -1501,7 +1663,7 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
 
         Ddulgi Mayo는 제작자 공식 블로그에서 개인 및 기업의 상업적 이용이 가능하고 자유롭게 사용할 수 있다고 안내된 서체입니다. HanClip은 제작자가 공개한 원본 OTF 파일을 수정하지 않고 포함합니다. 다만 OFL처럼 세부 재배포 조건이 긴 전문 형태로 제공된 서체는 아니므로, HanClip에서는 원본 파일과 저작권 고지를 함께 보관하고 서체 파일 자체를 단독 판매하지 않습니다. 향후 라이선스 정책이 바뀌거나 앱 번들/재배포 조건이 더 엄격하게 확인될 경우에는 우선 검토 또는 제거 대상입니다.
 
-        모든 내장 서체의 라이선스 전문, 저작권 고지, 확인한 공식 배포처 정보와 파일 크기 정리를 프로젝트 기록으로 보관합니다. 서체 파일을 수정하거나 별도 재배포하는 경우에는 각 서체의 원 라이선스와 저작권 고지를 유지해야 하며, 예약된 서체명이 있는 경우 수정본에 원래 이름을 사용할 수 없습니다.
+        모든 내장 서체의 라이선스 전문, 저작권 고지, 확인한 공식 배포처 정보와 파일 크기 정리는 앱 번들에 포함된 font-licenses 파일을 기준으로 보관합니다. 서체 파일을 수정하거나 별도 재배포하는 경우에는 각 서체의 원 라이선스와 저작권 고지를 유지해야 하며, 예약된 서체명이 있는 경우 수정본에 원래 이름을 사용할 수 없습니다.
     """.trimIndent()
 )
 

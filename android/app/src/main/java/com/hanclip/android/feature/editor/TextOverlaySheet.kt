@@ -343,7 +343,10 @@ fun TextOverlaySheet(
                     "do_hyeon",
                     "black_han_sans",
                     "maruburi",
-                    "ddulgi_mayo"
+                    "ddulgi_mayo",
+                    "paperlogy_bold",
+                    "nexon_lv1_gothic",
+                    "poppins"
                     ).forEach { font ->
                         FilterChip(
                             selected = draft.fontName == font,
@@ -1496,6 +1499,7 @@ private fun CaptionStylePicker(
     palette: HanClipPalette,
     onSelect: (CaptionStylePreset) -> Unit
 ) {
+    val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         CaptionStylePreset.entries.chunked(3).forEach { rowPresets ->
             Row(
@@ -1549,6 +1553,7 @@ private fun CaptionStylePicker(
                                 "Aa",
                                 color = parseHexColor(preset.previewTextColorHex),
                                 fontWeight = FontWeight.Black,
+                                fontFamily = fontFamilyForName(context, preset.fontName),
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
@@ -1613,18 +1618,46 @@ private fun fontDisplayName(font: String): String {
         "black_han_sans" -> "검은고딕"
         "maruburi" -> "마루부리"
         "ddulgi_mayo" -> "둘기마요"
+        "paperlogy_bold" -> "페이퍼로지B"
+        "nexon_lv1_gothic" -> "넥슨Lv1"
+        "poppins" -> "Poppins"
         else -> font
     }
 }
 
-private fun fontFamilyForName(context: android.content.Context, font: String): FontFamily {
+internal fun fontFamilyForName(context: android.content.Context, font: String): FontFamily {
     ImportedFontStore.typeface(context, font)?.let { return FontFamily(it) }
+    val assetPath = when (font) {
+        "pretendard_bold" -> "fonts/pretendard_bold.ttf"
+        "kakao_big_sans" -> "fonts/kakao_big_sans_regular.ttf"
+        "gowun_batang" -> "fonts/gowun_batang_regular.ttf"
+        "gowun_dodum" -> "fonts/gowun_dodum_regular.ttf"
+        "nanum_gothic" -> "fonts/nanum_gothic_regular.ttf"
+        "cafe24_ssurround" -> "fonts/cafe24_ssurround.ttf"
+        "puradak_gentle_gothic" -> "fonts/puradak_gentle_gothic.ttf"
+        "tenada" -> "fonts/tenada.ttf"
+        "do_hyeon" -> "fonts/do_hyeon_regular.ttf"
+        "black_han_sans" -> "fonts/black_han_sans_regular.ttf"
+        "maruburi" -> "fonts/maru_buri_regular.ttf"
+        "ddulgi_mayo" -> "fonts/ddulgi_mayo.otf"
+        "paperlogy_bold" -> "fonts/paperlogy_bold.ttf"
+        "nexon_lv1_gothic" -> "fonts/nexon_lv1_gothic.ttf"
+        "poppins" -> "fonts/poppins_regular.ttf"
+        "pretendard" -> "fonts/pretendard_regular.otf"
+        else -> null
+    }
+    assetPath?.let { path ->
+        runCatching {
+            FontFamily(android.graphics.Typeface.createFromAsset(context.assets, path))
+        }.getOrNull()?.let { return it }
+    }
     return when (font) {
         "gowun_batang" -> FontFamily.Serif
         "maruburi" -> FontFamily.Serif
         "do_hyeon", "black_han_sans", "cafe24_ssurround", "puradak_gentle_gothic", "tenada" ->
             FontFamily.SansSerif
-        "nanum_gothic", "gowun_dodum", "pretendard", "pretendard_bold", "kakao_big_sans", "ddulgi_mayo" ->
+        "nanum_gothic", "gowun_dodum", "pretendard", "pretendard_bold", "kakao_big_sans", "ddulgi_mayo",
+        "paperlogy_bold", "nexon_lv1_gothic", "poppins" ->
             FontFamily.SansSerif
         else -> FontFamily.SansSerif
     }
@@ -1637,7 +1670,7 @@ private fun parseHexColor(hex: String): Color {
 
 private enum class CaptionStylePreset(
     val title: String,
-    private val fontName: String,
+    val fontName: String,
     val previewTextColorHex: String,
     private val shadowColorHex: String,
     private val fontSize: WatermarkFontSize,
@@ -1647,7 +1680,7 @@ private enum class CaptionStylePreset(
 ) {
     Readable(
         title = "가독성",
-        fontName = "pretendard_bold",
+        fontName = "pretendard",
         previewTextColorHex = "#FFFFFF",
         shadowColorHex = "#000000",
         fontSize = WatermarkFontSize.Large,
@@ -1715,7 +1748,7 @@ private enum class CaptionStylePreset(
     ),
     Magazine(
         title = "매거진",
-        fontName = "black_han_sans",
+        fontName = "paperlogy_bold",
         previewTextColorHex = "#FFF4D6",
         shadowColorHex = "#D94A32",
         fontSize = WatermarkFontSize.ExtraLarge,
@@ -1723,7 +1756,7 @@ private enum class CaptionStylePreset(
     ),
     Sports(
         title = "스포츠",
-        fontName = "tenada",
+        fontName = "paperlogy_bold",
         previewTextColorHex = "#D8FF3E",
         shadowColorHex = "#10223A",
         fontSize = WatermarkFontSize.ExtraLarge,
@@ -1731,7 +1764,7 @@ private enum class CaptionStylePreset(
     ),
     Clean(
         title = "클린",
-        fontName = "pretendard",
+        fontName = "nexon_lv1_gothic",
         previewTextColorHex = "#FFFFFF",
         shadowColorHex = "#1B4D89",
         fontSize = WatermarkFontSize.Large,
@@ -1739,7 +1772,7 @@ private enum class CaptionStylePreset(
     ),
     Neon(
         title = "네온",
-        fontName = "pretendard_bold",
+        fontName = "nexon_lv1_gothic",
         previewTextColorHex = "#7DF9FF",
         shadowColorHex = "#6C2BFF",
         fontSize = WatermarkFontSize.Large,
@@ -1747,7 +1780,7 @@ private enum class CaptionStylePreset(
     ),
     Vlog(
         title = "VLOG",
-        fontName = "pretendard",
+        fontName = "poppins",
         previewTextColorHex = "#FFFFFF",
         shadowColorHex = "#FF6B5E",
         fontSize = WatermarkFontSize.Large,
@@ -1755,7 +1788,7 @@ private enum class CaptionStylePreset(
     ),
     Pop(
         title = "POP",
-        fontName = "pretendard_bold",
+        fontName = "poppins",
         previewTextColorHex = "#FFE45C",
         shadowColorHex = "#642BFF",
         fontSize = WatermarkFontSize.ExtraLarge,

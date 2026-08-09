@@ -3,6 +3,28 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val sharedFontAssetsDir = layout.buildDirectory.dir("generated/shared-font-assets")
+val syncSharedFontAssets by tasks.registering(org.gradle.api.tasks.Sync::class) {
+    from(rootProject.file("../HanClip/Resources/Fonts")) {
+        include("Paperlogy-7Bold.ttf", "NEXONLv1GothicRegular.ttf", "Poppins-Regular.ttf")
+        into("fonts")
+        eachFile {
+            name = when (name) {
+                "Paperlogy-7Bold.ttf" -> "paperlogy_bold.ttf"
+                "NEXONLv1GothicRegular.ttf" -> "nexon_lv1_gothic.ttf"
+                "Poppins-Regular.ttf" -> "poppins_regular.ttf"
+                else -> name
+            }
+        }
+    }
+    from(rootProject.file("../HanClip/Resources/font-licenses")) {
+        include("*.txt", "README.md")
+        into("font-licenses")
+    }
+    into(sharedFontAssetsDir)
+    includeEmptyDirs = false
+}
+
 android {
     namespace = "com.hanclip.android"
     compileSdk = 37
@@ -11,7 +33,7 @@ android {
         applicationId = "com.hanclip.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 471
+        versionCode = 472
         versionName = "1.0.1"
     }
 
@@ -33,7 +55,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // AGP 9 source sets do not accept Provider values. preBuild below owns the
+    // generation dependency, so expose the resolved directory as a regular File.
+    sourceSets.getByName("main").assets.directories.add(sharedFontAssetsDir.get().asFile.absolutePath)
 }
+
+tasks.named("preBuild").configure { dependsOn(syncSharedFontAssets) }
 
 dependencies {
     val media3Version = "1.10.1"

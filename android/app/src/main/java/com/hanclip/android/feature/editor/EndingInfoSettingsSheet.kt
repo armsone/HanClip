@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -272,13 +273,13 @@ private data class EndingCaptionPreset(
 private val EndingCaptionPresets = listOf(
     EndingCaptionPreset("가독성", "pretendard", "#FFFFFF", "#000000", WatermarkFontSize.Large, 0.50),
     EndingCaptionPreset("러블리", "ddulgi_mayo", "#FF6FAE", "#7A3FFF", WatermarkFontSize.Large, 0.50),
-    EndingCaptionPreset("강력햐", "tenada", "#FFE600", "#000000", WatermarkFontSize.ExtraLarge, 0.50),
+    EndingCaptionPreset("강력한", "tenada", "#FFE600", "#000000", WatermarkFontSize.ExtraLarge, 0.50),
     EndingCaptionPreset("청량", "gowun_dodum", "#FFFFFF", "#18A8FF", WatermarkFontSize.Large, 0.50),
     EndingCaptionPreset("여행", "gowun_batang", "#FFF3D6", "#3F6F63", WatermarkFontSize.Large, 0.50),
     EndingCaptionPreset("시네마", "black_han_sans", "#F8F3E7", "#141414", WatermarkFontSize.ExtraLarge, 0.50),
     EndingCaptionPreset("데일리", "do_hyeon", "#FFFFFF", "#FF7A3D", WatermarkFontSize.Large, 0.50),
-    EndingCaptionPreset("감성", "maruburi", "#FFE9F0", "#6E5BFF", WatermarkFontSize.Normal, 0.50),
-    EndingCaptionPreset("그린골프", "pretendard_bold", "#FFFFFF", "#10B85A", WatermarkFontSize.Large, 0.50),
+    EndingCaptionPreset("감성", "gowun_batang", "#FFE9F0", "#6E5BFF", WatermarkFontSize.Normal, 0.50),
+    EndingCaptionPreset("그린골프", "do_hyeon", "#FFFFFF", "#10B85A", WatermarkFontSize.Large, 0.50),
     EndingCaptionPreset("매거진", "paperlogy_bold", "#FFF4D6", "#D94A32", WatermarkFontSize.ExtraLarge, 0.55),
     EndingCaptionPreset("스포츠", "paperlogy_bold", "#D8FF3E", "#10223A", WatermarkFontSize.ExtraLarge, 0.70),
     EndingCaptionPreset("클린", "nexon_lv1_gothic", "#FFFFFF", "#1B4D89", WatermarkFontSize.Large, 0.35),
@@ -293,6 +294,7 @@ private fun EndingCaptionPresetGrid(
     palette: HanClipPalette,
     onChange: (WatermarkSettings) -> Unit
 ) {
+    val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         EndingCaptionPresets.chunked(3).forEach { rowPresets ->
             Row(
@@ -338,7 +340,12 @@ private fun EndingCaptionPresetGrid(
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1
                             )
-                            Text("Aa", color = Color(android.graphics.Color.parseColor(preset.textColor)), fontWeight = FontWeight.Bold)
+                            Text(
+                                "Aa",
+                                color = Color(android.graphics.Color.parseColor(preset.textColor)),
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = fontFamilyForName(context, preset.fontName)
+                            )
                         }
                     }
                 }
