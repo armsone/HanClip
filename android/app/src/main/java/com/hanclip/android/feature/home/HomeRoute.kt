@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.util.LruCache
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,18 +34,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Flight
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SportsGolf
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.TravelExplore
@@ -92,6 +99,10 @@ import androidx.compose.ui.window.Dialog
 import com.hanclip.android.R
 import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.model.OutputQualityPreset
+import com.hanclip.android.core.model.WatermarkPlatform
+import com.hanclip.android.core.model.WatermarkPosition
+import com.hanclip.android.core.model.WatermarkSettings
+import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ExportHistoryStore
 import com.hanclip.android.core.project.ExportedMovieSummary
 import com.hanclip.android.core.project.hanClipCompletionTitle
@@ -109,6 +120,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeRoute(
     exportedMovieSummaries: List<ExportedMovieSummary>,
@@ -117,6 +129,7 @@ fun HomeRoute(
     editableProjectSummaries: List<DraftProjectSummary>,
     sharedInboxCount: Int,
     sleepPreventionMode: SleepPreventionMode,
+    watermarkSettings: WatermarkSettings,
     onStartPreset: (MoviePreset) -> Unit,
     onOpenProject: () -> Unit,
     onOpenEditableProject: (DraftProjectSummary) -> Unit,
@@ -127,7 +140,10 @@ fun HomeRoute(
     onRemoveExportedMovie: (ExportedMovieSummary) -> Unit,
     onToggleExportedMoviePin: (ExportedMovieSummary) -> Boolean,
     onUpdateExportedMovieMemo: (ExportedMovieSummary, String) -> Unit,
-    onSleepPreventionModeChange: (SleepPreventionMode) -> Unit
+    onSleepPreventionModeChange: (SleepPreventionMode) -> Unit,
+    onWatermarkSettingsChange: (WatermarkSettings) -> Unit,
+    onOpenBrowser: () -> Unit,
+    onRestorePurchases: () -> Unit
 ) {
     val context = LocalContext.current
     var themeMode by remember {
@@ -142,15 +158,20 @@ fun HomeRoute(
     var editableMemoCandidate by remember { mutableStateOf<DraftProjectSummary?>(null) }
     var memoText by remember { mutableStateOf("") }
     var showPinLimitAlert by remember { mutableStateOf(false) }
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
             .background(palette.background)
-            .padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (!showSettingsInfo) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
         item(key = "home-header") {
             Spacer(Modifier.height(6.dp))
             HomeHeader(
@@ -198,30 +219,43 @@ fun HomeRoute(
                 memoText = it.memo
             }
         )
-        item(key = "home-info") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clickable { showSettingsInfo = true },
-                    shape = CircleShape,
-                    color = palette.secondary.copy(alpha = 0.18f),
-                    border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.34f))
-                ) {
-                    Icon(
-                        Icons.Outlined.Info,
-                        contentDescription = "설정과 기능 안내",
-                        tint = palette.primary,
-                        modifier = Modifier.padding(11.dp)
-                    )
-                }
-            }
-        }
         item(key = "home-bottom-space") {
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(84.dp))
+        }
+        }
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 10.dp)
+                .size(58.dp)
+                .combinedClickable(
+                    onClick = { showSettingsInfo = true },
+                    onLongClick = onOpenBrowser
+                ),
+            shape = CircleShape,
+            color = palette.secondary.copy(alpha = 0.36f),
+            border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.34f)),
+            shadowElevation = 12.dp
+        ) {
+            Icon(
+                Icons.Outlined.Info,
+                contentDescription = "카피라이터 설정, 길게 눌러 음악 브라우저 열기",
+                tint = palette.primary,
+                modifier = Modifier.padding(15.dp)
+            )
+        }
+        }
+        if (showSettingsInfo) {
+            SettingsInfoScreen(
+                palette = palette,
+                sleepPreventionMode = sleepPreventionMode,
+                watermarkSettings = watermarkSettings,
+                onSleepPreventionModeChange = onSleepPreventionModeChange,
+                onWatermarkSettingsChange = onWatermarkSettingsChange,
+                onRestorePurchases = onRestorePurchases,
+                onDismiss = { showSettingsInfo = false }
+            )
         }
     }
     if (showThemeSelection) {
@@ -232,16 +266,6 @@ fun HomeRoute(
                 HanClipThemeStore.save(context, mode)
             },
             onDismiss = { showThemeSelection = false }
-        )
-    }
-    if (showSettingsInfo) {
-        SettingsInfoDialog(
-            palette = palette,
-            sleepPreventionMode = sleepPreventionMode,
-            onCycleSleepPrevention = {
-                onSleepPreventionModeChange(sleepPreventionMode.next())
-            },
-            onDismiss = { showSettingsInfo = false }
         )
     }
     removalCandidate?.let { summary ->
@@ -770,57 +794,100 @@ fun HanClipBrandCapsule(palette: HanClipPalette? = null) {
 }
 
 @Composable
-private fun SettingsInfoDialog(
+private fun SettingsInfoScreen(
     palette: HanClipPalette,
     sleepPreventionMode: SleepPreventionMode,
-    onCycleSleepPrevention: () -> Unit,
+    watermarkSettings: WatermarkSettings,
+    onSleepPreventionModeChange: (SleepPreventionMode) -> Unit,
+    onWatermarkSettingsChange: (WatermarkSettings) -> Unit,
+    onRestorePurchases: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = palette.panel,
-            border = BorderStroke(1.dp, palette.border),
-            shadowElevation = 10.dp
-        ) {
+    var watermarkExpanded by remember { mutableStateOf(false) }
+    BackHandler(onBack = onDismiss)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(palette.background)
+    ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 item {
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "설정",
-                                color = palette.text,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleLarge
-                            )
-                            Text(
-                                "HanClip 기능 안내와 작업 중 화면 유지",
-                                color = palette.subText,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Outlined.Settings, contentDescription = "설정 닫기", tint = palette.primary)
+                        HanClipBrandCapsule(palette)
+                        Surface(
+                            shape = RoundedCornerShape(34.dp),
+                            color = palette.panel.copy(alpha = palette.panel.alpha * 0.72f),
+                            border = BorderStroke(1.dp, palette.border.copy(alpha = 0.62f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = onDismiss) {
+                                    Icon(Icons.Outlined.Close, "카피라이터 설정 닫기", tint = palette.primary)
+                                }
+                                IconButton(onClick = {
+                                    onWatermarkSettingsChange(WatermarkSettings())
+                                    onSleepPreventionModeChange(SleepPreventionMode.Automatic)
+                                }) {
+                                    Icon(Icons.AutoMirrored.Outlined.Undo, "카피라이터 설정 초기화", tint = palette.primary)
+                                }
+                            }
                         }
                     }
+                }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(24.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = palette.secondary.copy(alpha = 0.14f)
+                        ) {
+                            Icon(Icons.Outlined.GridView, null, tint = palette.primary, modifier = Modifier.padding(5.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "카피라이터 설정",
+                            color = palette.text.copy(alpha = 0.78f),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+                item {
+                    CopyrightWatermarkCard(
+                        palette = palette,
+                        settings = watermarkSettings,
+                        expanded = watermarkExpanded,
+                        onExpandedChange = { watermarkExpanded = it },
+                        onChange = onWatermarkSettingsChange,
+                        onRestorePurchases = onRestorePurchases
+                    )
                 }
                 item {
                     SleepPreventionInfoCard(
                         palette = palette,
                         mode = sleepPreventionMode,
-                        onCycle = onCycleSleepPrevention
+                        onChange = onSleepPreventionModeChange
                     )
                 }
+                item { SpecialThanksCard(palette) }
                 importantInfoItems().forEach { item ->
                     item {
                         ImportantInfoRow(
@@ -831,19 +898,192 @@ private fun SettingsInfoDialog(
                     }
                 }
                 item {
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = palette.primary,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("확인", fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(24.dp))
                 }
             }
+    }
+}
+
+@Composable
+private fun CopyrightWatermarkCard(
+    palette: HanClipPalette,
+    settings: WatermarkSettings,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onChange: (WatermarkSettings) -> Unit,
+    onRestorePurchases: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = palette.secondary.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.logo_mark),
+                    contentDescription = null,
+                    modifier = Modifier.size(26.dp),
+                    colorFilter = ColorFilter.tint(palette.primary)
+                )
+                Text(
+                    "워터마크",
+                    modifier = Modifier.weight(1f),
+                    color = palette.subText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                CopyrightSegment(
+                    text = "사용",
+                    selected = settings.logoEnabled,
+                    palette = palette,
+                    onClick = { onChange(settings.copy(logoEnabled = true)) }
+                )
+                CopyrightSegment(
+                    text = "안함",
+                    selected = !settings.logoEnabled,
+                    palette = palette,
+                    onClick = { onChange(settings.copy(logoEnabled = false)) }
+                )
+                IconButton(onClick = { onExpandedChange(!expanded) }) {
+                    Icon(
+                        if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        if (expanded) "워터마크 설정 접기" else "워터마크 설정 펼치기",
+                        tint = palette.primary
+                    )
+                }
+            }
+            if (expanded) {
+                Text("로고", color = palette.subText, fontWeight = FontWeight.Bold)
+                WatermarkPlatform.entries.chunked(5).forEach { platforms ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        platforms.forEach { platform ->
+                            CopyrightPlatformCell(
+                                modifier = Modifier.weight(1f),
+                                platform = platform,
+                                selected = settings.platform == platform,
+                                palette = palette,
+                                onClick = { onChange(settings.copy(platform = platform, logoEnabled = true)) }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    if (settings.platform == WatermarkPlatform.HanClip) {
+                        "HanClip 로고는 완성본의 출처와 앱 브랜드를 표시합니다. 유료 워터마크 제거·복원 기능이 연결되는 기준 항목입니다."
+                    } else {
+                        "${settings.platform.title} 로고를 완성본 저작권 표시에 사용합니다."
+                    },
+                    color = palette.subText,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text("위치", color = palette.subText, fontWeight = FontWeight.Bold)
+                WatermarkPosition.entries.chunked(5).forEach { positions ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        positions.forEach { position ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (settings.copyrightPosition == position) palette.secondary.copy(alpha = 0.28f)
+                                        else palette.panel.copy(alpha = 0.68f)
+                                    )
+                                    .clickable { onChange(settings.copy(copyrightPosition = position)) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    modifier = Modifier.size(16.dp),
+                                    shape = CircleShape,
+                                    color = if (settings.copyrightPosition == position) palette.primary else Color.Transparent,
+                                    border = BorderStroke(2.dp, if (settings.copyrightPosition == position) palette.primary else palette.secondary)
+                                ) {}
+                            }
+                        }
+                    }
+                }
+            }
+            Text(
+                "구매 복원",
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onRestorePurchases)
+                    .padding(horizontal = 18.dp, vertical = 5.dp),
+                color = palette.primary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CopyrightSegment(
+    text: String,
+    selected: Boolean,
+    palette: HanClipPalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .height(34.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) palette.primary else palette.secondary.copy(alpha = 0.14f)
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                color = if (selected) Color.White else palette.primary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CopyrightPlatformCell(
+    modifier: Modifier,
+    platform: WatermarkPlatform,
+    selected: Boolean,
+    palette: HanClipPalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(58.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) palette.primary.copy(alpha = 0.18f) else palette.panel.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(platform.drawableResId),
+                contentDescription = platform.title,
+                modifier = Modifier.size(28.dp),
+                contentScale = ContentScale.Fit
+            )
         }
     }
 }
@@ -852,7 +1092,7 @@ private fun SettingsInfoDialog(
 private fun SleepPreventionInfoCard(
     palette: HanClipPalette,
     mode: SleepPreventionMode,
-    onCycle: () -> Unit
+    onChange: (SleepPreventionMode) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -865,32 +1105,67 @@ private fun SleepPreventionInfoCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Outlined.LightMode, contentDescription = null, tint = palette.primary)
-                    Text("작업 중 화면 유지", color = palette.text, fontWeight = FontWeight.Bold)
+                Icon(Icons.Outlined.LightMode, contentDescription = null, tint = palette.primary)
+                Text("화면 꺼짐 방지", color = palette.subText, fontWeight = FontWeight.Bold)
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(palette.secondary.copy(alpha = 0.13f))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                SleepPreventionMode.entries.forEach { option ->
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clickable { onChange(option) },
+                        shape = RoundedCornerShape(19.dp),
+                        color = if (mode == option) palette.panel else Color.Transparent
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                option.title,
+                                color = if (mode == option) palette.text else palette.subText,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
                 }
-                AssistChip(
-                    onClick = onCycle,
-                    label = { Text(mode.title, fontWeight = FontWeight.SemiBold) },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = palette.panel,
-                        labelColor = palette.primary
-                    ),
-                    border = BorderStroke(1.dp, palette.primary.copy(alpha = 0.45f))
-                )
             }
             Text(
                 mode.detail,
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall
             )
+        }
+    }
+}
+
+@Composable
+private fun SpecialThanksCard(palette: HanClipPalette) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = palette.secondary.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Icon(Icons.Outlined.Favorite, null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                Text("Special Thanks", color = palette.text, fontWeight = FontWeight.Black, fontSize = 17.sp)
+            }
+            Text("(주)한통, 한병기, 송기원, 한지우", color = palette.subText, fontSize = 14.sp)
         }
     }
 }
@@ -907,31 +1182,50 @@ private fun ImportantInfoRow(
         color = palette.panel,
         border = BorderStroke(1.dp, palette.border)
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Text(title, color = palette.text, fontWeight = FontWeight.Bold)
-            Text(
-                body,
-                color = palette.subText,
-                style = MaterialTheme.typography.bodySmall
+            Icon(
+                imageVector = when (title) {
+                    "로고" -> Icons.Outlined.Favorite
+                    "첫 화면" -> Icons.Outlined.Home
+                    "영화 프리셋" -> Icons.Outlined.GridView
+                    "Ai" -> Icons.Outlined.Info
+                    else -> Icons.Outlined.Info
+                },
+                contentDescription = null,
+                tint = palette.primary,
+                modifier = Modifier.size(22.dp)
             )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(title, color = palette.text, fontWeight = FontWeight.Bold)
+                Text(
+                    body,
+                    color = palette.subText,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }
 
 private fun importantInfoItems(): List<Pair<String, String>> = listOf(
-    "첫 화면" to "앱 실행 후 내 사진과 영상을 한 번에 골라 HanClip 완성본을 시작하는 홈 화면입니다.",
-    "고마운 분들" to "HanClip 제작과 테스트를 도와준 사용자와 골프 영상을 더 쉽게 만들고 싶은 사람들을 위한 감사 안내입니다.",
-    "기능 안내" to "첫 화면의 설정 버튼에서 HanClip 기능 안내와 작업 중 화면 유지 상태를 확인합니다.",
-    "완성본 프리셋" to "골프 완성본, 새 완성본, AiShot, 여행 완성본 중 원하는 흐름으로 사진과 영상을 골라 시작합니다.",
+    "카피라이터" to "첫 화면 하단의 i 원형 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 앱 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
+    "로고" to "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다. 완성본 로고는 워터마크 사용 권한과 유료화 기준 항목으로 분리해 관리합니다.",
+    "첫 화면" to "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다.",
+    "영화 프리셋" to "첫 화면 상단에서 새 영화, AiShot, 여행 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
+    "Ai" to "AiShot과 영상 분석에서 소리의 피크, 화면 변화, 이어지는 반응을 함께 참고해 필요한 순간을 찾습니다.",
     "AiShot" to "필요한 순간을 자동으로 찾아 클립에 담는 카메라입니다. 감도, 샷 길이, 줌, 전면/후면 카메라 선택을 기억합니다.",
     "Ai 버전" to "현재 Ai 버전은 0.2.1입니다. 798 영상 보정 Ai 기준으로 소리의 피크와 이어지는 반응을 함께 참고합니다.",
     "클립 리스트" to "선택한 사진과 영상이 순서대로 표시됩니다. 썸네일, 시간, 단일 컷/자동 컷, 길이 조절 버튼으로 빠르게 편집합니다.",
     "단일 컷 / 자동 컷" to "영상을 하나의 구간으로 쓰거나, Ai가 찾은 타격점 후보 기준으로 여러 자클립으로 나눕니다.",
     "자막" to "영상 위에 문구, 폰트, 색상, 그림자, 위치를 설정하고 최종 MP4에 합성합니다.",
-    "HanClip 로고" to "로고 워터마크의 표시 여부, 위치, 색상, 그림자 설정을 저장하고 최종 영상에 반영합니다.",
+    "HanClip 로고" to "로고 워터마크의 표시 여부, 플랫폼 로고와 위치를 설정하고 최종 영상에 반영합니다.",
     "시사회" to "완성본 만들기 완료 후 전체 영상을 확인하고 폰 기본 사진첩의 HanClip 앨범 저장, 파일 저장, 공유를 실행합니다. 저장 중에는 화면을 유지합니다.",
     "음악 찾기" to "외부 무료 음악 사이트를 앱 안에서 열어 배경음악을 찾는 화면입니다. 즐겨찾기 추가/삭제와 첫 페이지 지정을 저장하며, 다운로드한 파일은 음악 설정의 내 음악 파일 선택으로 가져옵니다.",
     "외부 호출 주소" to "iOS와 같은 주소를 Android에서도 받습니다. Ai hanclip://aishot, 파일 hanclip://files, 달력 hanclip://calendar, 사진 hanclip://photo, 검색 hanclip://search, 첫 화면 hanclip://open 흐름을 빠르게 엽니다.",

@@ -240,6 +240,7 @@ fun HanClipApp(
                 editableProjectSummaries = editableDraftProjectSummaries,
                 sharedInboxCount = pendingSharedCount,
                 sleepPreventionMode = sleepPreventionMode,
+                watermarkSettings = editorState.watermarkSettings,
                 onStartPreset = { preset ->
                     previewHistorySummary = null
                     DraftProjectStore.clear(context)
@@ -313,6 +314,15 @@ fun HanClipApp(
                 onSleepPreventionModeChange = { mode ->
                     sleepPreventionMode = mode
                     SleepPreventionStore.save(context, mode)
+                },
+                onWatermarkSettingsChange = editorViewModel::updateWatermark,
+                onOpenBrowser = { navController.navigate(HanClipDestination.Browser.route) },
+                onRestorePurchases = {
+                    Toast.makeText(
+                        context,
+                        "Google Play 구매 복원은 유료 워터마크 상품 출시와 함께 연결됩니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             )
         }
