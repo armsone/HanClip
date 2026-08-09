@@ -87,7 +87,7 @@ fun PhotoDurationSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "이 사진만 시간 조절",
                         style = MaterialTheme.typography.headlineSmall,

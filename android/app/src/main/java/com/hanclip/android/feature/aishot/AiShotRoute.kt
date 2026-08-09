@@ -417,11 +417,12 @@ fun AiShotRoute(
         }
     }
 
-    LaunchedEffect(hasPermissions, sensitivity, recording) {
+    LaunchedEffect(hasPermissions, sensitivity, shotLength, recording) {
         if (!hasPermissions || recording != null) return@LaunchedEffect
         withContext(Dispatchers.Default) {
             monitorImpactAudio(
                 sensitivity = sensitivity,
+                beforeSeconds = shotLength.beforeSeconds,
                 visualAnalyzer = visualAnalyzer,
                 onLevel = {
                     withContext(Dispatchers.Main) {
@@ -1016,6 +1017,7 @@ private fun PermissionPanel(onRequest: () -> Unit) {
 @SuppressLint("MissingPermission")
 private suspend fun monitorImpactAudio(
     sensitivity: ShotSensitivity,
+    beforeSeconds: Double,
     visualAnalyzer: RealtimeVisualAnalyzer,
     onLevel: suspend (Double) -> Unit,
     onImpact: suspend () -> Unit
@@ -1038,7 +1040,7 @@ private suspend fun monitorImpactAudio(
     var baseline = 0.008
     var recentLevel = 0.008
     var lastTrigger = 0L
-    val readyDelayMillis = 1200L
+    val readyDelayMillis = (beforeSeconds.coerceAtLeast(0.5) * 1000).toLong()
     val readyPromptSuppressionMillis = 1050L
     var startedAt = 0L
     try {
@@ -1070,7 +1072,10 @@ private suspend fun monitorImpactAudio(
             val score = metrics.impactScore
             val previousRecentLevel = recentLevel
             val baselineSample = min(score, max(0.004, baseline * 1.35))
-            baseline = baseline * 0.976 + max(0.002, baselineSample) * 0.024
+            val elapsedMillis = System.currentTimeMillis() - startedAt
+            val baselineWeight = if (elapsedMillis < readyDelayMillis) 0.04 else 0.012
+            baseline = baseline * (1.0 - baselineWeight) +
+                max(0.002, baselineSample) * baselineWeight
             recentLevel = recentLevel * 0.72 + max(0.002, score) * 0.28
             ambient = ambient * 0.94 + rms * 0.06
             onLevel((score / 0.45).coerceIn(0.0, 1.0))
@@ -1285,16 +1290,24 @@ private object RealtimeImpactClassifier {
             metrics.crossingRate >= thresholds.distantCrossingRate &&
             crestFactor >= thresholds.distantCrestFactor
 
+        val isSpeechLikePrompt = metrics.rms >= 0.025 &&
+            crestFactor < 3.15 &&
+            metrics.crossingRate < 0.16 &&
+            suddenRise < 4.8 &&
+            score < 0.18
+
+        val confidence = impactConfidence(
+            score = score,
+            peak = metrics.peak,
+            suddenRise = suddenRise,
+            crossingRate = metrics.crossingRate,
+            crestFactor = crestFactor,
+            thresholds = thresholds
+        )
+
         return RealtimeImpactDecision(
-            isTriggered = isStrongImpact || isDistantSharpImpact,
-            confidence = impactConfidence(
-                score = score,
-                peak = metrics.peak,
-                suddenRise = suddenRise,
-                crossingRate = metrics.crossingRate,
-                crestFactor = crestFactor,
-                thresholds = thresholds
-            )
+            isTriggered = !isSpeechLikePrompt && (isStrongImpact || isDistantSharpImpact),
+            confidence = if (isSpeechLikePrompt) 0.0 else confidence
         )
     }
 

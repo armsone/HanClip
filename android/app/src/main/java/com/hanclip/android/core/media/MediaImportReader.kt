@@ -145,7 +145,7 @@ object MediaImportReader {
 
     private fun findMotionVideoOffset(imageFile: File): Long? {
         val length = imageFile.length()
-        val scanStart = length / 3L
+        val scanStart = 0L
         val buffer = ByteArray(1024 * 1024)
         return runCatching {
             RandomAccessFile(imageFile, "r").use { input ->
@@ -165,7 +165,7 @@ object MediaImportReader {
                                 ((buffer[index - 2].toInt() and 0xFF) shl 8) or
                                 (buffer[index - 1].toInt() and 0xFF)
                             val candidate = position + index - 4L
-                            if (boxSize in 8..1_048_576 && candidate > scanStart) {
+                            if (boxSize in 8..1_048_576 && candidate > 2L) {
                                 return@use candidate
                             }
                         }

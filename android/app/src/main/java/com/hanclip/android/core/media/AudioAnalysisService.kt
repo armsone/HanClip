@@ -1,6 +1,7 @@
 package com.hanclip.android.core.media
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -94,11 +95,13 @@ object AudioAnalysisService {
         val counts = IntArray(bucketCount)
 
         try {
+            format.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
             decoder.configure(format, null, null, 0)
             decoder.start()
 
             var inputDone = false
             var outputDone = false
+            var outputPcmEncoding = AudioFormat.ENCODING_PCM_16BIT
             while (!outputDone) {
                 if (!inputDone) {
                     val inputIndex = decoder.dequeueInputBuffer(10_000)
@@ -135,16 +138,28 @@ object AudioAnalysisService {
 
                 when (val outputIndex = decoder.dequeueOutputBuffer(info, 10_000)) {
                     MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
-                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        val outputFormat = decoder.outputFormat
+                        outputPcmEncoding = if (outputFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                            outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                        } else {
+                            AudioFormat.ENCODING_PCM_16BIT
+                        }
+                    }
                     else -> if (outputIndex >= 0) {
                         val buffer = decoder.getOutputBuffer(outputIndex)
                         if (buffer != null && info.size > 0) {
                             buffer.position(info.offset)
                             buffer.limit(info.offset + info.size)
-                            val metrics = metrics16BitPcm(buffer.slice().order(ByteOrder.LITTLE_ENDIAN))
+                            val pcmBuffer = buffer.slice().order(ByteOrder.LITTLE_ENDIAN)
+                            val metrics = if (outputPcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
+                                metricsFloatPcm(pcmBuffer)
+                            } else {
+                                metrics16BitPcm(pcmBuffer)
+                            }
                             val timeSeconds = info.presentationTimeUs / 1_000_000.0
                             val bucket = ((timeSeconds / durationSeconds) * bucketCount)
-                                .roundToInt()
+                                .toInt()
                                 .coerceIn(0, bucketCount - 1)
                             energy[bucket] += metrics.rms
                             peaks[bucket] = max(peaks[bucket], metrics.peak)
@@ -208,6 +223,31 @@ object AudioAnalysisService {
             if (count > 0 && sign != previousSign) {
                 crossings += 1
             }
+            previousSign = sign
+            count += 1
+        }
+        return PcmMetrics(
+            rms = sqrt(sum / max(1, count)),
+            peak = peak,
+            crossings = crossings,
+            sampleCount = count
+        )
+    }
+
+    private fun metricsFloatPcm(buffer: java.nio.ByteBuffer): PcmMetrics {
+        if (buffer.remaining() < Float.SIZE_BYTES) return PcmMetrics(0.0, 0.0, 0, 0)
+        val samples = buffer.asFloatBuffer()
+        var sum = 0.0
+        var peak = 0.0
+        var crossings = 0
+        var count = 0
+        var previousSign = 0
+        while (samples.hasRemaining()) {
+            val value = samples.get().toDouble().coerceIn(-1.0, 1.0)
+            val sign = if (value >= 0.0) 1 else -1
+            sum += value * value
+            peak = max(peak, abs(value))
+            if (count > 0 && sign != previousSign) crossings += 1
             previousSign = sign
             count += 1
         }
@@ -430,16 +470,24 @@ object AudioAnalysisService {
                 metrics.crossingRate >= thresholds.distantCrossingRate &&
                 crestFactor >= thresholds.distantCrestFactor
 
+            val isSpeechLikePrompt = metrics.rms >= 0.025 &&
+                crestFactor < 3.15 &&
+                metrics.crossingRate < 0.16 &&
+                suddenRise < 4.8 &&
+                score < 0.18
+
+            val confidence = impactConfidence(
+                score = score,
+                peak = metrics.peak,
+                suddenRise = suddenRise,
+                crossingRate = metrics.crossingRate,
+                crestFactor = crestFactor,
+                thresholds = thresholds
+            )
+
             return Decision(
-                isTriggered = isStrongImpact || isDistantSharpImpact,
-                confidence = impactConfidence(
-                    score = score,
-                    peak = metrics.peak,
-                    suddenRise = suddenRise,
-                    crossingRate = metrics.crossingRate,
-                    crestFactor = crestFactor,
-                    thresholds = thresholds
-                )
+                isTriggered = !isSpeechLikePrompt && (isStrongImpact || isDistantSharpImpact),
+                confidence = if (isSpeechLikePrompt) 0.0 else confidence
             )
         }
 

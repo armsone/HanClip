@@ -109,7 +109,7 @@ fun VideoTrimSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "구간 선택",
                         style = MaterialTheme.typography.headlineSmall,
