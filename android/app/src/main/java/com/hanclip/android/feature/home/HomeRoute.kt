@@ -1309,7 +1309,7 @@ private fun AiShotProjectCard(
     var showActions by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier
-            .height(88.dp)
+            .height(76.dp)
             .combinedClickable(onClick = onClick, onLongClick = { showActions = true }),
         shape = RoundedCornerShape(16.dp),
         color = Color.White,
@@ -1321,7 +1321,7 @@ private fun AiShotProjectCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                EditableProjectThumbnail(summary, Modifier.size(52.dp))
+                EditableProjectThumbnail(summary, Modifier.size(58.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         homeAiShotDateText(summary.savedAtMillis),
@@ -1376,7 +1376,7 @@ private fun AiShotMovieCard(
     var showActions by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier
-            .height(88.dp)
+            .height(76.dp)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { showActions = true }
@@ -1396,8 +1396,8 @@ private fun AiShotMovieCard(
             ) {
                 ExportedMovieThumbnail(
                     summary = summary,
-                    displayLongEdgeDp = 64,
-                    modifier = Modifier.size(64.dp)
+                    displayLongEdgeDp = 58,
+                    modifier = Modifier.size(58.dp)
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -1464,7 +1464,7 @@ private fun AiShotMovieCard(
 private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
     val placeholder = HomePrimary.copy(alpha = 0.10f)
     Surface(
-        modifier = modifier.height(88.dp),
+        modifier = modifier.height(76.dp),
         shape = RoundedCornerShape(16.dp),
         color = Color.White.copy(alpha = 0.72f),
         border = BorderStroke(1.dp, HomeBorder.copy(alpha = 0.72f))
@@ -1476,7 +1476,7 @@ private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(58.dp)
                     .clip(RoundedCornerShape(11.dp))
                     .background(placeholder)
             )
