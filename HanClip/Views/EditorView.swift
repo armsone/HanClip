@@ -3535,6 +3535,11 @@ struct EditorView: View {
                     .padding(.horizontal, 18)
             }
 
+            if movieCollection.aiPosterTotalCount > 0 {
+                collectionAIPosterProgressPanel
+                    .padding(.horizontal, 18)
+            }
+
             collectionShelfEdge
         }
     }
@@ -3685,6 +3690,17 @@ struct EditorView: View {
                 Label("제목 수정", systemImage: "pencil")
             }
 
+            Button {
+                Task {
+                    await movieCollection.reselectPosterWithAI(
+                        for: movie,
+                        preferDifferentFromCurrent: true
+                    )
+                }
+            } label: {
+                Label("썸네일 AI 재선택", systemImage: "sparkles")
+            }
+
             ShareLink(item: movieCollection.videoURL(for: movie)) {
                 Label("공유", systemImage: "square.and.arrow.up")
             }
@@ -3714,6 +3730,37 @@ struct EditorView: View {
             }
 
             ProgressView(value: collectionImportProgress)
+                .tint(HanClipTheme.primary)
+        }
+        .padding(11)
+        .background(
+            HanClipTheme.panelFill,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HanClipTheme.panelStroke.opacity(0.62), lineWidth: 1)
+        }
+    }
+
+    private var collectionAIPosterProgressPanel: some View {
+        let total = max(movieCollection.aiPosterTotalCount, 1)
+        let completed = movieCollection.aiPosterCompletedCount
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primary)
+                Text("AI가 컬렉션의 최고 순간을 고르는 중")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primaryText)
+                Spacer()
+                Text("\(completed)/\(total)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+            }
+
+            ProgressView(value: Double(completed), total: Double(total))
                 .tint(HanClipTheme.primary)
         }
         .padding(11)
@@ -7630,7 +7677,7 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 영상 여러 구간과 시스템 썸네일을 이용해 포스터를 만들고, 생성되지 않은 기존 포스터도 자동으로 복구합니다. 왼쪽 숫자는 현재 보관 수를 뜻합니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 고정 영역의 순서를 바꿀 수 있으며 변경한 순서는 저장됩니다. 포스터를 누르면 검정 배경의 전체화면으로 재생하며 기기 회전에 맞춰 세로·가로 보기를 전환합니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 현재 포스터의 Vision 특징값과 다른 장면을 우선해 새로운 느낌의 썸네일을 고릅니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 검정 배경의 전체화면으로 재생하며 기기 회전에 맞춰 세로·가로 보기를 전환합니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),

@@ -4,6 +4,7 @@ import CoreLocation
 import Foundation
 import QuickLookThumbnailing
 import UIKit
+import Vision
 
 struct HanClipPlace: Equatable, Sendable {
     let countryCode: String
@@ -28,20 +29,29 @@ struct CollectedMovie: Codable, Identifiable, Equatable {
     let locationName: String?
     var isPinned: Bool?
     var pinnedAt: Date?
+    var posterSelectionVersion: Int?
 }
 
 @MainActor
 final class MovieCollectionStore: ObservableObject {
     static let shared = MovieCollectionStore()
     static let maximumMovieCount = 20
+    private nonisolated static let currentPosterSelectionVersion = 2
 
     @Published private(set) var movies: [CollectedMovie] = []
+    @Published private(set) var aiPosterCompletedCount = 0
+    @Published private(set) var aiPosterTotalCount = 0
 
     private let fileManager = FileManager.default
     private var attemptedPosterRepairs: Set<UUID> = []
+    private var activePosterSelections: Set<UUID> = []
 
     private init() {
         load()
+        Task { [weak self] in
+            await Task.yield()
+            await self?.regenerateOutdatedPosters()
+        }
     }
 
     func videoURL(for movie: CollectedMovie) -> URL {
@@ -54,7 +64,7 @@ final class MovieCollectionStore: ObservableObject {
         guard let image = UIImage(contentsOfFile: posterURL.path),
               Self.posterScore(for: image) > 4
         else {
-            repairPosterIfNeeded(for: movie, at: posterURL)
+            repairPosterIfNeeded(for: movie)
             return nil
         }
         return image
@@ -124,11 +134,12 @@ final class MovieCollectionStore: ObservableObject {
             let duration = loadedDuration?.isFinite == true
                 ? max(0, loadedDuration ?? 0)
                 : 0
-            if let data = await Self.makePosterData(
+            let posterData = await Self.makePosterData(
                 from: asset,
                 sourceURL: destination,
                 duration: duration
-            ) {
+            )
+            if let data = posterData {
                 try? data.write(to: posterURL, options: .atomic)
             }
             return CollectedMovie(
@@ -143,7 +154,10 @@ final class MovieCollectionStore: ObservableObject {
                 shootingEndAt: resolvedShootingEnd,
                 locationName: resolvedLocationName,
                 isPinned: false,
-                pinnedAt: nil
+                pinnedAt: nil,
+                posterSelectionVersion: posterData == nil
+                    ? nil
+                    : Self.currentPosterSelectionVersion
             )
         }.value
         movies.append(movie)
@@ -159,58 +173,111 @@ final class MovieCollectionStore: ObservableObject {
         }
     }
 
-    private func repairPosterIfNeeded(
-        for movie: CollectedMovie,
-        at posterURL: URL
-    ) {
+    private func repairPosterIfNeeded(for movie: CollectedMovie) {
         guard attemptedPosterRepairs.insert(movie.id).inserted else { return }
-        let videoURL = videoURL(for: movie)
         Task { [weak self] in
-            let data = await Task.detached(priority: .utility) {
-                let asset = AVURLAsset(url: videoURL)
-                let loadedDuration = try? await asset.load(.duration).seconds
-                let duration = loadedDuration?.isFinite == true
-                    ? max(0, loadedDuration ?? 0)
-                    : 0
-                return await Self.makePosterData(
-                    from: asset,
-                    sourceURL: videoURL,
-                    duration: duration
-                )
-            }.value
-            guard let data else { return }
-            do {
-                try data.write(to: posterURL, options: .atomic)
-                self?.objectWillChange.send()
-            } catch {
-                return
-            }
+            await self?.reselectPosterWithAI(for: movie)
+        }
+    }
+
+    func reselectPosterWithAI(
+        for movie: CollectedMovie,
+        preferDifferentFromCurrent: Bool = false
+    ) async {
+        guard activePosterSelections.insert(movie.id).inserted,
+              movies.contains(where: { $0.id == movie.id })
+        else { return }
+        defer { activePosterSelections.remove(movie.id) }
+
+        let videoURL = videoURL(for: movie)
+        let posterURL = collectionDirectory
+            .appendingPathComponent(movie.posterFilename)
+        let currentPosterData = preferDifferentFromCurrent
+            ? try? Data(contentsOf: posterURL)
+            : nil
+        let data = await Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: videoURL)
+            let loadedDuration = try? await asset.load(.duration).seconds
+            let duration = loadedDuration?.isFinite == true
+                ? max(0, loadedDuration ?? 0)
+                : 0
+            return await Self.makePosterData(
+                from: asset,
+                sourceURL: videoURL,
+                duration: duration,
+                avoidingPosterData: currentPosterData
+            )
+        }.value
+        guard let data else { return }
+
+        do {
+            try data.write(to: posterURL, options: .atomic)
+            guard let index = movies.firstIndex(where: { $0.id == movie.id })
+            else { return }
+            movies[index].posterSelectionVersion =
+                Self.currentPosterSelectionVersion
+            try save()
+            objectWillChange.send()
+        } catch {
+            return
+        }
+    }
+
+    private func regenerateOutdatedPosters() async {
+        let movieIDs = movies.filter {
+            ($0.posterSelectionVersion ?? 0)
+                < Self.currentPosterSelectionVersion
+        }.map(\.id)
+        guard !movieIDs.isEmpty else { return }
+        aiPosterCompletedCount = 0
+        aiPosterTotalCount = movieIDs.count
+        defer {
+            aiPosterCompletedCount = 0
+            aiPosterTotalCount = 0
+        }
+        for movieID in movieIDs {
+            guard let movie = movies.first(where: { $0.id == movieID })
+            else { continue }
+            await reselectPosterWithAI(for: movie)
+            aiPosterCompletedCount += 1
         }
     }
 
     private nonisolated static func makePosterData(
         from asset: AVAsset,
         sourceURL: URL,
-        duration: Double
+        duration: Double,
+        avoidingPosterData: Data? = nil
     ) async -> Data? {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 720, height: 1_080)
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = CMTime(
+            seconds: 0.35,
+            preferredTimescale: 600
+        )
+        generator.requestedTimeToleranceAfter = CMTime(
+            seconds: 0.35,
+            preferredTimescale: 600
+        )
 
         let safeDuration = max(duration, 0)
+        let samplingPositions = [
+            0.02, 0.06, 0.12, 0.20, 0.29, 0.39, 0.50,
+            0.61, 0.71, 0.80, 0.88, 0.94, 0.98
+        ]
         let rawCandidates = safeDuration > 0
-            ? [
-                min(0.5, safeDuration * 0.02),
-                safeDuration * 0.10,
-                safeDuration * 0.30,
-                safeDuration * 0.55,
-                safeDuration * 0.80
-            ]
+            ? samplingPositions.map { safeDuration * $0 }
             : [0]
         var visitedTimes: Set<Int64> = []
         var bestPoster: (data: Data, score: Double)?
+        let avoidedFeaturePrint: VNFeaturePrintObservation?
+        if let avoidingPosterData,
+           let avoidedImage = UIImage(data: avoidingPosterData)?.cgImage {
+            avoidedFeaturePrint = featurePrint(for: avoidedImage)
+        } else {
+            avoidedFeaturePrint = nil
+        }
 
         for seconds in rawCandidates {
             let time = CMTime(
@@ -223,13 +290,26 @@ final class MovieCollectionStore: ObservableObject {
                     .jpegData(compressionQuality: 0.84)
             else { continue }
 
-            let score = posterScore(for: cgImage)
+            var score = aiPosterScore(for: cgImage)
+            if let avoidedFeaturePrint,
+               let candidateFeaturePrint = featurePrint(for: cgImage) {
+                var distance: Float = 0
+                if (try? avoidedFeaturePrint.computeDistance(
+                    &distance,
+                    to: candidateFeaturePrint
+                )) != nil {
+                    let diversity = min(max(Double(distance), 0), 0.75)
+                    score += diversity * 150
+                    if distance < 0.10 {
+                        score -= 180
+                    }
+                }
+            }
             if bestPoster == nil || score > bestPoster?.score ?? 0 {
                 bestPoster = (data, score)
             }
-            if score >= 54 { break }
         }
-        if let bestPoster, bestPoster.score > 4 {
+        if let bestPoster, bestPoster.score > -40 {
             return bestPoster.data
         }
 
@@ -251,8 +331,76 @@ final class MovieCollectionStore: ObservableObject {
     }
 
     private nonisolated static func posterScore(for cgImage: CGImage) -> Double {
-        let width = 12
-        let height = 12
+        imageQualityMetrics(for: cgImage).mean
+    }
+
+    private nonisolated static func aiPosterScore(
+        for cgImage: CGImage
+    ) -> Double {
+        let metrics = imageQualityMetrics(for: cgImage)
+        var score = 0.0
+
+        let exposureQuality = max(0, 1 - abs(metrics.mean - 128) / 128)
+        score += exposureQuality * 22
+        score += min(metrics.deviation / 58, 1) * 18
+        score += min(metrics.edgeStrength / 42, 1) * 28
+        if metrics.mean < 16 { score -= 90 }
+        if metrics.mean > 244 { score -= 55 }
+
+        let faceRequest = VNDetectFaceLandmarksRequest()
+        let saliencyRequest = VNGenerateAttentionBasedSaliencyImageRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform([faceRequest, saliencyRequest])
+
+        let faces = faceRequest.results ?? []
+        for (index, face) in faces.enumerated() {
+            let box = face.boundingBox
+            let area = box.width * box.height
+            let center = CGPoint(x: box.midX, y: box.midY)
+            let centerDistance = hypot(center.x - 0.5, center.y - 0.5)
+            let prominence = min(sqrt(area) / 0.45, 1)
+            let centered = max(0, 1 - centerDistance / 0.68)
+            let faceWeight = index == 0 ? 1.0 : 0.58
+            score += prominence * 72 * faceWeight
+            score += centered * 18 * faceWeight
+            score += Double(face.confidence) * 10 * faceWeight
+            if face.landmarks?.leftEye != nil,
+               face.landmarks?.rightEye != nil,
+               face.landmarks?.outerLips != nil {
+                score += 12 * faceWeight
+            }
+            if box.minX < 0.015 || box.maxX > 0.985
+                || box.minY < 0.015 || box.maxY > 0.985 {
+                score -= 20 * faceWeight
+            }
+        }
+
+        if let salientObjects = saliencyRequest.results?.first?.salientObjects {
+            for object in salientObjects.prefix(3) {
+                let box = object.boundingBox
+                let centerDistance = hypot(box.midX - 0.5, box.midY - 0.5)
+                let centered = max(0, 1 - centerDistance / 0.7)
+                score += Double(object.confidence) * 12
+                score += centered * 6
+            }
+        }
+        return score
+    }
+
+    private nonisolated static func featurePrint(
+        for cgImage: CGImage
+    ) -> VNFeaturePrintObservation? {
+        let request = VNGenerateImageFeaturePrintRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        guard (try? handler.perform([request])) != nil else { return nil }
+        return request.results?.first
+    }
+
+    private nonisolated static func imageQualityMetrics(
+        for cgImage: CGImage
+    ) -> (mean: Double, deviation: Double, edgeStrength: Double) {
+        let width = 24
+        let height = 24
         let bytesPerPixel = 4
         var pixels = [UInt8](
             repeating: 0,
@@ -275,7 +423,7 @@ final class MovieCollectionStore: ObservableObject {
             )
             return true
         }
-        guard rendered else { return 0 }
+        guard rendered else { return (0, 0, 0) }
 
         var luminances: [Double] = []
         luminances.reserveCapacity(width * height)
@@ -289,7 +437,27 @@ final class MovieCollectionStore: ObservableObject {
         let variance = luminances.reduce(0) {
             $0 + pow($1 - mean, 2)
         } / Double(luminances.count)
-        return mean + sqrt(variance) * 0.55
+        var edgeTotal = 0.0
+        var edgeCount = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = y * width + x
+                if x + 1 < width {
+                    edgeTotal += abs(luminances[index] - luminances[index + 1])
+                    edgeCount += 1
+                }
+                if y + 1 < height {
+                    edgeTotal += abs(
+                        luminances[index] - luminances[index + width]
+                    )
+                    edgeCount += 1
+                }
+            }
+        }
+        let edgeStrength = edgeCount > 0
+            ? edgeTotal / Double(edgeCount)
+            : 0
+        return (mean, sqrt(variance), edgeStrength)
     }
 
     private nonisolated static func collectionDateTitle(_ date: Date) -> String {
