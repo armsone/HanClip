@@ -85,24 +85,42 @@ private final class PhotoPickerGlassButton: UIButton {
     }
 }
 
+private enum PhotoDurationFilterComparison {
+    case atLeast
+    case atMost
+
+    var title: String {
+        switch self {
+        case .atLeast: "이상"
+        case .atMost: "이하"
+        }
+    }
+}
+
 private struct PhotoDurationFilterEditor: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var minutes: Int
     @State private var seconds: Int
+    @State private var comparison: PhotoDurationFilterComparison
 
     private let maximumMinutes: Int
-    let onApply: (TimeInterval) -> Void
+    let onApply: (TimeInterval, PhotoDurationFilterComparison) -> Void
     let onClear: () -> Void
 
     init(
         currentSeconds: TimeInterval?,
-        onApply: @escaping (TimeInterval) -> Void,
+        currentComparison: PhotoDurationFilterComparison,
+        onApply: @escaping (
+            TimeInterval,
+            PhotoDurationFilterComparison
+        ) -> Void,
         onClear: @escaping () -> Void
     ) {
         let initialSeconds = max(Int((currentSeconds ?? 180).rounded()), 0)
         _minutes = State(initialValue: initialSeconds / 60)
         _seconds = State(initialValue: initialSeconds % 60)
+        _comparison = State(initialValue: currentComparison)
         maximumMinutes = max(180, initialSeconds / 60 + 30)
         self.onApply = onApply
         self.onClear = onClear
@@ -113,7 +131,7 @@ private struct PhotoDurationFilterEditor: View {
     }
 
     private var resultText: String {
-        "\(formattedDuration(totalSeconds)) 이상인 영상만 표시"
+        "\(formattedDuration(totalSeconds)) \(comparison.title)인 영상만 표시"
     }
 
     var body: some View {
@@ -134,6 +152,12 @@ private struct PhotoDurationFilterEditor: View {
             }
 
             VStack(spacing: 12) {
+                Picker("시간 조건", selection: $comparison) {
+                    Text("이상").tag(PhotoDurationFilterComparison.atLeast)
+                    Text("이하").tag(PhotoDurationFilterComparison.atMost)
+                }
+                .pickerStyle(.segmented)
+
                 HStack(spacing: 12) {
                     timePicker(
                         title: "분",
@@ -185,10 +209,10 @@ private struct PhotoDurationFilterEditor: View {
                 )
 
                 Button {
-                    onApply(TimeInterval(totalSeconds))
+                    onApply(TimeInterval(totalSeconds), comparison)
                     dismiss()
                 } label: {
-                    Text("이상 영상 보기")
+                    Text("\(comparison.title) 영상 보기")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
@@ -377,7 +401,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             .video
         ]
         private var durationFilterSeconds: TimeInterval?
-        private var durationFilterComparison: DurationFilterComparison = .atLeast
+        private var durationFilterComparison: PhotoDurationFilterComparison = .atLeast
         private var mediaFiltersBeforeDurationFilter: Set<MediaFilter>?
         private var selectedIdentifiers: [String] = []
         private var selectedIdentifierSet: Set<String> = []
@@ -415,18 +439,6 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 case .photo: "photo"
                 case .livePhoto: "livephoto"
                 case .video: "video.fill"
-                }
-            }
-        }
-
-        private enum DurationFilterComparison {
-            case atLeast
-            case atMost
-
-            var title: String {
-                switch self {
-                case .atLeast: "이상"
-                case .atMost: "이하"
                 }
             }
         }
@@ -991,8 +1003,12 @@ struct PhotoPicker: UIViewControllerRepresentable {
         private func presentDurationFilterEditor() {
             let editor = PhotoDurationFilterEditor(
                 currentSeconds: durationFilterSeconds,
-                onApply: { [weak self] seconds in
-                    self?.activateDurationFilter(seconds: seconds)
+                currentComparison: durationFilterComparison,
+                onApply: { [weak self] seconds, comparison in
+                    self?.activateDurationFilter(
+                        seconds: seconds,
+                        comparison: comparison
+                    )
                 },
                 onClear: { [weak self] in
                     self?.clearDurationFilter()
@@ -1009,12 +1025,15 @@ struct PhotoPicker: UIViewControllerRepresentable {
             present(controller, animated: true)
         }
 
-        private func activateDurationFilter(seconds: TimeInterval) {
+        private func activateDurationFilter(
+            seconds: TimeInterval,
+            comparison: PhotoDurationFilterComparison
+        ) {
             if durationFilterSeconds == nil {
                 mediaFiltersBeforeDurationFilter = selectedMediaFilters
             }
             durationFilterSeconds = max(seconds, 1)
-            durationFilterComparison = .atLeast
+            durationFilterComparison = comparison
             selectedMediaFilters = [.video]
             applyMediaFilters()
         }
