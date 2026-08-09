@@ -51,6 +51,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Collections
@@ -2867,7 +2868,7 @@ private fun VideoSegmentMode.next(): VideoSegmentMode = when (this) {
 
 private fun MoviePreset.settingIcon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
     MoviePreset.NewMovie -> Icons.Outlined.MovieCreation
-    MoviePreset.Quick -> Icons.Outlined.AutoFixHigh
+    MoviePreset.Quick -> Icons.Outlined.Bolt
     MoviePreset.AiShot -> Icons.Outlined.AddPhotoAlternate
     MoviePreset.Travel -> Icons.Outlined.Map
     MoviePreset.Life -> Icons.Outlined.Collections

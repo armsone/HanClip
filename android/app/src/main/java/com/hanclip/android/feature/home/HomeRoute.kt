@@ -49,6 +49,7 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.Favorite
@@ -62,6 +63,7 @@ import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.MovieCreation
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -1599,9 +1601,9 @@ private fun importantInfoIcon(title: String): ImageVector = when (title) {
     "워터마크" -> Icons.Outlined.Badge
     "첫 화면" -> Icons.Outlined.Home
     "영화 프리셋" -> Icons.Outlined.GridView
-    "퀵모드" -> Icons.Outlined.AutoFixHigh
+    "퀵모드" -> Icons.Outlined.Bolt
     "여행 영화" -> Icons.Outlined.Flight
-    "Quick" -> Icons.Outlined.AutoFixHigh
+    "Quick" -> Icons.Outlined.Bolt
     "인생 영화" -> Icons.Outlined.Favorite
     "Ai" -> Icons.Outlined.AutoFixHigh
     "AiShot" -> Icons.Outlined.AddPhotoAlternate
@@ -1652,7 +1654,7 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
     "카피라이터" to "첫 화면 하단의 i 원형 플로팅 버튼입니다. 짧게 누르면 카피라이터 설정과 앱 정보를 보고, 길게 누르면 외부 음원을 받을 수 있는 HanClip 내부 브라우저를 바로 엽니다.",
     "로고" to "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다.",
     "첫 화면" to "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다.",
-    "영화 프리셋" to "첫 화면 상단에서 새 영화, Quick, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
+    "영화 프리셋" to "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다.",
     "퀵모드" to "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 같은 화면에서 자막·음악·엔딩·화면비와 미디어를 설정하고, 확정하면 목표 시간÷원본 미디어 수로 기본시간을 정해 영화를 만듭니다. hanclip://quick으로 바로 실행할 수 있습니다.",
     "여행 영화" to "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역을 자막과 엔딩에 사용하며 보물지도 테마를 기본으로 준비합니다.",
     "인생 영화" to "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다.",
@@ -1667,7 +1669,7 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
         감지 중, 감지 됨, 저장 중으로 상태를 보여주고 시끄러움, 일반, 조용함, 자동 감도를 선택합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 고릅니다. 전면·후면 카메라와 줌 배율을 선택하고 필요한 순간에는 촬영 버튼으로 수동 클립도 남길 수 있습니다.
     """.trimIndent(),
     "영화 목록" to "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽 숫자는 최대 10개 중 현재 저장 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋을 보여줍니다.",
-    "컬렉션" to "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 왼쪽 숫자는 현재 보관 수를 뜻합니다. 포스터 상단 중앙의 작은 구멍을 누르면 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 다시 누르면 해제됩니다.",
+    "컬렉션" to "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 안에서 영상 여러 구간의 밝기·대비·선명도와 구도를 비교해 좋은 순간을 포스터로 고릅니다. 포스터를 길게 누른 뒤 썸네일 AI 재선택을 선택하면 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 실제 제목·제작·촬영·위치·재생시간이 적용된 모습으로 비교할 수 있습니다. 재생성은 앞서 본 장면과 다른 구간을 다시 찾습니다. 포스터 상단 중앙의 작은 구멍을 누르면 압정이 꽂히며 중요한 영화가 앞쪽에 고정되고, 다시 누르면 해제됩니다.",
     "테마 선택창" to "첫 화면 로고를 길게 눌렀을 때 테마를 직접 선택하는 플로팅 패널입니다. 로고를 짧게 누르면 테마가 순서대로 바뀝니다.",
     "첫 화면 이동 팝업" to "편집 중 로고를 눌렀을 때 저장하고 첫 화면으로 이동하거나 저장 없이 이동하는 방법을 고르는 창입니다.",
     "영화 화면" to "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다.",
@@ -1695,9 +1697,9 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
     "브라우저" to "외부 웹페이지를 이용하는 HanClip 내부 브라우저입니다. 상단 북마크 버튼을 짧게 누르면 즐겨찾기 패널을 열고, 길게 누르면 현재 주소를 즐겨찾기에 등록하거나 해제합니다. 즐겨찾기 패널의 주소 버튼을 누르면 페이지를 열고, 앞쪽 파비콘을 짧게 누르면 삭제하며 길게 누르면 첫 홈페이지로 지정합니다. 관리 화면에서는 순서 변경과 목록 파일 저장을 사용할 수 있습니다. 저장한 즐겨찾기 파일을 HanClip으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다.",
     "자막" to "영화 화면에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다. 자막 문구가 비어 있어도 사용 상태와 엔딩 설정은 따로 유지할 수 있습니다.",
     "촬영 기간 삽입" to "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣습니다.",
-    "엔딩" to "클립 설정의 음악 아래 독립 행이며 기본값은 안함입니다. 현재 테마명, 1~10초 표시 시간과 사용 상태를 설정합니다. 위치가 없어도 미리 테마를 고를 수 있고, 날짜와 위치가 있는 영화에는 촬영기간과 도시 이동 경로를 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정이며 지역 이동은 차량, 국가 이동은 비행기로 연결합니다. 자막, 보물지도, 여행일정, 랜드마크, 오피스 5개 테마를 Quick에서도 그대로 사용합니다.",
+    "엔딩" to "클립 설정의 음악 아래 독립 행이며 기본값은 안함입니다. 현재 테마명, 1~10초 표시 시간과 사용 상태를 설정합니다. 위치가 없어도 미리 테마를 고를 수 있고, 날짜와 위치가 있는 영화에는 촬영기간과 도시 이동 경로를 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정이며 지역 이동은 차량, 국가 이동은 비행기로 연결합니다. 자막, 보물지도, 여행일정, 랜드마크, 오피스 5개 테마를 퀵모드에서도 그대로 사용합니다.",
     "엔딩 카드 테마" to "영화 마지막 여행 기록 카드의 디자인입니다. 자막은 현재 자막 스타일을 이어받고, 보물지도는 점선 경로, 여행일정은 실제 촬영 날짜, 랜드마크는 지역별 명소, 오피스는 문서번호·촬영기간·이동수단 보고서로 표시합니다.",
-    "컬렉션 포스터" to "컬렉션은 영화 포스터를 2열로 보여주며 영화 추가 포스터는 마지막에 배치합니다. 사진과 파일에서 동영상만 가져오고 진행률과 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용합니다.",
+    "컬렉션 포스터" to "컬렉션은 영화 포스터를 세로 2열로 보여주며 영화 추가 포스터는 마지막에 배치합니다. 넓은 Android 화면에서는 포스터 열을 늘려 한눈에 더 많이 비교합니다. 사진과 파일에서 동영상만 가져오고 진행률과 완료 개수를 표시합니다. 포스터를 길게 눌러 핀, 제목 수정, 썸네일 AI 재선택, 공유, 컬렉션 제거를 사용합니다.",
     "워터마크" to "카피라이터에서 설정합니다. HanClip 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다.",
     "외부 호출 주소" to "Ai  hanclip://aishot\n퀵모드  hanclip://quick\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open",
     "샘플 음악" to """
@@ -1707,7 +1709,7 @@ private fun importantInfoItems(): List<Pair<String, String>> = listOf(
 
         샘플 음악 중 '지우에게 첫눈이란'은 앱 제작자의 가족이 직접 만든 개인 창작 음악을 원 저작자의 허락을 받아 HanClip 앱 안에 샘플 음악으로 포함한 곡입니다. '베이비 워킹'은 이 곡에서 느껴지는 첫눈의 감정과 경쾌한 분위기를 참고하되, 원곡 음원이나 멜로디를 직접 사용하지 않고 HanClip 샘플용으로 새롭게 생성한 음악입니다.
 
-        영화 프리셋의 '햇살 한 컷', '여행의 설렘', '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 Quick, 여행 영화, 골프 영화에서 각각 자동으로 선택됩니다.
+        영화 프리셋의 '햇살 한 컷', '여행의 설렘', '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 퀵모드, 여행 영화, 골프 영화에서 각각 자동으로 선택됩니다.
     """.trimIndent(),
     "외부 음악" to """
         음악 설정 화면의 '브라우저'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
@@ -1822,8 +1824,8 @@ private fun PresetGrid(
                         modifier = Modifier.weight(1f),
                         preset = preset,
                         icon = when (preset) {
-                            MoviePreset.NewMovie -> Icons.Outlined.Movie
-                            MoviePreset.Quick -> Icons.Outlined.AutoFixHigh
+                            MoviePreset.NewMovie -> Icons.Outlined.VideoLibrary
+                            MoviePreset.Quick -> Icons.Outlined.Bolt
                             MoviePreset.AiShot -> null
                             MoviePreset.Travel -> Icons.Outlined.Flight
                             MoviePreset.Life -> Icons.Outlined.Favorite
@@ -2700,8 +2702,8 @@ private fun EditableProjectDetail(
 }
 
 private fun MoviePreset.homePresetIcon(): ImageVector = when (this) {
-    MoviePreset.NewMovie -> Icons.Outlined.Movie
-    MoviePreset.Quick -> Icons.Outlined.AutoFixHigh
+    MoviePreset.NewMovie -> Icons.Outlined.VideoLibrary
+    MoviePreset.Quick -> Icons.Outlined.Bolt
     MoviePreset.AiShot -> Icons.Outlined.AddPhotoAlternate
     MoviePreset.Travel -> Icons.Outlined.Flight
     MoviePreset.Life -> Icons.Outlined.Favorite

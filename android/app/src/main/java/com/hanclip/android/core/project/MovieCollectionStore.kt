@@ -16,6 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -26,6 +27,8 @@ import java.util.UUID
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 data class CollectedMovie(
     val id: String,
@@ -52,8 +55,20 @@ data class CollectionImportOutcome(
     val wasDuplicate: Boolean
 )
 
+enum class CollectionPosterEngine {
+    DeviceAI,
+    HanClipAI
+}
+
+data class CollectionPosterCandidate(
+    val id: String,
+    val imageData: ByteArray,
+    val engine: CollectionPosterEngine,
+    val timeSeconds: Double
+)
+
 object MovieCollectionStore {
-    const val MaximumMovieCount = 20
+    const val MaximumMovieCount = 30
     private const val DirectoryName = "movie-collection"
     private const val IndexFilename = "collection.json"
     private const val MigrationPreferences = "hanclip_movie_collection_migration"
@@ -77,6 +92,85 @@ object MovieCollectionStore {
 
     fun posterFile(context: Context, movie: CollectedMovie): File =
         File(collectionDirectory(context), movie.posterFilename)
+
+    fun fileSizeInBytes(context: Context, movie: CollectedMovie): Long? =
+        videoFile(context, movie).takeIf(File::isFile)?.length()?.takeIf { it > 0L }
+
+    suspend fun posterCandidatesWithAI(
+        context: Context,
+        movie: CollectedMovie,
+        generation: Int = 0
+    ): List<CollectionPosterCandidate> = withContext(Dispatchers.IO) {
+        val file = videoFile(context.applicationContext, movie)
+        if (!file.isFile) return@withContext emptyList()
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(file.absolutePath)
+            val safeDuration = movie.durationSeconds.coerceAtLeast(0.0)
+            val phase = (generation.coerceAtLeast(0) % 17) * 0.011
+            val analyzed = (0 until 36).mapNotNull { index ->
+                currentCoroutineContext().ensureActive()
+                val base = (index + 0.5) / 36.0
+                val position = 0.02 + ((base + phase) % 1.0) * 0.96
+                val seconds = safeDuration * position
+                val frame = runCatching {
+                    retriever.getFrameAtTime(
+                        (seconds * 1_000_000L).toLong(),
+                        MediaMetadataRetriever.OPTION_CLOSEST
+                    )
+                }.getOrNull() ?: return@mapNotNull null
+                val scaled = frame.scaledToLongEdge(720)
+                val scores = posterAIScores(scaled)
+                val output = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.JPEG, 84, output)
+                if (scaled !== frame) scaled.recycle()
+                frame.recycle()
+                AnalyzedPosterCandidate(
+                    imageData = output.toByteArray(),
+                    timeSeconds = seconds,
+                    deviceScore = scores.first,
+                    hanClipScore = scores.second
+                )
+            }
+            val device = analyzed.sortedByDescending(AnalyzedPosterCandidate::deviceScore).take(8)
+            val deviceTimes = device.map(AnalyzedPosterCandidate::timeSeconds)
+            val hanClip = analyzed
+                .filter { candidate -> deviceTimes.none { abs(it - candidate.timeSeconds) < 0.001 } }
+                .sortedByDescending(AnalyzedPosterCandidate::hanClipScore)
+                .take(8)
+            device.map { it.toPublicCandidate(CollectionPosterEngine.DeviceAI) } +
+                hanClip.map { it.toPublicCandidate(CollectionPosterEngine.HanClipAI) }
+        } finally {
+            retriever.release()
+        }
+    }
+
+    fun applyPosterCandidate(
+        context: Context,
+        movie: CollectedMovie,
+        imageData: ByteArray
+    ) {
+        synchronized(collectionWriteLock) {
+            val target = posterFile(context, movie)
+            val temporary = File(target.parentFile, "${target.name}.tmp")
+            FileOutputStream(temporary).use { output ->
+                output.write(imageData)
+                output.fd.sync()
+            }
+            val backup = File(target.parentFile, "${target.name}.bak")
+            backup.delete()
+            if (target.exists() && !target.renameTo(backup)) {
+                temporary.delete()
+                error("기존 썸네일을 안전하게 보관하지 못했습니다.")
+            }
+            if (!temporary.renameTo(target)) {
+                backup.renameTo(target)
+                temporary.delete()
+                error("선택한 썸네일을 저장하지 못했습니다.")
+            }
+            backup.delete()
+        }
+    }
 
     suspend fun importMovie(
         context: Context,
@@ -475,28 +569,81 @@ object MovieCollectionStore {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(video.absolutePath)
-            val candidates = listOf(
-                min(max(durationSeconds * 0.12, 0.0), 2.0),
-                min(max(durationSeconds * 0.03, 0.0), 0.5),
-                0.0
-            )
-            val frame = candidates.firstNotNullOfOrNull { seconds ->
-                runCatching {
+            val frames = (0 until 12).mapNotNull { index ->
+                val seconds = durationSeconds.coerceAtLeast(0.0) * (index + 0.5) / 12.0
+                val frame = runCatching {
                     retriever.getFrameAtTime(
                         (seconds * 1_000_000L).toLong(),
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                        MediaMetadataRetriever.OPTION_CLOSEST
                     )
-                }.getOrNull()
-            } ?: return
-            val scaled = frame.scaledToLongEdge(1080)
-            target.outputStream().use { output ->
-                scaled.compress(Bitmap.CompressFormat.JPEG, 84, output)
+                }.getOrNull() ?: return@mapNotNull null
+                val scaled = frame.scaledToLongEdge(1080)
+                if (scaled !== frame) frame.recycle()
+                scaled
             }
-            if (scaled !== frame) scaled.recycle()
-            frame.recycle()
+            val selected = frames.maxByOrNull { posterAIScores(it).second } ?: return
+            target.outputStream().use { output ->
+                selected.compress(Bitmap.CompressFormat.JPEG, 84, output)
+            }
+            frames.forEach(Bitmap::recycle)
         } finally {
             retriever.release()
         }
+    }
+
+    private data class AnalyzedPosterCandidate(
+        val imageData: ByteArray,
+        val timeSeconds: Double,
+        val deviceScore: Double,
+        val hanClipScore: Double
+    ) {
+        fun toPublicCandidate(engine: CollectionPosterEngine) = CollectionPosterCandidate(
+            id = "$engine:$timeSeconds",
+            imageData = imageData,
+            engine = engine,
+            timeSeconds = timeSeconds
+        )
+    }
+
+    private fun posterAIScores(bitmap: Bitmap): Pair<Double, Double> {
+        val stepX = max(1, bitmap.width / 72)
+        val stepY = max(1, bitmap.height / 72)
+        var count = 0
+        var sum = 0.0
+        var sumSquares = 0.0
+        var edges = 0.0
+        var previous = -1.0
+        var y = 0
+        while (y < bitmap.height) {
+            var x = 0
+            while (x < bitmap.width) {
+                val color = bitmap.getPixel(x, y)
+                val luminance = (
+                    android.graphics.Color.red(color) * 0.2126 +
+                        android.graphics.Color.green(color) * 0.7152 +
+                        android.graphics.Color.blue(color) * 0.0722
+                    )
+                sum += luminance
+                sumSquares += luminance * luminance
+                if (previous >= 0) edges += abs(luminance - previous)
+                previous = luminance
+                count += 1
+                x += stepX
+            }
+            y += stepY
+        }
+        if (count == 0) return 0.0 to 0.0
+        val mean = sum / count
+        val deviation = sqrt(max(0.0, sumSquares / count - mean * mean))
+        val edgeStrength = edges / max(1, count - 1)
+        val exposure = max(0.0, 1.0 - abs(mean - 128.0) / 128.0)
+        val darkPenalty = if (mean < 16) 100.0 else 0.0
+        val brightPenalty = if (mean > 244) 65.0 else 0.0
+        val device = exposure * 28 + min(deviation / 58.0, 1.0) * 20 +
+            min(edgeStrength / 42.0, 1.0) * 32 - darkPenalty - brightPenalty
+        val hanClip = exposure * 20 + min(deviation / 58.0, 1.0) * 30 +
+            min(edgeStrength / 42.0, 1.0) * 30 - darkPenalty - brightPenalty
+        return device to hanClip
     }
 
     private fun Bitmap.scaledToLongEdge(maxLongEdge: Int): Bitmap {
