@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,6 +81,8 @@ import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ImportedFontStore
 import com.hanclip.android.core.theme.HanClipPalette
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.io.File
@@ -100,12 +103,17 @@ fun TextOverlaySheet(
     settings: WatermarkSettings,
     palette: HanClipPalette,
     fullScreen: Boolean = false,
+    mediaCreatedAtMillis: List<Long> = emptyList(),
     onDismiss: () -> Unit,
     onApply: (WatermarkSettings) -> Unit
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var draft by remember(settings) { mutableStateOf(settings) }
+    var showAdvancedFonts by remember { mutableStateOf(false) }
+    val mediaDateCaptionText = remember(mediaCreatedAtMillis) {
+        mediaDateRangeCaptionText(mediaCreatedAtMillis)
+    }
     var importedFonts by remember { mutableStateOf(ImportedFontStore.list(context)) }
     val fontPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -195,56 +203,41 @@ fun TextOverlaySheet(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("자막 사용", fontWeight = FontWeight.SemiBold, color = SheetText)
-                Switch(
-                    checked = draft.isEnabled,
-                    onCheckedChange = { draft = draft.copy(isEnabled = it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = palette.primary
-                    )
-                )
-            }
+            CaptionModeSegmentedControl(
+                enabled = draft.isEnabled,
+                palette = palette,
+                onChange = { draft = draft.copy(isEnabled = it) }
+            )
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("워터마크", fontWeight = FontWeight.SemiBold, color = SheetText)
-                    Text("완성 MP4에 선택한 플랫폼과 주소를 작게 합성합니다.", color = SheetSubText)
-                }
-                Switch(
-                    checked = draft.logoEnabled,
-                    onCheckedChange = { draft = draft.copy(logoEnabled = it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = palette.primary
-                    )
-                )
-            }
-
-            SettingGroup(title = "자막 문구") {
-                CaptionTextPreset.entries.forEach { preset ->
-                    val presetText = preset.text()
-                    FilterChip(
-                        selected = draft.text == presetText,
-                        onClick = {
-                            draft = draft.copy(
-                                isEnabled = presetText.isNotBlank(),
-                                text = presetText
+                listOf(
+                    "오늘 날짜 삽입" to CaptionTextPreset.Today.text(),
+                    "촬영 기간 삽입" to mediaDateCaptionText
+                ).forEach { (label, presetText) ->
+                    val selected = draft.text == presetText
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(32.dp)
+                            .clickable {
+                                draft = draft.copy(isEnabled = true, text = presetText)
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (selected) palette.primary.copy(alpha = 0.13f) else palette.panel,
+                        border = BorderStroke(1.dp, if (selected) palette.primary.copy(alpha = 0.30f) else palette.border)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                label,
+                                color = palette.primary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                        },
-                        label = { Text(preset.title, fontWeight = FontWeight.SemiBold) },
-                        colors = sheetFilterChipColors(),
-                        border = sheetFilterChipBorder(draft.text == presetText)
-                    )
+                        }
+                    }
                 }
             }
 
@@ -257,8 +250,15 @@ fun TextOverlaySheet(
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 3,
-                label = { Text("자막 내용") },
+                minLines = 4,
+                textStyle = MaterialTheme.typography.headlineSmall.copy(
+                    color = parseHexColor(draft.textColorHex),
+                    fontFamily = fontFamilyForName(context, draft.fontName),
+                    fontWeight = FontWeight.Medium,
+                    shadow = previewTextShadow(draft)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                label = { Text("여기에 글을 넣으세요") },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = SheetText,
                     unfocusedTextColor = SheetText,
@@ -269,23 +269,7 @@ fun TextOverlaySheet(
                 )
             )
 
-            CaptionPreview(draft)
-
-            CaptionStateSummary(draft, palette)
-
-            Button(
-                onClick = { draft = hanClipDefaultWatermark(draft) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFE9F4EE),
-                    contentColor = SheetText
-                )
-            ) {
-                Text("HanClip 골프 스타일로 맞추기", fontWeight = FontWeight.Bold)
-            }
-
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("스타일", fontWeight = FontWeight.SemiBold, color = SheetText)
                 CaptionStylePicker(
                     settings = draft,
                     palette = palette,
@@ -293,99 +277,59 @@ fun TextOverlaySheet(
                 )
             }
 
-            SettingGroup(title = "글자 크기") {
-                WatermarkFontSize.entries.forEach { size ->
-                    FilterChip(
-                        selected = draft.fontSize == size,
-                        onClick = { draft = draft.copy(fontSize = size) },
-                        label = { Text(size.title, fontWeight = FontWeight.SemiBold) },
-                        colors = sheetFilterChipColors(),
-                        border = sheetFilterChipBorder(draft.fontSize == size)
-                    )
-                }
-            }
-
-            SettingGroup(title = "줄간격") {
-                WatermarkLineSpacing.entries.forEach { spacing ->
-                    FilterChip(
-                        selected = draft.lineSpacing == spacing,
-                        onClick = {
-                            draft = draft.copy(
-                                lineSpacing = spacing,
-                                lineSpacingScale = spacing.scale
-                            )
-                        },
-                        label = { Text(spacing.title, fontWeight = FontWeight.SemiBold) },
-                        colors = sheetFilterChipColors(),
-                        border = sheetFilterChipBorder(draft.lineSpacing == spacing)
-                    )
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White.copy(alpha = 0.22f),
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("줄간격 세부 조절", fontWeight = FontWeight.SemiBold, color = SheetText)
-                    Text(
-                        "%.1fx".format(draft.lineSpacingScale.coerceIn(0.5, 2.0)),
-                        color = SheetSubText,
-                        fontWeight = FontWeight.SemiBold
+                    CaptionChoiceSegment(
+                        labels = WatermarkFontSize.entries.map { "${it.title} ${it.pointSize}" },
+                        selectedIndex = WatermarkFontSize.entries.indexOf(draft.fontSize),
+                        palette = palette,
+                        onSelect = { index -> draft = draft.copy(fontSize = WatermarkFontSize.entries[index]) }
                     )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            val next = WatermarkLineSpacing.normalize(
-                                draft.lineSpacingScale - WatermarkLineSpacing.Step
-                            )
-                            draft = draft.copy(lineSpacingScale = next)
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE9F4EE),
-                            contentColor = SheetText
-                        )
-                    ) {
-                        Text("-")
-                    }
-                    Button(
-                        onClick = {
-                            draft = draft.copy(
-                                lineSpacing = WatermarkLineSpacing.Normal,
-                                lineSpacingScale = WatermarkLineSpacing.DefaultScale
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE9F4EE),
-                            contentColor = SheetText
-                        )
-                    ) {
-                        Text("기본")
-                    }
-                    Button(
-                        onClick = {
-                            val next = WatermarkLineSpacing.normalize(
-                                draft.lineSpacingScale + WatermarkLineSpacing.Step
-                            )
-                            draft = draft.copy(lineSpacingScale = next)
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE9F4EE),
-                            contentColor = SheetText
-                        )
-                    ) {
-                        Text("+")
-                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                    CaptionChoiceSegment(
+                        labels = WatermarkLineSpacing.entries.map { it.title },
+                        selectedIndex = WatermarkLineSpacing.entries.indexOf(draft.lineSpacing),
+                        palette = palette,
+                        onSelect = { index ->
+                            val spacing = WatermarkLineSpacing.entries[index]
+                            draft = draft.copy(lineSpacing = spacing, lineSpacingScale = spacing.scale)
+                        }
+                    )
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                    CaptionColorAndShadowControls(
+                        settings = draft,
+                        palette = palette,
+                        onChange = { draft = it }
+                    )
                 }
             }
 
-            SettingGroup(title = "폰트") {
-                listOf(
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(48.dp)
+                    .height(26.dp)
+                    .clickable { showAdvancedFonts = !showAdvancedFonts },
+                shape = RoundedCornerShape(13.dp),
+                color = palette.secondary.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.14f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(if (showAdvancedFonts) "⌃" else "⌄", color = palette.subText, fontWeight = FontWeight.Black)
+                }
+            }
+
+            if (showAdvancedFonts) {
+                SettingGroup(title = "전체 서체") {
+                    listOf(
                     "pretendard",
                     "pretendard_bold",
                     "kakao_big_sans",
@@ -399,64 +343,48 @@ fun TextOverlaySheet(
                     "black_han_sans",
                     "maruburi",
                     "ddulgi_mayo"
-                ).forEach { font ->
-                    FilterChip(
-                        selected = draft.fontName == font,
-                        onClick = { draft = draft.copy(fontName = font) },
-                        label = { Text(fontDisplayName(font), fontWeight = FontWeight.SemiBold) },
-                        colors = sheetFilterChipColors(),
-                        border = sheetFilterChipBorder(draft.fontName == font)
-                    )
-                }
-                importedFonts.forEach { font ->
-                    FilterChip(
-                        selected = draft.fontName == font.id,
-                        onClick = { draft = draft.copy(fontName = font.id) },
-                        label = { Text(font.displayName, fontWeight = FontWeight.SemiBold) },
-                        colors = sheetFilterChipColors(),
-                        border = sheetFilterChipBorder(draft.fontName == font.id)
-                    )
-                }
-                Button(
-                    onClick = {
-                        fontPicker.launch(
-                            arrayOf(
-                                "font/ttf",
-                                "font/otf",
-                                "application/x-font-ttf",
-                                "application/x-font-opentype",
-                                "application/octet-stream"
-                            )
+                    ).forEach { font ->
+                        FilterChip(
+                            selected = draft.fontName == font,
+                            onClick = { draft = draft.copy(fontName = font) },
+                            label = { Text(fontDisplayName(font), fontWeight = FontWeight.SemiBold) },
+                            colors = sheetFilterChipColors(),
+                            border = sheetFilterChipBorder(draft.fontName == font)
                         )
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE9F4EE),
-                        contentColor = SheetText
-                    )
-                ) {
-                    Text("TTF/OTF 가져오기", fontWeight = FontWeight.Bold)
+                    }
+                    importedFonts.forEach { font ->
+                        FilterChip(
+                            selected = draft.fontName == font.id,
+                            onClick = { draft = draft.copy(fontName = font.id) },
+                            label = { Text(font.displayName, fontWeight = FontWeight.SemiBold) },
+                            colors = sheetFilterChipColors(),
+                            border = sheetFilterChipBorder(draft.fontName == font.id)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            fontPicker.launch(
+                                arrayOf(
+                                    "font/ttf",
+                                    "font/otf",
+                                    "application/x-font-ttf",
+                                    "application/x-font-opentype",
+                                    "application/octet-stream"
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFE9F4EE),
+                            contentColor = SheetText
+                        )
+                    ) {
+                        Text("TTF/OTF 가져오기", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
-            SettingGroup(title = "색상") {
-                listOf(
-                    "#FFFFFF" to "흰색",
-                    "#007644" to "골프",
-                    "#FFF3D6" to "크림",
-                    "#111111" to "검정",
-                    "#E45D42" to "레드"
-                ).forEach { (colorHex, label) ->
-                    ColorSwatchChip(
-                        label = label,
-                        colorHex = colorHex,
-                        selected = draft.textColorHex == colorHex,
-                        palette = palette,
-                        onClick = { draft = draft.copy(textColorHex = colorHex) }
-                    )
-                }
-            }
-
-            if (draft.logoEnabled) {
+            // 워터마크는 iOS와 동일하게 카피라이터 설정에서만 편집합니다.
+            if (false && draft.logoEnabled) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("플랫폼", fontWeight = FontWeight.SemiBold, color = SheetText)
                     PlatformPicker(
@@ -596,7 +524,7 @@ fun TextOverlaySheet(
                 }
             }
 
-            Row(
+            if (false) Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -615,7 +543,7 @@ fun TextOverlaySheet(
                 )
             }
 
-            if (draft.shadowEnabled) {
+            if (false && draft.shadowEnabled) {
                 SettingGroup(title = "그림자 색상") {
                     listOf(
                         "#000000" to "검정",
@@ -667,7 +595,7 @@ fun TextOverlaySheet(
                 )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (false) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("HanClip 로고 위치", fontWeight = FontWeight.SemiBold, color = SheetText)
                 PositionPicker(
                     selected = draft.copyrightPosition,
@@ -1425,6 +1353,143 @@ private fun PlatformPicker(
 }
 
 @Composable
+private fun CaptionModeSegmentedControl(
+    enabled: Boolean,
+    palette: HanClipPalette,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(25.dp))
+            .background(palette.secondary.copy(alpha = 0.14f))
+            .padding(3.dp)
+    ) {
+        listOf(true to "사용", false to "안함").forEach { (value, label) ->
+            val selected = enabled == value
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .clickable { onChange(value) },
+                shape = RoundedCornerShape(22.dp),
+                color = if (selected) palette.primary else Color.Transparent
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        label,
+                        color = if (selected) Color.White else palette.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CaptionChoiceSegment(
+    labels: List<String>,
+    selectedIndex: Int,
+    palette: HanClipPalette,
+    onSelect: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(palette.secondary.copy(alpha = 0.14f))
+            .padding(3.dp)
+    ) {
+        labels.forEachIndexed { index, label ->
+            val selected = selectedIndex == index
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .clickable { onSelect(index) },
+                shape = RoundedCornerShape(18.dp),
+                color = if (selected) palette.primary else Color.Transparent
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        label,
+                        color = if (selected) Color.White else palette.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CaptionColorAndShadowControls(
+    settings: WatermarkSettings,
+    palette: HanClipPalette,
+    onChange: (WatermarkSettings) -> Unit
+) {
+    val textColors = listOf("#FFFFFF", "#FFE45C", "#0B7A4E", "#111111", "#FF6B5E")
+    val shadowColors = listOf("#000000", "#642BFF", "#18A8FF", "#3F6F63", "#FFFFFF")
+    fun nextColor(current: String, choices: List<String>): String {
+        val index = choices.indexOfFirst { it.equals(current, ignoreCase = true) }
+        return choices[(index + 1).mod(choices.size)]
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        CaptionColorButton("글자색", settings.textColorHex, palette) {
+            onChange(settings.copy(textColorHex = nextColor(settings.textColorHex, textColors)))
+        }
+        Box(Modifier.width(1.dp).height(30.dp).background(palette.border))
+        CaptionColorButton("그림자색", settings.shadowColorHex, palette) {
+            onChange(
+                settings.copy(
+                    shadowEnabled = true,
+                    shadowColorHex = nextColor(settings.shadowColorHex, shadowColors)
+                )
+            )
+        }
+        Slider(
+            value = settings.shadowOpacity.coerceIn(0.0, 1.0).toFloat(),
+            onValueChange = { value ->
+                onChange(settings.copy(shadowEnabled = value > 0f, shadowOpacity = value.toDouble()))
+            },
+            valueRange = 0f..1f,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun CaptionColorButton(
+    title: String,
+    colorHex: String,
+    palette: HanClipPalette,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(title, color = palette.subText, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Surface(
+            modifier = Modifier.size(30.dp),
+            shape = RoundedCornerShape(15.dp),
+            color = parseHexColor(colorHex),
+            border = BorderStroke(3.dp, Color.White)
+        ) {}
+    }
+}
+
+@Composable
 private fun CaptionStylePicker(
     settings: WatermarkSettings,
     palette: HanClipPalette,
@@ -1441,23 +1506,43 @@ private fun CaptionStylePicker(
                     Surface(
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .height(40.dp)
                             .clickable { onSelect(preset) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = if (selected) palette.secondary.copy(alpha = 0.20f) else palette.chip,
                         border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(17.dp)
+                                    .border(
+                                        2.dp,
+                                        if (selected) palette.primary else palette.secondary.copy(alpha = 0.52f),
+                                        RoundedCornerShape(9.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (selected) {
+                                    Box(
+                                        Modifier
+                                            .size(8.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(palette.primary)
+                                    )
+                                }
+                            }
                             Text(
                                 preset.title,
                                 color = if (selected) palette.primary else palette.subText,
                                 fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f)
                             )
                             Text(
                                 "Aa",
@@ -1698,6 +1783,17 @@ private enum class CaptionStylePreset(
             kotlin.math.abs(settings.lineSpacingScale - lineSpacingScale) < 0.001 &&
             settings.fontSize == fontSize
     }
+}
+
+private fun mediaDateRangeCaptionText(createdAtMillis: List<Long>): String {
+    val dates = createdAtMillis
+        .map { millis -> Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate() }
+        .sorted()
+    val first = dates.firstOrNull() ?: LocalDate.now()
+    val last = dates.lastOrNull() ?: first
+    val formatter = DateTimeFormatter.ofPattern("yy.MM.dd(E)", Locale.KOREAN)
+    val firstText = first.format(formatter)
+    return if (first == last) firstText else "$firstText - ${last.format(formatter)}"
 }
 
 private enum class CaptionTextPreset(val title: String) {

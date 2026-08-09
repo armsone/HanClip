@@ -838,6 +838,7 @@ fun EditorRoute(
                     settings = state.watermarkSettings,
                     palette = palette,
                     fullScreen = true,
+                    mediaCreatedAtMillis = state.renderableClips.mapNotNull { it.sourceCreatedAtMillis },
                     onDismiss = ::closeTextOverlay,
                     onApply = viewModel::updateWatermark
                 )
