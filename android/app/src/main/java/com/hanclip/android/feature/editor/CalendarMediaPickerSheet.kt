@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MovieCreation
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material3.AlertDialog
@@ -119,6 +120,11 @@ fun CalendarMediaPickerSheet(
                 .filter { it.kind == ClipMediaKind.Video }
                 .sortedBySortOrder(sortOrder)
             MediaPickerSheetMode.Calendar -> selectedItems
+        }
+    }
+    LaunchedEffect(pickerMode, visibleItems) {
+        if (pickerMode == MediaPickerSheetMode.Calendar) {
+            selectedUris = visibleItems.map { it.uri }
         }
     }
     fun requestImport() {
@@ -205,16 +211,21 @@ fun CalendarMediaPickerSheet(
                     visibleMonth = visibleMonth,
                     selectedDates = selectedDates,
                     itemCountsByDate = itemsByDate.mapValues { it.value.size },
-                    onClearExtraDates = {
-                        selectedDates = setOf(selectedDates.minOrNull() ?: LocalDate.now())
-                        selectedUris = emptyList()
-                    },
                     onToggleDate = { date ->
                         selectedDates = if (date in selectedDates && selectedDates.size > 1) {
                             selectedDates - date
                         } else {
                             selectedDates + date
                         }
+                        selectedUris = emptyList()
+                    }
+                )
+                CalendarSelectionSummary(
+                    palette = palette,
+                    selectedDateCount = selectedDates.size,
+                    selectedMediaCount = visibleItems.size,
+                    onClear = {
+                        selectedDates = emptySet()
                         selectedUris = emptyList()
                     }
                 )
@@ -745,7 +756,6 @@ private fun CalendarMonthGrid(
     visibleMonth: YearMonth,
     selectedDates: Set<LocalDate>,
     itemCountsByDate: Map<LocalDate, Int>,
-    onClearExtraDates: () -> Unit,
     onToggleDate: (LocalDate) -> Unit
 ) {
     val firstDayOffset = (visibleMonth.atDay(1).dayOfWeek.value % 7)
@@ -753,29 +763,8 @@ private fun CalendarMonthGrid(
         repeat(firstDayOffset) { add(null) }
         for (day in 1..visibleMonth.lengthOfMonth()) add(visibleMonth.atDay(day))
     }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (selectedDates.size == 1) "선택한 날짜 1일" else "선택한 날짜 ${selectedDates.size}일",
-                color = palette.text,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = if (selectedDates.size > 1) "추가 선택 지우기" else "날짜를 탭해 추가 선택",
-                modifier = Modifier.clickable(
-                    enabled = selectedDates.size > 1,
-                    onClick = onClearExtraDates
-                ),
-                color = palette.subText,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+    val rowCount = (days.size + 6) / 7
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
             listOf("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT").forEachIndexed { index, label ->
                 Surface(
@@ -800,10 +789,10 @@ private fun CalendarMonthGrid(
         }
         LazyVerticalGrid(
             columns = GridCells.Fixed(7),
-            modifier = Modifier.height(246.dp),
+            modifier = Modifier.height((rowCount * 34).dp),
             userScrollEnabled = false,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             items(days) { date ->
                 if (date == null) {
@@ -834,31 +823,75 @@ private fun CalendarDayCell(
         modifier = Modifier
             .height(34.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(0.dp),
         color = if (selected) palette.primary else palette.panel,
         border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
     ) {
-        Box(Modifier.padding(4.dp)) {
+        Box(contentAlignment = Alignment.Center) {
+            Surface(
+                modifier = Modifier.size(if (count > 0) 27.dp else 1.dp),
+                shape = CircleShape,
+                color = when {
+                    count == 0 -> Color.Transparent
+                    selected -> Color.White.copy(alpha = 0.28f)
+                    else -> palette.chip
+                }
+            ) {}
             Text(
                 text = date.dayOfMonth.toString(),
                 color = if (selected) Color.White else palette.text,
-                fontWeight = if (date == LocalDate.now()) FontWeight.Black else FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.TopStart)
+                fontWeight = if (count > 0 || date == LocalDate.now()) FontWeight.Black else FontWeight.Medium
             )
-            if (count > 0) {
-                Surface(
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                    shape = CircleShape,
-                    color = if (selected) Color.White.copy(alpha = 0.92f) else palette.chip
-                ) {
-                    Text(
-                        text = count.coerceAtMost(99).toString(),
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                        color = if (selected) palette.primary else palette.subText,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+        }
+    }
+}
+
+@Composable
+private fun CalendarSelectionSummary(
+    palette: HanClipPalette,
+    selectedDateCount: Int,
+    selectedMediaCount: Int,
+    onClear: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(50),
+        color = palette.panel,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Row(
+            modifier = Modifier.height(44.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "선택 ${selectedDateCount}일 · 미디어 ${selectedMediaCount}개",
+                modifier = Modifier.weight(2f).padding(start = 16.dp),
+                color = if (selectedDateCount == 0) palette.subText else palette.secondary,
+                fontWeight = FontWeight.Bold
+            )
+            Box(
+                modifier = Modifier.width(1.dp).height(24.dp).background(palette.border)
+            )
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .clickable(enabled = selectedDateCount > 0, onClick = onClear),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Outlined.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (selectedDateCount == 0) palette.subText else palette.secondary
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "지우기",
+                    color = if (selectedDateCount == 0) palette.subText else palette.secondary,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
@@ -880,7 +913,7 @@ private fun CalendarMediaStrip(
     onToggle: (Uri) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
+        if (mode != MediaPickerSheetMode.Calendar) Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -931,10 +964,9 @@ private fun CalendarMediaStrip(
                 }
             }
         }
-        val gridHeight = if (mode == MediaPickerSheetMode.Recent || mode == MediaPickerSheetMode.Videos) {
-            374.dp
-        } else {
-            118.dp
+        val gridHeight = when (mode) {
+            MediaPickerSheetMode.Recent, MediaPickerSheetMode.Videos -> 374.dp
+            MediaPickerSheetMode.Calendar -> 260.dp
         }
         if (items.isEmpty()) {
             EmptyMediaStrip(
