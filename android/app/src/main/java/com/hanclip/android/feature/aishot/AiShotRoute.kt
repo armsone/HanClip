@@ -64,6 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -236,8 +237,7 @@ private object AiShotPreferenceStore {
 @Composable
 fun AiShotRoute(
     onClose: () -> Unit,
-    onClipReady: (Uri) -> Unit,
-    onOpenEditor: () -> Unit
+    onOpenEditor: (List<Uri>) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -259,6 +259,14 @@ fun AiShotRoute(
     var camera by remember { mutableStateOf<Camera?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
+    var recordingStartedAtMillis by remember { mutableLongStateOf(0L) }
+    var recordingDurationNanos by remember { mutableLongStateOf(0L) }
+    var recordingDurationObservedAtMillis by remember { mutableLongStateOf(0L) }
+    var isRollingRecordingActive by remember { mutableStateOf(false) }
+    var triggerTimeSeconds by remember { mutableStateOf<Double?>(null) }
+    var activeShotLength by remember { mutableStateOf<ShotLength?>(null) }
+    var discardCurrentRecording by remember { mutableStateOf(false) }
+    var pendingSaveCount by remember { mutableIntStateOf(0) }
     var lensFacing by remember { mutableIntStateOf(AiShotPreferenceStore.loadLensFacing(context)) }
     var sensitivity by remember { mutableStateOf(AiShotPreferenceStore.loadSensitivity(context)) }
     var shotLength by remember { mutableStateOf(AiShotPreferenceStore.loadShotLength(context)) }
@@ -269,56 +277,140 @@ fun AiShotRoute(
     var level by remember { mutableDoubleStateOf(0.0) }
     var statusText by remember { mutableStateOf("스윙 감지 대기") }
     var savedCount by remember { mutableIntStateOf(0) }
+    var capturedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var didHandOffCapturedUris by remember { mutableStateOf(false) }
     var recordingRemainingSeconds by remember { mutableStateOf(0L) }
     var activeRecordingSeconds by remember { mutableStateOf(shotLength.recordingSeconds) }
     var shotLengthNotice by remember { mutableStateOf<ShotLength?>(null) }
 
     @SuppressLint("MissingPermission")
-    fun startClip(
-        reason: String,
-        captureSeconds: Double = shotLength.fullSeconds
-    ) {
+    fun triggerClip(reason: String) {
+        val activeRecording = recording ?: return
+        if (!isRollingRecordingActive || triggerTimeSeconds != null) return
+        val now = SystemClock.elapsedRealtime()
+        val statusAgeSeconds = ((now - recordingDurationObservedAtMillis).coerceIn(0L, 250L)) / 1000.0
+        val elapsedSeconds = recordingDurationNanos / 1_000_000_000.0 + statusAgeSeconds
+        if (elapsedSeconds < shotLength.beforeSeconds) {
+            statusText = "준비 중"
+            return
+        }
+        val timing = shotLength
+        triggerTimeSeconds = elapsedSeconds
+        activeShotLength = timing
+        statusText = reason
+        activeRecordingSeconds = timing.recordingSeconds
+        recordingRemainingSeconds = ceil(timing.afterSeconds).toLong()
+        scope.launch {
+            val captureEndMillis = SystemClock.elapsedRealtime() + (timing.afterSeconds * 1000).toLong()
+            val stopAtMillis = captureEndMillis + 350L
+            while (recording == activeRecording && SystemClock.elapsedRealtime() < stopAtMillis) {
+                delay(100L)
+                val remainingMillis = (captureEndMillis - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                recordingRemainingSeconds = ceil(remainingMillis / 1000.0).toLong()
+            }
+            if (recording == activeRecording) activeRecording.stop()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun startRollingRecording() {
         if (!hasPermissions || recording != null) return
         val capture = videoCapture ?: return
+        val outputDirectory = context.cacheDir.resolve("aishot").apply { mkdirs() }
+        AiShotVideoTrimmer.pruneAbandonedBuffers(outputDirectory)
         val outputFile = File(
-            context.cacheDir.resolve("aishot").apply { mkdirs() },
-            "aishot-${System.currentTimeMillis()}.mp4"
+            outputDirectory,
+            "aishot-buffer-${System.currentTimeMillis()}.mp4"
         )
         val options = FileOutputOptions.Builder(outputFile).build()
-        statusText = reason
-        val captureMillis = (captureSeconds.coerceAtLeast(0.5) * 1000).toLong()
-        activeRecordingSeconds = ceil(captureMillis / 1000.0).toLong()
-        recordingRemainingSeconds = activeRecordingSeconds
+        discardCurrentRecording = false
+        recordingStartedAtMillis = 0L
+        recordingDurationNanos = 0L
+        recordingDurationObservedAtMillis = 0L
+        isRollingRecordingActive = false
+        triggerTimeSeconds = null
+        activeShotLength = null
+        statusText = "준비 중"
         val pending = capture.output
             .prepareRecording(context, options)
             .withAudioEnabled()
         val startedRecording = pending.start(cameraExecutor) { event ->
+            recordingDurationNanos = event.recordingStats.recordedDurationNanos
+            recordingDurationObservedAtMillis = SystemClock.elapsedRealtime()
+            if (event is VideoRecordEvent.Start) {
+                recordingStartedAtMillis = recordingDurationObservedAtMillis
+                isRollingRecordingActive = true
+            }
             if (event is VideoRecordEvent.Finalize) {
+                val finalizedTrigger = triggerTimeSeconds
+                val finalizedTiming = activeShotLength
+                val shouldDiscard = discardCurrentRecording
                 recording = null
+                isRollingRecordingActive = false
+                triggerTimeSeconds = null
+                activeShotLength = null
                 recordingRemainingSeconds = 0L
                 activeRecordingSeconds = shotLength.recordingSeconds
-                if (!event.hasError()) {
-                    savedCount += 1
-                    statusText = "클립 저장 완료"
-                    onClipReady(Uri.fromFile(outputFile))
-                } else {
-                    statusText = "클립 저장 실패"
+                if (event.hasError() || shouldDiscard || finalizedTrigger == null || finalizedTiming == null) {
+                    outputFile.delete()
+                    if (event.hasError() && !shouldDiscard) statusText = "클립 저장 실패"
+                    return@start
+                }
+                pendingSaveCount += 1
+                statusText = "클립 저장 중"
+                scope.launch {
+                    val destination = File(
+                        outputFile.parentFile,
+                        "aishot-${System.currentTimeMillis()}.mp4"
+                    )
+                    val result = runCatching {
+                        AiShotVideoTrimmer.trimAroundTrigger(
+                            context = context,
+                            sourceFile = outputFile,
+                            destinationFile = destination,
+                            triggerSeconds = finalizedTrigger,
+                            beforeSeconds = finalizedTiming.beforeSeconds,
+                            afterSeconds = finalizedTiming.afterSeconds
+                        )
+                    }
+                    outputFile.delete()
+                    pendingSaveCount = (pendingSaveCount - 1).coerceAtLeast(0)
+                    result.onSuccess { uri ->
+                        capturedUris = capturedUris + uri
+                        savedCount = capturedUris.size
+                        statusText = "클립 저장 완료"
+                    }.onFailure {
+                        destination.delete()
+                        statusText = "클립 저장 실패"
+                    }
                 }
             }
         }
         recording = startedRecording
-        scope.launch {
-            val startedAt = System.currentTimeMillis()
-            while (System.currentTimeMillis() - startedAt < captureMillis) {
-                delay(250L)
-                if (recording != startedRecording) return@launch
-                val remainingMillis = (captureMillis - (System.currentTimeMillis() - startedAt))
-                    .coerceAtLeast(0L)
-                recordingRemainingSeconds = ceil(remainingMillis / 1000.0).toLong()
-            }
-            if (recording == startedRecording) {
-                startedRecording.stop()
-            }
+    }
+
+    fun discardAndStopRollingRecording() {
+        discardCurrentRecording = true
+        recording?.stop()
+    }
+
+    LaunchedEffect(recording, isRollingRecordingActive, shotLength) {
+        if (recording == null || !isRollingRecordingActive || triggerTimeSeconds != null) {
+            return@LaunchedEffect
+        }
+        val readyAt = recordingStartedAtMillis + (shotLength.beforeSeconds * 1000).toLong()
+        val delayMillis = (readyAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        delay(delayMillis)
+        if (recording != null && triggerTimeSeconds == null) {
+            statusText = "스윙 감지 대기"
+        }
+    }
+
+    LaunchedEffect(savedCount) {
+        if (savedCount == 0) return@LaunchedEffect
+        delay(1700L)
+        if (recording != null && triggerTimeSeconds == null && statusText == "클립 저장 완료") {
+            statusText = "스윙 감지 대기"
         }
     }
 
@@ -373,6 +465,7 @@ fun AiShotRoute(
     LaunchedEffect(previewView, lensFacing, hasPermissions) {
         val view = previewView ?: return@LaunchedEffect
         if (!hasPermissions) return@LaunchedEffect
+        discardAndStopRollingRecording()
         val cameraProvider = context.awaitCameraProvider()
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(view.surfaceProvider)
@@ -391,6 +484,13 @@ fun AiShotRoute(
             videoCapture = capture
         }.onFailure {
             statusText = "카메라 준비 실패"
+        }
+    }
+
+    LaunchedEffect(videoCapture, recording) {
+        if (hasPermissions && videoCapture != null && recording == null) {
+            delay(350L)
+            startRollingRecording()
         }
     }
 
@@ -417,8 +517,17 @@ fun AiShotRoute(
         }
     }
 
-    LaunchedEffect(hasPermissions, sensitivity, shotLength, recording) {
-        if (!hasPermissions || recording != null) return@LaunchedEffect
+    LaunchedEffect(
+        hasPermissions,
+        sensitivity,
+        shotLength,
+        recording,
+        isRollingRecordingActive,
+        triggerTimeSeconds
+    ) {
+        if (!hasPermissions || recording == null || !isRollingRecordingActive || triggerTimeSeconds != null) {
+            return@LaunchedEffect
+        }
         withContext(Dispatchers.Default) {
             monitorImpactAudio(
                 sensitivity = sensitivity,
@@ -431,10 +540,7 @@ fun AiShotRoute(
                 },
                 onImpact = {
                     withContext(Dispatchers.Main) {
-                        startClip(
-                            reason = "타격 감지",
-                            captureSeconds = shotLength.afterSeconds
-                        )
+                        triggerClip(reason = "타격 감지")
                     }
                 }
             )
@@ -443,7 +549,12 @@ fun AiShotRoute(
 
     DisposableEffect(Unit) {
         onDispose {
-            recording?.stop()
+            discardAndStopRollingRecording()
+            if (!didHandOffCapturedUris) {
+                capturedUris.forEach { uri ->
+                    if (uri.scheme == "file") runCatching { File(uri.path.orEmpty()).delete() }
+                }
+            }
         }
     }
 
@@ -462,14 +573,17 @@ fun AiShotRoute(
             AiShotTopBar(
                 statusText = statusText,
                 savedCount = savedCount,
-                onClose = onClose
+                onClose = {
+                    didHandOffCapturedUris = false
+                    onClose()
+                }
             )
 
             AiShotBottomPanel(
                 level = level,
                 sensitivity = sensitivity,
                 onSensitivityChange = { sensitivity = it },
-                isRecording = recording != null,
+                isRecording = triggerTimeSeconds != null || pendingSaveCount > 0,
                 recordingRemainingSeconds = recordingRemainingSeconds,
                 activeRecordingSeconds = activeRecordingSeconds
             )
@@ -518,15 +632,16 @@ fun AiShotRoute(
                 zoomPreset = zoomPreset,
                 onZoomPresetChange = { zoomPreset = it },
                 lensLabel = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "전면" else "후면",
-                isRecording = recording != null,
+                isRecording = triggerTimeSeconds != null,
                 onManualRecord = {
-                    if (recording == null) {
-                        startClip("수동 클립 저장 중")
+                    if (triggerTimeSeconds == null) {
+                        triggerClip("수동 클립 저장 중")
                     } else {
                         recording?.stop()
                     }
                 },
                 onSwitchCamera = {
+                    discardAndStopRollingRecording()
                     lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                         CameraSelector.LENS_FACING_FRONT
                     } else {
@@ -536,14 +651,20 @@ fun AiShotRoute(
             )
             if (savedCount > 0) {
                 Button(
-                    onClick = onOpenEditor,
+                    onClick = {
+                        didHandOffCapturedUris = true
+                        onOpenEditor(capturedUris)
+                    },
+                    enabled = pendingSaveCount == 0 && triggerTimeSeconds == null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp),
                     shape = RoundedCornerShape(999.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF07323A),
-                        contentColor = Color.White
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF07323A).copy(alpha = 0.54f),
+                        disabledContentColor = Color.White.copy(alpha = 0.52f)
                     )
                 ) {
                     Text("저장한 ${savedCount}개 클립 편집", fontWeight = FontWeight.Bold)

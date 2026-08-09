@@ -388,10 +388,8 @@ fun HanClipApp(
         composable(HanClipDestination.AiShot.route) {
             AiShotRoute(
                 onClose = { navController.popBackStack() },
-                onClipReady = { uri ->
-                    editorViewModel.addPickedMedia(context, listOf(uri))
-                },
-                onOpenEditor = {
+                onOpenEditor = { uris ->
+                    editorViewModel.addPickedMedia(context, uris)
                     navController.navigate(HanClipDestination.Editor.routeFor(MoviePreset.AiShot)) {
                         popUpTo(HanClipDestination.Home.route)
                     }
