@@ -32,6 +32,26 @@ struct CollectedMovie: Codable, Identifiable, Equatable {
     var posterSelectionVersion: Int?
 }
 
+enum CollectionPosterEngine: String, Sendable {
+    case deviceAI
+    case hanClipAI
+}
+
+struct CollectionPosterCandidate: Identifiable, Sendable {
+    let id: UUID
+    let imageData: Data
+    let engine: CollectionPosterEngine
+    let timeSeconds: Double
+}
+
+private struct AnalyzedPosterFrame {
+    let data: Data
+    let timeSeconds: Double
+    let deviceScore: Double
+    let hanClipScore: Double
+    let featurePrint: VNFeaturePrintObservation?
+}
+
 @MainActor
 final class MovieCollectionStore: ObservableObject {
     static let shared = MovieCollectionStore()
@@ -225,8 +245,9 @@ final class MovieCollectionStore: ObservableObject {
 
     func posterCandidatesWithAI(
         for movie: CollectedMovie,
-        count: Int = 6
-    ) async -> [Data] {
+        excluding previousCandidates: [CollectionPosterCandidate] = [],
+        generation: Int = 0
+    ) async -> [CollectionPosterCandidate] {
         guard activePosterSelections.insert(movie.id).inserted,
               movies.contains(where: { $0.id == movie.id })
         else { return [] }
@@ -236,17 +257,21 @@ final class MovieCollectionStore: ObservableObject {
         let posterURL = collectionDirectory
             .appendingPathComponent(movie.posterFilename)
         let currentPosterData = try? Data(contentsOf: posterURL)
+        let excludedPosterData = previousCandidates.map(\.imageData)
+            + [currentPosterData].compactMap { $0 }
+        let excludedTimes = previousCandidates.map(\.timeSeconds)
         return await Task.detached(priority: .userInitiated) {
             let asset = AVURLAsset(url: videoURL)
             let loadedDuration = try? await asset.load(.duration).seconds
             let duration = loadedDuration?.isFinite == true
                 ? max(0, loadedDuration ?? 0)
                 : 0
-            return await Self.makePosterCandidates(
+            return await Self.makeComparisonPosterCandidates(
                 from: asset,
                 duration: duration,
-                count: count,
-                avoidingPosterData: currentPosterData
+                excludedPosterData: excludedPosterData,
+                excludedTimes: excludedTimes,
+                generation: generation
             )
         }.value
     }
@@ -294,7 +319,7 @@ final class MovieCollectionStore: ObservableObject {
             count: 1,
             avoidingPosterData: avoidingPosterData
         ).first {
-            return candidate
+            return candidate.data
         }
 
         let request = QLThumbnailGenerator.Request(
@@ -314,7 +339,77 @@ final class MovieCollectionStore: ObservableObject {
         duration: Double,
         count: Int,
         avoidingPosterData: Data?
-    ) async -> [Data] {
+    ) async -> [AnalyzedPosterFrame] {
+        let excludedData = [avoidingPosterData].compactMap { $0 }
+        let analyzed = await analyzePosterFrames(
+            from: asset,
+            duration: duration,
+            excludedPosterData: excludedData,
+            excludedTimes: [],
+            generation: 0
+        )
+        return selectDiverseFrames(
+            from: analyzed,
+            count: count,
+            score: \.hanClipScore,
+            alreadySelected: []
+        )
+    }
+
+    private nonisolated static func makeComparisonPosterCandidates(
+        from asset: AVAsset,
+        duration: Double,
+        excludedPosterData: [Data],
+        excludedTimes: [Double],
+        generation: Int
+    ) async -> [CollectionPosterCandidate] {
+        let analyzed = await analyzePosterFrames(
+            from: asset,
+            duration: duration,
+            excludedPosterData: excludedPosterData,
+            excludedTimes: excludedTimes,
+            generation: generation
+        )
+        let deviceFrames = selectDiverseFrames(
+            from: analyzed,
+            count: 4,
+            score: \.deviceScore,
+            alreadySelected: []
+        )
+        let hanClipFrames = selectDiverseFrames(
+            from: analyzed.filter { frame in
+                !deviceFrames.contains(where: {
+                    abs($0.timeSeconds - frame.timeSeconds) < 0.001
+                })
+            },
+            count: 4,
+            score: \.hanClipScore,
+            alreadySelected: deviceFrames
+        )
+        return deviceFrames.map {
+            CollectionPosterCandidate(
+                id: UUID(),
+                imageData: $0.data,
+                engine: .deviceAI,
+                timeSeconds: $0.timeSeconds
+            )
+        } + hanClipFrames.map {
+            CollectionPosterCandidate(
+                id: UUID(),
+                imageData: $0.data,
+                engine: .hanClipAI,
+                timeSeconds: $0.timeSeconds
+            )
+        }
+    }
+
+    private nonisolated static func analyzePosterFrames(
+        from asset: AVAsset,
+        duration: Double,
+        excludedPosterData: [Data],
+        excludedTimes: [Double],
+        generation: Int
+    ) async -> [AnalyzedPosterFrame] {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 720, height: 1_080)
@@ -328,23 +423,25 @@ final class MovieCollectionStore: ObservableObject {
         )
 
         let safeDuration = max(duration, 0)
-        let samplingPositions = stride(from: 0.02, through: 0.98, by: 0.04)
+        let sampleCount = 36
+        let phase = Double(max(0, generation % 17)) * 0.011
+        let samplingPositions = (0..<sampleCount).map { index in
+            let base = (Double(index) + 0.5) / Double(sampleCount)
+            return 0.02 + (base + phase).truncatingRemainder(
+                dividingBy: 1
+            ) * 0.96
+        }.sorted()
         let rawCandidates = safeDuration > 0
             ? samplingPositions.map { safeDuration * $0 }
             : [0]
         var visitedTimes: Set<Int64> = []
-        var candidates: [(
-            data: Data,
-            score: Double,
-            featurePrint: VNFeaturePrintObservation?
-        )] = []
-        let avoidedFeaturePrint: VNFeaturePrintObservation?
-        if let avoidingPosterData,
-           let avoidedImage = UIImage(data: avoidingPosterData)?.cgImage {
-            avoidedFeaturePrint = featurePrint(for: avoidedImage)
-        } else {
-            avoidedFeaturePrint = nil
+        var candidates: [AnalyzedPosterFrame] = []
+        let excludedFeaturePrints: [VNFeaturePrintObservation] =
+            excludedPosterData.compactMap { data in
+            guard let image = UIImage(data: data)?.cgImage else { return nil }
+            return featurePrint(for: image)
         }
+        let excludedTimeDistance = max(0.35, safeDuration * 0.012)
 
         for seconds in rawCandidates {
             let time = CMTime(
@@ -357,77 +454,96 @@ final class MovieCollectionStore: ObservableObject {
                     .jpegData(compressionQuality: 0.84)
             else { continue }
 
-            var score = aiPosterScore(for: cgImage)
+            let scores = posterAIScores(for: cgImage)
             let candidateFeaturePrint = featurePrint(for: cgImage)
-            if let avoidedFeaturePrint,
-               let candidateFeaturePrint {
-                var distance: Float = 0
-                if (try? avoidedFeaturePrint.computeDistance(
-                    &distance,
-                    to: candidateFeaturePrint
-                )) != nil {
-                    let diversity = min(max(Double(distance), 0), 0.75)
-                    score += diversity * 150
-                    if distance < 0.10 {
-                        score -= 180
-                    }
-                }
+            let isExcludedTime = excludedTimes.contains {
+                abs($0 - seconds) < excludedTimeDistance
             }
-            candidates.append((data, score, candidateFeaturePrint))
+            let closestExcludedDistance = candidateFeaturePrint.flatMap {
+                minimumFeatureDistance(
+                    from: $0,
+                    to: excludedFeaturePrints
+                )
+            }
+            guard !isExcludedTime else { continue }
+            let featureDistance = closestExcludedDistance ?? 0.35
+            let exclusionBonus = min(featureDistance, 0.8) * 90
+            let similarityPenalty = featureDistance < 0.075 ? 210.0 : 0
+            candidates.append(
+                AnalyzedPosterFrame(
+                    data: data,
+                    timeSeconds: seconds,
+                    deviceScore: scores.device
+                        + exclusionBonus - similarityPenalty,
+                    hanClipScore: scores.hanClip
+                        + exclusionBonus - similarityPenalty,
+                    featurePrint: candidateFeaturePrint
+                )
+            )
         }
-        guard !candidates.isEmpty else { return [] }
+        return candidates
+    }
 
-        var remaining = candidates.sorted { $0.score > $1.score }
-        var selected: [(
-            data: Data,
-            score: Double,
-            featurePrint: VNFeaturePrintObservation?
-        )] = []
+    private nonisolated static func selectDiverseFrames(
+        from candidates: [AnalyzedPosterFrame],
+        count: Int,
+        score: KeyPath<AnalyzedPosterFrame, Double>,
+        alreadySelected: [AnalyzedPosterFrame]
+    ) -> [AnalyzedPosterFrame] {
+        var remaining = candidates.sorted { $0[keyPath: score] > $1[keyPath: score] }
+        var selected: [AnalyzedPosterFrame] = []
         while selected.count < max(1, count), !remaining.isEmpty {
             let selectedIndex: Int
             if selected.isEmpty {
                 selectedIndex = 0
             } else {
                 selectedIndex = remaining.indices.max { lhs, rhs in
-                    diverseCandidateScore(remaining[lhs], selected: selected)
-                        < diverseCandidateScore(remaining[rhs], selected: selected)
+                    diverseCandidateScore(
+                        remaining[lhs],
+                        score: score,
+                        selected: alreadySelected + selected
+                    ) < diverseCandidateScore(
+                        remaining[rhs],
+                        score: score,
+                        selected: alreadySelected + selected
+                    )
                 } ?? 0
             }
             selected.append(remaining.remove(at: selectedIndex))
         }
-        return selected.map(\.data)
+        return selected
     }
 
     private nonisolated static func diverseCandidateScore(
-        _ candidate: (
-            data: Data,
-            score: Double,
-            featurePrint: VNFeaturePrintObservation?
-        ),
-        selected: [(
-            data: Data,
-            score: Double,
-            featurePrint: VNFeaturePrintObservation?
-        )]
+        _ candidate: AnalyzedPosterFrame,
+        score: KeyPath<AnalyzedPosterFrame, Double>,
+        selected: [AnalyzedPosterFrame]
     ) -> Double {
         guard let featurePrint = candidate.featurePrint else {
-            return candidate.score
+            return candidate[keyPath: score]
         }
-        let distances = selected.compactMap { selectedCandidate -> Double? in
-            guard let selectedPrint = selectedCandidate.featurePrint else {
-                return nil
-            }
+        let selectedPrints = selected.compactMap(\.featurePrint)
+        let minimumDistance = minimumFeatureDistance(
+            from: featurePrint,
+            to: selectedPrints
+        ) ?? 0
+        let diversityBonus = min(max(minimumDistance, 0), 0.8) * 220
+        let similarityPenalty = minimumDistance < 0.08 ? 160.0 : 0
+        return candidate[keyPath: score] + diversityBonus - similarityPenalty
+    }
+
+    private nonisolated static func minimumFeatureDistance(
+        from featurePrint: VNFeaturePrintObservation,
+        to comparisonPrints: [VNFeaturePrintObservation]
+    ) -> Double? {
+        comparisonPrints.compactMap { comparison -> Double? in
             var distance: Float = 0
             guard (try? featurePrint.computeDistance(
                 &distance,
-                to: selectedPrint
+                to: comparison
             )) != nil else { return nil }
             return Double(distance)
-        }
-        let minimumDistance = distances.min() ?? 0
-        let diversityBonus = min(max(minimumDistance, 0), 0.8) * 220
-        let similarityPenalty = minimumDistance < 0.08 ? 160.0 : 0
-        return candidate.score + diversityBonus - similarityPenalty
+        }.min()
     }
 
     private nonisolated static func posterScore(for image: UIImage) -> Double {
@@ -439,18 +555,28 @@ final class MovieCollectionStore: ObservableObject {
         imageQualityMetrics(for: cgImage).mean
     }
 
-    private nonisolated static func aiPosterScore(
+    private nonisolated static func posterAIScores(
         for cgImage: CGImage
-    ) -> Double {
+    ) -> (device: Double, hanClip: Double) {
         let metrics = imageQualityMetrics(for: cgImage)
-        var score = 0.0
+        var deviceScore = 0.0
+        var hanClipScore = 0.0
 
         let exposureQuality = max(0, 1 - abs(metrics.mean - 128) / 128)
-        score += exposureQuality * 22
-        score += min(metrics.deviation / 58, 1) * 18
-        score += min(metrics.edgeStrength / 42, 1) * 28
-        if metrics.mean < 16 { score -= 90 }
-        if metrics.mean > 244 { score -= 55 }
+        deviceScore += exposureQuality * 22
+        deviceScore += min(metrics.deviation / 58, 1) * 18
+        deviceScore += min(metrics.edgeStrength / 42, 1) * 28
+        hanClipScore += exposureQuality * 16
+        hanClipScore += min(metrics.deviation / 58, 1) * 24
+        hanClipScore += min(metrics.edgeStrength / 42, 1) * 22
+        if metrics.mean < 16 {
+            deviceScore -= 90
+            hanClipScore -= 100
+        }
+        if metrics.mean > 244 {
+            deviceScore -= 55
+            hanClipScore -= 65
+        }
 
         let faceRequest = VNDetectFaceLandmarksRequest()
         let saliencyRequest = VNGenerateAttentionBasedSaliencyImageRequest()
@@ -458,6 +584,7 @@ final class MovieCollectionStore: ObservableObject {
         try? handler.perform([faceRequest, saliencyRequest])
 
         let faces = faceRequest.results ?? []
+        hanClipScore += Double(min(faces.count, 4)) * 13
         for (index, face) in faces.enumerated() {
             let box = face.boundingBox
             let area = box.width * box.height
@@ -466,30 +593,50 @@ final class MovieCollectionStore: ObservableObject {
             let prominence = min(sqrt(area) / 0.45, 1)
             let centered = max(0, 1 - centerDistance / 0.68)
             let faceWeight = index == 0 ? 1.0 : 0.58
-            score += prominence * 72 * faceWeight
-            score += centered * 18 * faceWeight
-            score += Double(face.confidence) * 10 * faceWeight
+            deviceScore += prominence * 72 * faceWeight
+            deviceScore += centered * 18 * faceWeight
+            deviceScore += Double(face.confidence) * 10 * faceWeight
+
+            let thirdsPoints = [
+                CGPoint(x: 1.0 / 3.0, y: 1.0 / 3.0),
+                CGPoint(x: 2.0 / 3.0, y: 1.0 / 3.0),
+                CGPoint(x: 1.0 / 3.0, y: 2.0 / 3.0),
+                CGPoint(x: 2.0 / 3.0, y: 2.0 / 3.0)
+            ]
+            let thirdsDistance = thirdsPoints.map {
+                hypot(center.x - $0.x, center.y - $0.y)
+            }.min() ?? 1
+            let thirdsQuality = max(0, 1 - thirdsDistance / 0.48)
+            hanClipScore += prominence * 54 * faceWeight
+            hanClipScore += thirdsQuality * 30 * faceWeight
+            hanClipScore += Double(face.confidence) * 12 * faceWeight
             if face.landmarks?.leftEye != nil,
                face.landmarks?.rightEye != nil,
                face.landmarks?.outerLips != nil {
-                score += 12 * faceWeight
+                deviceScore += 12 * faceWeight
+                hanClipScore += 20 * faceWeight
             }
             if box.minX < 0.015 || box.maxX > 0.985
                 || box.minY < 0.015 || box.maxY > 0.985 {
-                score -= 20 * faceWeight
+                deviceScore -= 20 * faceWeight
+                hanClipScore -= 34 * faceWeight
             }
         }
 
         if let salientObjects = saliencyRequest.results?.first?.salientObjects {
-            for object in salientObjects.prefix(3) {
+            for (index, object) in salientObjects.prefix(3).enumerated() {
                 let box = object.boundingBox
                 let centerDistance = hypot(box.midX - 0.5, box.midY - 0.5)
                 let centered = max(0, 1 - centerDistance / 0.7)
-                score += Double(object.confidence) * 12
-                score += centered * 6
+                deviceScore += Double(object.confidence) * 12
+                deviceScore += centered * 6
+                let objectWeight = index == 0 ? 1.0 : 0.62
+                hanClipScore += Double(object.confidence) * 15 * objectWeight
+                hanClipScore += min(box.width * box.height / 0.34, 1)
+                    * 12 * objectWeight
             }
         }
-        return score
+        return (deviceScore, hanClipScore)
     }
 
     private nonisolated static func featurePrint(

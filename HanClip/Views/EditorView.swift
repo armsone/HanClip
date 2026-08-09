@@ -139,8 +139,11 @@ struct EditorView: View {
     @State private var isCollectionTitleEditorPresented = false
     @State private var collectionTitleEditorHeight: CGFloat = 56
     @State private var collectionPosterCandidateMovie: CollectedMovie?
-    @State private var collectionPosterCandidates: [Data] = []
+    @State private var collectionPosterCandidates: [CollectionPosterCandidate] = []
+    @State private var rejectedCollectionPosterCandidates:
+        [CollectionPosterCandidate] = []
     @State private var isLoadingCollectionPosterCandidates = false
+    @State private var collectionPosterCandidateGeneration = 0
     @FocusState private var focusedMemoProjectID: UUID?
 
     private let aspectRatioPickerAnimation = Animation.snappy
@@ -728,10 +731,8 @@ struct EditorView: View {
         .sheet(isPresented: $isCollectionTitleEditorPresented) {
             collectionTitleEditorSheet
         }
-        .sheet(item: $collectionPosterCandidateMovie) { movie in
+        .fullScreenCover(item: $collectionPosterCandidateMovie) { movie in
             collectionPosterCandidateSheet(movie)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
         }
         .fullScreenCover(isPresented: $model.isFileImporterPresented) {
             FilePicker(
@@ -3700,7 +3701,9 @@ struct EditorView: View {
 
             Button {
                 collectionPosterCandidates = []
+                rejectedCollectionPosterCandidates = []
                 isLoadingCollectionPosterCandidates = true
+                collectionPosterCandidateGeneration = 0
                 collectionPosterCandidateMovie = movie
             } label: {
                 Label("썸네일 AI 재선택", systemImage: "sparkles")
@@ -3944,16 +3947,25 @@ struct EditorView: View {
     private func collectionPosterCandidateSheet(
         _ movie: CollectedMovie
     ) -> some View {
-        NavigationStack {
+        let deviceCandidates = collectionPosterCandidates.filter {
+            $0.engine == .deviceAI
+        }
+        let hanClipCandidates = collectionPosterCandidates.filter {
+            $0.engine == .hanClipAI
+        }
+        let rowCount = max(deviceCandidates.count, hanClipCandidates.count)
+
+        return NavigationStack {
             ZStack {
                 HanClipTheme.backgroundGradient.ignoresSafeArea()
 
-                if isLoadingCollectionPosterCandidates {
+                if isLoadingCollectionPosterCandidates
+                    && collectionPosterCandidates.isEmpty {
                     VStack(spacing: 14) {
                         ProgressView()
                             .controlSize(.large)
                             .tint(HanClipTheme.primary)
-                        Text("AI가 서로 다른 장면 6개를 고르는 중")
+                        Text("두 AI가 서로 다른 장면 8개를 고르는 중")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(HanClipTheme.primaryText)
                     }
@@ -3965,40 +3977,67 @@ struct EditorView: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: 12),
-                                GridItem(.flexible(), spacing: 12)
-                            ],
-                            spacing: 18
-                        ) {
-                            ForEach(
-                                Array(collectionPosterCandidates.enumerated()),
-                                id: \.offset
-                            ) { index, data in
-                                GeometryReader { proxy in
-                                    let width = proxy.size.width
-                                    Button {
-                                        applyCollectionPosterCandidate(
-                                            data,
-                                            to: movie
-                                        )
-                                    } label: {
-                                        collectionPosterCandidateCard(
-                                            movie,
-                                            imageData: data,
-                                            width: width,
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                collectionPosterEngineHeader(
+                                    "디바이스 AI",
+                                    systemImage: "iphone.gen3"
+                                )
+                                collectionPosterEngineHeader(
+                                    "한클립 AI",
+                                    systemImage: "sparkles"
+                                )
+                            }
+
+                            ForEach(0..<rowCount, id: \.self) { index in
+                                HStack(alignment: .top, spacing: 12) {
+                                    if deviceCandidates.indices.contains(index) {
+                                        collectionPosterCandidateButton(
+                                            deviceCandidates[index],
+                                            movie: movie,
                                             number: index + 1
                                         )
+                                    } else {
+                                        Color.clear
                                     }
-                                    .buttonStyle(.plain)
+
+                                    if hanClipCandidates.indices.contains(index) {
+                                        collectionPosterCandidateButton(
+                                            hanClipCandidates[index],
+                                            movie: movie,
+                                            number: index + 1
+                                        )
+                                    } else {
+                                        Color.clear
+                                    }
                                 }
-                                .aspectRatio(1 / 1.48, contentMode: .fit)
                             }
                         }
                         .padding(.horizontal, 18)
-                        .padding(.top, 18)
+                        .padding(.top, 12)
                         .padding(.bottom, 28)
+                    }
+                    .overlay {
+                        if isLoadingCollectionPosterCandidates {
+                            ZStack {
+                                Color.black.opacity(0.34)
+                                    .ignoresSafeArea()
+
+                                VStack(spacing: 12) {
+                                    ProgressView()
+                                        .controlSize(.large)
+                                        .tint(.white)
+                                    Text("이전 장면을 제외하고 다시 찾는 중")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                                .padding(22)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(
+                                    cornerRadius: 18,
+                                    style: .continuous
+                                ))
+                            }
+                        }
                     }
                 }
             }
@@ -4007,16 +4046,95 @@ struct EditorView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("취소") {
-                        collectionPosterCandidateMovie = nil
+                        closeCollectionPosterCandidatePicker()
                     }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        regenerateCollectionPosterCandidates(for: movie)
+                    } label: {
+                        Label("재생성", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(
+                        isLoadingCollectionPosterCandidates
+                            || collectionPosterCandidates.isEmpty
+                    )
                 }
             }
         }
         .task(id: movie.id) {
             collectionPosterCandidates = await movieCollection
-                .posterCandidatesWithAI(for: movie, count: 6)
+                .posterCandidatesWithAI(
+                    for: movie,
+                    generation: collectionPosterCandidateGeneration
+                )
             isLoadingCollectionPosterCandidates = false
         }
+    }
+
+    private func collectionPosterEngineHeader(
+        _ title: String,
+        systemImage: String
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 14, weight: .black, design: .rounded))
+            .foregroundStyle(HanClipTheme.primaryText)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(HanClipTheme.panelFill, in: Capsule())
+            .overlay {
+                Capsule().stroke(HanClipTheme.secondary.opacity(0.55), lineWidth: 1)
+            }
+    }
+
+    private func collectionPosterCandidateButton(
+        _ candidate: CollectionPosterCandidate,
+        movie: CollectedMovie,
+        number: Int
+    ) -> some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            Button {
+                applyCollectionPosterCandidate(candidate, to: movie)
+            } label: {
+                collectionPosterCandidateCard(
+                    movie,
+                    imageData: candidate.imageData,
+                    width: width,
+                    number: number
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .aspectRatio(1 / 1.48, contentMode: .fit)
+    }
+
+    private func regenerateCollectionPosterCandidates(
+        for movie: CollectedMovie
+    ) {
+        let rejected = rejectedCollectionPosterCandidates
+            + collectionPosterCandidates
+        rejectedCollectionPosterCandidates = Array(rejected.suffix(64))
+        collectionPosterCandidateGeneration += 1
+        isLoadingCollectionPosterCandidates = true
+        Task {
+            let regenerated = await movieCollection.posterCandidatesWithAI(
+                for: movie,
+                excluding: rejectedCollectionPosterCandidates,
+                generation: collectionPosterCandidateGeneration
+            )
+            if !regenerated.isEmpty {
+                collectionPosterCandidates = regenerated
+            }
+            isLoadingCollectionPosterCandidates = false
+        }
+    }
+
+    private func closeCollectionPosterCandidatePicker() {
+        collectionPosterCandidateMovie = nil
+        collectionPosterCandidates = []
+        rejectedCollectionPosterCandidates = []
+        isLoadingCollectionPosterCandidates = false
     }
 
     private func collectionPosterCandidateCard(
@@ -4064,13 +4182,15 @@ struct EditorView: View {
     }
 
     private func applyCollectionPosterCandidate(
-        _ data: Data,
+        _ candidate: CollectionPosterCandidate,
         to movie: CollectedMovie
     ) {
         do {
-            try movieCollection.applyPosterCandidate(data, to: movie)
-            collectionPosterCandidateMovie = nil
-            collectionPosterCandidates = []
+            try movieCollection.applyPosterCandidate(
+                candidate.imageData,
+                to: movie
+            )
+            closeCollectionPosterCandidatePicker()
         } catch {
             model.alertMessage = error.localizedDescription
         }
@@ -7819,7 +7939,7 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 현재 포스터와 서로 다른 결의 후보 6개를 만들며, 각 후보에 실제 제목·핀·제작·촬영·위치·재생시간을 적용한 모습을 보고 직접 선택할 수 있습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 20개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 4개와 한클립 AI 후보 4개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 8개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
