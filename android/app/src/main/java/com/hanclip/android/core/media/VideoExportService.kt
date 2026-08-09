@@ -64,6 +64,7 @@ import java.util.Collections
 import java.nio.ByteBuffer
 import java.io.File
 import java.time.Instant
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -225,7 +226,7 @@ class Media3TransformerExportService(
             .put("shootingStartAtMillis", request.shootingStartAtMillis ?: JSONObject.NULL)
             .put("shootingEndAtMillis", request.shootingEndAtMillis ?: JSONObject.NULL)
             .put("locationName", request.locationName ?: JSONObject.NULL)
-            .put("routeLocationNames", request.routeLocationNames)
+            .put("routeLocationNames", JSONArray(request.routeLocationNames))
             .put("latitude", request.latitude ?: JSONObject.NULL)
             .put("longitude", request.longitude ?: JSONObject.NULL)
             .toString()
@@ -243,7 +244,7 @@ class Media3TransformerExportService(
             .put("latitude", request.latitude ?: JSONObject.NULL)
             .put("longitude", request.longitude ?: JSONObject.NULL)
             .put("locationName", request.locationName ?: JSONObject.NULL)
-            .put("routeLocationNames", request.routeLocationNames)
+            .put("routeLocationNames", JSONArray(request.routeLocationNames))
             .toString()
         return InAppMp4Muxer.Factory { entries ->
             entries.removeAll { entry ->

@@ -351,9 +351,7 @@ class EditorViewModel : ViewModel() {
             val sourceDates = clips.mapNotNull(ClipItem::sourceCreatedAtMillis)
             val shootingStartAtMillis = sourceDates.minOrNull() ?: madeAtMillis
             val shootingEndAtMillis = sourceDates.maxOrNull() ?: shootingStartAtMillis
-            val representativeLocation = clips.firstOrNull { clip ->
-                clip.sourceLatitude != null && clip.sourceLongitude != null
-            }
+            val representativeLocation = clips.firstOrNull(ClipItem::hasUsableSourceLocation)
             val routeLocationNames = exportRouteLocationNames(clips)
             val exportedLocationName = routeLocationNames
                 .takeIf(List<String>::isNotEmpty)
@@ -2023,6 +2021,7 @@ private fun exportRouteLocationNames(clips: List<ClipItem>): List<String> {
     val names = mutableListOf<String>()
     var previous: RouteKey? = null
     clips.forEach { clip ->
+        if (!clip.hasUsableSourceLocation) return@forEach
         val label = clip.sourceLocationName?.trim()?.takeIf(String::isNotEmpty)
             ?: return@forEach
         val day = clip.sourceCreatedAtMillis?.let { millis ->
