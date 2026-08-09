@@ -21,19 +21,21 @@ object VideoSaveShare {
         context: Context,
         sourceUri: Uri,
         label: String? = null,
-        filename: String = newMovieFileName(label)
+        filename: String = newMovieFileName(label),
+        albumName: String = "HanClip"
     ): Uri {
+        val safeAlbumName = sanitizedAlbumName(albumName)
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, filename)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/HanClip")
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/$safeAlbumName")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             } else {
                 val moviesDirectory = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-                    "HanClip"
+                    safeAlbumName
                 ).apply { mkdirs() }
                 put(MediaStore.Video.Media.DATA, File(moviesDirectory, filename).absolutePath)
             }
@@ -62,6 +64,12 @@ object VideoSaveShare {
         }
         return targetUri
     }
+
+    fun sanitizedAlbumName(value: String): String = value
+        .trim()
+        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        .take(80)
+        .ifBlank { "HanClip" }
 
     fun copyToUri(context: Context, sourceUri: Uri, targetUri: Uri) {
         context.contentResolver.openOutputStream(targetUri)?.use { output ->

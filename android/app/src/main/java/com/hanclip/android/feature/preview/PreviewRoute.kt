@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.window.Dialog
@@ -140,6 +141,7 @@ fun PreviewRoute(
     var showFullscreenPreview by remember { mutableStateOf(false) }
     var isSavingVideo by remember { mutableStateOf(false) }
     var pendingMovieFileName by remember { mutableStateOf(VideoSaveShare.newMovieFileName(movieSummary.presetTitle)) }
+    var albumName by remember { mutableStateOf("HanClip") }
     var preferredShareUri by remember(exportedVideoUri) { mutableStateOf(exportedVideoUri) }
     val scope = rememberCoroutineScope()
 
@@ -165,13 +167,14 @@ fun PreviewRoute(
                         context = context,
                         sourceUri = exportedVideoUri,
                         label = movieSummary.presetTitle,
-                        filename = pendingMovieFileName
+                        filename = pendingMovieFileName,
+                        albumName = albumName
                     )
                 }
             }.onSuccess { savedUri ->
                 preferredShareUri = savedUri
                 onSavedMovie(savedUri)
-                message = "저장 완료 · 폰 기본 사진첩의 HanClip 앨범에서 확인하고 바로 공유할 수 있습니다."
+                message = "저장 완료 · 폰 기본 사진첩의 ${VideoSaveShare.sanitizedAlbumName(albumName)} 앨범에서 확인하고 바로 공유할 수 있습니다."
             }.onFailure {
                 message = "폰 기본 사진첩 저장에 실패했습니다. 파일 저장을 선택해 원하는 위치에 다시 저장해 주세요."
             }
@@ -338,6 +341,8 @@ fun PreviewRoute(
         SaveOptionsSheet(
             palette = palette,
             fileName = pendingMovieFileName,
+            albumName = albumName,
+            onAlbumNameChange = { albumName = it },
             onDismiss = { showSaveOptions = false },
             onSaveToGallery = {
                 showSaveOptions = false
@@ -662,6 +667,8 @@ private fun PreviewActionRow(
 private fun SaveOptionsSheet(
     palette: HanClipPalette,
     fileName: String,
+    albumName: String,
+    onAlbumNameChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSaveToGallery: () -> Unit,
     onSaveToFile: () -> Unit
@@ -759,7 +766,16 @@ private fun SaveOptionsSheet(
                                 ) {
                                     Text("앨범", color = palette.subText, fontWeight = FontWeight.Bold)
                                     Box(Modifier.width(14.dp))
-                                    Text("HanClip", color = palette.text, fontWeight = FontWeight.SemiBold)
+                                    OutlinedTextField(
+                                        value = albumName,
+                                        onValueChange = { onAlbumNameChange(it.take(80)) },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        label = { Text("앨범명") },
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
                                 }
                             }
                             OutlinedButton(
