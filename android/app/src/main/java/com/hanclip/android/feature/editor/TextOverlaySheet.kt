@@ -80,6 +80,7 @@ import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ImportedFontStore
 import com.hanclip.android.core.theme.HanClipPalette
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.Instant
 import java.time.ZoneId
@@ -112,6 +113,10 @@ fun TextOverlaySheet(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var draft by remember(settings) { mutableStateOf(settings) }
+    var activeCaptionPreset by remember { mutableStateOf<CaptionStylePreset?>(null) }
+    var captionPresetAppearances by remember(context) {
+        mutableStateOf(loadCaptionPresetAppearances(context))
+    }
     var showAdvancedFonts by remember { mutableStateOf(false) }
     val captionPreviewBackground = remember(draft.textColorHex, draft.shadowColorHex) {
         captionPreviewBackgroundColor(draft.textColorHex, draft.shadowColorHex)
@@ -185,6 +190,12 @@ fun TextOverlaySheet(
                     resetDescription = "자막 설정 되돌리기",
                     palette = palette,
                     onReset = { draft = settings },
+                    onResetLongPress = {
+                        activeCaptionPreset = null
+                        captionPresetAppearances = emptyMap()
+                        saveCaptionPresetAppearances(context, emptyMap())
+                        Toast.makeText(context, "자막 프리셋을 초기화했습니다.", Toast.LENGTH_SHORT).show()
+                    },
                     onDismiss = onDismiss
                 )
             } else {
@@ -281,8 +292,33 @@ fun TextOverlaySheet(
                 CaptionStylePicker(
                     settings = draft,
                     palette = palette,
-                    onSelect = { draft = it.applyTo(draft) }
+                    appearances = captionPresetAppearances,
+                    onSelect = { preset, appearance ->
+                        activeCaptionPreset = preset
+                        draft = preset.applyTo(draft, appearance)
+                    }
                 )
+            }
+
+            LaunchedEffect(
+                activeCaptionPreset,
+                draft.fontName,
+                draft.textColorHex,
+                draft.shadowColorHex,
+                draft.shadowOpacity,
+                draft.fontSize,
+                draft.lineSpacing,
+                draft.lineSpacingScale
+            ) {
+                val preset = activeCaptionPreset ?: return@LaunchedEffect
+                if (draft.fontName != preset.fontName) return@LaunchedEffect
+                val updated = captionPresetAppearances + (
+                    preset to CaptionPresetAppearance.from(draft)
+                )
+                if (updated != captionPresetAppearances) {
+                    captionPresetAppearances = updated
+                    saveCaptionPresetAppearances(context, updated)
+                }
             }
 
             Surface(
@@ -1580,7 +1616,8 @@ private fun CaptionColorButton(
 private fun CaptionStylePicker(
     settings: WatermarkSettings,
     palette: HanClipPalette,
-    onSelect: (CaptionStylePreset) -> Unit
+    appearances: Map<CaptionStylePreset, CaptionPresetAppearance>,
+    onSelect: (CaptionStylePreset, CaptionPresetAppearance) -> Unit
 ) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1590,15 +1627,16 @@ private fun CaptionStylePicker(
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 rowPresets.forEach { preset ->
+                    val appearance = appearances[preset] ?: preset.defaultAppearance
                     val previewFontFamily = remember(preset.fontName) {
                         fontFamilyForName(context, preset.fontName)
                     }
-                    val selected = preset.matches(settings)
+                    val selected = preset.matches(settings, appearance)
                     Surface(
                         modifier = Modifier
                             .weight(1f)
                             .height(40.dp)
-                            .clickable { onSelect(preset) },
+                            .clickable { onSelect(preset, appearance) },
                         shape = RoundedCornerShape(10.dp),
                         color = if (selected) palette.secondary.copy(alpha = 0.20f) else palette.chip,
                         border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
@@ -1637,7 +1675,7 @@ private fun CaptionStylePicker(
                             )
                             Text(
                                 "Aa",
-                                color = parseHexColor(preset.previewTextColorHex),
+                                color = parseHexColor(appearance.textColorHex),
                                 fontWeight = FontWeight.Black,
                                 fontFamily = previewFontFamily,
                                 style = MaterialTheme.typography.titleMedium
@@ -1921,28 +1959,118 @@ private enum class CaptionStylePreset(
         shadowOpacity = 0.75
     );
 
-    fun applyTo(settings: WatermarkSettings): WatermarkSettings {
+    val defaultAppearance: CaptionPresetAppearance
+        get() = CaptionPresetAppearance(
+            textColorHex = previewTextColorHex,
+            shadowColorHex = shadowColorHex,
+            shadowOpacity = shadowOpacity,
+            fontSize = fontSize,
+            lineSpacing = lineSpacing,
+            lineSpacingScale = lineSpacingScale
+        )
+
+    fun applyTo(
+        settings: WatermarkSettings,
+        appearance: CaptionPresetAppearance = defaultAppearance
+    ): WatermarkSettings {
         return settings.copy(
             isEnabled = true,
             fontName = fontName,
-            textColorHex = previewTextColorHex,
-            shadowEnabled = true,
-            shadowOpacity = shadowOpacity,
-            shadowColorHex = shadowColorHex,
-            lineSpacing = lineSpacing,
-            lineSpacingScale = lineSpacingScale,
-            fontSize = fontSize
+            textColorHex = appearance.textColorHex,
+            shadowEnabled = appearance.shadowOpacity > 0.0,
+            shadowOpacity = appearance.shadowOpacity,
+            shadowColorHex = appearance.shadowColorHex,
+            lineSpacing = appearance.lineSpacing,
+            lineSpacingScale = appearance.lineSpacingScale,
+            fontSize = appearance.fontSize
         )
     }
 
-    fun matches(settings: WatermarkSettings): Boolean {
+    fun matches(
+        settings: WatermarkSettings,
+        appearance: CaptionPresetAppearance = defaultAppearance
+    ): Boolean {
         return settings.fontName == fontName &&
-            settings.textColorHex.equals(previewTextColorHex, ignoreCase = true) &&
-            settings.shadowColorHex.equals(shadowColorHex, ignoreCase = true) &&
-            settings.lineSpacing == lineSpacing &&
-            kotlin.math.abs(settings.lineSpacingScale - lineSpacingScale) < 0.001 &&
-            settings.fontSize == fontSize
+            settings.textColorHex.equals(appearance.textColorHex, ignoreCase = true) &&
+            settings.shadowColorHex.equals(appearance.shadowColorHex, ignoreCase = true) &&
+            kotlin.math.abs(settings.shadowOpacity - appearance.shadowOpacity) < 0.001 &&
+            settings.lineSpacing == appearance.lineSpacing &&
+            kotlin.math.abs(settings.lineSpacingScale - appearance.lineSpacingScale) < 0.001 &&
+            settings.fontSize == appearance.fontSize
     }
+}
+
+private data class CaptionPresetAppearance(
+    val textColorHex: String,
+    val shadowColorHex: String,
+    val shadowOpacity: Double,
+    val fontSize: WatermarkFontSize,
+    val lineSpacing: WatermarkLineSpacing,
+    val lineSpacingScale: Double
+) {
+    companion object {
+        fun from(settings: WatermarkSettings) = CaptionPresetAppearance(
+            textColorHex = settings.textColorHex,
+            shadowColorHex = settings.shadowColorHex,
+            shadowOpacity = settings.shadowOpacity.coerceIn(0.0, 1.0),
+            fontSize = settings.fontSize,
+            lineSpacing = settings.lineSpacing,
+            lineSpacingScale = WatermarkLineSpacing.normalize(settings.lineSpacingScale)
+        )
+    }
+}
+
+private const val CaptionPresetAppearancesKey = "caption_preset_appearances"
+
+private fun loadCaptionPresetAppearances(
+    context: android.content.Context
+): Map<CaptionStylePreset, CaptionPresetAppearance> {
+    val raw = context.getSharedPreferences("hanclip_caption", android.content.Context.MODE_PRIVATE)
+        .getString(CaptionPresetAppearancesKey, null) ?: return emptyMap()
+    return runCatching {
+        val root = JSONObject(raw)
+        CaptionStylePreset.entries.mapNotNull { preset ->
+            val value = root.optJSONObject(preset.name) ?: return@mapNotNull null
+            preset to CaptionPresetAppearance(
+                textColorHex = value.optString("textColorHex", preset.previewTextColorHex),
+                shadowColorHex = value.optString("shadowColorHex", preset.defaultAppearance.shadowColorHex),
+                shadowOpacity = value.optDouble("shadowOpacity", preset.defaultAppearance.shadowOpacity)
+                    .coerceIn(0.0, 1.0),
+                fontSize = runCatching {
+                    WatermarkFontSize.valueOf(value.getString("fontSize"))
+                }.getOrDefault(preset.defaultAppearance.fontSize),
+                lineSpacing = runCatching {
+                    WatermarkLineSpacing.valueOf(value.getString("lineSpacing"))
+                }.getOrDefault(preset.defaultAppearance.lineSpacing),
+                lineSpacingScale = WatermarkLineSpacing.normalize(
+                    value.optDouble("lineSpacingScale", preset.defaultAppearance.lineSpacingScale)
+                )
+            )
+        }.toMap()
+    }.getOrDefault(emptyMap())
+}
+
+private fun saveCaptionPresetAppearances(
+    context: android.content.Context,
+    values: Map<CaptionStylePreset, CaptionPresetAppearance>
+) {
+    val preferences = context.getSharedPreferences("hanclip_caption", android.content.Context.MODE_PRIVATE)
+    if (values.isEmpty()) {
+        preferences.edit().remove(CaptionPresetAppearancesKey).apply()
+        return
+    }
+    val root = JSONObject()
+    values.forEach { (preset, appearance) ->
+        root.put(preset.name, JSONObject().apply {
+            put("textColorHex", appearance.textColorHex)
+            put("shadowColorHex", appearance.shadowColorHex)
+            put("shadowOpacity", appearance.shadowOpacity)
+            put("fontSize", appearance.fontSize.name)
+            put("lineSpacing", appearance.lineSpacing.name)
+            put("lineSpacingScale", appearance.lineSpacingScale)
+        })
+    }
+    preferences.edit().putString(CaptionPresetAppearancesKey, root.toString()).apply()
 }
 
 private fun mediaDateRangeCaptionText(createdAtMillis: List<Long>): String {

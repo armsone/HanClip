@@ -92,7 +92,8 @@ internal fun LazyListScope.movieCollectionItems(
     onOpen: (CollectedMovie) -> Unit,
     onTogglePin: (CollectedMovie) -> Unit,
     onRename: (CollectedMovie, String) -> Unit,
-    onRemove: (CollectedMovie) -> Unit
+    onRemove: (CollectedMovie) -> Unit,
+    columnCount: Int = 2
 ) {
     item(key = "collection-header", contentType = "collection-header") {
         CollectionHeader(movies.size, palette)
@@ -101,10 +102,12 @@ internal fun LazyListScope.movieCollectionItems(
     val cells = buildList<CollectedMovie?> {
         addAll(movies)
         if (movies.size < MovieCollectionStore.MaximumMovieCount) add(null)
-        if (size % 2 != 0) add(CollectionSpacer)
+        repeat((columnCount - size % columnCount) % columnCount) {
+            add(CollectionSpacer)
+        }
     }
     items(
-        items = cells.chunked(2),
+        items = cells.chunked(columnCount),
         key = { row -> "collection-row:${row.joinToString { it?.id ?: "add" }}" },
         contentType = { "collection-row" }
     ) { row ->

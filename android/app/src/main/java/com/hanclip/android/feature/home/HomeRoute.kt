@@ -109,6 +109,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -182,6 +183,13 @@ fun HomeRoute(
     onRestorePurchases: () -> Unit
 ) {
     val context = LocalContext.current
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val presetColumnCount = if (screenWidthDp >= 600) 6 else 3
+    val collectionColumnCount = when {
+        screenWidthDp >= 1_200 -> 4
+        screenWidthDp >= 600 -> 3
+        else -> 2
+    }
     val coroutineScope = rememberCoroutineScope()
     var themeMode by remember {
         mutableStateOf(HanClipThemeStore.load(context))
@@ -301,7 +309,7 @@ fun HomeRoute(
             }
         }
         item(key = "preset-grid") {
-            PresetGrid(onStartPreset, palette)
+            PresetGrid(onStartPreset, palette, presetColumnCount)
             Spacer(Modifier.height(8.dp))
         }
         savedProjectItems(
@@ -349,7 +357,8 @@ fun HomeRoute(
             onRemoveCollectionMovie = { movie ->
                 MovieCollectionStore.remove(context, movie.id)
                 onCollectionChanged()
-            }
+            },
+            collectionColumnCount = collectionColumnCount
         )
         item(key = "home-bottom-space") {
             Spacer(Modifier.height(84.dp))
@@ -1791,7 +1800,11 @@ private fun SharedInboxBanner(
 }
 
 @Composable
-private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPalette) {
+private fun PresetGrid(
+    onStartPreset: (MoviePreset) -> Unit,
+    palette: HanClipPalette,
+    columnCount: Int
+) {
     val orderedPresets = listOf(
         MoviePreset.NewMovie,
         MoviePreset.Quick,
@@ -1802,7 +1815,7 @@ private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPal
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HomeSectionTitle("영화 프리셋", Icons.Outlined.Collections, palette)
-        orderedPresets.chunked(3).forEach { rowPresets ->
+        orderedPresets.chunked(columnCount).forEach { rowPresets ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 rowPresets.forEach { preset ->
                     PresetTile(
@@ -1820,7 +1833,7 @@ private fun PresetGrid(onStartPreset: (MoviePreset) -> Unit, palette: HanClipPal
                         onClick = { onStartPreset(preset) }
                     )
                 }
-                repeat(3 - rowPresets.size) {
+                repeat(columnCount - rowPresets.size) {
                     Spacer(Modifier.weight(1f))
                 }
             }
@@ -1976,7 +1989,8 @@ private fun LazyListScope.savedProjectItems(
     onOpenCollectionMovie: (CollectedMovie) -> Unit,
     onToggleCollectionMoviePin: (CollectedMovie) -> Unit,
     onRenameCollectionMovie: (CollectedMovie, String) -> Unit,
-    onRemoveCollectionMovie: (CollectedMovie) -> Unit
+    onRemoveCollectionMovie: (CollectedMovie) -> Unit,
+    collectionColumnCount: Int
 ) {
     val aiShotProjects = editableProjectSummaries.filter { it.preset == MoviePreset.AiShot }
     val standardProjects = editableProjectSummaries.filterNot { it.preset == MoviePreset.AiShot }
@@ -2047,7 +2061,8 @@ private fun LazyListScope.savedProjectItems(
         onOpen = onOpenCollectionMovie,
         onTogglePin = onToggleCollectionMoviePin,
         onRename = onRenameCollectionMovie,
-        onRemove = onRemoveCollectionMovie
+        onRemove = onRemoveCollectionMovie,
+        columnCount = collectionColumnCount
     )
 }
 

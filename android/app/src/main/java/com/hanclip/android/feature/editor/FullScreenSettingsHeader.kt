@@ -2,6 +2,8 @@ package com.hanclip.android.feature.editor
 
 import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -78,6 +80,7 @@ internal fun FullScreenSettingsHeader(
     resetDescription: String,
     palette: HanClipPalette,
     onReset: () -> Unit,
+    onResetLongPress: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     Row(
@@ -88,7 +91,8 @@ internal fun FullScreenSettingsHeader(
             icon = Icons.AutoMirrored.Outlined.Undo,
             description = resetDescription,
             palette = palette,
-            onClick = onReset
+            onClick = onReset,
+            onLongClick = onResetLongPress
         )
         Spacer(Modifier.weight(1f))
         SettingsHeaderCircleButton(
@@ -122,19 +126,25 @@ internal fun FullScreenSettingsHeader(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SettingsHeaderCircleButton(
     icon: ImageVector,
     description: String,
     palette: HanClipPalette,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     Surface(
-        modifier = Modifier.size(52.dp),
+        modifier = Modifier
+            .size(52.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(26.dp),
         color = palette.solidPanel,
-        border = BorderStroke(1.dp, palette.border),
-        onClick = onClick
+        border = BorderStroke(1.dp, palette.border)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = description, tint = palette.primary, modifier = Modifier.size(27.dp))
