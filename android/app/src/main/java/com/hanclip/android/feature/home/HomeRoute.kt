@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.DragIndicator
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.IosShare
@@ -1038,7 +1039,7 @@ private fun SettingsInfoScreen(
                             shape = RoundedCornerShape(10.dp),
                             color = palette.secondary.copy(alpha = 0.14f)
                         ) {
-                            Icon(Icons.Outlined.GridView, null, tint = palette.primary, modifier = Modifier.padding(5.dp))
+                            Icon(Icons.Outlined.Badge, null, tint = palette.primary, modifier = Modifier.padding(5.dp))
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(
@@ -1366,12 +1367,20 @@ private fun ImportantInfoRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Icon(
-                imageVector = importantInfoIcon(title),
-                contentDescription = null,
-                tint = palette.primary,
-                modifier = Modifier.size(22.dp)
-            )
+            if (title == "로고") {
+                Image(
+                    painter = painterResource(R.drawable.logo_mark),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = importantInfoIcon(title),
+                    contentDescription = null,
+                    tint = palette.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
