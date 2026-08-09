@@ -705,15 +705,15 @@ private fun HomeHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.clickable(onClick = onOpenTheme)) {
-            HanClipBrandCapsule()
+            HanClipBrandCapsule(palette)
         }
         Surface(
             modifier = Modifier
                 .size(58.dp)
                 .clickable(onClick = onQuickAdd),
             shape = CircleShape,
-            color = palette.chip.copy(alpha = 0.62f),
-            border = BorderStroke(1.dp, palette.secondary.copy(alpha = 0.28f))
+            color = palette.panel.copy(alpha = palette.panel.alpha * 0.72f),
+            border = BorderStroke(1.dp, palette.border.copy(alpha = palette.border.alpha * 0.62f))
         ) {
             Icon(
                 imageVector = Icons.Outlined.AddPhotoAlternate,
@@ -726,12 +726,17 @@ private fun HomeHeader(
 }
 
 @Composable
-fun HanClipBrandCapsule() {
+fun HanClipBrandCapsule(palette: HanClipPalette? = null) {
     val brandColor = Color(0xFF07323A)
     Surface(
         shape = RoundedCornerShape(34.dp),
-        color = Color(0xFFF7FAF8),
-        border = BorderStroke(1.dp, Color(0xFFD6E1DE))
+        color = palette?.panel?.copy(alpha = palette.panel.alpha * 0.72f)
+            ?: Color(0xFFF7FAF8),
+        border = BorderStroke(
+            1.dp,
+            palette?.border?.copy(alpha = palette.border.alpha * 0.62f)
+                ?: Color(0xFFD6E1DE)
+        )
     ) {
         Row(
             modifier = Modifier
