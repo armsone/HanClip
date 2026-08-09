@@ -80,7 +80,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -153,7 +152,6 @@ fun EditorRoute(
     var isResetConfirmationVisible by remember { mutableStateOf(false) }
     var isExitConfirmationVisible by remember { mutableStateOf(false) }
     var isExportConfirmationVisible by remember { mutableStateOf(false) }
-    val expandedCalendarSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val trimmingClip = state.clips.firstOrNull { it.id == trimmingClipID }
     val photoDurationClip = state.clips.firstOrNull { it.id == photoDurationClipID }
     val previewClip = state.clips.firstOrNull { it.id == previewClipID }
@@ -715,10 +713,12 @@ fun EditorRoute(
             }
         }
         if (isCalendarPickerVisible) {
-            ModalBottomSheet(
+            Dialog(
                 onDismissRequest = { isCalendarPickerVisible = false },
-                sheetState = expandedCalendarSheetState,
-                containerColor = Color.Transparent
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
             ) {
                 CalendarMediaPickerSheet(
                     title = mediaPickerTitle,

@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -75,6 +76,7 @@ import com.hanclip.android.core.project.ExportedMovieSummary
 import com.hanclip.android.core.project.hanClipCompletionTitle
 import com.hanclip.android.core.theme.HanClipPalette
 import com.hanclip.android.core.theme.HanClipThemeStore
+import com.hanclip.android.feature.home.HanClipBrandCapsule
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -206,46 +208,79 @@ fun PreviewRoute(
         }
     }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(palette.background)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp),
-        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.clickable(onClick = onEdit)) {
+                HanClipBrandCapsule()
+            }
+            Surface(
+                modifier = Modifier.size(54.dp),
+                shape = RoundedCornerShape(50),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border),
+                onClick = onEdit
+            ) {
+                Icon(
+                    Icons.Outlined.Close,
+                    contentDescription = if (canReturnToEditor) "다시 편집" else "완성본 목록",
+                    tint = palette.text,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = RoundedCornerShape(9.dp),
+                color = palette.chip
+            ) {
+                Icon(
+                    Icons.Outlined.PlayCircle,
+                    contentDescription = null,
+                    tint = palette.primary,
+                    modifier = Modifier.padding(7.dp)
+                )
+            }
+            Box(Modifier.width(8.dp))
             Text(
-                text = "완성 시사회",
-                style = MaterialTheme.typography.headlineMedium,
+                text = "시사회",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = palette.text
             )
         }
-        item {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f),
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                 shape = RoundedCornerShape(26.dp),
-                color = Color.Black
+                color = Color.Black,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.38f)),
+                shadowElevation = 8.dp
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     if (exportedVideoUri != null) {
                         ExportedVideoPlayer(exportedVideoUri)
                         IconButton(
                             onClick = { showFullscreenPreview = true },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(10.dp)
+                            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
                         ) {
-                            Icon(
-                                Icons.Outlined.Fullscreen,
-                                contentDescription = "전체 화면",
-                                tint = Color.White
-                            )
+                            Icon(Icons.Outlined.Fullscreen, contentDescription = "전체 화면", tint = Color.White)
                         }
                     } else {
                         Icon(
@@ -258,69 +293,44 @@ fun PreviewRoute(
                 }
             }
         }
-        item {
-            PreviewSummaryPanel(
-                summary = movieSummary,
-                palette = palette
-            )
-        }
-        item {
-            PreviewActionRow(
-                palette = palette,
-                canReturnToEditor = canReturnToEditor,
-                onEdit = onEdit,
-                onShare = {
-                    val shareUri = preferredShareUri ?: exportedVideoUri
-                    if (shareUri == null) {
-                        message = "공유할 MP4가 없습니다. 먼저 HanClip 앨범 또는 파일로 저장해 주세요."
-                    } else {
-                        runCatching {
-                            VideoSaveShare.shareVideo(context, shareUri)
-                        }.onFailure {
-                            message = "공유 화면을 열지 못했습니다. 폰 기본 사진첩의 HanClip 앨범에 저장한 뒤 다시 공유해 주세요."
-                        }
-                    }
-                },
-                onRelease = {
-                    if (exportedVideoUri == null) {
-                        message = "저장할 영상이 없습니다."
-                    } else {
-                        pendingMovieFileName = VideoSaveShare.newMovieFileName(movieSummary.presetTitle)
-                        showSaveOptions = true
+        PreviewActionRow(
+            palette = palette,
+            canReturnToEditor = canReturnToEditor,
+            onEdit = onEdit,
+            onShare = {
+                val shareUri = preferredShareUri ?: exportedVideoUri
+                if (shareUri == null) {
+                    message = "공유할 MP4가 없습니다. 먼저 HanClip 앨범 또는 파일로 저장해 주세요."
+                } else {
+                    runCatching {
+                        VideoSaveShare.shareVideo(context, shareUri)
+                    }.onFailure {
+                        message = "공유 화면을 열지 못했습니다. 폰 기본 사진첩의 HanClip 앨범에 저장한 뒤 다시 공유해 주세요."
                     }
                 }
-            )
-        }
-        item {
-            OutlinedButton(
-                onClick = onDone,
-                modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, palette.border),
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
-                    contentColor = palette.text
-                )
-            ) {
-                Icon(Icons.Outlined.Home, contentDescription = null)
-                Text("홈으로")
+            },
+            onRelease = {
+                if (exportedVideoUri == null) {
+                    message = "저장할 영상이 없습니다."
+                } else {
+                    pendingMovieFileName = VideoSaveShare.newMovieFileName(movieSummary.presetTitle)
+                    showSaveOptions = true
+                }
             }
-        }
+        )
         message?.let {
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    color = palette.panel,
-                    border = BorderStroke(1.dp, palette.border)
-                ) {
-                    Text(
-                        text = it,
-                        modifier = Modifier.padding(14.dp),
-                        fontWeight = FontWeight.SemiBold,
-                        color = palette.subText
-                    )
-                }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Text(
+                    text = it,
+                    modifier = Modifier.padding(12.dp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.subText
+                )
             }
         }
     }
@@ -615,22 +625,21 @@ private fun PreviewActionRow(
                 if (canReturnToEditor) Icons.Outlined.Edit else Icons.Outlined.Home,
                 contentDescription = null
             )
-            Text(if (canReturnToEditor) "편집으로" else "완성본 목록")
+            Text(if (canReturnToEditor) "다시 편집" else "완성본 목록")
         }
-        OutlinedButton(
+        Surface(
             onClick = onShare,
-            modifier = Modifier
-                .weight(0.86f)
-                .height(48.dp),
-            border = BorderStroke(1.dp, palette.border),
+            modifier = Modifier.size(54.dp),
             shape = RoundedCornerShape(50),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = palette.chip,
-                contentColor = palette.text
-            )
+            color = palette.chip,
+            border = BorderStroke(1.dp, palette.border)
         ) {
-            Icon(Icons.Outlined.IosShare, contentDescription = null)
-            Text("바로 공유")
+            Icon(
+                Icons.Outlined.IosShare,
+                contentDescription = "공유하기",
+                tint = palette.text,
+                modifier = Modifier.padding(15.dp)
+            )
         }
         Button(
             onClick = onRelease,
@@ -644,7 +653,7 @@ private fun PreviewActionRow(
             )
         ) {
             Icon(Icons.Outlined.Download, contentDescription = null)
-            Text("앨범 저장")
+            Text("개봉하기")
         }
     }
 }
@@ -674,7 +683,7 @@ private fun SaveOptionsSheet(
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
-                    .padding(20.dp),
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(
@@ -682,53 +691,115 @@ private fun SaveOptionsSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "완성본 저장 위치",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.text
-                        )
-                        Text(
-                            text = "폰 기본 사진첩의 HanClip 앨범에 저장하거나 MP4 파일로 보관합니다.",
-                            color = palette.subText
-                        )
+                    Box(modifier = Modifier.clickable(onClick = onDismiss)) {
+                        HanClipBrandCapsule()
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Outlined.Close, contentDescription = "취소", tint = palette.text)
+                    Surface(
+                        modifier = Modifier.size(54.dp),
+                        shape = RoundedCornerShape(50),
+                        color = palette.panel,
+                        border = BorderStroke(1.dp, palette.border),
+                        onClick = onDismiss
+                    ) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = "취소",
+                            tint = palette.text,
+                            modifier = Modifier.padding(14.dp)
+                        )
                     }
                 }
-                SaveDestinationCard(
-                    title = "폰 기본 사진첩 · HanClip 앨범",
-                    badge = "추천",
-                    body = "완성본 MP4를 기본 사진첩에 남기고 저장 후 바로 공유합니다.",
-                    icon = Icons.Outlined.Photo,
-                    palette = palette,
-                    primary = true,
-                    onClick = onSaveToGallery
-                )
-                SaveDestinationCard(
-                    title = "파일로 저장",
-                    badge = "대안",
-                    body = "원하는 폴더와 파일명을 직접 선택해 MP4로 보관합니다.",
-                    icon = Icons.Outlined.FolderOpen,
-                    palette = palette,
-                    primary = false,
-                    onClick = onSaveToFile
-                )
-                SaveFileNameNote(fileName = fileName, palette = palette)
-                SaveFormatNote(palette)
-                OutlinedButton(
-                    onClick = onDismiss,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, palette.border),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = palette.panel,
-                        contentColor = palette.text
-                    )
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.Close, contentDescription = null)
-                    Text("취소")
+                    Icon(Icons.Outlined.Download, contentDescription = null, tint = palette.primary)
+                    Box(Modifier.width(8.dp))
+                    Text("개봉", color = palette.text, fontWeight = FontWeight.Bold)
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(30.dp),
+                        color = palette.panel.copy(alpha = 0.92f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.52f)),
+                        shadowElevation = 12.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(22.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                            Button(
+                                onClick = onSaveToGallery,
+                                modifier = Modifier.fillMaxWidth().height(56.dp),
+                                shape = RoundedCornerShape(50),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = palette.primary,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(Icons.Outlined.Photo, contentDescription = null)
+                                Text("사진 앱으로 개봉", fontWeight = FontWeight.Bold)
+                            }
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = palette.panel.copy(alpha = 0.55f),
+                                border = BorderStroke(1.dp, palette.border)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("앨범", color = palette.subText, fontWeight = FontWeight.Bold)
+                                    Box(Modifier.width(14.dp))
+                                    Text("HanClip", color = palette.text, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onSaveToFile,
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.dp, palette.border),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = palette.chip,
+                                    contentColor = palette.text
+                                )
+                            ) {
+                                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                                Text("파일 앱으로 개봉", fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                fileName,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = palette.subText,
+                                style = MaterialTheme.typography.labelSmall,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.width(146.dp).height(48.dp),
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, palette.border),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = palette.panel,
+                                contentColor = palette.text
+                            )
+                        ) {
+                            Icon(Icons.Outlined.Close, contentDescription = null)
+                            Text("취소")
+                        }
+                    }
                 }
             }
         }

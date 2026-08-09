@@ -1,5 +1,6 @@
 package com.hanclip.android.feature.editor
 
+import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -68,11 +70,13 @@ import com.hanclip.android.core.model.WatermarkLineSpacing
 import com.hanclip.android.core.model.WatermarkPosition
 import com.hanclip.android.core.model.WatermarkPlatform
 import com.hanclip.android.core.model.WatermarkSettings
+import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ImportedFontStore
 import com.hanclip.android.core.theme.HanClipPalette
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.io.File
 
 private val SheetPrimary = Color(0xFF0B7A4E)
 private val SheetText = Color(0xFF14221A)
@@ -107,6 +111,32 @@ fun TextOverlaySheet(
                         Toast.LENGTH_LONG
                     ).show()
                 }
+        }
+    }
+    val copyrightImagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val directory = File(context.filesDir, "copyright-icons").apply { mkdirs() }
+                val target = File(directory, "custom-icon")
+                context.contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "선택한 이미지를 읽을 수 없습니다." }
+                    target.outputStream().use(input::copyTo)
+                }
+                target.absolutePath
+            }.onSuccess { path ->
+                draft = draft.copy(
+                    platform = WatermarkPlatform.Custom,
+                    customCopyrightIconPath = path
+                )
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    error.message ?: "사용자 이미지를 가져오지 못했습니다.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
@@ -436,6 +466,21 @@ fun TextOverlaySheet(
                         )
                     )
                 }
+                if (draft.platform == WatermarkPlatform.Custom) {
+                    Button(
+                        onClick = { copyrightImagePicker.launch(arrayOf("image/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = palette.chip,
+                            contentColor = palette.text
+                        )
+                    ) {
+                        Text(
+                            if (draft.customCopyrightIconPath.isBlank()) "사용자 이미지 선택" else "사용자 이미지 바꾸기",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
 
                 SettingGroup(title = "HanClip 로고 색상") {
                     listOf(
@@ -745,15 +790,33 @@ private fun CopyrightLogoPreview(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        if (settings.platform == WatermarkPlatform.HanClip) {
+        val customBitmap = remember(settings.customCopyrightIconPath, settings.platform) {
+            settings.customCopyrightIconPath
+                .takeIf { settings.platform == WatermarkPlatform.Custom && it.isNotBlank() }
+                ?.let(BitmapFactory::decodeFile)
+        }
+        if (customBitmap != null) {
             Image(
-                painter = painterResource(R.drawable.logo_mark),
+                bitmap = customBitmap.asImageBitmap(),
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                colorFilter = ColorFilter.tint(color)
+                colorFilter = if (settings.copyrightIconColorMode == CopyrightIconColorMode.Original) {
+                    null
+                } else {
+                    ColorFilter.tint(color)
+                }
             )
         } else {
-            Text(settings.platform.mark, color = color, fontWeight = FontWeight.Black)
+            Image(
+                painter = painterResource(settings.platform.drawableResId),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                colorFilter = if (settings.copyrightIconColorMode == CopyrightIconColorMode.Original) {
+                    null
+                } else {
+                    ColorFilter.tint(color)
+                }
+            )
         }
         Text(
             text = if (settings.platform == WatermarkPlatform.HanClip) {
@@ -1020,23 +1083,11 @@ private fun PlatformPicker(
                             if (isSelected) palette.primary else palette.border
                         )
                     ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 5.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                platform.mark,
-                                color = if (isSelected) Color.White else palette.text,
-                                fontWeight = FontWeight.Black,
-                                style = MaterialTheme.typography.titleMedium,
-                                maxLines = 1
-                            )
-                            Text(
-                                platform.title,
-                                color = if (isSelected) Color.White.copy(alpha = 0.88f) else palette.subText,
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1
+                        Box(contentAlignment = Alignment.Center) {
+                            Image(
+                                painter = painterResource(platform.drawableResId),
+                                contentDescription = platform.title,
+                                modifier = Modifier.size(32.dp)
                             )
                         }
                     }

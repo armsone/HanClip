@@ -731,7 +731,7 @@ private fun HomeHeader(
 }
 
 @Composable
-private fun HanClipBrandCapsule() {
+fun HanClipBrandCapsule() {
     val brandColor = Color(0xFF07323A)
     Surface(
         shape = RoundedCornerShape(34.dp),

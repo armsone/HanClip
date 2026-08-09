@@ -1,8 +1,13 @@
 package com.hanclip.android.core.media
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.Typeface
 import android.media.MediaExtractor
 import android.media.MediaMuxer
@@ -29,8 +34,11 @@ import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.LivePhotoMode
 import com.hanclip.android.core.model.WatermarkSettings
+import com.hanclip.android.core.model.CopyrightIconColorMode
+import com.hanclip.android.core.model.drawableResId
 import com.hanclip.android.core.project.ImportedFontStore
 import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
@@ -268,26 +276,7 @@ class Media3TransformerExportService(
                 )
             }
             if (watermark.logoEnabled) {
-                val copyrightText = if (watermark.platform ==
-                    com.hanclip.android.core.model.WatermarkPlatform.HanClip
-                ) {
-                    "▶ HanClip"
-                } else {
-                    "${watermark.platform.mark} ${watermark.displayCopyrightText}"
-                }
-                add(
-                    textOverlay(
-                        text = copyrightText,
-                        colorHex = watermark.effectiveLogoColorHex,
-                        shadowColorHex = watermark.logoShadowColorHex,
-                        shadowOpacity = watermark.logoShadowOpacity,
-                        shadowEnabled = watermark.logoShadowOpacity > 0.0,
-                        fontName = "pretendard",
-                        pointSize = 13,
-                        lineSpacingScale = 1.0,
-                        position = watermark.copyrightPosition
-                    )
-                )
+                add(copyrightBitmapOverlay(watermark, request.renderWidth))
             }
         }
         videoEffects += OverlayEffect(overlays)
@@ -331,6 +320,78 @@ class Media3TransformerExportService(
 
     private fun isUnityVolume(volume: Double): Boolean {
         return abs(volume - 1.0) < 0.001
+    }
+
+    private fun copyrightBitmapOverlay(
+        watermark: WatermarkSettings,
+        renderWidth: Int
+    ): BitmapOverlay {
+        val iconSource = watermark.customCopyrightIconPath
+            .takeIf { watermark.platform == com.hanclip.android.core.model.WatermarkPlatform.Custom }
+            ?.let(BitmapFactory::decodeFile)
+            ?: BitmapFactory.decodeResource(context.resources, watermark.platform.drawableResId)
+        val iconSize = (renderWidth * 0.036f).toInt().coerceIn(32, 96)
+        val textSize = (renderWidth * 0.018f).coerceIn(18f, 44f)
+        val gap = (iconSize * 0.18f).toInt().coerceAtLeast(5)
+        val padding = (iconSize * 0.18f).toInt().coerceAtLeast(6)
+        val label = if (watermark.platform == com.hanclip.android.core.model.WatermarkPlatform.HanClip) {
+            "HanClip"
+        } else {
+            watermark.displayCopyrightText
+        }
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create(typefaceForWatermark("pretendard"), Typeface.BOLD)
+            this.textSize = textSize
+            color = runCatching { AndroidColor.parseColor(watermark.effectiveLogoColorHex) }
+                .getOrElse { AndroidColor.WHITE }
+            if (watermark.logoShadowOpacity > 0.0) {
+                setShadowLayer(
+                    textSize * 0.13f,
+                    textSize * 0.05f,
+                    textSize * 0.06f,
+                    shadowColorWithOpacity(watermark.logoShadowColorHex, watermark.logoShadowOpacity)
+                )
+            }
+        }
+        val textWidth = textPaint.measureText(label).toInt().coerceAtLeast(1)
+        val fontMetrics = textPaint.fontMetrics
+        val textHeight = (fontMetrics.descent - fontMetrics.ascent).toInt().coerceAtLeast(1)
+        val bitmapWidth = padding * 2 + iconSize + gap + textWidth
+        val bitmapHeight = padding * 2 + maxOf(iconSize, textHeight)
+        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val iconTop = (bitmapHeight - iconSize) / 2
+        iconSource?.let { source ->
+            val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                if (watermark.copyrightIconColorMode != CopyrightIconColorMode.Original) {
+                    colorFilter = PorterDuffColorFilter(textPaint.color, PorterDuff.Mode.SRC_IN)
+                }
+                if (watermark.logoShadowOpacity > 0.0) {
+                    setShadowLayer(
+                        iconSize * 0.08f,
+                        iconSize * 0.03f,
+                        iconSize * 0.04f,
+                        shadowColorWithOpacity(watermark.logoShadowColorHex, watermark.logoShadowOpacity)
+                    )
+                }
+            }
+            canvas.drawBitmap(
+                source,
+                null,
+                android.graphics.Rect(padding, iconTop, padding + iconSize, iconTop + iconSize),
+                iconPaint
+            )
+        }
+        val textBaseline = (bitmapHeight - (fontMetrics.descent + fontMetrics.ascent)) / 2f
+        canvas.drawText(label, (padding + iconSize + gap).toFloat(), textBaseline, textPaint)
+        val anchorX = watermarkAnchorX(watermark.copyrightPosition.horizontalFraction)
+        val anchorY = watermarkAnchorY(watermark.copyrightPosition.verticalFractionFromTop)
+        val settings = StaticOverlaySettings.Builder()
+            .setBackgroundFrameAnchor(anchorX, anchorY)
+            .setOverlayFrameAnchor(anchorX, anchorY)
+            .setScale(1f, 1f)
+            .build()
+        return BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
     }
 
     private fun textOverlay(
