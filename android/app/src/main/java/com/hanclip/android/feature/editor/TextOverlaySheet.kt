@@ -231,16 +231,13 @@ fun TextOverlaySheet(
                 Text("HanClip 골프 스타일로 맞추기", fontWeight = FontWeight.Bold)
             }
 
-            SettingGroup(title = "스타일") {
-                CaptionStylePreset.entries.forEach { preset ->
-                    FilterChip(
-                        selected = preset.matches(draft),
-                        onClick = { draft = preset.applyTo(draft) },
-                        label = { Text(preset.title, fontWeight = FontWeight.SemiBold) },
-                        colors = sheetFilterChipColors(),
-                        border = sheetFilterChipBorder(preset.matches(draft))
-                    )
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("스타일", fontWeight = FontWeight.SemiBold, color = SheetText)
+                CaptionStylePicker(
+                    settings = draft,
+                    palette = palette,
+                    onSelect = { draft = it.applyTo(draft) }
+                )
             }
 
             SettingGroup(title = "글자 크기") {
@@ -407,16 +404,13 @@ fun TextOverlaySheet(
             }
 
             if (draft.logoEnabled) {
-                SettingGroup(title = "플랫폼") {
-                    WatermarkPlatform.entries.forEach { platform ->
-                        FilterChip(
-                            selected = draft.platform == platform,
-                            onClick = { draft = draft.copy(platform = platform) },
-                            label = { Text("${platform.mark} ${platform.title}", fontWeight = FontWeight.SemiBold) },
-                            colors = sheetFilterChipColors(),
-                            border = sheetFilterChipBorder(draft.platform == platform)
-                        )
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("플랫폼", fontWeight = FontWeight.SemiBold, color = SheetText)
+                    PlatformPicker(
+                        selected = draft.platform,
+                        palette = palette,
+                        onSelect = { draft = draft.copy(platform = it) }
+                    )
                 }
 
                 if (draft.platform != WatermarkPlatform.HanClip) {
@@ -1000,6 +994,107 @@ private fun PositionPicker(
     }
 }
 
+@Composable
+private fun PlatformPicker(
+    selected: WatermarkPlatform,
+    palette: HanClipPalette,
+    onSelect: (WatermarkPlatform) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        WatermarkPlatform.entries.chunked(5).forEach { rowPlatforms ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                rowPlatforms.forEach { platform ->
+                    val isSelected = selected == platform
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .clickable { onSelect(platform) },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) palette.primary else palette.chip,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) palette.primary else palette.border
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 5.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                platform.mark,
+                                color = if (isSelected) Color.White else palette.text,
+                                fontWeight = FontWeight.Black,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1
+                            )
+                            Text(
+                                platform.title,
+                                color = if (isSelected) Color.White.copy(alpha = 0.88f) else palette.subText,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CaptionStylePicker(
+    settings: WatermarkSettings,
+    palette: HanClipPalette,
+    onSelect: (CaptionStylePreset) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        CaptionStylePreset.entries.chunked(3).forEach { rowPresets ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                rowPresets.forEach { preset ->
+                    val selected = preset.matches(settings)
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clickable { onSelect(preset) },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (selected) palette.secondary.copy(alpha = 0.20f) else palette.chip,
+                        border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                preset.title,
+                                color = if (selected) palette.primary else palette.subText,
+                                fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1
+                            )
+                            Text(
+                                "Aa",
+                                color = parseHexColor(preset.previewTextColorHex),
+                                fontWeight = FontWeight.Black,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun SettingGroup(
@@ -1079,7 +1174,7 @@ private fun parseHexColor(hex: String): Color {
 private enum class CaptionStylePreset(
     val title: String,
     private val fontName: String,
-    private val textColorHex: String,
+    val previewTextColorHex: String,
     private val shadowColorHex: String,
     private val fontSize: WatermarkFontSize,
     private val lineSpacing: WatermarkLineSpacing = WatermarkLineSpacing.Normal,
@@ -1089,17 +1184,36 @@ private enum class CaptionStylePreset(
     Readable(
         title = "가독성",
         fontName = "pretendard_bold",
-        textColorHex = "#FFFFFF",
+        previewTextColorHex = "#FFFFFF",
         shadowColorHex = "#000000",
         fontSize = WatermarkFontSize.Large,
-        lineSpacing = WatermarkLineSpacing.Normal,
-        lineSpacingScale = WatermarkLineSpacing.DefaultScale,
         shadowOpacity = 0.45
+    ),
+    Lovely(
+        title = "러블리",
+        fontName = "ddulgi_mayo",
+        previewTextColorHex = "#FF6FAE",
+        shadowColorHex = "#7A3FFF",
+        fontSize = WatermarkFontSize.Large
+    ),
+    Strong(
+        title = "강력한",
+        fontName = "tenada",
+        previewTextColorHex = "#FFE600",
+        shadowColorHex = "#000000",
+        fontSize = WatermarkFontSize.ExtraLarge
+    ),
+    Fresh(
+        title = "청량",
+        fontName = "gowun_dodum",
+        previewTextColorHex = "#FFFFFF",
+        shadowColorHex = "#18A8FF",
+        fontSize = WatermarkFontSize.Large
     ),
     Travel(
         title = "여행",
         fontName = "gowun_batang",
-        textColorHex = "#FFF3D6",
+        previewTextColorHex = "#FFF3D6",
         shadowColorHex = "#3F6F63",
         fontSize = WatermarkFontSize.Large,
         lineSpacing = WatermarkLineSpacing.Wide,
@@ -1108,27 +1222,87 @@ private enum class CaptionStylePreset(
     Cinema(
         title = "시네마",
         fontName = "black_han_sans",
-        textColorHex = "#F8F3E7",
+        previewTextColorHex = "#F8F3E7",
         shadowColorHex = "#141414",
         fontSize = WatermarkFontSize.ExtraLarge,
         lineSpacing = WatermarkLineSpacing.Tight,
         lineSpacingScale = WatermarkLineSpacing.Tight.scale
     ),
-    GreenGolf(
-        title = "골프",
+    Daily(
+        title = "데일리",
         fontName = "do_hyeon",
-        textColorHex = "#FFFFFF",
+        previewTextColorHex = "#FFFFFF",
+        shadowColorHex = "#FF7A3D",
+        fontSize = WatermarkFontSize.Large
+    ),
+    Sentimental(
+        title = "감성",
+        fontName = "gowun_batang",
+        previewTextColorHex = "#FFE9F0",
+        shadowColorHex = "#6E5BFF",
+        fontSize = WatermarkFontSize.Normal
+    ),
+    GreenGolf(
+        title = "그린골프",
+        fontName = "do_hyeon",
+        previewTextColorHex = "#FFFFFF",
         shadowColorHex = "#10B85A",
+        fontSize = WatermarkFontSize.ExtraLarge
+    ),
+    Magazine(
+        title = "매거진",
+        fontName = "black_han_sans",
+        previewTextColorHex = "#FFF4D6",
+        shadowColorHex = "#D94A32",
         fontSize = WatermarkFontSize.ExtraLarge,
-        lineSpacing = WatermarkLineSpacing.Normal,
-        lineSpacingScale = WatermarkLineSpacing.DefaultScale
+        shadowOpacity = 0.55
+    ),
+    Sports(
+        title = "스포츠",
+        fontName = "tenada",
+        previewTextColorHex = "#D8FF3E",
+        shadowColorHex = "#10223A",
+        fontSize = WatermarkFontSize.ExtraLarge,
+        shadowOpacity = 0.7
+    ),
+    Clean(
+        title = "클린",
+        fontName = "pretendard",
+        previewTextColorHex = "#FFFFFF",
+        shadowColorHex = "#1B4D89",
+        fontSize = WatermarkFontSize.Large,
+        shadowOpacity = 0.35
+    ),
+    Neon(
+        title = "네온",
+        fontName = "pretendard_bold",
+        previewTextColorHex = "#7DF9FF",
+        shadowColorHex = "#6C2BFF",
+        fontSize = WatermarkFontSize.Large,
+        shadowOpacity = 0.8
+    ),
+    Vlog(
+        title = "VLOG",
+        fontName = "pretendard",
+        previewTextColorHex = "#FFFFFF",
+        shadowColorHex = "#FF6B5E",
+        fontSize = WatermarkFontSize.Large,
+        shadowOpacity = 0.55
+    ),
+    Pop(
+        title = "POP",
+        fontName = "pretendard_bold",
+        previewTextColorHex = "#FFE45C",
+        shadowColorHex = "#642BFF",
+        fontSize = WatermarkFontSize.ExtraLarge,
+        shadowOpacity = 0.75
     );
 
     fun applyTo(settings: WatermarkSettings): WatermarkSettings {
         return settings.copy(
             isEnabled = true,
             fontName = fontName,
-            textColorHex = textColorHex,
+            textColorHex = previewTextColorHex,
             shadowEnabled = true,
             shadowOpacity = shadowOpacity,
             shadowColorHex = shadowColorHex,
@@ -1140,7 +1314,7 @@ private enum class CaptionStylePreset(
 
     fun matches(settings: WatermarkSettings): Boolean {
         return settings.fontName == fontName &&
-            settings.textColorHex.equals(textColorHex, ignoreCase = true) &&
+            settings.textColorHex.equals(previewTextColorHex, ignoreCase = true) &&
             settings.shadowColorHex.equals(shadowColorHex, ignoreCase = true) &&
             settings.lineSpacing == lineSpacing &&
             kotlin.math.abs(settings.lineSpacingScale - lineSpacingScale) < 0.001 &&

@@ -1190,6 +1190,11 @@ class EditorViewModel : ViewModel() {
 
         val aspectDifference = abs(lhs.sourceAspectRatio - rhs.sourceAspectRatio)
         if (aspectDifference > 0.06) return false
+        val lhsFaceCount = lhs.photoSimilarityFingerprint.getOrNull(16 * 16)
+        val rhsFaceCount = rhs.photoSimilarityFingerprint.getOrNull(16 * 16)
+        if (lhsFaceCount != null && rhsFaceCount != null && lhsFaceCount != rhsFaceCount) {
+            return false
+        }
         val lhsFingerprint = lhs.photoSimilarityFingerprint.take(16 * 16)
         val rhsFingerprint = rhs.photoSimilarityFingerprint.take(16 * 16)
         if (photoTranslatedDistance(lhsFingerprint, rhsFingerprint, subtractMean = false) > 28.0) {

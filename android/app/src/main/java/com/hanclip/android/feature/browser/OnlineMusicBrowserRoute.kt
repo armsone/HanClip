@@ -33,10 +33,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -116,121 +118,40 @@ fun OnlineMusicBrowserRoute(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 IconButton(onClick = onClose) {
                     Icon(Icons.Outlined.Close, contentDescription = "브라우저 닫기", tint = palette.text)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "음악 찾기",
-                        color = palette.text,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Text(
-                        text = "다운로드 후 음악/원본 소리에서 내 음악 파일로 적용합니다",
-                        color = palette.subText,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                OutlinedTextField(
+                    modifier = Modifier.weight(1f),
+                    value = addressText,
+                    onValueChange = { addressText = it },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { loadAddress() })
+                )
+                IconButton(onClick = ::loadAddress) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "주소 열기", tint = palette.text)
                 }
-                IconButton(
-                    enabled = canGoBack,
-                    onClick = {
-                        webView?.goBack()
-                        canGoBack = webView?.canGoBack() == true
-                        canGoForward = webView?.canGoForward() == true
+                IconButton(onClick = { webView?.reload() }) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "새로고침", tint = palette.text)
+                }
+                IconButton(onClick = {
+                    val normalized = normalizedBrowserUrl(addressText)
+                    if (!favorites.contains(normalized)) {
+                        favorites = favorites + normalized
+                        BrowserFavoritesStore.save(context, favorites)
                     }
-                ) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "이전 페이지", tint = palette.text)
+                    isFavoritePanelVisible = !isFavoritePanelVisible
+                }) {
+                    Icon(
+                        Icons.Outlined.Bookmark,
+                        contentDescription = "즐겨찾기",
+                        tint = if (favorites.contains(normalizedBrowserUrl(addressText))) palette.primary else palette.text
+                    )
                 }
-                IconButton(
-                    enabled = canGoForward,
-                    onClick = {
-                        webView?.goForward()
-                        canGoBack = webView?.canGoBack() == true
-                        canGoForward = webView?.canGoForward() == true
-                    }
-                ) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = "다음 페이지", tint = palette.text)
-                }
-            }
-
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AssistChip(
-                    onClick = {
-                        addressText = favorites.firstOrNull() ?: PixabayMusicUrl
-                        targetUrl = addressText
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                    label = { Text("첫 페이지") },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = palette.chip,
-                        labelColor = palette.text,
-                        leadingIconContentColor = palette.primary
-                    ),
-                    border = BorderStroke(1.dp, palette.border)
-                )
-                AssistChip(
-                    onClick = {
-                        isFavoritePanelVisible = !isFavoritePanelVisible
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null) },
-                    label = { Text("즐겨찾기") },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = palette.chip,
-                        labelColor = palette.text,
-                        leadingIconContentColor = palette.primary
-                    ),
-                    border = BorderStroke(1.dp, palette.border)
-                )
-                AssistChip(
-                    onClick = {
-                        val normalized = normalizedBrowserUrl(addressText)
-                        val nextFavorites = if (favorites.contains(normalized)) {
-                            favorites.filterNot { it == normalized }
-                        } else {
-                            favorites + normalized
-                        }
-                        favorites = nextFavorites
-                        BrowserFavoritesStore.save(context, nextFavorites)
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = null) },
-                    label = {
-                        Text(
-                            if (favorites.contains(normalizedBrowserUrl(addressText))) {
-                                "즐겨찾기 해제"
-                            } else {
-                                "즐겨찾기 추가"
-                            }
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = palette.panel,
-                        labelColor = palette.text,
-                        leadingIconContentColor = palette.secondary
-                    ),
-                    border = BorderStroke(1.dp, palette.border)
-                )
-                AssistChip(
-                    onClick = {
-                        BrowserFavoritesStore.share(context, favorites)
-                    },
-                    leadingIcon = { Icon(Icons.Outlined.IosShare, contentDescription = null) },
-                    label = { Text("공유") },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = palette.panel,
-                        labelColor = palette.text,
-                        leadingIconContentColor = palette.secondary
-                    ),
-                    border = BorderStroke(1.dp, palette.border)
-                )
             }
 
             if (isFavoritePanelVisible) {
@@ -269,33 +190,6 @@ fun OnlineMusicBrowserRoute(
                             )
                         }
                     }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    modifier = Modifier.weight(1f),
-                    value = addressText,
-                    onValueChange = { addressText = it },
-                    singleLine = true,
-                    label = { Text("주소 또는 검색어") },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { loadAddress() })
-                )
-                Button(
-                    modifier = Modifier.height(56.dp),
-                    onClick = ::loadAddress,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = palette.primary,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Outlined.Search, contentDescription = null)
-                    Text("이동")
                 }
             }
 

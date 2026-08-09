@@ -80,7 +80,8 @@ fun HanClipApp(
                 ).joinToString(" · "),
                 savedAtMillis = project.savedAtMillis,
                 isPinned = project.isPinned,
-                memo = project.memo
+                memo = project.memo,
+                thumbnailUriString = project.thumbnailUri?.toString()
             )
         }
     }

@@ -6,7 +6,7 @@ HanClip iOS 앱을 Android로 이식하기 위한 별도 Android Studio 프로�
 
 11단계 기본 검증 완료: 실제 Android 폰 설치와 핵심 흐름 테스트
 
-현재 Android 버전: `1.0.1` (`versionCode=380`)
+현재 Android 버전: `1.0.1` (`versionCode=388`)
 
 - Kotlin
 - Jetpack Compose

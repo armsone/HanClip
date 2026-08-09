@@ -1,6 +1,7 @@
 package com.hanclip.android.feature.home
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -412,7 +413,8 @@ data class DraftProjectSummary(
     val outputText: String,
     val savedAtMillis: Long,
     val isPinned: Boolean = false,
-    val memo: String = ""
+    val memo: String = "",
+    val thumbnailUriString: String? = null
 )
 
 private val HomePrimary = Color(0xFF0B7A4E)
@@ -1542,11 +1544,7 @@ private fun DraftProjectRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Movie,
-                contentDescription = null,
-                tint = HomePrimary
-            )
+            EditableProjectThumbnail(summary)
             Column(Modifier.weight(1f)) {
                 Text(
                     "저장된 HanClip 편집 · ${summary.presetTitle}",
@@ -1603,6 +1601,44 @@ private fun DraftProjectRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun EditableProjectThumbnail(summary: DraftProjectSummary) {
+    val cacheKey = remember(summary.projectId, summary.savedAtMillis, summary.thumbnailUriString) {
+        "editable|${summary.projectId}|${summary.savedAtMillis}|${summary.thumbnailUriString}"
+    }
+    var bitmap by remember(cacheKey) { mutableStateOf(HomeMovieFrameCache.thumbnail(cacheKey)) }
+    LaunchedEffect(cacheKey) {
+        if (bitmap != null) return@LaunchedEffect
+        bitmap = withContext(Dispatchers.IO) {
+            summary.thumbnailUriString
+                ?.let(Uri::parse)
+                ?.path
+                ?.let(BitmapFactory::decodeFile)
+                ?.scaledDownToLongEdge(160)
+        }.also { HomeMovieFrameCache.putThumbnail(cacheKey, it) }
+    }
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(Color.White),
+        contentAlignment = Alignment.Center
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } ?: Icon(
+            imageVector = Icons.Outlined.Movie,
+            contentDescription = null,
+            tint = HomePrimary
+        )
     }
 }
 

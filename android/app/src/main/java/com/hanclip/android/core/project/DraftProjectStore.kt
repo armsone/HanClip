@@ -1,6 +1,9 @@
 package com.hanclip.android.core.project
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
@@ -146,7 +149,8 @@ data class EditableProjectSummary(
     val outputQualityPreset: OutputQualityPreset,
     val savedAtMillis: Long,
     val isPinned: Boolean,
-    val memo: String
+    val memo: String,
+    val thumbnailUri: Uri?
 )
 
 enum class EditableProjectPinResult {
@@ -204,7 +208,10 @@ object EditableProjectStore {
                     outputQualityPreset = record.project.outputQualityPreset,
                     savedAtMillis = record.project.savedAtMillis,
                     isPinned = record.isPinned,
-                    memo = record.memo
+                    memo = record.memo,
+                    thumbnailUri = record.project.clips
+                        .firstOrNull { it.isRenderableClip }
+                        ?.thumbnailUri
                 )
             }
     }
@@ -349,15 +356,11 @@ object EditableProjectStore {
                     )
                 )
             }
-            val thumbnail = when {
-                clip.thumbnailUri == null -> null
-                clip.thumbnailUri == clip.sourceUri -> source
-                else -> persistProjectUri(
-                    context = context,
-                    source = clip.thumbnailUri,
-                    destination = File(directory, "thumbnail-${safeFilename(clip.id)}.jpg")
-                )
-            }
+            val thumbnail = ensureProjectThumbnail(
+                source = source,
+                mediaKind = clip.mediaKind,
+                destination = File(directory, "thumbnail-${safeFilename(clip.id)}.jpg")
+            )
             clip.copy(sourceUri = source, thumbnailUri = thumbnail)
         }
         val musicUri = project.backgroundMusicUri?.let { source ->
@@ -368,6 +371,60 @@ object EditableProjectStore {
             )
         }
         return project.copy(clips = clips, backgroundMusicUri = musicUri)
+    }
+
+    private fun ensureProjectThumbnail(
+        source: Uri,
+        mediaKind: ClipMediaKind,
+        destination: File
+    ): Uri? {
+        if (destination.isFile && destination.length() > 0L) return Uri.fromFile(destination)
+        val sourcePath = source.takeIf { it.scheme == "file" }?.path ?: return null
+        val decoded = runCatching {
+            if (mediaKind == ClipMediaKind.Video) {
+                MediaMetadataRetriever().let { retriever ->
+                    try {
+                        retriever.setDataSource(sourcePath)
+                        retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    } finally {
+                        retriever.release()
+                    }
+                }
+            } else {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(sourcePath, bounds)
+                val longest = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+                var sampleSize = 1
+                while (longest / (sampleSize * 2) >= ProjectThumbnailLongEdgePx) sampleSize *= 2
+                BitmapFactory.decodeFile(
+                    sourcePath,
+                    BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                )
+            }
+        }.getOrNull() ?: return null
+        val thumbnail = decoded.scaledToLongEdge(ProjectThumbnailLongEdgePx)
+        return runCatching {
+            destination.parentFile?.mkdirs()
+            destination.outputStream().use { output ->
+                check(thumbnail.compress(Bitmap.CompressFormat.JPEG, 84, output))
+            }
+            Uri.fromFile(destination)
+        }.getOrNull().also {
+            if (thumbnail !== decoded) thumbnail.recycle()
+            decoded.recycle()
+        }
+    }
+
+    private fun Bitmap.scaledToLongEdge(targetLongEdge: Int): Bitmap {
+        val longest = maxOf(width, height)
+        if (longest <= targetLongEdge) return this
+        val scale = targetLongEdge.toFloat() / longest.toFloat()
+        return Bitmap.createScaledBitmap(
+            this,
+            (width * scale).toInt().coerceAtLeast(1),
+            (height * scale).toInt().coerceAtLeast(1),
+            true
+        )
     }
 
     private fun persistProjectUri(context: Context, source: Uri, destination: File): Uri {
@@ -409,6 +466,8 @@ object EditableProjectStore {
             ?.takeIf { it.matches(Regex("[a-z0-9]{1,5}")) }
             ?: if (mediaKind == ClipMediaKind.Video) "mp4" else "jpg"
     }
+
+    private const val ProjectThumbnailLongEdgePx = 480
 }
 
 private data class EditableProjectRecord(

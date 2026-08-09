@@ -129,7 +129,7 @@ fun MusicSettingsSheet(
             ) {
                 Column {
                     Text(
-                        "음악/원본 소리",
+                        "음악",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = palette.text
@@ -161,6 +161,81 @@ fun MusicSettingsSheet(
                         )
                     }
                 )
+            }
+
+            BackgroundMusicSample.entries.chunked(2).forEach { rowSamples ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowSamples.forEach { sample ->
+                        SampleMusicButton(
+                            sample = sample,
+                            selected = currentSampleId == sample.id,
+                            isPreviewing = previewTarget?.id == sample.id,
+                            palette = palette,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onUseSample(sample) },
+                            onTogglePreview = {
+                                previewTarget = togglePreviewTarget(
+                                    current = previewTarget,
+                                    next = MusicPreviewTarget(
+                                        id = sample.id,
+                                        uri = sample.previewUri(context.packageName)
+                                    )
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onOpenBrowser,
+                border = BorderStroke(1.dp, palette.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = palette.chip,
+                    contentColor = palette.text
+                )
+            ) {
+                Icon(Icons.Outlined.Public, contentDescription = null)
+                Text("브라우저")
+            }
+
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onPickFile,
+                border = BorderStroke(1.dp, palette.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = palette.chip,
+                    contentColor = palette.text
+                )
+            ) {
+                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                Text("음악 파일 불러오기")
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                OutlinedButton(
+                    onClick = {},
+                    enabled = currentTitle != null,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (currentTitle != null) palette.primary else palette.chip,
+                        contentColor = Color.White
+                    )
+                ) { Text("사용") }
+                OutlinedButton(
+                    onClick = onRemove,
+                    enabled = true,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (currentTitle == null) palette.primary else palette.chip,
+                        contentColor = if (currentTitle == null) Color.White else palette.text
+                    )
+                ) { Text("안함") }
             }
 
             MusicMixSummaryPanel(
@@ -225,69 +300,11 @@ fun MusicSettingsSheet(
                 )
             }
 
-            BackgroundMusicSample.entries.forEach { sample ->
-                SampleMusicButton(
-                    sample = sample,
-                    selected = currentSampleId == sample.id,
-                    isPreviewing = previewTarget?.id == sample.id,
-                    palette = palette,
-                    onClick = { onUseSample(sample) },
-                    onTogglePreview = {
-                        previewTarget = togglePreviewTarget(
-                            current = previewTarget,
-                            next = MusicPreviewTarget(
-                                id = sample.id,
-                                uri = sample.previewUri(context.packageName)
-                            )
-                        )
-                    }
-                )
-            }
-
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onPickFile,
-                border = BorderStroke(1.dp, palette.border),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
-                    contentColor = palette.text
-                )
-            ) {
-                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-                Text("내 음악 파일 선택")
-            }
-
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onOpenBrowser,
-                border = BorderStroke(1.dp, palette.border),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = palette.panel,
-                    contentColor = palette.text
-                )
-            ) {
-                Icon(Icons.Outlined.Public, contentDescription = null)
-                Text("음악 찾기")
-            }
             Text(
-                "받은 음악은 Downloads/HanClip 폴더에서 `내 음악 파일 선택`으로 적용합니다.",
+                "받은 음악은 Downloads/HanClip 폴더에서 `음악 파일 불러오기`로 적용합니다.",
                 color = palette.subText,
                 style = MaterialTheme.typography.bodySmall
             )
-
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onRemove,
-                enabled = currentTitle != null,
-                border = BorderStroke(1.dp, Color(0xFFF0C6BC)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color(0xFFE45D42)
-                )
-            ) {
-                Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = null)
-                Text("음악 제거")
-            }
             Spacer(Modifier.height(6.dp))
         }
     }
@@ -525,12 +542,13 @@ private fun SampleMusicButton(
     selected: Boolean,
     isPreviewing: Boolean,
     palette: HanClipPalette,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onTogglePreview: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(50),
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
         color = if (selected) palette.primary else palette.chip,
         contentColor = if (selected) Color.White else palette.text
     ) {
@@ -538,14 +556,11 @@ private fun SampleMusicButton(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .height(74.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = if (selected) Icons.Outlined.LibraryMusic else Icons.Outlined.MusicNote,
-                contentDescription = null
-            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)

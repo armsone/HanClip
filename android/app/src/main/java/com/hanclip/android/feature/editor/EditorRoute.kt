@@ -94,8 +94,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,6 +112,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.hanclip.android.core.media.MediaImportReader
+import com.hanclip.android.R
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
 import com.hanclip.android.core.model.MoviePreset
@@ -270,9 +273,9 @@ fun EditorRoute(
             item {
                 Spacer(Modifier.height(18.dp))
                 EditorHeader(
-                    title = state.preset.title,
                     palette = palette,
-                    onBackHome = ::requestBackHome
+                    onBackHome = ::requestBackHome,
+                    onAddMedia = { openCalendarPicker("기본 사진첩") }
                 )
             }
             item {
@@ -301,20 +304,22 @@ fun EditorRoute(
                     palette = palette
                 )
             }
-            item {
-                ImportActionRow(
-                    palette = palette,
-                    onPickMedia = { openCalendarPicker("기본 사진첩") },
-                    onPickFiles = {
-                        galleryPicker.launch(mediaFileIntent())
-                    },
-                    onPickCalendar = { openCalendarPicker("사진첩 날짜별") },
-                    onPickVideos = { openCalendarPicker("영상만") },
-                    onAiCut = {
-                        viewModel.prepareAiCutImport()
-                        openCalendarPicker("영상만")
-                    }
-                )
+            if (state.clips.isEmpty()) {
+                item {
+                    ImportActionRow(
+                        palette = palette,
+                        onPickMedia = { openCalendarPicker("기본 사진첩") },
+                        onPickFiles = {
+                            galleryPicker.launch(mediaFileIntent())
+                        },
+                        onPickCalendar = { openCalendarPicker("사진첩 날짜별") },
+                        onPickVideos = { openCalendarPicker("영상만") },
+                        onAiCut = {
+                            viewModel.prepareAiCutImport()
+                            openCalendarPicker("영상만")
+                        }
+                    )
+                }
             }
             if (state.isImportingMedia || state.progressMessage.isNotBlank()) {
                 item {
@@ -827,31 +832,66 @@ private val HanChipSurface = Color.White
 
 @Composable
 private fun EditorHeader(
-    title: String,
     palette: HanClipPalette,
-    onBackHome: () -> Unit
+    onBackHome: () -> Unit,
+    onAddMedia: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBackHome) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "홈", tint = palette.text)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.clickable(onClick = onBackHome),
+                shape = RoundedCornerShape(34.dp),
+                color = palette.panel,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.logo_mark),
+                        contentDescription = null,
+                        modifier = Modifier.size(34.dp),
+                        contentScale = ContentScale.Fit,
+                        colorFilter = ColorFilter.tint(Color(0xFF07323A))
+                    )
+                    Text(
+                        "HanClip",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF07323A)
+                    )
+                }
             }
-            Column {
-                Text(
-                    "편집",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = palette.text
+            Surface(
+                modifier = Modifier
+                    .size(58.dp)
+                    .clickable(onClick = onAddMedia),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = palette.chip,
+                border = BorderStroke(1.dp, palette.border)
+            ) {
+                Icon(
+                    Icons.Outlined.AddPhotoAlternate,
+                    contentDescription = "미디어 추가",
+                    tint = Color(0xFF07323A),
+                    modifier = Modifier.padding(15.dp)
                 )
-                Text(title, style = MaterialTheme.typography.bodyMedium, color = palette.subText)
             }
         }
-        IconButton(onClick = onBackHome) {
-            Icon(Icons.Outlined.Close, contentDescription = "닫기", tint = palette.text)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.MovieCreation, contentDescription = null, tint = palette.secondary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("영화 제작", color = palette.subText, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -871,7 +911,8 @@ private fun SummaryPanel(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = palette.primary
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -925,14 +966,14 @@ private fun SummaryMetric(
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
-            color = Color.White.copy(alpha = 0.72f),
+            color = palette.subText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             value,
             style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
+            color = palette.text,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -950,13 +991,13 @@ private fun SummaryReadinessPill(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
-        color = Color.White.copy(alpha = if (active) 0.20f else 0.10f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (active) 0.34f else 0.16f))
+        color = if (active) palette.primary.copy(alpha = 0.10f) else palette.panel,
+        border = BorderStroke(1.dp, if (active) palette.primary.copy(alpha = 0.28f) else palette.border)
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-            color = Color.White.copy(alpha = if (active) 0.96f else 0.72f),
+            color = if (active) palette.primary else palette.subText,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1,

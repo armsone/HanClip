@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.ImageDecoder
+import android.media.FaceDetector
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -79,21 +80,24 @@ object MediaImportReader {
         val bitmap = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val source = ImageDecoder.createSource(context.contentResolver, uri)
-                ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
                     decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    decoder.setTargetSize(16, 16)
+                    val sourceWidth = info.size.width.coerceAtLeast(1)
+                    val sourceHeight = info.size.height.coerceAtLeast(1)
+                    val scale = min(1.0, 512.0 / max(sourceWidth, sourceHeight).toDouble())
+                    decoder.setTargetSize(
+                        (sourceWidth * scale).toInt().coerceAtLeast(2),
+                        (sourceHeight * scale).toInt().coerceAtLeast(2)
+                    )
                 }
             } else {
                 context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
             }
         }.getOrNull() ?: return emptyList()
 
-        val scaled = if (bitmap.width == 16 && bitmap.height == 16) {
-            bitmap
-        } else {
-            Bitmap.createScaledBitmap(bitmap, 16, 16, true)
-        }
-        val fingerprint = buildList(16 * 16) {
+        val faceCount = detectFaceCount(bitmap)
+        val scaled = Bitmap.createScaledBitmap(bitmap, 16, 16, true)
+        val fingerprint = buildList(16 * 16 + 1) {
             for (y in 0 until 16) {
                 for (x in 0 until 16) {
                     val pixel = scaled.getPixel(x, y)
@@ -105,10 +109,37 @@ object MediaImportReader {
                     add(luminance)
                 }
             }
+            add(faceCount.coerceIn(0, 255))
         }
-        if (scaled !== bitmap) scaled.recycle()
+        scaled.recycle()
         bitmap.recycle()
         return fingerprint
+    }
+
+    private fun detectFaceCount(source: Bitmap): Int {
+        val scale = min(1.0, 512.0 / max(source.width, source.height).coerceAtLeast(1).toDouble())
+        fun even(value: Int): Int {
+            val safe = value.coerceAtLeast(2)
+            return if (safe % 2 == 0) safe else safe - 1
+        }
+        val width = even((source.width * scale).toInt())
+        val height = even((source.height * scale).toInt())
+        val sized = if (source.width == width && source.height == height) {
+            source
+        } else {
+            Bitmap.createScaledBitmap(source, width, height, true)
+        }
+        val rgb565 = sized.copy(Bitmap.Config.RGB_565, false) ?: run {
+            if (sized !== source) sized.recycle()
+            return 0
+        }
+        val faces = arrayOfNulls<FaceDetector.Face>(20)
+        val count = runCatching {
+            FaceDetector(rgb565.width, rgb565.height, faces.size).findFaces(rgb565, faces)
+        }.getOrDefault(0)
+        rgb565.recycle()
+        if (sized !== source) sized.recycle()
+        return count
     }
 
     private fun readSourceCreatedAtMillis(context: Context, uri: Uri): Long? {

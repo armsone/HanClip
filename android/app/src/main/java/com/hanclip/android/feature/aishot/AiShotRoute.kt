@@ -38,12 +38,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Cameraswitch
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.SettingsVoice
@@ -54,7 +55,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -446,38 +446,17 @@ fun AiShotRoute(
         }
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (hasPermissions) {
-            AndroidView(
-                factory = { viewContext ->
-                    PreviewView(viewContext).apply {
-                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                        scaleType = PreviewView.ScaleType.FILL_CENTER
-                        previewView = this
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            PermissionPanel(
-                onRequest = {
-                    permissionLauncher.launch(
-                        arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-                    )
-                }
-            )
-        }
-
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 18.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             AiShotTopBar(
                 statusText = statusText,
@@ -489,46 +468,86 @@ fun AiShotRoute(
                 level = level,
                 sensitivity = sensitivity,
                 onSensitivityChange = { sensitivity = it },
-                shotLength = shotLength,
-                savedCount = savedCount,
                 isRecording = recording != null,
                 recordingRemainingSeconds = recordingRemainingSeconds,
-                activeRecordingSeconds = activeRecordingSeconds,
-                onOpenEditor = onOpenEditor
+                activeRecordingSeconds = activeRecordingSeconds
             )
         }
 
-        AiShotFloatingControls(
+        Box(modifier = Modifier.weight(1f)) {
+            if (hasPermissions) {
+                AndroidView(
+                    factory = { viewContext ->
+                        PreviewView(viewContext).apply {
+                            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                            previewView = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                PermissionPanel(
+                    onRequest = {
+                        permissionLauncher.launch(
+                            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                        )
+                    }
+                )
+            }
+            shotLengthNotice?.let { notice ->
+                ShotLengthNoticePanel(
+                    shotLength = notice,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+
+        Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 330.dp),
-            shotLength = shotLength,
-            onShotLengthTap = ::selectNextShotLength,
-            zoomPreset = zoomPreset,
-            onZoomPresetChange = { zoomPreset = it },
-            lensLabel = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "전면" else "후면",
-            isRecording = recording != null,
-            onManualRecord = {
-                if (recording == null) {
-                    startClip("수동 클립 저장 중")
-                } else {
-                    recording?.stop()
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AiShotFloatingControls(
+                shotLength = shotLength,
+                onShotLengthTap = ::selectNextShotLength,
+                zoomPreset = zoomPreset,
+                onZoomPresetChange = { zoomPreset = it },
+                lensLabel = if (lensFacing == CameraSelector.LENS_FACING_FRONT) "전면" else "후면",
+                isRecording = recording != null,
+                onManualRecord = {
+                    if (recording == null) {
+                        startClip("수동 클립 저장 중")
+                    } else {
+                        recording?.stop()
+                    }
+                },
+                onSwitchCamera = {
+                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                        CameraSelector.LENS_FACING_FRONT
+                    } else {
+                        CameraSelector.LENS_FACING_BACK
+                    }
                 }
-            },
-            onSwitchCamera = {
-                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                    CameraSelector.LENS_FACING_FRONT
-                } else {
-                    CameraSelector.LENS_FACING_BACK
+            )
+            if (savedCount > 0) {
+                Button(
+                    onClick = onOpenEditor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(999.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF07323A),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("저장한 ${savedCount}개 클립 편집", fontWeight = FontWeight.Bold)
                 }
             }
-        )
-
-        shotLengthNotice?.let { notice ->
-            ShotLengthNoticePanel(
-                shotLength = notice,
-                modifier = Modifier.align(Alignment.Center)
-            )
         }
     }
 }
@@ -544,22 +563,36 @@ private fun AiShotTopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "닫기", tint = Color.White)
-        }
         Surface(
-            color = Color.Black.copy(alpha = 0.52f),
-            shape = RoundedCornerShape(8.dp)
+            color = Color(0xFF4A1719),
+            shape = RoundedCornerShape(999.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE6525F).copy(alpha = 0.68f))
         ) {
-            Column(
+            Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                Text("AiShot", color = Color.White, fontWeight = FontWeight.Bold)
-                Text("$statusText · ${savedCount}개", color = Color.White.copy(alpha = 0.84f))
+                Icon(Icons.Outlined.Timer, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text("$statusText · ${savedCount}개", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
-        Spacer(Modifier.size(48.dp))
+        Surface(
+            modifier = Modifier.height(42.dp),
+            color = Color.Transparent,
+            shape = RoundedCornerShape(999.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE6525F).copy(alpha = 0.68f)),
+            onClick = onClose
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Icon(Icons.Outlined.Close, contentDescription = null, tint = Color(0xFFE6525F), modifier = Modifier.size(19.dp))
+                Text("닫기", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
@@ -568,12 +601,9 @@ private fun AiShotBottomPanel(
     level: Double,
     sensitivity: ShotSensitivity,
     onSensitivityChange: (ShotSensitivity) -> Unit,
-    shotLength: ShotLength,
-    savedCount: Int,
     isRecording: Boolean,
     recordingRemainingSeconds: Long,
-    activeRecordingSeconds: Long,
-    onOpenEditor: () -> Unit
+    activeRecordingSeconds: Long
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -616,33 +646,13 @@ private fun AiShotBottomPanel(
                     )
                 }
             }
-            AiShotModelInfoRow()
             if (isRecording) {
                 RecordingProgress(
                     remainingSeconds = recordingRemainingSeconds,
                     totalSeconds = activeRecordingSeconds
                 )
             } else {
-                Text(
-                    text = "타격음이 감지되면 ${shotLength.totalDurationDescription} 클립으로 저장합니다. ${shotLength.timingDescription}",
-                    color = Color.White.copy(alpha = 0.72f),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            if (savedCount > 0) {
-                Button(
-                    onClick = onOpenEditor,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(999.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF0B7A4E)
-                    )
-                ) {
-                    Text("HanClip 편집으로", fontWeight = FontWeight.Bold)
-                }
+                Text("감지 중", color = Color(0xFFFFB432), fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -962,14 +972,14 @@ private fun DarkFilterChip(
         colors = FilterChipDefaults.filterChipColors(
             containerColor = Color.Black.copy(alpha = 0.36f),
             labelColor = Color.White,
-            selectedContainerColor = Color.White,
-            selectedLabelColor = Color(0xFF0B7A4E)
+            selectedContainerColor = Color(0xFF0D7778),
+            selectedLabelColor = Color.White
         ),
         border = FilterChipDefaults.filterChipBorder(
             enabled = true,
             selected = selected,
             borderColor = Color.White.copy(alpha = 0.24f),
-            selectedBorderColor = Color.White
+            selectedBorderColor = Color(0xFF6BA5A7)
         )
     )
 }
