@@ -81,7 +81,9 @@ fun HanClipApp(
                 savedAtMillis = project.savedAtMillis,
                 isPinned = project.isPinned,
                 memo = project.memo,
-                thumbnailUriString = project.thumbnailUri?.toString()
+                thumbnailUriString = project.thumbnailUri?.toString(),
+                thumbnailUriStrings = project.thumbnailUris.map(Uri::toString),
+                displayByteCount = project.displayByteCount
             )
         }
     }

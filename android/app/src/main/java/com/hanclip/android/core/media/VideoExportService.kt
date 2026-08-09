@@ -27,6 +27,7 @@ import androidx.media3.common.audio.GainProcessor
 import androidx.media3.common.util.UnstableApi
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
+import com.hanclip.android.core.model.LivePhotoMode
 import com.hanclip.android.core.model.WatermarkSettings
 import com.hanclip.android.core.project.ImportedFontStore
 import androidx.media3.effect.OverlayEffect
@@ -201,10 +202,18 @@ class Media3TransformerExportService(
     }
 
     private fun mediaItemForClip(clip: ClipItem): MediaItem {
+        val usesMotion = clip.mediaKind == ClipMediaKind.LivePhoto &&
+            clip.livePhotoMode == LivePhotoMode.Motion
         val builder = MediaItem.Builder()
-            .setUri(clip.sourceUri)
+            .setUri(
+                if (clip.mediaKind == ClipMediaKind.LivePhoto && !usesMotion) {
+                    clip.livePhotoStillUri ?: clip.thumbnailUri ?: clip.sourceUri
+                } else {
+                    clip.sourceUri
+                }
+            )
 
-        if (clip.mediaKind == ClipMediaKind.Video) {
+        if (clip.mediaKind == ClipMediaKind.Video || usesMotion) {
             val startMs = (clip.trimStartSeconds * 1000).toLong().coerceAtLeast(0)
             val endMs = ((clip.trimStartSeconds + clip.durationSeconds) * 1000).toLong()
                 .coerceAtLeast(startMs + 100)

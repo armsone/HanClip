@@ -10,6 +10,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Flight
@@ -50,6 +53,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -414,7 +419,9 @@ data class DraftProjectSummary(
     val savedAtMillis: Long,
     val isPinned: Boolean = false,
     val memo: String = "",
-    val thumbnailUriString: String? = null
+    val thumbnailUriString: String? = null,
+    val thumbnailUriStrings: List<String> = emptyList(),
+    val displayByteCount: Long = 0L
 )
 
 private val HomePrimary = Color(0xFF0B7A4E)
@@ -933,7 +940,7 @@ private fun SharedInboxBanner(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = palette.chip,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, palette.border),
         tonalElevation = 0.dp
     ) {
@@ -1148,8 +1155,8 @@ private fun LazyListScope.savedProjectItems(
     onToggleExportedMoviePin: (ExportedMovieSummary) -> Unit,
     onEditExportedMovieMemo: (ExportedMovieSummary) -> Unit
 ) {
-    val aiShotSummaries = summaries.filter { it.title == MoviePreset.AiShot.title }
-    val standardSummaries = summaries.filterNot { it.title == MoviePreset.AiShot.title }
+    val aiShotProjects = editableProjectSummaries.filter { it.preset == MoviePreset.AiShot }
+    val standardProjects = editableProjectSummaries.filterNot { it.preset == MoviePreset.AiShot }
     item(
         key = "saved-project-header",
         contentType = "saved-project-header"
@@ -1159,62 +1166,47 @@ private fun LazyListScope.savedProjectItems(
             onOpenProject = onOpenProject
         )
     }
+    item(key = "aishot-category-header", contentType = "saved-category-header") {
+        SavedProjectCategoryHeader(title = "AiShot", count = aiShotProjects.size, icon = null)
+    }
+    item(key = "aishot-project-grid", contentType = "aishot-project-grid") {
+        AiShotProjectGrid(
+            summaries = aiShotProjects,
+            onOpenProject = onOpenEditableProject,
+            onRemoveProject = onRemoveEditableProject,
+            onTogglePin = onToggleEditableProjectPin,
+            onEditMemo = onEditEditableProjectMemo
+        )
+    }
+    item(key = "standard-category-header", contentType = "saved-category-header") {
+        SavedProjectCategoryHeader(title = "일반 영화", count = standardProjects.size, icon = Icons.Outlined.Movie)
+    }
     items(
-        items = editableProjectSummaries,
+        items = standardProjects,
         key = { "editable-project:${it.projectId}" },
         contentType = { "editable-project" }
     ) { project ->
-            DraftProjectRow(
-                summary = project,
-                onClick = { onOpenEditableProject(project) },
-                onRemove = { onRemoveEditableProject(project) },
-                onTogglePin = { onToggleEditableProjectPin(project) },
-                onEditMemo = { onEditEditableProjectMemo(project) }
-            )
+        DraftProjectRow(
+            summary = project,
+            onClick = { onOpenEditableProject(project) },
+            onRemove = { onRemoveEditableProject(project) },
+            onTogglePin = { onToggleEditableProjectPin(project) },
+            onEditMemo = { onEditEditableProjectMemo(project) }
+        )
     }
-    if (summaries.isEmpty() && editableProjectSummaries.isEmpty()) {
-        item(
-            key = "empty-saved-project",
-            contentType = "empty-saved-project"
-        ) {
-            EmptySavedProjectRow()
-        }
-    } else {
-        item(
-            key = "aishot-category-header",
-            contentType = "saved-category-header"
-        ) {
-            SavedProjectCategoryHeader(
-                title = "AiShot",
-                count = aiShotSummaries.size,
-                icon = null
-            )
-        }
-        item(
-            key = "aishot-movie-grid",
-            contentType = "aishot-movie-grid"
-        ) {
-            AiShotMovieGrid(
-                summaries = aiShotSummaries,
-                recentlySavedMovieUriString = recentlySavedMovieUriString,
-                onOpenExportedMovie = onOpenExportedMovie,
-                onRemoveExportedMovie = onRemoveExportedMovie,
-                onToggleExportedMoviePin = onToggleExportedMoviePin,
-                onEditExportedMovieMemo = onEditExportedMovieMemo
-            )
-        }
-        item(
-            key = "standard-category-header",
-            contentType = "saved-category-header"
-        ) {
-            SavedProjectCategoryHeader(
-                title = "일반 완성본",
-                count = standardSummaries.size,
-                icon = Icons.Outlined.Movie
-            )
+    items(
+        count = (HomeSavedMovieSlotCount - 2 - standardProjects.size).coerceAtLeast(0),
+        key = { index -> "empty-standard-project:$index" },
+        contentType = { "empty-standard-project" }
+    ) {
+        EmptyStandardMovieRow()
+    }
+    if (summaries.isNotEmpty()) {
+        item(key = "completed-mp4-header", contentType = "saved-category-header") {
+            SavedProjectCategoryHeader(title = "완성 MP4", count = summaries.size, icon = Icons.Outlined.Movie)
         }
         items(
-            items = standardSummaries,
+            items = summaries,
             key = { summary -> "saved-movie:${summary.uriString}" },
             contentType = { "saved-movie" }
         ) { summary ->
@@ -1226,13 +1218,6 @@ private fun LazyListScope.savedProjectItems(
                 onTogglePin = { onToggleExportedMoviePin(summary) },
                 onEditMemo = { onEditExportedMovieMemo(summary) }
             )
-        }
-        items(
-            count = (HomeSavedMovieSlotCount - summaries.size).coerceAtLeast(0),
-            key = { index -> "empty-standard-movie:$index" },
-            contentType = { "empty-standard-movie" }
-        ) {
-            EmptyStandardMovieRow()
         }
     }
 }
@@ -1294,6 +1279,101 @@ private fun AiShotMovieGrid(
 }
 
 @Composable
+private fun AiShotProjectGrid(
+    summaries: List<DraftProjectSummary>,
+    onOpenProject: (DraftProjectSummary) -> Unit,
+    onRemoveProject: (DraftProjectSummary) -> Unit,
+    onTogglePin: (DraftProjectSummary) -> Unit,
+    onEditMemo: (DraftProjectSummary) -> Unit
+) {
+    val cells = summaries.take(2).map { it as DraftProjectSummary? } +
+        List((2 - summaries.size).coerceAtLeast(0)) { null }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        cells.forEach { summary ->
+            if (summary == null) {
+                EmptyAiShotMovieCard(Modifier.weight(1f))
+            } else {
+                AiShotProjectCard(
+                    summary = summary,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onOpenProject(summary) },
+                    onRemove = { onRemoveProject(summary) },
+                    onTogglePin = { onTogglePin(summary) },
+                    onEditMemo = { onEditMemo(summary) }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AiShotProjectCard(
+    summary: DraftProjectSummary,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+    onTogglePin: () -> Unit,
+    onEditMemo: () -> Unit
+) {
+    var showActions by remember { mutableStateOf(false) }
+    Surface(
+        modifier = modifier
+            .height(88.dp)
+            .combinedClickable(onClick = onClick, onLongClick = { showActions = true }),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, HomeBorder)
+    ) {
+        Box {
+            Row(
+                modifier = Modifier.padding(9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                EditableProjectThumbnail(summary, Modifier.size(52.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        homeAiShotDateText(summary.savedAtMillis),
+                        color = HomeText,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        editableProjectDetailText(summary, includeByteCount = false),
+                        color = HomeSubText,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    EditableProjectThumbnailStrip(summary, maxFrames = 2, frameWidth = 24, frameHeight = 20)
+                }
+            }
+            DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (summary.memo.isBlank()) "메모 추가" else "메모 편집") },
+                    onClick = { showActions = false; onEditMemo() },
+                    leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (summary.isPinned) "핀 해제" else "핀 고정") },
+                    onClick = { showActions = false; onTogglePin() },
+                    leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("프로젝트 삭제") },
+                    onClick = { showActions = false; onRemove() },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun AiShotMovieCard(
     summary: ExportedMovieSummary,
     isRecentlySaved: Boolean,
@@ -1303,10 +1383,14 @@ private fun AiShotMovieCard(
     onTogglePin: () -> Unit,
     onEditMemo: () -> Unit
 ) {
+    var showActions by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier
-            .height(96.dp)
-            .clickable(onClick = onClick),
+            .height(88.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { showActions = true }
+            ),
         shape = RoundedCornerShape(16.dp),
         color = Color.White,
         border = BorderStroke(
@@ -1314,26 +1398,27 @@ private fun AiShotMovieCard(
             color = if (isRecentlySaved) HomePrimary.copy(alpha = 0.52f) else HomeBorder
         )
     ) {
-        Row(
-            modifier = Modifier.padding(9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ExportedMovieThumbnail(
-                summary = summary,
-                displayLongEdgeDp = 58,
-                modifier = Modifier.size(width = 58.dp, height = 58.dp)
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+        Box {
+            Row(
+                modifier = Modifier.padding(9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                ExportedMovieThumbnail(
+                    summary = summary,
+                    displayLongEdgeDp = 64,
+                    modifier = Modifier.size(64.dp)
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        homeProjectDateText(summary.updatedAtMillis),
+                        homeAiShotDateText(summary.updatedAtMillis),
                         modifier = Modifier.weight(1f, fill = false),
                         color = HomeText,
                         fontWeight = FontWeight.Bold,
@@ -1349,7 +1434,7 @@ private fun AiShotMovieCard(
                     }
                 }
                 Text(
-                    savedMovieDetailText(summary),
+                    compactSavedMovieDetailText(summary, includeByteCount = false),
                     color = HomeSubText,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
@@ -1357,37 +1442,29 @@ private fun AiShotMovieCard(
                 )
                 ExportedMovieThumbnailStrip(
                     summary = summary,
-                    maxFrames = 3,
-                    frameWidth = 18,
-                    frameHeight = 16,
-                    rowHeight = 18
+                    maxFrames = 2,
+                    frameWidth = 24,
+                    frameHeight = 20,
+                    rowHeight = 20
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    MiniAiShotAction(onClick = onEditMemo) {
-                        Icon(
-                            imageVector = Icons.Outlined.TextFields,
-                            contentDescription = if (summary.memo.isBlank()) "메모 추가" else "메모 편집",
-                            tint = if (summary.memo.isBlank()) HomeSubText else HomePrimary,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
-                    MiniAiShotAction(onClick = onTogglePin) {
-                        Icon(
-                            imageVector = Icons.Outlined.PushPin,
-                            contentDescription = if (summary.isPinned) "핀 해제" else "핀 고정",
-                            tint = if (summary.isPinned) HomePrimary else HomeSubText,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
-                    MiniAiShotAction(onClick = onRemove) {
-                        Icon(
-                            imageVector = Icons.Outlined.Delete,
-                            contentDescription = "목록에서 제거",
-                            tint = Color(0xFF9A4637),
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
                 }
+            }
+            DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (summary.memo.isBlank()) "메모 추가" else "메모 편집") },
+                    onClick = { showActions = false; onEditMemo() },
+                    leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (summary.isPinned) "핀 해제" else "핀 고정") },
+                    onClick = { showActions = false; onTogglePin() },
+                    leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("목록에서 제거") },
+                    onClick = { showActions = false; onRemove() },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) }
+                )
             }
         }
     }
@@ -1397,7 +1474,7 @@ private fun AiShotMovieCard(
 private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
     val placeholder = HomePrimary.copy(alpha = 0.10f)
     Surface(
-        modifier = modifier.height(96.dp),
+        modifier = modifier.height(88.dp),
         shape = RoundedCornerShape(16.dp),
         color = Color.White.copy(alpha = 0.72f),
         border = BorderStroke(1.dp, HomeBorder.copy(alpha = 0.72f))
@@ -1409,7 +1486,7 @@ private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(width = 58.dp, height = 58.dp)
+                    .size(52.dp)
                     .clip(RoundedCornerShape(11.dp))
                     .background(placeholder)
             )
@@ -1429,7 +1506,7 @@ private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
                         .fillMaxWidth(0.56f)
                         .height(8.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(placeholder.copy(alpha = 0.72f))
+                        .background(HomePrimary.copy(alpha = 0.07f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     repeat(3) {
@@ -1437,7 +1514,7 @@ private fun EmptyAiShotMovieCard(modifier: Modifier = Modifier) {
                             modifier = Modifier
                                 .size(width = 20.dp, height = 18.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(placeholder.copy(alpha = 0.60f))
+                                .background(HomePrimary.copy(alpha = 0.06f))
                         )
                     }
                 }
@@ -1505,7 +1582,7 @@ private fun SavedProjectCategoryHeader(
             text = title,
             color = HomeText,
             fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.bodyMedium
+            style = MaterialTheme.typography.titleMedium
         )
         Surface(
             shape = CircleShape,
@@ -1523,6 +1600,7 @@ private fun SavedProjectCategoryHeader(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DraftProjectRow(
     summary: DraftProjectSummary,
@@ -1534,47 +1612,40 @@ private fun DraftProjectRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFEAF5F0),
+            .combinedClickable(onClick = onClick, onLongClick = onRemove),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
         border = BorderStroke(1.dp, HomeBorder)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            EditableProjectThumbnail(summary)
-            Column(Modifier.weight(1f)) {
+            EditableProjectThumbnail(summary, Modifier.size(56.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    "저장된 HanClip 편집 · ${summary.presetTitle}",
-                    fontWeight = FontWeight.SemiBold,
-                    color = HomeText
+                    homeProjectDateText(summary.savedAtMillis),
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = HomeText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    draftSummaryText(summary),
+                    editableProjectDetailText(summary, includeByteCount = true),
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (summary.memo.isNotBlank()) {
-                    Text(summary.memo, color = HomePrimary, style = MaterialTheme.typography.bodySmall)
-                }
-                Row(
-                    modifier = Modifier.padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    DraftInfoPill("자동 저장")
-                    DraftInfoPill("${summary.clipCount}개")
-                    DraftInfoPill(movieDurationText(summary.totalDurationSeconds))
-                }
+                EditableProjectThumbnailStrip(summary, maxFrames = 8, frameWidth = 18, frameHeight = 18)
             }
             CompactSavedMovieIconButton(
                 onClick = onEditMemo
             ) {
                 Icon(
-                    Icons.Outlined.TextFields,
+                    Icons.Outlined.Edit,
                     contentDescription = if (summary.memo.isBlank()) "메모 추가" else "메모 편집",
                     tint = HomeSubText,
                     modifier = Modifier.size(18.dp)
@@ -1590,22 +1661,15 @@ private fun DraftProjectRow(
                     modifier = Modifier.size(18.dp)
                 )
             }
-            CompactSavedMovieIconButton(
-                onClick = onRemove
-            ) {
-                Icon(
-                    Icons.Outlined.Delete,
-                    contentDescription = "프로젝트 제거",
-                    tint = Color(0xFFE45D42),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
     }
 }
 
 @Composable
-private fun EditableProjectThumbnail(summary: DraftProjectSummary) {
+private fun EditableProjectThumbnail(
+    summary: DraftProjectSummary,
+    modifier: Modifier = Modifier.size(54.dp)
+) {
     val cacheKey = remember(summary.projectId, summary.savedAtMillis, summary.thumbnailUriString) {
         "editable|${summary.projectId}|${summary.savedAtMillis}|${summary.thumbnailUriString}"
     }
@@ -1621,8 +1685,7 @@ private fun EditableProjectThumbnail(summary: DraftProjectSummary) {
         }.also { HomeMovieFrameCache.putThumbnail(cacheKey, it) }
     }
     Box(
-        modifier = Modifier
-            .size(54.dp)
+        modifier = modifier
             .clip(RoundedCornerShape(7.dp))
             .background(Color.White),
         contentAlignment = Alignment.Center
@@ -1639,6 +1702,60 @@ private fun EditableProjectThumbnail(summary: DraftProjectSummary) {
             contentDescription = null,
             tint = HomePrimary
         )
+    }
+}
+
+@Composable
+private fun EditableProjectThumbnailStrip(
+    summary: DraftProjectSummary,
+    maxFrames: Int,
+    frameWidth: Int,
+    frameHeight: Int
+) {
+    val frameUris = summary.thumbnailUriStrings.drop(1).take(maxFrames)
+    if (frameUris.isEmpty()) return
+    Row(
+        modifier = Modifier.height(frameHeight.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        frameUris.forEach { uriString ->
+            EditableProjectFrame(uriString, Modifier.size(frameWidth.dp, frameHeight.dp))
+        }
+        if (summary.clipCount > frameUris.size + 1) {
+            Text(
+                "·",
+                color = HomeSubText,
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditableProjectFrame(uriString: String, modifier: Modifier) {
+    val cacheKey = remember(uriString) { "editable-frame|$uriString" }
+    var bitmap by remember(cacheKey) { mutableStateOf(HomeMovieFrameCache.thumbnail(cacheKey)) }
+    LaunchedEffect(cacheKey) {
+        if (bitmap != null) return@LaunchedEffect
+        bitmap = withContext(Dispatchers.IO) {
+            Uri.parse(uriString).path?.let(BitmapFactory::decodeFile)?.scaledDownToLongEdge(96)
+        }.also { HomeMovieFrameCache.putThumbnail(cacheKey, it) }
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(HomePrimary.copy(alpha = 0.10f))
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
     }
 }
 
@@ -1665,16 +1782,27 @@ private fun draftSummaryText(summary: DraftProjectSummary): String {
     return "${homeProjectDateText(summary.savedAtMillis)} 저장 · 완성본 만들기 전 상태 보관 · 사진/영상, 순서, 자막, 음악 · ${summary.outputText}"
 }
 
+private fun editableProjectDetailText(
+    summary: DraftProjectSummary,
+    includeByteCount: Boolean
+): String {
+    return buildList {
+        add("클립 ${summary.clipCount}개")
+        add(movieDurationText(summary.totalDurationSeconds))
+        if (includeByteCount && summary.displayByteCount > 0L) add(fileSizeText(summary.displayByteCount))
+    }.joinToString(" · ")
+}
+
 @Composable
 private fun EmptySavedProjectRow() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.White,
         border = BorderStroke(1.dp, HomeBorder)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -1700,19 +1828,19 @@ private fun EmptyStandardMovieRow() {
     val placeholder = HomePrimary.copy(alpha = 0.10f)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.White.copy(alpha = 0.72f),
         border = BorderStroke(1.dp, HomeBorder.copy(alpha = 0.72f))
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(width = 88.dp, height = 54.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(11.dp))
                     .background(placeholder)
             )
             Column(
@@ -1729,35 +1857,36 @@ private fun EmptyStandardMovieRow() {
                     modifier = Modifier
                         .size(width = 154.dp, height = 10.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(placeholder.copy(alpha = 0.78f))
+                        .background(HomePrimary.copy(alpha = 0.08f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     repeat(3) {
                         Box(
                             modifier = Modifier
-                                .size(width = 22.dp, height = 14.dp)
+                                .size(width = 18.dp, height = 18.dp)
                                 .clip(RoundedCornerShape(3.dp))
-                                .background(placeholder.copy(alpha = 0.68f))
+                                .background(HomePrimary.copy(alpha = 0.07f))
                         )
                     }
                 }
             }
             Icon(
-                imageVector = Icons.Outlined.TextFields,
+                imageVector = Icons.Outlined.Edit,
                 contentDescription = null,
                 tint = HomeSubText.copy(alpha = 0.28f),
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(22.dp)
             )
             Icon(
                 imageVector = Icons.Outlined.PushPin,
                 contentDescription = null,
                 tint = HomeSubText.copy(alpha = 0.26f),
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SavedProjectRow(
     summary: ExportedMovieSummary,
@@ -1770,7 +1899,7 @@ private fun SavedProjectRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onRemove),
         shape = RoundedCornerShape(8.dp),
         color = Color.White,
         border = BorderStroke(
@@ -1779,11 +1908,15 @@ private fun SavedProjectRow(
         )
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ExportedMovieThumbnail(summary)
+            ExportedMovieThumbnail(
+                summary = summary,
+                displayLongEdgeDp = 64,
+                modifier = Modifier.size(64.dp)
+            )
             Column(Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1792,7 +1925,8 @@ private fun SavedProjectRow(
                     Text(
                         homeProjectDateText(summary.updatedAtMillis),
                         modifier = Modifier.weight(1f, fill = false),
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
                         color = HomeText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1805,13 +1939,19 @@ private fun SavedProjectRow(
                     }
                 }
                 Text(
-                    savedMovieDetailText(summary),
+                    compactSavedMovieDetailText(summary, includeByteCount = true),
                     style = MaterialTheme.typography.bodySmall,
                     color = HomeSubText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                ExportedMovieThumbnailStrip(summary)
+                ExportedMovieThumbnailStrip(
+                    summary = summary,
+                    maxFrames = 8,
+                    frameWidth = 18,
+                    frameHeight = 18,
+                    rowHeight = 19
+                )
                 if (summary.memo.isNotBlank()) {
                     Text(
                         summary.memo,
@@ -1833,7 +1973,7 @@ private fun SavedProjectRow(
             }
             CompactSavedMovieIconButton(onClick = onEditMemo) {
                 Icon(
-                    imageVector = Icons.Outlined.TextFields,
+                    imageVector = Icons.Outlined.Edit,
                     contentDescription = if (summary.memo.isBlank()) "메모 추가" else "메모 편집",
                     tint = if (summary.memo.isBlank()) HomeSubText else HomePrimary,
                     modifier = Modifier.size(19.dp)
@@ -1844,14 +1984,6 @@ private fun SavedProjectRow(
                     imageVector = Icons.Outlined.PushPin,
                     contentDescription = if (summary.isPinned) "핀 해제" else "핀 고정",
                     tint = if (summary.isPinned) HomePrimary else HomeSubText,
-                    modifier = Modifier.size(19.dp)
-                )
-            }
-            CompactSavedMovieIconButton(onClick = onRemove) {
-                Icon(
-                    imageVector = Icons.Outlined.Delete,
-                    contentDescription = "목록에서 제거",
-                    tint = Color(0xFF9A4637),
                     modifier = Modifier.size(19.dp)
                 )
             }
@@ -1866,17 +1998,9 @@ private fun CompactSavedMovieIconButton(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier.size(38.dp)
+        modifier = Modifier.size(32.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF3F8F6)),
-            contentAlignment = Alignment.Center
-        ) {
-            icon()
-        }
+        icon()
     }
 }
 
@@ -2088,7 +2212,34 @@ private fun ExportedMovieThumbnailStrip(
 
 private fun homeProjectDateText(updatedAtMillis: Long): String {
     if (updatedAtMillis <= 0L) return "방금"
-    return SimpleDateFormat("M.d HH:mm", Locale.KOREAN).format(Date(updatedAtMillis))
+    return SimpleDateFormat("M월 d일 a h:mm", Locale.KOREAN).format(Date(updatedAtMillis))
+}
+
+private fun homeAiShotDateText(updatedAtMillis: Long): String {
+    if (updatedAtMillis <= 0L) return "방금"
+    return SimpleDateFormat("M/d a h:mm", Locale.KOREAN).format(Date(updatedAtMillis))
+}
+
+private fun compactSavedMovieDetailText(
+    summary: ExportedMovieSummary,
+    includeByteCount: Boolean
+): String {
+    return buildList {
+        add("클립 ${summary.clipCount}개")
+        add(movieDurationText(summary.totalDurationSeconds))
+        if (includeByteCount && summary.byteCount > 0L) {
+            add(fileSizeText(summary.byteCount))
+        }
+    }.joinToString(" · ")
+}
+
+private fun fileSizeText(byteCount: Long): String {
+    val megabytes = byteCount.coerceAtLeast(0L) / (1024.0 * 1024.0)
+    return when {
+        megabytes < 0.1 -> "${(byteCount / 1024.0).coerceAtLeast(0.0).roundToInt()} KB"
+        megabytes < 10.0 -> "%.1f MB".format(megabytes)
+        else -> "%.0f MB".format(megabytes)
+    }
 }
 
 private fun savedMovieDetailText(summary: ExportedMovieSummary): String {

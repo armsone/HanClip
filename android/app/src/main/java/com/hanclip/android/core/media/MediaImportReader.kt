@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
+import com.hanclip.android.core.model.LivePhotoMode
 import com.hanclip.android.core.model.VideoSegmentMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -44,6 +45,11 @@ object MediaImportReader {
         }
         val sourceCreatedAtMillis = readSourceCreatedAtMillis(context, uri)
         val localSourceUri = persistWorkingMedia(context, uri, mimeType)
+        val motionPhoto = if (isImage) {
+            extractMotionPhoto(localSourceUri)
+        } else {
+            null
+        }
         val photoFingerprint = if (isImage) {
             makePhotoSimilarityFingerprint(context, localSourceUri)
         } else {
@@ -54,12 +60,20 @@ object MediaImportReader {
 
         ClipItem(
             id = UUID.randomUUID().toString(),
-            sourceUri = localSourceUri,
+            sourceUri = motionPhoto?.videoUri ?: localSourceUri,
             thumbnailUri = localSourceUri,
             durationSeconds = max(0.1, selectedDuration),
             photoDurationSeconds = defaultDurationSeconds,
-            mediaKind = if (isVideo) ClipMediaKind.Video else ClipMediaKind.Photo,
-            sourceDurationSeconds = sourceDuration,
+            livePhotoDurationSeconds = motionPhoto?.durationSeconds,
+            livePhotoStillUri = localSourceUri.takeIf { motionPhoto != null },
+            isLivePhoto = motionPhoto != null,
+            livePhotoMode = LivePhotoMode.Still,
+            mediaKind = when {
+                isVideo -> ClipMediaKind.Video
+                motionPhoto != null -> ClipMediaKind.LivePhoto
+                else -> ClipMediaKind.Photo
+            },
+            sourceDurationSeconds = motionPhoto?.durationSeconds ?: sourceDuration,
             trimStartSeconds = if (isVideo && sourceDuration != null) {
                 max(0.0, min(sourceDuration - selectedDuration, peak - selectedDuration / 2.0))
             } else {
@@ -75,6 +89,58 @@ object MediaImportReader {
             sourceHeight = metadata?.height ?: imageSize?.second ?: 1
         )
     }
+
+    private fun extractMotionPhoto(imageUri: Uri): MotionPhotoInfo? {
+        val imageFile = imageUri.takeIf { it.scheme == "file" }?.path?.let(::File) ?: return null
+        if (!imageFile.isFile || imageFile.length() < 16L) return null
+        val bytes = runCatching { imageFile.readBytes() }.getOrNull() ?: return null
+        var mp4Start = -1
+        for (index in bytes.size - 8 downTo 4) {
+            if (bytes[index] == 'f'.code.toByte() &&
+                bytes[index + 1] == 't'.code.toByte() &&
+                bytes[index + 2] == 'y'.code.toByte() &&
+                bytes[index + 3] == 'p'.code.toByte()
+            ) {
+                val candidate = index - 4
+                val boxSize = ((bytes[candidate].toInt() and 0xFF) shl 24) or
+                    ((bytes[candidate + 1].toInt() and 0xFF) shl 16) or
+                    ((bytes[candidate + 2].toInt() and 0xFF) shl 8) or
+                    (bytes[candidate + 3].toInt() and 0xFF)
+                if (boxSize in 8..1_048_576 && candidate > bytes.size / 3) {
+                    mp4Start = candidate
+                    break
+                }
+            }
+        }
+        if (mp4Start < 0) return null
+        val videoFile = File(imageFile.parentFile, "motion-${imageFile.nameWithoutExtension}.mp4")
+        runCatching {
+            videoFile.outputStream().use { output ->
+                output.write(bytes, mp4Start, bytes.size - mp4Start)
+            }
+        }.getOrElse { return null }
+        val durationSeconds = runCatching {
+            MediaMetadataRetriever().let { retriever ->
+                try {
+                    retriever.setDataSource(videoFile.absolutePath)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        ?.toLongOrNull()
+                        ?.div(1_000.0)
+                } finally {
+                    retriever.release()
+                }
+            }
+        }.getOrNull()?.takeIf { it >= 0.1 } ?: run {
+            videoFile.delete()
+            return null
+        }
+        return MotionPhotoInfo(Uri.fromFile(videoFile), durationSeconds)
+    }
+
+    private data class MotionPhotoInfo(
+        val videoUri: Uri,
+        val durationSeconds: Double
+    )
 
     private fun makePhotoSimilarityFingerprint(context: Context, uri: Uri): List<Int> {
         val bitmap = runCatching {

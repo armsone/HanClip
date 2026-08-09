@@ -29,6 +29,7 @@ data class ClipItem(
     val durationSeconds: Double = 4.0,
     val photoDurationSeconds: Double = durationSeconds,
     val livePhotoDurationSeconds: Double? = null,
+    val livePhotoStillUri: Uri? = null,
     val isLivePhoto: Boolean = false,
     val livePhotoMode: LivePhotoMode = LivePhotoMode.Still,
     val mediaKind: ClipMediaKind = if (isLivePhoto) ClipMediaKind.LivePhoto else ClipMediaKind.Photo,

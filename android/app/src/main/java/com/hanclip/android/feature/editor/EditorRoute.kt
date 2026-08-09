@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
@@ -148,6 +149,7 @@ fun EditorRoute(
     var isCalendarPickerVisible by remember { mutableStateOf(false) }
     var mediaPickerTitle by remember { mutableStateOf("날짜별") }
     var isReorderMode by remember { mutableStateOf(false) }
+    var isAdvancedSettingsExpanded by remember { mutableStateOf(false) }
     var isResetConfirmationVisible by remember { mutableStateOf(false) }
     var isExitConfirmationVisible by remember { mutableStateOf(false) }
     var isExportConfirmationVisible by remember { mutableStateOf(false) }
@@ -267,7 +269,7 @@ fun EditorRoute(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(bottom = 138.dp),
+            contentPadding = PaddingValues(bottom = 104.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
@@ -276,32 +278,6 @@ fun EditorRoute(
                     palette = palette,
                     onBackHome = ::requestBackHome,
                     onAddMedia = { openCalendarPicker("기본 사진첩") }
-                )
-            }
-            item {
-                SummaryPanel(
-                    clipCount = state.renderableClips.size,
-                    photoCount = state.renderableClips.count { it.mediaKind != ClipMediaKind.Video },
-                    videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video },
-                    autoSegmentCount = state.renderableClips.count { it.isVideoSegmentChild },
-                    totalSeconds = state.totalDurationSeconds,
-                    defaultDuration = state.defaultDurationSeconds,
-                    segmentMode = state.defaultVideoSegmentMode,
-                    palette = palette
-                )
-            }
-            item {
-                PresetStatusPanel(
-                    preset = state.preset,
-                    defaultDuration = state.defaultDurationSeconds,
-                    segmentMode = state.defaultVideoSegmentMode,
-                    hasTextOverlay = state.watermarkSettings.shouldRenderText,
-                    hasLogoOverlay = state.watermarkSettings.logoEnabled,
-                    hasMusic = state.backgroundMusicUri != null,
-                    musicTitle = state.backgroundMusicTitle,
-                    selectedRatio = state.outputAspectRatio,
-                    selectedQuality = state.outputQualityPreset,
-                    palette = palette
                 )
             }
             if (state.clips.isEmpty()) {
@@ -328,6 +304,20 @@ fun EditorRoute(
             }
             item {
                 ProjectControls(
+                    defaultDuration = state.defaultDurationSeconds,
+                    defaultVideoSegmentMode = state.defaultVideoSegmentMode,
+                    usesFullVideoRange = state.renderableClips
+                        .filter { it.mediaKind == ClipMediaKind.Video }
+                        .let { videos ->
+                            videos.isNotEmpty() && videos.all { clip ->
+                                val sourceDuration = clip.sourceDurationSeconds ?: clip.durationSeconds
+                                kotlin.math.abs(sourceDuration - clip.durationSeconds) < 0.05
+                            }
+                        },
+                    hasLivePhotos = state.clips.any { it.mediaKind == ClipMediaKind.LivePhoto },
+                    livePhotosUseMotion = state.clips
+                        .filter { it.mediaKind == ClipMediaKind.LivePhoto }
+                        .any { it.livePhotoMode == com.hanclip.android.core.model.LivePhotoMode.Motion },
                     selectedRatio = state.outputAspectRatio,
                     selectedQuality = state.outputQualityPreset,
                     palette = palette,
@@ -345,10 +335,17 @@ fun EditorRoute(
                         .distinct()
                         .singleOrNull() ?: VideoSegmentMode.Single,
                     isReorderMode = isReorderMode,
+                    isAdvancedSettingsExpanded = isAdvancedSettingsExpanded,
                     sleepPreventionMode = sleepPreventionMode,
                     hasClips = state.clips.isNotEmpty(),
                     onSelectRatio = { ratio -> viewModel.selectAspectRatio(context, ratio) },
                     onSelectQuality = { quality -> viewModel.selectOutputQualityPreset(context, quality) },
+                    onSetDuration = { seconds -> viewModel.setDefaultDuration(context, seconds) },
+                    onApplyDuration = viewModel::applyDefaultDurationToAll,
+                    onUseSelectedVideoRanges = viewModel::selectDefaultRangeForAllVideoClips,
+                    onUseFullVideoRanges = viewModel::selectFullRangeForAllVideoClips,
+                    onSetVideoSegmentMode = viewModel::setVideoSegmentModeForAll,
+                    onSetLivePhotoMotion = viewModel::setLivePhotoMotionForAll,
                     onOpenTextOverlay = { isTextOverlaySheetVisible = true },
                     onOpenMusicSettings = { isMusicSettingsSheetVisible = true },
                     onSetSimilarPhotoInterval = { value ->
@@ -356,6 +353,9 @@ fun EditorRoute(
                     },
                     onSetSimilarPhotoMode = viewModel::applySimilarPhotoGroupModeToAll,
                     onToggleReorder = { isReorderMode = !isReorderMode },
+                    onToggleAdvancedSettings = {
+                        isAdvancedSettingsExpanded = !isAdvancedSettingsExpanded
+                    },
                     onCycleSleepPrevention = {
                         onSleepPreventionModeChange(sleepPreventionMode.next())
                     },
@@ -400,12 +400,25 @@ fun EditorRoute(
             }
             if (state.clips.isNotEmpty()) {
                 item {
-                    Text(
-                        text = "클립",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.text
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "클립 ${state.renderableClips.size}개",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.text
+                        )
+                        AssistChip(
+                            onClick = { isReorderMode = !isReorderMode },
+                            leadingIcon = { Icon(Icons.Outlined.DragIndicator, contentDescription = null) },
+                            label = { Text(if (isReorderMode) "완료" else "순서 변경", fontWeight = FontWeight.Bold) },
+                            colors = clearAssistChipColors(isReorderMode, palette),
+                            border = BorderStroke(1.dp, if (isReorderMode) palette.primary else palette.border)
+                        )
+                    }
                 }
             }
             itemsIndexed(state.visibleClips, key = { _, clip -> clip.id }) { _, clip ->
@@ -415,7 +428,7 @@ fun EditorRoute(
                     .let { if (clip.isRenderableClip) it + 1 else it }
                     .takeIf { !clip.isVideoSegmentParent && !clip.isSimilarPhotoGroupChild }
                 val childSegmentCount = state.clips.count { it.videoSegmentParentId == clip.id }
-                ClipRow(
+                CompactClipRow(
                     palette = palette,
                     position = displayPosition,
                     clip = clip,
@@ -434,24 +447,13 @@ fun EditorRoute(
                     onMoveDown = { viewModel.moveClipDown(clip.id) },
                     onDelete = { viewModel.removeClip(clip.id) },
                     onToggleSegmentMode = { viewModel.toggleVideoSegmentMode(clip.id) },
+                    onToggleLivePhotoMode = { viewModel.toggleLivePhotoMode(clip.id) },
                     onResetSegments = { viewModel.resetVideoSegments(clip.id) },
                     onPreviewClip = { previewClipID = clip.id },
                     onToggleSimilarPhotoGroup = { viewModel.toggleSimilarPhotoGroup(clip.id) },
                     onIncludeSimilarPhoto = { viewModel.includeSimilarPhoto(clip.id) },
                     isReorderMode = isReorderMode
                 )
-            }
-            if (state.clips.isNotEmpty()) {
-                item {
-                    GlobalTimePanel(
-                        defaultDuration = state.defaultDurationSeconds,
-                        hasVideoClips = state.renderableClips.any { it.mediaKind == ClipMediaKind.Video },
-                        palette = palette,
-                        onSetDuration = { seconds -> viewModel.setDefaultDuration(context, seconds) },
-                        onApplyAll = viewModel::applyDefaultDurationToAll,
-                        onSelectFullRange = viewModel::selectFullRangeForAllVideoClips
-                    )
-                }
             }
             item {
                 Spacer(Modifier.height(if (isReorderMode) 24.dp else 88.dp))
@@ -470,6 +472,9 @@ fun EditorRoute(
                 hasTextOverlay = state.watermarkSettings.shouldRenderText,
                 hasLogoOverlay = state.watermarkSettings.logoEnabled,
                 hasMusic = state.backgroundMusicUri != null || state.backgroundMusicSampleId != null,
+                selectedRatio = state.outputAspectRatio,
+                onSelectRatio = { ratio -> viewModel.selectAspectRatio(context, ratio) },
+                onClose = ::requestBackHome,
                 onMakeMovie = { isExportConfirmationVisible = true }
             )
         }
@@ -839,7 +844,7 @@ private fun EditorHeader(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
@@ -1956,6 +1961,11 @@ private fun progressDetail(message: String, isExporting: Boolean): String {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProjectControls(
+    defaultDuration: Double,
+    defaultVideoSegmentMode: VideoSegmentMode,
+    usesFullVideoRange: Boolean,
+    hasLivePhotos: Boolean,
+    livePhotosUseMotion: Boolean,
     selectedRatio: OutputAspectRatio?,
     selectedQuality: OutputQualityPreset,
     palette: HanClipPalette,
@@ -1969,214 +1979,286 @@ private fun ProjectControls(
     similarPhotoRepresentativeInterval: Int,
     similarPhotoGroupMode: VideoSegmentMode,
     isReorderMode: Boolean,
+    isAdvancedSettingsExpanded: Boolean,
     sleepPreventionMode: SleepPreventionMode,
     hasClips: Boolean,
     onSelectRatio: (OutputAspectRatio?) -> Unit,
     onSelectQuality: (OutputQualityPreset) -> Unit,
+    onSetDuration: (Double) -> Unit,
+    onApplyDuration: () -> Unit,
+    onUseSelectedVideoRanges: () -> Unit,
+    onUseFullVideoRanges: () -> Unit,
+    onSetVideoSegmentMode: (VideoSegmentMode) -> Unit,
+    onSetLivePhotoMotion: (Boolean) -> Unit,
     onOpenTextOverlay: () -> Unit,
     onOpenMusicSettings: () -> Unit,
     onSetSimilarPhotoInterval: (Int) -> Unit,
     onSetSimilarPhotoMode: (VideoSegmentMode) -> Unit,
     onToggleReorder: () -> Unit,
+    onToggleAdvancedSettings: () -> Unit,
     onCycleSleepPrevention: () -> Unit,
     onResetProject: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            AssistChip(
-                onClick = onOpenTextOverlay,
-                leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
-                label = { Text(overlayStatusText(hasTextOverlay, hasLogoOverlay), fontWeight = FontWeight.SemiBold) },
-                colors = clearAssistChipColors(active = hasTextOverlay || hasLogoOverlay, palette = palette),
-                border = BorderStroke(1.dp, if (hasTextOverlay || hasLogoOverlay) palette.primary else palette.border)
-            )
-            AssistChip(
-                onClick = onOpenMusicSettings,
-                leadingIcon = { Icon(Icons.Outlined.LibraryMusic, contentDescription = null) },
-                label = {
-                    Text(
-                        if (hasMusic) {
-                            "배경음악 ${percentText(musicVolume)} · 원본 ${percentText(originalAudioVolume)}"
-                        } else {
-                            "음악/원본 소리"
-                        },
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.AutoFixHigh, contentDescription = null, tint = palette.secondary)
+                Spacer(Modifier.width(8.dp))
+                Text("클립 설정", color = palette.text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = palette.panel,
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Column {
+                CompactSettingRow(Icons.Outlined.LightMode, "기본시간", palette) {
+                    StepperPill(
+                        value = "%.1f초".format(defaultDuration),
+                        onDecrease = { onSetDuration(defaultDuration - 0.1) },
+                        onIncrease = { onSetDuration(defaultDuration + 0.1) },
+                        palette = palette
                     )
-                },
-                colors = clearAssistChipColors(active = hasMusic, palette = palette),
-                border = BorderStroke(1.dp, if (hasMusic) palette.primary else palette.border)
-            )
-            AssistChip(
-                onClick = onToggleReorder,
-                leadingIcon = { Icon(Icons.Outlined.DragIndicator, contentDescription = null) },
-                label = { Text(if (isReorderMode) "순서 켬" else "순서", fontWeight = FontWeight.SemiBold) },
-                colors = clearAssistChipColors(active = isReorderMode, palette = palette),
-                border = BorderStroke(1.dp, if (isReorderMode) palette.primary else palette.border)
-            )
-            AssistChip(
-                onClick = onCycleSleepPrevention,
-                leadingIcon = { Icon(Icons.Outlined.LightMode, contentDescription = null) },
-                label = { Text(sleepPreventionMode.chipTitle, fontWeight = FontWeight.SemiBold) },
-                colors = clearAssistChipColors(
-                    active = sleepPreventionMode != SleepPreventionMode.AlwaysOff,
-                    palette = palette
-                ),
-                border = BorderStroke(
-                    1.dp,
-                    if (sleepPreventionMode == SleepPreventionMode.AlwaysOff) palette.border else palette.primary
+                    CompactChoice("적용", true, palette, onApplyDuration)
+                }
+                SettingDivider(palette)
+                CompactSettingRow(Icons.Outlined.AspectRatio, "영상 길이", palette) {
+                    CompactChoice("선택구간", !usesFullVideoRange, palette, onUseSelectedVideoRanges)
+                    CompactChoice("전체영상", usesFullVideoRange, palette, onUseFullVideoRanges)
+                }
+                SettingDivider(palette)
+                CompactSettingRow(Icons.Outlined.PlayCircle, "라이브포토", palette) {
+                    CompactChoice(
+                        "사진",
+                        !livePhotosUseMotion,
+                        palette,
+                        onClick = { onSetLivePhotoMotion(false) }
+                    )
+                    CompactChoice(
+                        "영상",
+                        livePhotosUseMotion,
+                        palette,
+                        onClick = { onSetLivePhotoMotion(true) },
+                        enabled = hasLivePhotos
+                    )
+                }
+                SettingDivider(palette)
+                CompactSettingRow(Icons.Outlined.MovieCreation, "영상", palette) {
+                    CompactChoice(
+                        "한컷",
+                        defaultVideoSegmentMode != VideoSegmentMode.Multiple,
+                        palette,
+                        onClick = { onSetVideoSegmentMode(VideoSegmentMode.Single) }
+                    )
+                    CompactChoice(
+                        "분할",
+                        defaultVideoSegmentMode == VideoSegmentMode.Multiple,
+                        palette,
+                        onClick = { onSetVideoSegmentMode(VideoSegmentMode.Multiple) }
+                    )
+                }
+                SettingDivider(palette)
+                CompactSettingRow(Icons.Outlined.Collections, "묶음사진", palette) {
+                    if (hasSimilarPhotoGroups) {
+                        StepperPill(
+                            value = "1/$similarPhotoRepresentativeInterval",
+                            onDecrease = { onSetSimilarPhotoInterval(similarPhotoRepresentativeInterval - 1) },
+                            onIncrease = { onSetSimilarPhotoInterval(similarPhotoRepresentativeInterval + 1) },
+                            palette = palette
+                        )
+                        CompactChoice(
+                            when (similarPhotoGroupMode) {
+                                VideoSegmentMode.Single -> "자동"
+                                VideoSegmentMode.Multiple -> "수동"
+                                VideoSegmentMode.All -> "전체"
+                            },
+                            true,
+                            palette,
+                            onClick = { onSetSimilarPhotoMode(similarPhotoGroupMode.next()) }
+                        )
+                    } else {
+                        Text("없음", color = palette.subText, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+                SettingDivider(palette)
+                CompactSettingRow(Icons.Outlined.TextFields, "자막", palette, onOpenTextOverlay) {
+                    CompactChoice("사용", hasTextOverlay || hasLogoOverlay, palette, onOpenTextOverlay)
+                    CompactChoice("안함", !hasTextOverlay && !hasLogoOverlay, palette, onOpenTextOverlay)
+                }
+                SettingDivider(palette)
+                CompactSettingRow(Icons.Outlined.LibraryMusic, "음악", palette, onOpenMusicSettings) {
+                    CompactChoice("사용", hasMusic, palette, onOpenMusicSettings)
+                    CompactChoice("안함", !hasMusic, palette, onOpenMusicSettings)
+                }
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleAdvancedSettings),
+            shape = RoundedCornerShape(16.dp),
+            color = palette.chip,
+            border = BorderStroke(1.dp, palette.border)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "화질 · 화면비 · 화면 유지${if (hasClips) " · 초기화" else ""}",
+                    color = palette.subText,
+                    fontWeight = FontWeight.SemiBold
                 )
-            )
-            if (hasClips) {
-                AssistChip(
-                    onClick = onResetProject,
-                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                    label = { Text("초기화", fontWeight = FontWeight.SemiBold) },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = palette.panel,
-                        labelColor = palette.secondary,
-                        leadingIconContentColor = palette.secondary
-                    ),
-                    border = BorderStroke(1.dp, palette.border)
+                Icon(
+                    if (isAdvancedSettingsExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = if (isAdvancedSettingsExpanded) "고급 설정 접기" else "고급 설정 펼치기",
+                    tint = palette.secondary
                 )
             }
         }
-        if (hasSimilarPhotoGroups) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = palette.chip,
-                    border = BorderStroke(1.dp, palette.border)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { onSetSimilarPhotoInterval(similarPhotoRepresentativeInterval - 1) },
-                            enabled = similarPhotoRepresentativeInterval > 1,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(Icons.Outlined.Remove, contentDescription = "대표사진 간격 줄이기")
-                        }
-                        Text(
-                            "묶음사진 1/$similarPhotoRepresentativeInterval",
-                            color = palette.text,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        IconButton(
-                            onClick = { onSetSimilarPhotoInterval(similarPhotoRepresentativeInterval + 1) },
-                            enabled = similarPhotoRepresentativeInterval < 20,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(Icons.Outlined.Add, contentDescription = "대표사진 간격 늘리기")
-                        }
-                    }
-                }
-                listOf(
-                    VideoSegmentMode.Single to "자동",
-                    VideoSegmentMode.Multiple to "수동",
-                    VideoSegmentMode.All to "전체"
-                ).forEach { (mode, title) ->
+        if (isAdvancedSettingsExpanded) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutputQualityPreset.entries.forEach { quality ->
                     FilterChip(
-                        selected = similarPhotoGroupMode == mode,
-                        onClick = { onSetSimilarPhotoMode(mode) },
-                        label = { Text(title) },
-                        leadingIcon = { Icon(Icons.Outlined.Collections, contentDescription = null) },
+                        selected = selectedQuality == quality,
+                        onClick = { onSelectQuality(quality) },
+                        label = { Text(quality.chipTitle) },
                         colors = clearFilterChipColors(palette),
                         border = FilterChipDefaults.filterChipBorder(
                             enabled = true,
-                            selected = similarPhotoGroupMode == mode,
+                            selected = selectedQuality == quality,
                             borderColor = palette.border,
                             selectedBorderColor = palette.primary
                         )
                     )
                 }
-            }
-        }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutputQualityPreset.entries.forEach { quality ->
                 FilterChip(
-                    selected = selectedQuality == quality,
-                    onClick = { onSelectQuality(quality) },
-                    label = { Text(quality.chipTitle) },
-                    leadingIcon = {
-                        Icon(Icons.Outlined.MovieCreation, contentDescription = null)
-                    },
+                    selected = selectedRatio == null,
+                    onClick = { onSelectRatio(null) },
+                    label = { Text("자동 원본 비율") },
                     colors = clearFilterChipColors(palette),
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
-                        selected = selectedQuality == quality,
+                        selected = selectedRatio == null,
                         borderColor = palette.border,
                         selectedBorderColor = palette.primary
                     )
                 )
-            }
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = palette.panel,
-                border = BorderStroke(1.dp, palette.border)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        Icons.Outlined.MovieCreation,
-                        contentDescription = null,
-                        tint = palette.subText,
-                        modifier = Modifier.size(18.dp)
+                OutputAspectRatio.entries.forEach { ratio ->
+                    FilterChip(
+                        selected = selectedRatio == ratio,
+                        onClick = { onSelectRatio(ratio) },
+                        label = { Text(outputRatioChipText(ratio)) },
+                        colors = clearFilterChipColors(palette),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = selectedRatio == ratio,
+                            borderColor = palette.border,
+                            selectedBorderColor = palette.primary
+                        )
                     )
-                    Text(
-                        "HanClip ${OutputQualityPreset.GallerySaveDetail}",
-                        color = palette.subText,
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.labelLarge
+                }
+                AssistChip(
+                    onClick = onCycleSleepPrevention,
+                    leadingIcon = { Icon(Icons.Outlined.LightMode, contentDescription = null) },
+                    label = { Text(sleepPreventionMode.chipTitle) },
+                    colors = clearAssistChipColors(sleepPreventionMode != SleepPreventionMode.AlwaysOff, palette),
+                    border = BorderStroke(1.dp, palette.border)
+                )
+                if (hasClips) {
+                    AssistChip(
+                        onClick = onResetProject,
+                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                        label = { Text("프로젝트 초기화") },
+                        colors = clearAssistChipColors(false, palette),
+                        border = BorderStroke(1.dp, palette.border)
                     )
                 }
             }
         }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterChip(
-                selected = selectedRatio == null,
-                onClick = { onSelectRatio(null) },
-                label = { Text("자동 원본 비율") },
-                leadingIcon = { Icon(Icons.Outlined.AspectRatio, contentDescription = null) },
-                colors = clearFilterChipColors(palette),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true,
-                    selected = selectedRatio == null,
-                    borderColor = palette.border,
-                    selectedBorderColor = palette.primary
-                )
-            )
-            OutputAspectRatio.entries.forEach { ratio ->
-                FilterChip(
-                    selected = selectedRatio == ratio,
-                    onClick = { onSelectRatio(ratio) },
-                    label = { Text(outputRatioChipText(ratio)) },
-                    colors = clearFilterChipColors(palette),
-                    border = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
-                        selected = selectedRatio == ratio,
-                        borderColor = palette.border,
-                        selectedBorderColor = palette.primary
-                    )
-                )
+    }
+}
+
+private fun VideoSegmentMode.next(): VideoSegmentMode = when (this) {
+    VideoSegmentMode.Single -> VideoSegmentMode.Multiple
+    VideoSegmentMode.Multiple -> VideoSegmentMode.All
+    VideoSegmentMode.All -> VideoSegmentMode.Single
+}
+
+@Composable
+private fun CompactSettingRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    palette: HanClipPalette,
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = palette.subText, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(9.dp))
+        Text(label, color = palette.subText, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically, content = content)
+    }
+}
+
+@Composable
+private fun CompactChoice(
+    text: String,
+    selected: Boolean,
+    palette: HanClipPalette,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    Surface(
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(50),
+        color = if (selected) palette.primary else palette.chip,
+        border = BorderStroke(1.dp, if (selected) palette.primary else palette.border)
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
+            color = if (!enabled) palette.subText.copy(alpha = 0.45f) else if (selected) Color.White else palette.text,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge
+        )
+    }
+}
+
+@Composable
+private fun StepperPill(
+    value: String,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    palette: HanClipPalette
+) {
+    Surface(shape = RoundedCornerShape(50), color = palette.chip, border = BorderStroke(1.dp, palette.border)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onDecrease, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Outlined.Remove, contentDescription = "줄이기", modifier = Modifier.size(18.dp))
+            }
+            Text(value, color = palette.text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+            IconButton(onClick = onIncrease, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Outlined.Add, contentDescription = "늘리기", modifier = Modifier.size(18.dp))
             }
         }
     }
+}
+
+@Composable
+private fun SettingDivider(palette: HanClipPalette) {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.7f)))
 }
 
 private fun outputRatioChipText(ratio: OutputAspectRatio): String {
@@ -2207,6 +2289,198 @@ private fun clearFilterChipColors(palette: HanClipPalette) = FilterChipDefaults.
     selectedLeadingIconColor = Color.White
 )
 
+@Composable
+private fun CompactClipRow(
+    palette: HanClipPalette,
+    position: Int?,
+    clip: ClipItem,
+    childSegmentCount: Int,
+    isSimilarPhotoGroupExpanded: Boolean,
+    onClick: () -> Unit,
+    onDecreaseDuration: () -> Unit,
+    onIncreaseDuration: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onDelete: () -> Unit,
+    onToggleSegmentMode: () -> Unit,
+    onToggleLivePhotoMode: () -> Unit,
+    onResetSegments: () -> Unit,
+    onPreviewClip: () -> Unit,
+    onToggleSimilarPhotoGroup: () -> Unit,
+    onIncludeSimilarPhoto: () -> Unit,
+    isReorderMode: Boolean
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = clipRowFill(clip, palette),
+        border = BorderStroke(1.dp, clipRowBorder(clip, palette))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 9.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = when {
+                    clip.isVideoSegmentParent -> "·"
+                    clip.isSimilarPhotoGroupChild -> "+"
+                    else -> "${position ?: 0}"
+                },
+                modifier = Modifier.width(18.dp),
+                color = palette.subText,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(clipFallbackBrush(clip, palette))
+                    .clickable(
+                        enabled = clip.mediaKind == ClipMediaKind.Video,
+                        onClick = onPreviewClip
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                ClipThumbnail(clip = clip, modifier = Modifier.matchParentSize())
+                if (clip.isSimilarPhotoGroupParent) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp),
+                        shape = RoundedCornerShape(50),
+                        color = palette.secondary.copy(alpha = 0.9f)
+                    ) {
+                        Text(
+                            "${clip.similarPhotoGroupCount}",
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = clipCompactTimeText(clip, childSegmentCount),
+                    color = palette.text,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    when {
+                        clip.isSimilarPhotoGroupChild -> {
+                            ClipControlPill(
+                                palette = palette,
+                                text = if (clip.isHiddenSimilarPhotoGroupMember) "사용" else "제외",
+                                active = !clip.isHiddenSimilarPhotoGroupMember,
+                                onClick = onIncludeSimilarPhoto
+                            )
+                        }
+                        clip.isVideoSegmentParent -> {
+                            ClipControlPill(palette, "원본보기", active = true, onClick = onPreviewClip)
+                            ClipControlPill(palette, "재분할", active = true, onClick = onResetSegments)
+                        }
+                        clip.mediaKind == ClipMediaKind.LivePhoto -> {
+                            ClipControlPill(
+                                palette,
+                                if (clip.livePhotoMode == com.hanclip.android.core.model.LivePhotoMode.Motion) "영상" else "사진",
+                                active = true,
+                                onClick = onToggleLivePhotoMode
+                            )
+                        }
+                        clip.mediaKind == ClipMediaKind.Video && !clip.isVideoSegmentChild -> {
+                            ClipControlPill(
+                                palette,
+                                if (clip.videoSegmentMode == VideoSegmentMode.Multiple) "분할" else "한컷",
+                                active = clip.videoSegmentMode == VideoSegmentMode.Multiple,
+                                onClick = onToggleSegmentMode
+                            )
+                        }
+                        clip.isSimilarPhotoGroupParent -> {
+                            ClipControlPill(
+                                palette,
+                                if (isSimilarPhotoGroupExpanded) "묶음 접기" else "묶음 보기",
+                                active = isSimilarPhotoGroupExpanded,
+                                onClick = onToggleSimilarPhotoGroup
+                            )
+                        }
+                        else -> {
+                            Text(
+                                text = if (clip.mediaKind == ClipMediaKind.Photo) "사진" else "영상",
+                                color = palette.subText,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                }
+            }
+            if (isReorderMode) {
+                Column {
+                    IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "위로")
+                    }
+                    IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "아래로")
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.Delete, contentDescription = "삭제", tint = palette.secondary)
+                    }
+                }
+            } else if (!clip.isVideoSegmentParent && !clip.isHiddenSimilarPhotoGroupMember) {
+                CompactDurationStepper(
+                    palette = palette,
+                    onDecrease = onDecreaseDuration,
+                    onIncrease = onIncreaseDuration
+                )
+            }
+        }
+    }
+}
+
+private fun clipCompactTimeText(clip: ClipItem, childSegmentCount: Int): String {
+    val source = clip.sourceDurationSeconds ?: clip.durationSeconds
+    return if (clip.isVideoSegmentParent) {
+        "원본 ${formatClipSeconds(source)} · 자동 컷 ${childSegmentCount}개"
+    } else {
+        "${formatClipSeconds(clip.durationSeconds)} / 전체 ${formatClipSeconds(source)}"
+    }
+}
+
+@Composable
+private fun CompactDurationStepper(
+    palette: HanClipPalette,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = palette.chip,
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onDecrease, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Outlined.Remove, contentDescription = "시간 줄이기", modifier = Modifier.size(18.dp))
+            }
+            Box(Modifier.width(1.dp).height(22.dp).background(palette.border))
+            IconButton(onClick = onIncrease, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Outlined.Add, contentDescription = "시간 늘리기", modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ClipRow(
@@ -2222,6 +2496,7 @@ private fun ClipRow(
     onMoveDown: () -> Unit,
     onDelete: () -> Unit,
     onToggleSegmentMode: () -> Unit,
+    onToggleLivePhotoMode: () -> Unit,
     onResetSegments: () -> Unit,
     onPreviewClip: () -> Unit,
     onToggleSimilarPhotoGroup: () -> Unit,
@@ -2375,6 +2650,15 @@ private fun ClipRow(
                                     active = clip.videoSegmentMode == VideoSegmentMode.Multiple,
                                     icon = { Icon(Icons.Outlined.DragIndicator, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                     onClick = onToggleSegmentMode
+                                )
+                            }
+                            if (clip.mediaKind == ClipMediaKind.LivePhoto) {
+                                ClipControlPill(
+                                    palette = palette,
+                                    text = clip.livePhotoMode.title,
+                                    active = clip.livePhotoMode == com.hanclip.android.core.model.LivePhotoMode.Motion,
+                                    icon = { Icon(Icons.Outlined.PlayCircle, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                    onClick = onToggleLivePhotoMode
                                 )
                             }
                             if (clip.isSimilarPhotoGroupParent) {
@@ -2838,10 +3122,11 @@ private fun ClipThumbnail(
     val context = LocalContext.current
     val thumbnail by produceState<Bitmap?>(initialValue = null, clip.thumbnailUri, clip.mediaKind) {
         val uri = clip.thumbnailUri ?: clip.sourceUri
+        val thumbnailKind = if (clip.thumbnailUri != null) ClipMediaKind.Photo else clip.mediaKind
         value = if (uri.scheme == "sample") {
             null
         } else {
-            MediaImportReader.loadThumbnailBitmap(context, uri, clip.mediaKind)
+            MediaImportReader.loadThumbnailBitmap(context, uri, thumbnailKind)
         }
     }
 
@@ -2975,8 +3260,12 @@ private fun BottomMakeBar(
     hasTextOverlay: Boolean,
     hasLogoOverlay: Boolean,
     hasMusic: Boolean,
+    selectedRatio: OutputAspectRatio?,
+    onSelectRatio: (OutputAspectRatio?) -> Unit,
+    onClose: () -> Unit,
     onMakeMovie: () -> Unit
 ) {
+    var isRatioPickerVisible by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = palette.panel.copy(alpha = 0.96f),
@@ -2989,39 +3278,74 @@ private fun BottomMakeBar(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            BottomMakeSummaryChips(
-                clipCount = clipCount,
-                photoCount = photoCount,
-                videoCount = videoCount,
-                totalSeconds = totalSeconds,
-                qualityTitle = qualityTitle,
-                hasTextOverlay = hasTextOverlay,
-                hasLogoOverlay = hasLogoOverlay,
-                hasMusic = hasMusic,
-                palette = palette
-            )
-            Button(
-                onClick = onMakeMovie,
-                enabled = !isExporting && clipCount > 0,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = palette.primary,
-                    contentColor = Color.White,
-                    disabledContainerColor = palette.chip,
-                    disabledContentColor = palette.subText
-                )
-            ) {
-                Icon(Icons.Outlined.MovieCreation, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    when {
-                        isExporting -> "만드는 중..."
-                        clipCount == 0 -> "사진/영상 선택 필요"
-                        else -> "완성본 만들기"
+            if (isRatioPickerVisible) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item {
+                        FilterChip(
+                            selected = selectedRatio == null,
+                            onClick = { onSelectRatio(null); isRatioPickerVisible = false },
+                            label = { Text("자동") },
+                            colors = clearFilterChipColors(palette)
+                        )
                     }
-                )
+                    itemsIndexed(OutputAspectRatio.entries) { _, ratio ->
+                        FilterChip(
+                            selected = selectedRatio == ratio,
+                            onClick = { onSelectRatio(ratio); isRatioPickerVisible = false },
+                            label = { Text(ratio.title) },
+                            colors = clearFilterChipColors(palette)
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier.size(52.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary, contentColor = Color.White)
+                ) {
+                    Icon(Icons.Outlined.Close, contentDescription = "닫기", modifier = Modifier.size(27.dp))
+                }
+                OutlinedButton(
+                    onClick = { isRatioPickerVisible = !isRatioPickerVisible },
+                    modifier = Modifier.size(52.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    border = BorderStroke(1.dp, palette.border),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = palette.chip, contentColor = palette.primary)
+                ) {
+                    Icon(Icons.Outlined.AspectRatio, contentDescription = "영상 비율")
+                }
+                Button(
+                    onClick = onMakeMovie,
+                    enabled = !isExporting && clipCount > 0,
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.primary,
+                        contentColor = Color.White,
+                        disabledContainerColor = palette.chip,
+                        disabledContentColor = palette.subText
+                    )
+                ) {
+                    Icon(Icons.Outlined.AutoFixHigh, contentDescription = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        when {
+                            isExporting -> "만드는 중..."
+                            clipCount == 0 -> "사진/영상 선택 필요"
+                            else -> "${formatSummaryDuration(totalSeconds)} 만들기"
+                        },
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

@@ -12,6 +12,7 @@ import com.hanclip.android.core.media.VideoExportRequest
 import com.hanclip.android.core.model.BackgroundMusicSample
 import com.hanclip.android.core.model.ClipItem
 import com.hanclip.android.core.model.ClipMediaKind
+import com.hanclip.android.core.model.LivePhotoMode
 import com.hanclip.android.core.model.MoviePreset
 import com.hanclip.android.core.model.OutputAspectRatio
 import com.hanclip.android.core.model.OutputQualityPreset
@@ -370,6 +371,37 @@ class EditorViewModel : ViewModel() {
         }
     }
 
+    fun selectDefaultRangeForAllVideoClips() {
+        _uiState.update { state ->
+            val videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video }
+            state.copy(
+                clips = state.clips.map { clip ->
+                    if (clip.mediaKind != ClipMediaKind.Video || clip.isVideoSegmentChild) {
+                        clip
+                    } else {
+                        val sourceDuration = clip.sourceDurationSeconds ?: clip.durationSeconds
+                        val selectedDuration = min(state.defaultDurationSeconds, sourceDuration).coerceAtLeast(0.1)
+                        clip.copy(
+                            durationSeconds = selectedDuration,
+                            photoDurationSeconds = selectedDuration,
+                            trimStartSeconds = centeredTrimStart(clip, selectedDuration),
+                            videoSegmentMode = VideoSegmentMode.Single,
+                            isVideoSegmentParent = false,
+                            videoSegmentParentId = null
+                        )
+                    }
+                }.filterNot { it.isVideoSegmentChild },
+                defaultVideoSegmentMode = VideoSegmentMode.Single,
+                alertMessage = if (videoCount > 0) {
+                    "영상 ${videoCount}개를 기본 %.1f초 선택구간으로 맞췄습니다.".format(state.defaultDurationSeconds)
+                } else {
+                    "선택구간으로 맞출 영상이 없습니다."
+                },
+                undoDeleteMessage = null
+            )
+        }
+    }
+
     fun selectAspectRatio(context: Context, ratio: OutputAspectRatio?) {
         EditorPreferenceStore.saveOutputAspectRatio(context.applicationContext, ratio)
         val ratioText = ratio?.let { "${it.title} ${it.width}x${it.height}" } ?: "원본 비율 자동"
@@ -701,6 +733,65 @@ class EditorViewModel : ViewModel() {
         }
     }
 
+    fun toggleLivePhotoMode(id: String) {
+        _uiState.update { state ->
+            state.copy(
+                clips = state.clips.map { clip ->
+                    if (clip.id != id || clip.mediaKind != ClipMediaKind.LivePhoto) {
+                        clip
+                    } else if (clip.livePhotoMode == LivePhotoMode.Still) {
+                        val motionDuration = clip.livePhotoDurationSeconds
+                            ?: clip.sourceDurationSeconds
+                            ?: clip.durationSeconds
+                        clip.copy(
+                            livePhotoMode = LivePhotoMode.Motion,
+                            durationSeconds = motionDuration.coerceAtLeast(0.1),
+                            trimStartSeconds = 0.0
+                        )
+                    } else {
+                        clip.copy(
+                            livePhotoMode = LivePhotoMode.Still,
+                            durationSeconds = clip.photoDurationSeconds.coerceAtLeast(0.1),
+                            trimStartSeconds = 0.0
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun setLivePhotoMotionForAll(useMotion: Boolean) {
+        _uiState.update { state ->
+            state.copy(
+                clips = state.clips.map { clip ->
+                    if (clip.mediaKind != ClipMediaKind.LivePhoto) {
+                        clip
+                    } else if (useMotion) {
+                        val motionDuration = clip.livePhotoDurationSeconds
+                            ?: clip.sourceDurationSeconds
+                            ?: clip.durationSeconds
+                        clip.copy(
+                            livePhotoMode = LivePhotoMode.Motion,
+                            durationSeconds = motionDuration.coerceAtLeast(0.1),
+                            trimStartSeconds = 0.0
+                        )
+                    } else {
+                        clip.copy(
+                            livePhotoMode = LivePhotoMode.Still,
+                            durationSeconds = clip.photoDurationSeconds.coerceAtLeast(0.1),
+                            trimStartSeconds = 0.0
+                        )
+                    }
+                },
+                alertMessage = if (state.clips.any { it.mediaKind == ClipMediaKind.LivePhoto }) {
+                    if (useMotion) "라이브포토를 영상으로 사용합니다." else "라이브포토를 사진으로 사용합니다."
+                } else {
+                    "현재 프로젝트에 라이브포토가 없습니다."
+                }
+            )
+        }
+    }
+
     fun selectFullRangeForAllVideoClips() {
         _uiState.update { state ->
             val videoCount = state.renderableClips.count { it.mediaKind == ClipMediaKind.Video }
@@ -796,6 +887,23 @@ class EditorViewModel : ViewModel() {
                 alertMessage = "자동 타격점 후보 ${segmentCount}개를 기준으로 클립을 만들었습니다.",
                 undoDeleteMessage = null
             )
+        }
+    }
+
+    fun setVideoSegmentModeForAll(mode: VideoSegmentMode) {
+        val targetIds = _uiState.value.clips
+            .filter { it.mediaKind == ClipMediaKind.Video && !it.isVideoSegmentChild }
+            .map { it.id }
+        targetIds.forEach { id ->
+            val clip = _uiState.value.clips.firstOrNull { it.id == id } ?: return@forEach
+            val needsToggle = when (mode) {
+                VideoSegmentMode.Multiple -> !clip.isVideoSegmentParent && clip.videoSegmentMode != VideoSegmentMode.Multiple
+                VideoSegmentMode.Single, VideoSegmentMode.All -> clip.isVideoSegmentParent || clip.videoSegmentMode == VideoSegmentMode.Multiple
+            }
+            if (needsToggle) toggleVideoSegmentMode(id)
+        }
+        _uiState.update { state ->
+            state.copy(defaultVideoSegmentMode = mode)
         }
     }
 
@@ -1180,7 +1288,8 @@ class EditorViewModel : ViewModel() {
     }
 
     private fun canGroupAsSimilarPhoto(clip: ClipItem): Boolean {
-        return clip.mediaKind == ClipMediaKind.Photo && clip.photoSimilarityFingerprint.size >= 16 * 16
+        return (clip.mediaKind == ClipMediaKind.Photo || clip.mediaKind == ClipMediaKind.LivePhoto) &&
+            clip.photoSimilarityFingerprint.size >= 16 * 16
     }
 
     private fun areSimilarPhotos(lhs: ClipItem, rhs: ClipItem): Boolean {

@@ -150,7 +150,9 @@ data class EditableProjectSummary(
     val savedAtMillis: Long,
     val isPinned: Boolean,
     val memo: String,
-    val thumbnailUri: Uri?
+    val thumbnailUri: Uri?,
+    val thumbnailUris: List<Uri>,
+    val displayByteCount: Long
 )
 
 enum class EditableProjectPinResult {
@@ -197,21 +199,20 @@ object EditableProjectStore {
                     .thenByDescending { it.project.savedAtMillis }
             )
             .map { record ->
+                val renderableClips = record.project.clips.filter { it.isRenderableClip }
                 EditableProjectSummary(
                     projectId = record.project.projectId,
                     preset = record.project.preset,
-                    clipCount = record.project.clips.count { it.isRenderableClip },
-                    totalDurationSeconds = record.project.clips
-                        .filter { it.isRenderableClip }
-                        .sumOf { it.durationSeconds },
+                    clipCount = renderableClips.size,
+                    totalDurationSeconds = renderableClips.sumOf { it.durationSeconds },
                     outputAspectRatio = record.project.outputAspectRatio,
                     outputQualityPreset = record.project.outputQualityPreset,
                     savedAtMillis = record.project.savedAtMillis,
                     isPinned = record.isPinned,
                     memo = record.memo,
-                    thumbnailUri = record.project.clips
-                        .firstOrNull { it.isRenderableClip }
-                        ?.thumbnailUri
+                    thumbnailUri = renderableClips.firstOrNull()?.thumbnailUri,
+                    thumbnailUris = renderableClips.mapNotNull { it.thumbnailUri }.take(9),
+                    displayByteCount = projectDisplayByteCount(context, record.project.projectId)
                 )
             }
     }
@@ -356,12 +357,23 @@ object EditableProjectStore {
                     )
                 )
             }
+            val livePhotoStill = clip.livePhotoStillUri?.let { stillUri ->
+                persistProjectUri(
+                    context = context,
+                    source = stillUri,
+                    destination = File(directory, "live-photo-${safeFilename(clip.id)}.jpg")
+                )
+            }
             val thumbnail = ensureProjectThumbnail(
-                source = source,
-                mediaKind = clip.mediaKind,
+                source = livePhotoStill ?: source,
+                mediaKind = if (livePhotoStill != null) ClipMediaKind.Photo else clip.mediaKind,
                 destination = File(directory, "thumbnail-${safeFilename(clip.id)}.jpg")
             )
-            clip.copy(sourceUri = source, thumbnailUri = thumbnail)
+            clip.copy(
+                sourceUri = source,
+                thumbnailUri = thumbnail,
+                livePhotoStillUri = livePhotoStill
+            )
         }
         val musicUri = project.backgroundMusicUri?.let { source ->
             persistProjectUri(
@@ -453,6 +465,15 @@ object EditableProjectStore {
         return File(projectsRoot(context), safeProjectDirectoryName(projectId))
     }
 
+    private fun projectDisplayByteCount(context: Context, projectId: String): Long {
+        return projectDirectory(context, projectId)
+            .walkTopDown()
+            .filter { file ->
+                file.isFile && (file.name == ProjectMetadataFilename || file.name.startsWith("thumbnail-"))
+            }
+            .sumOf(File::length)
+    }
+
     private fun safeProjectDirectoryName(projectId: String): String = safeFilename(projectId)
 
     private fun safeFilename(value: String): String {
@@ -484,6 +505,7 @@ private fun ClipItem.toJson(): JSONObject {
         .put("durationSeconds", durationSeconds)
         .put("photoDurationSeconds", photoDurationSeconds)
         .put("livePhotoDurationSeconds", livePhotoDurationSeconds)
+        .put("livePhotoStillUri", livePhotoStillUri?.toString())
         .put("isLivePhoto", isLivePhoto)
         .put("livePhotoMode", livePhotoMode.name)
         .put("mediaKind", mediaKind.name)
@@ -521,6 +543,9 @@ private fun JSONObject.toClipItem(): ClipItem {
         durationSeconds = optDouble("durationSeconds", 2.0),
         photoDurationSeconds = optDouble("photoDurationSeconds", optDouble("durationSeconds", 2.0)),
         livePhotoDurationSeconds = optNullableDouble("livePhotoDurationSeconds"),
+        livePhotoStillUri = optString("livePhotoStillUri")
+            .takeIf { it.isNotBlank() && it != "null" }
+            ?.let(Uri::parse),
         isLivePhoto = optBoolean("isLivePhoto", false),
         livePhotoMode = enumValueOrDefault(optString("livePhotoMode"), LivePhotoMode.Still),
         mediaKind = enumValueOrDefault(optString("mediaKind"), ClipMediaKind.Photo),
