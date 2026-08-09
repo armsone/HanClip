@@ -2873,6 +2873,7 @@ private fun EndingSettingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2884,9 +2885,7 @@ private fun EndingSettingRow(
             modifier = Modifier.size(18.dp)
         )
         Column(
-            modifier = Modifier
-                .width(62.dp)
-                .clickable(onClick = onOpen),
+            modifier = Modifier.width(62.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             Text("엔딩 :", color = palette.subText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
