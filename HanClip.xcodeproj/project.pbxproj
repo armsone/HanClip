@@ -72,7 +72,6 @@
 		150000000000000000000001 /* AudioImpactClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250000000000000000000001 /* AudioImpactClassifier.swift */; };
 		160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000001 /* CopyrightPurchaseManager.swift */; };
 		290000000000000000000001 /* MovieCollectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290000000000000000000011 /* MovieCollectionStore.swift */; };
-		2A0000000000000000000001 /* GooglePhotosPickerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000011 /* GooglePhotosPickerService.swift */; };
 		270000000000000000000001 /* HanClipLockWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000010 /* HanClipLockWidget.swift */; };
 		270000000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000012 /* Assets.xcassets */; };
 		270000000000000000000003 /* HanClipWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 270000000000000000000013 /* HanClipWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -135,7 +134,6 @@
 		200000000000000000000019 /* FontImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontImportStore.swift; sourceTree = "<group>"; };
 		260000000000000000000001 /* CopyrightPurchaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyrightPurchaseManager.swift; sourceTree = "<group>"; };
 		290000000000000000000011 /* MovieCollectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieCollectionStore.swift; sourceTree = "<group>"; };
-		2A0000000000000000000011 /* GooglePhotosPickerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooglePhotosPickerService.swift; sourceTree = "<group>"; };
 		260000000000000000000002 /* HanClip.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = HanClip.storekit; sourceTree = "<group>"; };
 		20000000000000000000001C /* Resources/Fonts/KakaoBigSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Resources/Fonts/KakaoBigSans-Regular.ttf"; sourceTree = "<group>"; };
 		20000000000000000000001D /* Resources/Fonts/KakaoBigSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/Fonts/KakaoBigSans-OFL.txt"; sourceTree = "<group>"; };
@@ -333,7 +331,6 @@
 				200000000000000000000004 /* PhotoLibraryService.swift */,
 				200000000000000000000005 /* PhotoPicker.swift */,
 				200000000000000000000017 /* FilePicker.swift */,
-				2A0000000000000000000011 /* GooglePhotosPickerService.swift */,
 				200000000000000000000019 /* FontImportStore.swift */,
 				200000000000000000000006 /* VideoComposer.swift */,
 				210000000000000000000001 /* ProjectStore.swift */,
@@ -555,7 +552,6 @@
 				100000000000000000000004 /* PhotoLibraryService.swift in Sources */,
 				100000000000000000000005 /* PhotoPicker.swift in Sources */,
 				100000000000000000000014 /* FilePicker.swift in Sources */,
-				2A0000000000000000000001 /* GooglePhotosPickerService.swift in Sources */,
 				100000000000000000000016 /* FontImportStore.swift in Sources */,
 				100000000000000000000006 /* VideoComposer.swift in Sources */,
 				100000000000000000000007 /* EditorViewModel.swift in Sources */,

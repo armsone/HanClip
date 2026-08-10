@@ -701,7 +701,6 @@ struct EditorView: View {
                 onSelectMusic: openQuickMusicSettings,
                 onAddPhoto: openQuickMediaPicker,
                 onAddFile: openQuickFilePicker,
-                onAddGooglePhotos: openQuickGooglePhotosPicker,
                 onMake: model.confirmQuickMovieDuration,
                 onCancel: model.cancelQuickMovieDurationSelection
             )
@@ -767,26 +766,6 @@ struct EditorView: View {
                 }
             }
             .ignoresSafeArea()
-        }
-        .fullScreenCover(
-            isPresented: Binding(
-                get: { model.googlePhotosPickerURL != nil },
-                set: { isPresented in
-                    if !isPresented, model.googlePhotosPickerURL != nil {
-                        model.cancelGooglePhotosImport()
-                    }
-                }
-            )
-        ) {
-            if let url = model.googlePhotosPickerURL {
-                GooglePhotosPickerWebView(url: url) {
-                    model.cancelGooglePhotosImport()
-                    if isAddingQuickMedia {
-                        restoreQuickDurationPickerAfterMediaCancellation()
-                    }
-                }
-                .ignoresSafeArea()
-            }
         }
         .fullScreenCover(
             isPresented: $model.isBackgroundMusicImporterPresented
@@ -2130,14 +2109,6 @@ struct EditorView: View {
                 Label("파일", systemImage: "folder")
             }
 
-            Button {
-                selectMediaImportSource("Google 포토") {
-                    model.openGooglePhotosPicker()
-                }
-            } label: {
-                Label("Google 포토", systemImage: "cloud.fill")
-            }
-
         } label: {
             label()
         }
@@ -3387,14 +3358,6 @@ struct EditorView: View {
         model.isQuickDurationPickerPresented = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
             model.openFilePicker()
-        }
-    }
-
-    private func openQuickGooglePhotosPicker() {
-        isAddingQuickMedia = true
-        model.isQuickDurationPickerPresented = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
-            model.openGooglePhotosPicker()
         }
     }
 
@@ -7529,13 +7492,6 @@ struct EditorView: View {
                             ProgressView(value: model.calendarImportProgress, total: 1)
                                 .progressViewStyle(.linear)
                                 .tint(HanClipTheme.primary)
-                        } else if model.isImportingGooglePhotos {
-                            ProgressView(
-                                value: model.googlePhotosImportProgress,
-                                total: 1
-                            )
-                            .progressViewStyle(.linear)
-                            .tint(HanClipTheme.primary)
                         } else {
                             ProgressView()
                                 .progressViewStyle(.linear)
@@ -7593,7 +7549,6 @@ struct EditorView: View {
                     || model.isImportingCalendarMedia
                     || model.isImportingPhotoLibraryMedia
                     || model.isImportingSharedItems
-                    || model.isImportingGooglePhotos
                     || model.isSavingProject
                     || model.isLoadingProject {
                     Button(role: .cancel) {
@@ -7607,8 +7562,6 @@ struct EditorView: View {
                             model.cancelSharedItemImport()
                         } else if model.isImportingPhotoLibraryMedia {
                             model.cancelPhotoLibraryImport()
-                        } else if model.isImportingGooglePhotos {
-                            model.cancelGooglePhotosImport()
                         } else {
                             model.cancelCalendarMediaImport()
                         }
@@ -7662,9 +7615,6 @@ struct EditorView: View {
         if model.isImportingCalendarMedia {
             return model.calendarImportProgress
         }
-        if model.isImportingGooglePhotos {
-            return model.googlePhotosImportProgress
-        }
         return 0
     }
 
@@ -7673,7 +7623,6 @@ struct EditorView: View {
             || model.isLoadingProject
             || model.isImportingPhotoLibraryMedia
             || model.isImportingSharedItems
-            || model.isImportingGooglePhotos
             || model.isLoadingCalendarPicker
             || model.isImportingCalendarMedia
     }
@@ -8251,7 +8200,6 @@ private struct ImportantInfoSheet: View {
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
         ("영상 시간 필터", "사진 화면의 필터에서 설정한 시간 이상 또는 이하인 영상을 찾는 기능입니다. 시간 필터를 적용하는 동안에는 사진과 라이브포토를 숨기고 영상만 표시합니다. 1분, 3분, 5분, 10분을 빠르게 고르거나 분과 초를 직접 선택할 수 있으며, 필터를 해제하면 이전에 선택했던 미디어 종류가 복원됩니다."),
         ("사진 정렬", "사진 화면의 필터에서 날짜순 또는 추가순을 선택합니다. 선택된 정렬을 다시 누르면 글자 옆 화살표가 바뀌며 오름차순과 내림차순이 전환됩니다. 날짜순은 촬영일을 사용하고, 추가순은 사진 보관함의 추가·변경 시각을 사용합니다. 영화 제작, 퀵모드와 컬렉션의 공용 사진 화면에 동일하게 적용됩니다."),
-        ("Google 포토", "미디어 추가 메뉴의 파일 바로 아래에서 Google 계정을 연결하고 Google Photos Picker로 고른 사진과 영상을 가져옵니다. 전체 보관함 권한을 요구하지 않고 사용자가 Google 화면에서 선택한 항목만 내려받으며, 가져오는 동안 진행률과 취소 버튼을 표시합니다."),
         ("영화 설정", "영화 화면의 로고 아래에 있는 클립 설정 패널입니다. 처음에는 제목 행만 보이도록 접혀 있으며, 클립 설정 행 어디를 눌러도 펼치거나 다시 접을 수 있습니다. 오른쪽 표시판은 이 영화가 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화 또는 골프 영화 중 어떤 프리셋으로 시작했는지 보여주며 프로젝트를 다시 불러와도 유지됩니다. 기존 버전에서 저장해 시작 프리셋 정보가 없는 영화는 기존 영화로 표시합니다. 영상 길이, 기본시간, 라이브포토, 영상 분할, 묶음사진, 자막, 음악과 엔딩을 설정합니다."),
         ("클립목록", "선택한 사진, 라이브포토, 영상이 순서대로 표시되는 목록입니다. 묶음사진은 실제 사진이 아니라 비슷한 사진들을 담는 행으로 표시되며, 아래에 들어 있는 자사진에서 실제 사용할 컷을 확인합니다."),
         ("묶음사진", "연속으로 촬영된 사진과 라이브포토 중 촬영 시각, 화면 비율, 밝기와 화면 구도가 모두 비슷한 장면을 하나로 담아 중복을 줄이는 기능입니다. 묶음 행의 숫자는 후보 수가 아니라 영상에 사용하기로 선택된 자사진 수입니다. 클립설정의 ‘1/6’은 6장마다 1장을 자동으로 고른다는 뜻이며, −와 +로 비율을 조절할 수 있습니다. 수동은 묶음을 펼쳐 사용할 사진을 직접 고르며, 전체는 모든 사진을 사용합니다."),
@@ -15739,7 +15687,6 @@ private struct QuickMovieDurationPicker: View {
     let onSelectMusic: () -> Void
     let onAddPhoto: () -> Void
     let onAddFile: () -> Void
-    let onAddGooglePhotos: () -> Void
     let onMake: (Double?) -> Void
     let onCancel: () -> Void
 
@@ -15763,7 +15710,6 @@ private struct QuickMovieDurationPicker: View {
         onSelectMusic: @escaping () -> Void,
         onAddPhoto: @escaping () -> Void,
         onAddFile: @escaping () -> Void,
-        onAddGooglePhotos: @escaping () -> Void,
         onMake: @escaping (Double?) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -15781,7 +15727,6 @@ private struct QuickMovieDurationPicker: View {
         self.onSelectMusic = onSelectMusic
         self.onAddPhoto = onAddPhoto
         self.onAddFile = onAddFile
-        self.onAddGooglePhotos = onAddGooglePhotos
         self.onMake = onMake
         self.onCancel = onCancel
         _selectedDuration = State(initialValue: max(1, recommendedDuration))
@@ -15818,9 +15763,6 @@ private struct QuickMovieDurationPicker: View {
                             Label("파일", systemImage: "folder")
                         }
 
-                        Button(action: onAddGooglePhotos) {
-                            Label("Google 포토", systemImage: "cloud.fill")
-                        }
                     } label: {
                         HanClipHeaderActionCluster {
                             Image(systemName: "photo.badge.plus")

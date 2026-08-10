@@ -157,9 +157,6 @@ final class EditorViewModel: ObservableObject {
     @Published var isCalendarPickerPresented = false
     @Published var mediaPickerSelectionIdentifiers: [String] = []
     @Published var isFileImporterPresented = false
-    @Published var googlePhotosPickerURL: URL?
-    @Published var isImportingGooglePhotos = false
-    @Published var googlePhotosImportProgress = 0.0
     @Published var isBackgroundMusicImporterPresented = false
     @Published var isExporting = false
     @Published var isLoadingCalendarPicker = false
@@ -219,9 +216,6 @@ final class EditorViewModel: ObservableObject {
     private var pendingThumbnailTask: Task<Void, Never>?
     private var calendarImportTask: Task<Void, Never>?
     private var sharedImportTask: Task<Void, Never>?
-    private var googlePhotosImportTask: Task<Void, Never>?
-    private var googlePhotosSessionID: String?
-    private var googlePhotosAccessToken: String?
     private var pendingPhotoAlbumName = ""
     private var previewSaveRequest: PreviewSaveRequest?
     private var openedProjectSignature: ProjectEditSignature?
@@ -740,122 +734,6 @@ final class EditorViewModel: ObservableObject {
             importPendingItemsIntoNewProject()
         }
         isFileImporterPresented = true
-    }
-
-    func openGooglePhotosPicker() {
-        if !isProjectOpen {
-            beginNewProject()
-            importPendingItemsIntoNewProject()
-        }
-        cancelGooglePhotosImport(clearMessage: false)
-        isImportingGooglePhotos = true
-        googlePhotosImportProgress = 0
-        progressMessage = "Google 포토에 연결하는 중…"
-
-        googlePhotosImportTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let service = GooglePhotosPickerService.shared
-                let token = try await service.accessToken()
-                try Task.checkCancellation()
-                let session = try await service.createSession(accessToken: token)
-                googlePhotosSessionID = session.id
-                googlePhotosAccessToken = token
-                googlePhotosPickerURL = session.pickerURL
-                isImportingGooglePhotos = false
-                progressMessage = ""
-
-                try await service.waitForSelection(
-                    sessionID: session.id,
-                    accessToken: token
-                )
-                try Task.checkCancellation()
-                googlePhotosPickerURL = nil
-                isImportingGooglePhotos = true
-                progressMessage = "Google 포토 미디어를 가져오는 중…"
-                let downloads = try await service.downloadSelectedMedia(
-                    sessionID: session.id,
-                    accessToken: token
-                ) { [weak self] completed, total in
-                    guard let self else { return }
-                    googlePhotosImportProgress = total > 0
-                        ? Double(completed) / Double(total)
-                        : 0
-                    progressMessage =
-                        "Google 포토 \(completed)/\(total)개를 가져오는 중…"
-                }
-                try Task.checkCancellation()
-                var imported: [ClipItem] = []
-                for media in downloads {
-                    if media.mimeType.hasPrefix("video/") {
-                        var clips = try await makeVideoClips(from: media.url)
-                        for index in clips.indices {
-                            clips[index].sourceCreatedAt = media.createdAt
-                        }
-                        imported.append(contentsOf: clips)
-                    } else if media.mimeType.hasPrefix("image/"),
-                              let image = UIImage(contentsOfFile: media.url.path) {
-                        imported.append(
-                            ClipItem(
-                                source: .imageFile(media.url),
-                                thumbnail: image,
-                                duration: defaultDuration,
-                                photoDuration: defaultDuration,
-                                mediaKind: .photo,
-                                sourceCreatedAt: media.createdAt,
-                                sourcePixelSize: image.size
-                            )
-                        )
-                    }
-                }
-                addPickedItems(imported)
-                if imported.isEmpty {
-                    alertMessage = "선택한 Google 포토 미디어를 가져올 수 없습니다."
-                } else if isQuickModeProject {
-                    startQuickMovieIfNeeded()
-                }
-                await service.deleteSession(
-                    sessionID: session.id,
-                    accessToken: token
-                )
-                finishGooglePhotosImport()
-            } catch is CancellationError {
-                finishGooglePhotosImport()
-            } catch {
-                finishGooglePhotosImport()
-                alertMessage = error.localizedDescription
-            }
-        }
-    }
-
-    func cancelGooglePhotosImport(clearMessage: Bool = true) {
-        googlePhotosImportTask?.cancel()
-        googlePhotosImportTask = nil
-        googlePhotosPickerURL = nil
-        isImportingGooglePhotos = false
-        googlePhotosImportProgress = 0
-        if clearMessage { progressMessage = "" }
-        if let sessionID = googlePhotosSessionID,
-           let token = googlePhotosAccessToken {
-            Task {
-                await GooglePhotosPickerService.shared.deleteSession(
-                    sessionID: sessionID,
-                    accessToken: token
-                )
-            }
-        }
-        googlePhotosSessionID = nil
-        googlePhotosAccessToken = nil
-    }
-
-    private func finishGooglePhotosImport() {
-        googlePhotosImportTask = nil
-        googlePhotosPickerURL = nil
-        googlePhotosSessionID = nil
-        googlePhotosAccessToken = nil
-        isImportingGooglePhotos = false
-        googlePhotosImportProgress = 0
-        progressMessage = ""
     }
 
     @discardableResult
@@ -1801,16 +1679,11 @@ final class EditorViewModel: ObservableObject {
         calendarImportTask = nil
         sharedImportTask?.cancel()
         sharedImportTask = nil
-        googlePhotosImportTask?.cancel()
-        googlePhotosImportTask = nil
         releaseEditingMemory()
         isPickerPresented = false
         isCalendarPickerPresented = false
         isPickerPresented = false
         isFileImporterPresented = false
-        googlePhotosPickerURL = nil
-        isImportingGooglePhotos = false
-        googlePhotosImportProgress = 0
         isBackgroundMusicImporterPresented = false
         isExporting = false
         isLoadingCalendarPicker = false
@@ -3606,9 +3479,6 @@ final class EditorViewModel: ObservableObject {
         automaticSourceSize = CGSize(width: 1, height: 1)
         isPickerPresented = false
         isFileImporterPresented = false
-        googlePhotosPickerURL = nil
-        isImportingGooglePhotos = false
-        googlePhotosImportProgress = 0
         isBackgroundMusicImporterPresented = false
         isCalendarPickerPresented = false
         isLoadingCalendarPicker = false
