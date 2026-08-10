@@ -43,7 +43,3 @@ playground.xcworkspace
 *.xcscmblueprint
 .deriveddata
 HanClip.xcodeproj/project.xcworkspace/xcuserdata/armsone.xcuserdatad/UserInterfaceState.xcuserstate
-android/.gradle
-android/.idea
-*.apk
-android/local.properties

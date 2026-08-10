@@ -140,6 +140,7 @@ struct EditorView: View {
     @State private var collectionCompressionProgress = 0.0
     @State private var collectionCompressionMovieTitle = ""
     @State private var collectionCompressionTask: Task<Void, Never>?
+    @State private var isCollectionBulkCompressionExpanded = false
     @State private var collectionTitleDraft = ""
     @State private var isCollectionTitleEditorPresented = false
     @State private var collectionTitleEditorHeight: CGFloat = 56
@@ -3569,7 +3570,93 @@ struct EditorView: View {
             }
 
             collectionShelfEdge
+
+            collectionBulkCompressionControls
+                .padding(.horizontal, 18)
         }
+    }
+
+    private var collectionBulkCompressionControls: some View {
+        VStack(spacing: 8) {
+            Button {
+                withAnimation(.snappy) {
+                    isCollectionBulkCompressionExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "archivebox")
+                    Text("컬렉션 용량 줄이기")
+                    Image(
+                        systemName: isCollectionBulkCompressionExpanded
+                            ? "chevron.up"
+                            : "chevron.down"
+                    )
+                }
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.82))
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(
+                    HanClipTheme.panelFill.opacity(0.62),
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            HanClipTheme.panelStroke.opacity(0.45),
+                            lineWidth: 1
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(movieCollection.movies.isEmpty)
+
+            if isCollectionBulkCompressionExpanded {
+                HStack(spacing: 10) {
+                    collectionBulkCompressionButton(
+                        title: "720p 일괄 변환",
+                        option: .saver720
+                    )
+                    collectionBulkCompressionButton(
+                        title: "540p 일괄 변환",
+                        option: .minimum540
+                    )
+                }
+
+                Text("선택한 해상도 이하인 영상은 그대로 둡니다.")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(HanClipTheme.secondaryText.opacity(0.72))
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func collectionBulkCompressionButton(
+        title: String,
+        option: CollectionVideoSizeOption
+    ) -> some View {
+        Button {
+            beginCollectionBulkCompression(option: option)
+        } label: {
+            Text(title)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(HanClipTheme.primaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(
+                    HanClipTheme.primary.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(
+                            HanClipTheme.primary.opacity(0.30),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(isCompressingCollectionMovie || movieCollection.movies.isEmpty)
     }
 
     private func collectionPosterGridCell(
@@ -4432,6 +4519,93 @@ struct EditorView: View {
                 model.alertMessage = "파일 용량을 줄였습니다. \(collectionByteCount(result.originalBytes)) → \(collectionByteCount(result.compressedBytes))"
             } catch is CancellationError {
                 return
+            } catch {
+                model.alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func beginCollectionBulkCompression(
+        option: CollectionVideoSizeOption
+    ) {
+        let movies = movieCollection.movies
+        guard !movies.isEmpty else { return }
+
+        collectionCompressionTask?.cancel()
+        collectionCompressionMovieTitle = "컬렉션 준비 중"
+        collectionCompressionProgress = 0
+        isCompressingCollectionMovie = true
+
+        collectionCompressionTask = Task { @MainActor in
+            var convertedCount = 0
+            var skippedCount = 0
+            var failedCount = 0
+            var originalBytes: Int64 = 0
+            var compressedBytes: Int64 = 0
+            let totalCount = movies.count
+
+            defer {
+                isCompressingCollectionMovie = false
+                collectionCompressionTask = nil
+            }
+
+            do {
+                for (index, movie) in movies.enumerated() {
+                    try Task.checkCancellation()
+                    collectionCompressionMovieTitle =
+                        "\(index + 1)/\(totalCount)  \(movie.title)"
+
+                    guard let info = await movieCollection.compressionInfo(
+                        for: movie
+                    ) else {
+                        failedCount += 1
+                        collectionCompressionProgress =
+                            Double(index + 1) / Double(totalCount)
+                        continue
+                    }
+
+                    if info.isAtOrBelow(option) {
+                        skippedCount += 1
+                        collectionCompressionProgress =
+                            Double(index + 1) / Double(totalCount)
+                        continue
+                    }
+
+                    do {
+                        let result = try await movieCollection.reduceFileSize(
+                            for: movie,
+                            option: option
+                        ) { progress in
+                            collectionCompressionProgress =
+                                (Double(index) + progress)
+                                / Double(totalCount)
+                        }
+                        convertedCount += 1
+                        originalBytes += result.originalBytes
+                        compressedBytes += result.compressedBytes
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        failedCount += 1
+                    }
+
+                    collectionCompressionProgress =
+                        Double(index + 1) / Double(totalCount)
+                }
+
+                var summary = "일괄 변환 완료: \(convertedCount)개 변환"
+                if skippedCount > 0 {
+                    summary += ", \(skippedCount)개 유지"
+                }
+                if failedCount > 0 {
+                    summary += ", \(failedCount)개 실패"
+                }
+                if convertedCount > 0 {
+                    summary += "\n\(collectionByteCount(originalBytes)) → \(collectionByteCount(compressedBytes))"
+                }
+                model.alertMessage = summary
+            } catch is CancellationError {
+                model.alertMessage = "컬렉션 일괄 변환을 취소했습니다. 완료된 영상은 그대로 유지됩니다."
             } catch {
                 model.alertMessage = error.localizedDescription
             }
@@ -8194,7 +8368,7 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 컬렉션 선반 아래의 숨김 메뉴에서는 전체 영상을 720p 또는 540p로 일괄 변환하며 이미 해당 해상도 이하인 영상은 유지합니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다. 세로와 가로 모두 핀치로 확대·축소하고 확대 상태에서 한 손가락으로 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
@@ -8221,7 +8395,7 @@ private struct ImportantInfoSheet: View {
         ("영상 생성 진행창", "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다."),
         ("시사회", "만들기 완료 후, 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다."),
         ("개봉하기 창", "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다."),
-        ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
+        ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 웹페이지에서 영상이 감지되면 다운, 보기, 닫기 버튼이 나타납니다. 다운은 영상을 가져오고, 보기는 감지된 영상을 전체 화면으로 재생하며, 닫기는 영상 감지 알림만 닫습니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
         ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다. 자막 문구가 비어 있어도 사용을 선택할 수 있어 마지막 엔딩 카드만 넣는 방식으로도 사용할 수 있습니다."),
         ("촬영 기간 삽입", "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣는 기능입니다. 기본 자막이면 기존 문구를 바꾸고, 사용자가 편집한 자막이면 현재 커서 위치에 삽입합니다."),
         ("엔딩", "클립 설정의 음악 아래에 독립된 행으로 표시되며 기본값은 안함입니다. 지도 아이콘과 현재 테마명, 표시 시간 조절, 사용·안함 상태를 한 행에서 설정합니다. 현재 위치 정보가 없어도 사용과 테마를 미리 설정할 수 있고, 이후 위치 정보가 있는 미디어를 추가하면 저장된 설정이 적용됩니다. 촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 엔딩 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다. 퀵모드에서도 같은 행과 설정 화면을 사용합니다."),
@@ -13178,6 +13352,7 @@ private struct OnlineMusicBrowserView: View {
     @State private var showFavoriteEditor = false
     @State private var showFavoritePanel = false
     @State private var detectedVideo: BrowserDetectedVideo?
+    @State private var detectedVideoPreviewURL: URL?
     @State private var dismissedVideoURLString: String?
     @State private var downloadDetectedVideoTrigger = 0
 
@@ -13251,6 +13426,26 @@ private struct OnlineMusicBrowserView: View {
                     favoritesRaw: $favoriteMusicSitesRaw
                 )
                 .presentationDetents([.medium, .large])
+            }
+            .fullScreenCover(
+                isPresented: Binding(
+                    get: { detectedVideoPreviewURL != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            detectedVideoPreviewURL = nil
+                        }
+                    }
+                )
+            ) {
+                if let url = detectedVideoPreviewURL {
+                    FullscreenVideoPreview(
+                        url: url,
+                        startTime: .zero,
+                        onClose: {
+                            detectedVideoPreviewURL = nil
+                        }
+                    )
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
             .onChange(of: currentURLText) { _, newValue in
@@ -13694,24 +13889,34 @@ private struct OnlineMusicBrowserView: View {
 
     private var detectedVideoPanel: some View {
         HStack(spacing: 8) {
-            Label("영상", systemImage: "play.rectangle.fill")
+            Image(systemName: "play.rectangle.fill")
                 .font(.system(size: 12, weight: .black))
                 .foregroundStyle(HanClipTheme.primaryText)
+                .accessibilityHidden(true)
 
             Spacer(minLength: 4)
 
             Button {
                 downloadDetectedVideoTrigger += 1
             } label: {
-                Label("받기", systemImage: "arrow.down.circle.fill")
+                Text("다운")
             }
             .buttonStyle(.borderedProminent)
+            .accessibilityLabel("영상 다운로드")
+
+            Button {
+                detectedVideoPreviewURL = detectedVideo?.downloadableURL
+            } label: {
+                Text("보기")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("감지된 영상 전체 화면 보기")
 
             Button {
                 dismissedVideoURLString = detectedVideo?.urlString
                 detectedVideo = nil
             } label: {
-                Label("닫기", systemImage: "xmark")
+                Text("닫기")
             }
             .buttonStyle(.bordered)
             .accessibilityHint("영상 인식 알림만 닫습니다")
@@ -17621,6 +17826,11 @@ private struct CollectionMoviePlayerView: View {
     @State private var downwardDragOffset = 0.0
     @State private var arePlayerControlsVisible = true
     @State private var playerControlsHideTask: Task<Void, Never>?
+    @State private var playerZoomScale = 1.0
+    @State private var playerZoomStartScale = 1.0
+    @State private var playerZoomOffset = CGSize.zero
+    @State private var playerZoomStartOffset = CGSize.zero
+    @State private var isPlayerMagnifying = false
 
     init(movie: CollectedMovie, url: URL) {
         self.movie = movie
@@ -17638,6 +17848,14 @@ private struct CollectionMoviePlayerView: View {
             collectionPlayerContent(topPadding: topPadding)
                 .frame(width: displaySize.width, height: displaySize.height)
                 .rotationEffect(.degrees(displayRotationDegrees))
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    collectionMagnificationGesture(viewportSize: displaySize)
+                )
+                .simultaneousGesture(
+                    collectionZoomPanGesture(viewportSize: displaySize)
+                )
+                .simultaneousGesture(collectionZoomResetGesture)
                 .position(
                     x: proxy.size.width / 2,
                     y: proxy.size.height / 2
@@ -17671,6 +17889,8 @@ private struct CollectionMoviePlayerView: View {
 
             GeometryReader { proxy in
                 PreviewPlayerSurface(player: player, videoGravity: .resizeAspect)
+                    .scaleEffect(playerZoomScale)
+                    .offset(playerZoomOffset)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         togglePlayerControlsVisibility()
@@ -17679,6 +17899,7 @@ private struct CollectionMoviePlayerView: View {
                         collectionPlaybackGesture(viewportSize: proxy.size)
                     )
             }
+            .clipped()
 
             if let dragPreviewSeconds {
                 Text(collectionPlaybackTime(dragPreviewSeconds))
@@ -17804,6 +18025,9 @@ private struct CollectionMoviePlayerView: View {
     ) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
             .onChanged { value in
+                guard !isPlayerMagnifying,
+                      playerZoomScale <= 1.01
+                else { return }
                 let translation = collectionScreenTranslation(
                     value.translation
                 )
@@ -17843,6 +18067,14 @@ private struct CollectionMoviePlayerView: View {
                 }
             }
             .onEnded { value in
+                guard !isPlayerMagnifying,
+                      playerZoomScale <= 1.01
+                else {
+                    playerDragAxis = nil
+                    dragPreviewSeconds = nil
+                    downwardDragOffset = 0
+                    return
+                }
                 let translation = collectionScreenTranslation(
                     value.translation
                 )
@@ -17863,6 +18095,114 @@ private struct CollectionMoviePlayerView: View {
                     showPlayerControlsTemporarily()
                 }
             }
+    }
+
+    private func collectionMagnificationGesture(
+        viewportSize: CGSize
+    ) -> some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0.001)
+            .onChanged { value in
+                isPlayerMagnifying = true
+                playerControlsHideTask?.cancel()
+                playerDragAxis = nil
+                dragPreviewSeconds = nil
+                downwardDragOffset = 0
+                playerZoomScale = min(
+                    max(playerZoomStartScale * value.magnification, 1),
+                    4
+                )
+                playerZoomOffset = clampedPlayerZoomOffset(
+                    playerZoomOffset,
+                    scale: playerZoomScale,
+                    viewportSize: viewportSize
+                )
+            }
+            .onEnded { value in
+                let finalScale = min(
+                    max(playerZoomStartScale * value.magnification, 1),
+                    4
+                )
+                if finalScale < 1.04 {
+                    resetPlayerZoom(animated: true)
+                } else {
+                    playerZoomScale = finalScale
+                    playerZoomStartScale = finalScale
+                    playerZoomOffset = clampedPlayerZoomOffset(
+                        playerZoomOffset,
+                        scale: finalScale,
+                        viewportSize: viewportSize
+                    )
+                    playerZoomStartOffset = playerZoomOffset
+                }
+                isPlayerMagnifying = false
+                showPlayerControlsTemporarily()
+            }
+    }
+
+    private func collectionZoomPanGesture(
+        viewportSize: CGSize
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
+            .onChanged { value in
+                guard playerZoomScale > 1.01
+                else { return }
+                let translation = collectionScreenTranslation(
+                    value.translation
+                )
+                let proposedOffset = CGSize(
+                    width: playerZoomStartOffset.width + translation.width,
+                    height: playerZoomStartOffset.height + translation.height
+                )
+                playerZoomOffset = clampedPlayerZoomOffset(
+                    proposedOffset,
+                    scale: playerZoomScale,
+                    viewportSize: viewportSize
+                )
+            }
+            .onEnded { _ in
+                guard playerZoomScale > 1.01 else { return }
+                playerZoomStartOffset = playerZoomOffset
+            }
+    }
+
+    private var collectionZoomResetGesture: some Gesture {
+        TapGesture(count: 2)
+            .onEnded {
+                guard playerZoomScale > 1.01 else { return }
+                resetPlayerZoom(animated: true)
+                showPlayerControlsTemporarily()
+            }
+    }
+
+    private func clampedPlayerZoomOffset(
+        _ offset: CGSize,
+        scale: Double,
+        viewportSize: CGSize
+    ) -> CGSize {
+        let extraScale = max(scale - 1, 0)
+        let maximumX = viewportSize.width * extraScale / 2
+        let maximumY = viewportSize.height * extraScale / 2
+        return CGSize(
+            width: min(max(offset.width, -maximumX), maximumX),
+            height: min(max(offset.height, -maximumY), maximumY)
+        )
+    }
+
+    private func resetPlayerZoom(animated: Bool) {
+        let changes = {
+            playerZoomScale = 1
+            playerZoomStartScale = 1
+            playerZoomOffset = .zero
+            playerZoomStartOffset = .zero
+            isPlayerMagnifying = false
+        }
+        if animated {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                changes()
+            }
+        } else {
+            changes()
+        }
     }
 
     private func togglePlayerControlsVisibility() {
@@ -17893,16 +18233,20 @@ private struct CollectionMoviePlayerView: View {
     }
 
     private func collectionScreenTranslation(_ translation: CGSize) -> CGSize {
+        // The player is rotated manually while DragGesture reports in the
+        // unrotated global coordinate space. Convert with the inverse of the
+        // display rotation so visible left/right and up/down keep their
+        // expected directions in landscape.
         switch deviceOrientation {
         case .landscapeLeft:
             return CGSize(
-                width: -translation.height,
-                height: translation.width
+                width: translation.height,
+                height: -translation.width
             )
         case .landscapeRight:
             return CGSize(
-                width: translation.height,
-                height: -translation.width
+                width: -translation.height,
+                height: translation.width
             )
         default:
             return translation
@@ -17949,6 +18293,7 @@ private struct CollectionMoviePlayerView: View {
         else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
             deviceOrientation = orientation
+            resetPlayerZoom(animated: false)
         }
     }
 

@@ -86,6 +86,16 @@ struct CollectionVideoCompressionInfo: Sendable {
     let duration: Double
     let fileSizeBytes: Int64
 
+    func isAtOrBelow(_ option: CollectionVideoSizeOption) -> Bool {
+        let sourceLongEdge = max(width, height)
+        let sourceShortEdge = min(width, height)
+        let target = option.outputResolution
+        let targetLongEdge = max(target.width, target.height)
+        let targetShortEdge = min(target.width, target.height)
+        return sourceLongEdge <= targetLongEdge
+            && sourceShortEdge <= targetShortEdge
+    }
+
     func estimatedBytes(for option: CollectionVideoSizeOption) -> Int64 {
         guard duration > 0, fileSizeBytes > 0 else { return 0 }
         let sourceBitsPerSecond = Double(fileSizeBytes) * 8 / duration
