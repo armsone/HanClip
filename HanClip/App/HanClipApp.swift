@@ -773,7 +773,10 @@ final class HanClipAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        supportedOrientationMask
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return .all
+        }
+        return supportedOrientationMask
     }
 
     func application(

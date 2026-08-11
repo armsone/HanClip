@@ -23,6 +23,7 @@ final class ShareViewController: UIViewController {
     private let descriptionLabel = UILabel()
     private let thumbnailContainer = UIView()
     private let thumbnailView = UIImageView()
+    private let scrollView = UIScrollView()
     private let stack = UIStackView()
     private let progressLabel = UILabel()
     private let progressView = UIProgressView(progressViewStyle: .default)
@@ -40,6 +41,8 @@ final class ShareViewController: UIViewController {
     }
 
     private func configureView() {
+        let usesAdaptivePadLayout = traitCollection.userInterfaceIdiom == .pad
+
         view.backgroundColor = .systemBackground
 
         logoImageView.image = UIImage(named: "LogoMarkV2")
@@ -94,6 +97,14 @@ final class ShareViewController: UIViewController {
         thumbnailView.image = UIImage(systemName: "photo.on.rectangle.angled")
         thumbnailView.tintColor = secondaryColor
 
+        let thumbnailAspectRatioConstraint = thumbnailContainer.heightAnchor.constraint(
+            equalTo: thumbnailContainer.widthAnchor,
+            multiplier: 0.64
+        )
+        if usesAdaptivePadLayout {
+            thumbnailAspectRatioConstraint.priority = UILayoutPriority(999)
+        }
+
         NSLayoutConstraint.activate([
             logoImageView.widthAnchor.constraint(equalToConstant: 35.2),
             logoImageView.heightAnchor.constraint(equalToConstant: 35.2),
@@ -109,10 +120,7 @@ final class ShareViewController: UIViewController {
             thumbnailView.heightAnchor.constraint(
                 equalTo: thumbnailContainer.heightAnchor
             ),
-            thumbnailContainer.heightAnchor.constraint(
-                equalTo: thumbnailContainer.widthAnchor,
-                multiplier: 0.64
-            )
+            thumbnailAspectRatioConstraint
         ])
 
         progressView.progress = 0
@@ -160,26 +168,39 @@ final class ShareViewController: UIViewController {
             actionButtonsStack,
             descriptionLabel
         ].forEach(stack.addArrangedSubview)
-        view.addSubview(stack)
+        if usesAdaptivePadLayout {
+            scrollView.translatesAutoresizingMaskIntoConstraints = false
+            scrollView.alwaysBounceVertical = false
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.contentInsetAdjustmentBehavior = .never
+            view.addSubview(scrollView)
+            scrollView.addSubview(stack)
+        } else {
+            view.addSubview(stack)
+        }
         view.addSubview(cancelButton)
 
+        let stackFillWidth = stack.widthAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.widthAnchor,
+            constant: -48
+        )
+        stackFillWidth.priority = UILayoutPriority(999)
+        let stackRegularWidth = stack.widthAnchor.constraint(
+            equalToConstant: 640
+        )
+        stackRegularWidth.priority = UILayoutPriority(998)
+
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.topAnchor,
-                constant: 22
+            stack.centerXAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.centerXAnchor
             ),
-            stack.bottomAnchor.constraint(
-                lessThanOrEqualTo: cancelButton.topAnchor,
-                constant: -12
+            stack.widthAnchor.constraint(
+                lessThanOrEqualTo: view.safeAreaLayoutGuide.widthAnchor,
+                constant: -48
             ),
-            stack.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
-                constant: 24
-            ),
-            stack.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -24
-            ),
+            stack.widthAnchor.constraint(lessThanOrEqualToConstant: 640),
+            stackFillWidth,
+            stackRegularWidth,
             thumbnailContainer.widthAnchor.constraint(
                 equalTo: stack.widthAnchor
             ),
@@ -190,20 +211,63 @@ final class ShareViewController: UIViewController {
             descriptionLabel.widthAnchor.constraint(
                 equalTo: stack.widthAnchor
             ),
-            cancelButton.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
-                constant: 24
+            cancelButton.centerXAnchor.constraint(
+                equalTo: stack.centerXAnchor
             ),
-            cancelButton.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
-                constant: -24
-            ),
+            cancelButton.widthAnchor.constraint(equalTo: stack.widthAnchor),
             cancelButton.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor,
                 constant: -12
             ),
             cancelButton.heightAnchor.constraint(equalToConstant: 54)
         ])
+
+        if usesAdaptivePadLayout {
+            NSLayoutConstraint.activate([
+                scrollView.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor
+                ),
+                scrollView.leadingAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.leadingAnchor
+                ),
+                scrollView.trailingAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.trailingAnchor
+                ),
+                scrollView.bottomAnchor.constraint(
+                    equalTo: cancelButton.topAnchor,
+                    constant: -12
+                ),
+                scrollView.contentLayoutGuide.widthAnchor.constraint(
+                    equalTo: scrollView.frameLayoutGuide.widthAnchor
+                ),
+                stack.topAnchor.constraint(
+                    equalTo: scrollView.contentLayoutGuide.topAnchor,
+                    constant: 22
+                ),
+                stack.bottomAnchor.constraint(
+                    equalTo: scrollView.contentLayoutGuide.bottomAnchor,
+                    constant: -12
+                ),
+                thumbnailContainer.heightAnchor.constraint(
+                    lessThanOrEqualTo: view.safeAreaLayoutGuide.heightAnchor,
+                    multiplier: 0.42
+                ),
+                thumbnailContainer.heightAnchor.constraint(
+                    lessThanOrEqualToConstant: 320
+                )
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                stack.topAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.topAnchor,
+                    constant: 22
+                ),
+                stack.bottomAnchor.constraint(
+                    lessThanOrEqualTo: cancelButton.topAnchor,
+                    constant: -12
+                )
+            ])
+        }
     }
 
     private func configureActionButtons() {

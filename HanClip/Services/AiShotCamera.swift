@@ -173,6 +173,19 @@ struct AiShotCameraView: View {
                 let previewTop = (proxy.size.height - previewHeight) / 2
                 let previewBottom = previewTop + previewHeight
                 let bottomSpace = max(0, proxy.size.height - previewBottom)
+                let preferredControlY = previewBottom + bottomSpace * 0.42
+                let controlBottomInset = max(
+                    12,
+                    proxy.safeAreaInsets.bottom + 12
+                )
+                let controlY = min(
+                    preferredControlY,
+                    proxy.size.height - controlBottomInset - 44
+                )
+                let zoomControlY = min(
+                    previewBottom - 34,
+                    controlY - 84
+                )
                 let sideControlWidth: CGFloat = 116
                 let sideControlOffset: CGFloat = 126
                 let leftControlX = max(
@@ -186,7 +199,7 @@ struct AiShotCameraView: View {
                 let alignedControlWidth = rightControlX - leftControlX
                     + sideControlWidth
 
-                AiShotPreviewView(session: camera.session)
+                AiShotPreviewView(camera: camera)
                     .frame(
                         width: proxy.size.width,
                         height: previewHeight
@@ -202,7 +215,7 @@ struct AiShotCameraView: View {
                         .transition(.opacity)
                         .position(
                             x: proxy.size.width / 2,
-                            y: previewBottom - 80
+                            y: zoomControlY - 46
                         )
                         .zIndex(3)
                 }
@@ -210,14 +223,14 @@ struct AiShotCameraView: View {
                 zoomControls(width: alignedControlWidth)
                     .position(
                         x: proxy.size.width / 2,
-                        y: previewBottom - 34
+                        y: zoomControlY
                     )
                     .zIndex(2)
 
                 durationPresetPanel
                     .position(
                         x: leftControlX,
-                        y: previewBottom + bottomSpace * 0.42
+                        y: controlY
                     )
 
                 if let durationPresetNotice {
@@ -236,13 +249,13 @@ struct AiShotCameraView: View {
                 captureControl
                     .position(
                         x: proxy.size.width / 2,
-                        y: previewBottom + bottomSpace * 0.42
+                        y: controlY
                     )
 
                 cameraSwitchButton
                     .position(
                         x: rightControlX,
-                        y: previewBottom + bottomSpace * 0.42
+                        y: controlY
                     )
             }
 
@@ -1848,17 +1861,19 @@ private struct ManualCaptureButtonStyle: ButtonStyle {
 }
 
 private struct AiShotPreviewView: UIViewRepresentable {
-    let session: AVCaptureSession
+    let camera: AiShotCameraController
 
     func makeUIView(context: Context) -> PreviewContainerView {
         let view = PreviewContainerView()
-        view.videoPreviewLayer.session = session
+        view.videoPreviewLayer.session = camera.session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
+        camera.attachPreviewLayer(view.videoPreviewLayer)
         return view
     }
 
     func updateUIView(_ uiView: PreviewContainerView, context: Context) {
-        uiView.videoPreviewLayer.session = session
+        uiView.videoPreviewLayer.session = camera.session
+        camera.attachPreviewLayer(uiView.videoPreviewLayer)
     }
 }
 
@@ -1955,6 +1970,11 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private var sensitivity = AiShotSensitivity.automatic
     private var durationPreset = AiShotDurationPreset.normal
     private var activeDurationPreset: AiShotDurationPreset?
+    private weak var previewLayer: AVCaptureVideoPreviewLayer?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var previewRotationObservation: NSKeyValueObservation?
+    private var captureRotationObservation: NSKeyValueObservation?
+    private var captureRotationAngle: CGFloat = 0
 
     override init() {
         super.init()
@@ -2005,6 +2025,74 @@ final class AiShotCameraController: NSObject, ObservableObject,
                 self.session.stopRunning()
             }
         }
+    }
+
+    fileprivate func attachPreviewLayer(
+        _ previewLayer: AVCaptureVideoPreviewLayer
+    ) {
+        guard self.previewLayer !== previewLayer else { return }
+        self.previewLayer = previewLayer
+        guard let device = rotationCoordinator?.device else { return }
+        let angle = installRotationCoordinator(for: device)
+        updateCaptureRotationAngle(angle)
+    }
+
+    private func installRotationCoordinator(
+        for device: AVCaptureDevice
+    ) -> CGFloat {
+        let install = { [self] in
+            let coordinator = AVCaptureDevice.RotationCoordinator(
+                device: device,
+                previewLayer: previewLayer
+            )
+            rotationCoordinator = coordinator
+
+            previewRotationObservation = coordinator.observe(
+                \.videoRotationAngleForHorizonLevelPreview,
+                options: [.initial, .new]
+            ) { [weak self] coordinator, _ in
+                guard let connection = self?.previewLayer?.connection else {
+                    return
+                }
+                let angle = coordinator
+                    .videoRotationAngleForHorizonLevelPreview
+                guard connection.isVideoRotationAngleSupported(angle) else {
+                    return
+                }
+                connection.videoRotationAngle = angle
+            }
+
+            captureRotationObservation = coordinator.observe(
+                \.videoRotationAngleForHorizonLevelCapture,
+                options: [.initial, .new]
+            ) { [weak self] coordinator, _ in
+                self?.updateCaptureRotationAngle(
+                    coordinator.videoRotationAngleForHorizonLevelCapture
+                )
+            }
+
+            return coordinator.videoRotationAngleForHorizonLevelCapture
+        }
+
+        if Thread.isMainThread {
+            return install()
+        }
+        return DispatchQueue.main.sync(execute: install)
+    }
+
+    private func updateCaptureRotationAngle(_ angle: CGFloat) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.captureRotationAngle = angle
+            self.applyCaptureRotationAngle()
+        }
+    }
+
+    private func applyCaptureRotationAngle() {
+        guard let connection = movieOutput.connection(with: .video),
+              connection.isVideoRotationAngleSupported(captureRotationAngle)
+        else { return }
+        connection.videoRotationAngle = captureRotationAngle
     }
 
     @objc private func sessionWasInterrupted(_ notification: Notification) {
@@ -2208,6 +2296,10 @@ final class AiShotCameraController: NSObject, ObservableObject,
             }
 
             session.commitConfiguration()
+            captureRotationAngle = installRotationCoordinator(
+                for: videoDevice
+            )
+            applyCaptureRotationAngle()
             configureDefaultZoom(for: videoDevice)
             publishCameraState(for: videoDevice)
             isActive = true
@@ -2348,6 +2440,8 @@ final class AiShotCameraController: NSObject, ObservableObject,
 
             session.addInput(newInput)
             session.commitConfiguration()
+            captureRotationAngle = installRotationCoordinator(for: device)
+            applyCaptureRotationAngle()
             configureDefaultZoom(for: device)
             videoInput = newInput
             activeCameraPosition = position
@@ -2417,6 +2511,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
         guard isActive, session.isRunning, !movieOutput.isRecording else {
             return
         }
+        applyCaptureRotationAngle()
         let continuesCaptureCycle = didRequestStop
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

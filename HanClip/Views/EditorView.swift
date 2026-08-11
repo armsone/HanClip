@@ -211,8 +211,13 @@ struct EditorView: View {
     @EnvironmentObject private var purchaseManager:
         CopyrightPurchaseManager
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("hanClipSleepPreventionMode") private var sleepPreventionModeRaw =
         SleepPreventionMode.defaultValue.rawValue
+
+    private var adaptiveContentMaxWidth: CGFloat? {
+        horizontalSizeClass == .regular ? 920 : nil
+    }
 
     private var themeMode: HanClipThemeMode {
         if themeModeRaw == "readableComfort" {
@@ -290,6 +295,8 @@ struct EditorView: View {
                     .ignoresSafeArea()
 
                 activeRootContent
+                    .frame(maxWidth: adaptiveContentMaxWidth)
+                    .frame(maxWidth: .infinity)
 
                 if !model.isProjectOpen {
                     homeEdgeFades
@@ -425,7 +432,7 @@ struct EditorView: View {
                 if isSharedInboxBannerVisible {
                     GeometryReader { proxy in
                         sharedInboxBanner
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: 720)
                             .frame(
                                 height: min(
                                     max(proxy.size.height * 0.50, 360),
@@ -518,7 +525,9 @@ struct EditorView: View {
 
                         if showResetConfirmation {
                             resetConfirmationPopup
-                                .frame(width: proxy.size.width)
+                                .frame(
+                                    width: min(proxy.size.width, 760)
+                                )
                                 .frame(
                                     maxHeight: .infinity,
                                     alignment: .bottom
@@ -530,7 +539,9 @@ struct EditorView: View {
                                 )
                         } else if showHeaderExitConfirmation {
                             headerExitConfirmationPopup
-                                .frame(width: proxy.size.width)
+                                .frame(
+                                    width: min(proxy.size.width, 760)
+                                )
                                 .frame(
                                     maxHeight: .infinity,
                                     alignment: .top
@@ -542,7 +553,12 @@ struct EditorView: View {
                                 )
                         } else {
                             themeSelectionPopup
-                                .frame(width: proxy.size.width * 0.92)
+                                .frame(
+                                    width: min(
+                                        proxy.size.width * 0.92,
+                                        620
+                                    )
+                                )
                                 .frame(
                                     maxHeight: .infinity,
                                     alignment: .top
@@ -629,7 +645,12 @@ struct EditorView: View {
                             .accessibilityLabel("비율 선택 닫기")
 
                             aspectRatioPicker
-                                .frame(width: proxy.size.width - 28)
+                                .frame(
+                                    width: min(
+                                        max(proxy.size.width - 28, 0),
+                                        920
+                                    )
+                                )
                         }
                         .frame(
                             maxWidth: .infinity,
@@ -1251,6 +1272,8 @@ struct EditorView: View {
         .frame(height: 58)
         .padding(.top, 6)
         .padding(.horizontal, 14)
+        .frame(maxWidth: adaptiveContentMaxWidth)
+        .frame(maxWidth: .infinity)
         .background(alignment: .top) {
             if model.isProjectOpen {
                 topHeaderScrim
@@ -7428,6 +7451,8 @@ struct EditorView: View {
                 .buttonStyle(.plain)
                 .disabled(model.isExporting)
             }
+            .frame(maxWidth: adaptiveContentMaxWidth)
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -8347,6 +8372,7 @@ private struct ImportantInfoSheet: View {
         ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 설정과 설정 정보를 보여주는 창입니다."),
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다."),
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
+        ("iPad 지원", "iPad에서 세로·가로 방향과 분할 화면 크기에 맞춰 사용할 수 있습니다. 넓은 화면에서는 편집 콘텐츠의 읽기 좋은 폭을 유지하며 사진 선택, 공유 확장과 잠금 화면 위젯도 함께 사용할 수 있습니다."),
         ("영화 프리셋", "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
         ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 정해진 시간보다 최소시간이 길 때 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 퀵모드 영상 길이 화면으로 돌아갑니다. 외부 주소 hanclip://quick으로 바로 실행할 수 있습니다."),
         ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 엔딩 카드는 보물지도를 기본으로 사용합니다."),
@@ -17248,7 +17274,8 @@ private struct FullscreenVideoPreview: View {
     }
 
     private var usesLandscapeLayout: Bool {
-        deviceOrientation.isLandscape
+        UIDevice.current.userInterfaceIdiom != .pad
+            && deviceOrientation.isLandscape
     }
 
     private var displayRotationDegrees: Double {
@@ -17962,7 +17989,7 @@ private struct CollectionMoviePlayerView: View {
     private func collectionPlayerTopPadding(
         geometrySafeArea: EdgeInsets
     ) -> CGFloat {
-        guard !deviceOrientation.isLandscape else { return 18 }
+        guard !usesManualLandscapeRotation else { return 18 }
         let windowTopInset = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows)
@@ -17995,13 +18022,18 @@ private struct CollectionMoviePlayerView: View {
     }
 
     private func collectionDisplaySize(for viewportSize: CGSize) -> CGSize {
-        guard deviceOrientation.isLandscape else { return viewportSize }
+        guard usesManualLandscapeRotation else { return viewportSize }
         return CGSize(width: viewportSize.height, height: viewportSize.width)
     }
 
     private var displayRotationDegrees: Double {
-        guard deviceOrientation.isLandscape else { return 0 }
+        guard usesManualLandscapeRotation else { return 0 }
         return deviceOrientation == .landscapeRight ? -90 : 90
+    }
+
+    private var usesManualLandscapeRotation: Bool {
+        UIDevice.current.userInterfaceIdiom != .pad
+            && deviceOrientation.isLandscape
     }
 
     private func togglePlayback() {
@@ -18237,6 +18269,7 @@ private struct CollectionMoviePlayerView: View {
         // unrotated global coordinate space. Convert with the inverse of the
         // display rotation so visible left/right and up/down keep their
         // expected directions in landscape.
+        guard usesManualLandscapeRotation else { return translation }
         switch deviceOrientation {
         case .landscapeLeft:
             return CGSize(
