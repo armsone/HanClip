@@ -767,7 +767,7 @@ final class HanClipQuickActionRouter: ObservableObject {
 
 final class HanClipAppDelegate: NSObject, UIApplicationDelegate {
     let quickActionRouter = HanClipQuickActionRouter.shared
-    var supportedOrientationMask: UIInterfaceOrientationMask = .portrait
+    static var supportedOrientationMask: UIInterfaceOrientationMask = .portrait
 
     func application(
         _ application: UIApplication,
@@ -776,7 +776,7 @@ final class HanClipAppDelegate: NSObject, UIApplicationDelegate {
         if UIDevice.current.userInterfaceIdiom == .pad {
             return .all
         }
-        return supportedOrientationMask
+        return Self.supportedOrientationMask
     }
 
     func application(

@@ -733,11 +733,35 @@ struct EditorView: View {
                 isAddingQuickMedia = false
             }
         }
-        .fullScreenCover(item: $selectedCollectionMovie) { movie in
-            CollectionMoviePlayerView(
-                movie: movie,
-                url: movieCollection.videoURL(for: movie)
-            )
+        .hanClipFullscreenPlayerCover(
+            isPresented: Binding(
+                get: { selectedCollectionMovie != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        selectedCollectionMovie = nil
+                    }
+                }
+            ),
+            onDismiss: {
+                selectedCollectionMovie = nil
+                HanClipFullscreenVideoOrientationPolicy.restorePortrait()
+            }
+        ) {
+            if let movie = selectedCollectionMovie {
+                let url = movieCollection.videoURL(for: movie)
+                HanClipFullscreenVideoPlayer(
+                    url: url,
+                    configuration: .init(
+                        title: movie.title,
+                        shareURL: url,
+                        aspectMode: .automatic,
+                        allowsAspectModeToggle: true
+                    ),
+                    onClose: {
+                        selectedCollectionMovie = nil
+                    }
+                )
+            }
         }
         .fileImporter(
             isPresented: $isCollectionFileImporterPresented,
@@ -3113,7 +3137,7 @@ struct EditorView: View {
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 104)
+        .frame(height: 52)
         .allowsHitTesting(false)
         .ignoresSafeArea(.container, edges: .bottom)
     }
@@ -3696,6 +3720,8 @@ struct EditorView: View {
                     guard let currentMovie = movieCollection.movies.first(
                         where: { $0.id == movie.id }
                     ) else { return }
+                    HanClipFullscreenVideoOrientationPolicy
+                        .prepareForPresentation()
                     selectedCollectionMovie = currentMovie
                 } label: {
                     Color.clear
@@ -8394,7 +8420,8 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 컬렉션 선반 아래의 숨김 메뉴에서는 전체 영상을 720p 또는 540p로 일괄 변환하며 이미 해당 해상도 이하인 영상은 유지합니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 기기 회전 잠금과 관계없이 실제 기기 방향을 감지해 영상과 조작 버튼을 세로·가로로 함께 전환합니다. 세로와 가로 모두 핀치로 확대·축소하고 확대 상태에서 한 손가락으로 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
+        ("컬렉션", "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 컬렉션 선반 아래의 숨김 메뉴에서는 전체 영상을 720p 또는 540p로 일괄 변환하며 이미 해당 해상도 이하인 영상은 유지합니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 실제 기기 방향에 맞춰 앱 화면 방향 자체와 안전영역을 세로·가로로 함께 전환합니다. 한 손가락을 위로 밀어 시작하면 시스템 볼륨을 조절하며 손을 떼지 않고 아래로 되돌리면 음량이 낮아지고, 아래로 밀어 시작하면 플레이어를 닫습니다. 세로와 가로 모두 핀치로 0.5배부터 4배까지 확대·축소하고 확대 상태에서 한 손가락으로 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
+        ("한클립 전체화면 플레이어", "컬렉션 재생, 웹에서 찾은 동영상 보기, 완성본 시사회가 함께 사용하는 공통 동영상 플레이어입니다. 실제 기기 방향에 맞춰 앱 화면과 안전영역을 전환하며 가로 화면에서는 화면 맞춤과 채우기를 선택할 수 있습니다. 화면을 한 번 누르면 재생하거나 멈추고, 가로 밀기로 재생 위치를 찾습니다. 위로 밀어 시작하면 손을 떼기 전까지 시스템 볼륨 조절로 유지되어 아래로 되돌릴 때 바로 음량이 낮아지며, 아래로 밀어 시작하면 플레이어를 닫습니다. 핀치로 0.5배부터 4배까지 확대·축소하고 확대 상태에서 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
         ("영화 화면", "미디어를 선택한 후 기본 재생 시간, 화면 비율, 클립목록 등을 편집하는 화면입니다."),
@@ -13453,7 +13480,7 @@ private struct OnlineMusicBrowserView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
-            .fullScreenCover(
+            .hanClipFullscreenPlayerCover(
                 isPresented: Binding(
                     get: { detectedVideoPreviewURL != nil },
                     set: { isPresented in
@@ -13461,12 +13488,21 @@ private struct OnlineMusicBrowserView: View {
                             detectedVideoPreviewURL = nil
                         }
                     }
-                )
+                ),
+                onDismiss: {
+                    HanClipFullscreenVideoOrientationPolicy.restorePortrait()
+                }
             ) {
                 if let url = detectedVideoPreviewURL {
-                    FullscreenVideoPreview(
+                    HanClipFullscreenVideoPlayer(
                         url: url,
-                        startTime: .zero,
+                        configuration: .init(
+                            loop: true,
+                            showsLoopControl: true,
+                            aspectMode: .automatic,
+                            allowsAspectModeToggle: true,
+                            showsMiniProgress: true
+                        ),
                         onClose: {
                             detectedVideoPreviewURL = nil
                         }
@@ -13931,7 +13967,10 @@ private struct OnlineMusicBrowserView: View {
             .accessibilityLabel("영상 다운로드")
 
             Button {
-                detectedVideoPreviewURL = detectedVideo?.downloadableURL
+                guard let url = detectedVideo?.downloadableURL else { return }
+                HanClipFullscreenVideoOrientationPolicy
+                    .prepareForPresentation()
+                detectedVideoPreviewURL = url
             } label: {
                 Text("보기")
             }
@@ -16510,16 +16549,24 @@ private struct VideoPreviewView: View {
         ) {
             VideoShareSheet(items: [url])
         }
-        .fullScreenCover(
+        .hanClipFullscreenPlayerCover(
             isPresented: $isFullscreenPreviewPresented,
             onDismiss: {
+                HanClipFullscreenVideoOrientationPolicy.restorePortrait()
                 HanClipAudioSession.activatePlayback()
                 player.play()
             }
         ) {
-            FullscreenVideoPreview(
+            HanClipFullscreenVideoPlayer(
                 url: url,
-                startTime: player.currentTime(),
+                configuration: .init(
+                    startTime: player.currentTime(),
+                    loop: true,
+                    showsLoopControl: true,
+                    aspectMode: .automatic,
+                    allowsAspectModeToggle: true,
+                    showsMiniProgress: true
+                ),
                 onClose: {
                     isFullscreenPreviewPresented = false
                 }
@@ -16551,6 +16598,8 @@ private struct VideoPreviewView: View {
 
                         Button {
                             player.pause()
+                            HanClipFullscreenVideoOrientationPolicy
+                                .prepareForPresentation()
                             isFullscreenPreviewPresented = true
                         } label: {
                             Image(
@@ -16948,549 +16997,6 @@ private struct VideoPreviewView: View {
     }
 }
 
-private struct FullscreenVideoPreview: View {
-    let url: URL
-    let startTime: CMTime
-    let onClose: () -> Void
-
-    @State private var player: AVPlayer
-    @State private var loopObserver: NSObjectProtocol?
-    @State private var orientationObserver: NSObjectProtocol?
-    @State private var deviceOrientation = UIDeviceOrientation.portrait
-    @State private var isPlaybackControlVisible = false
-    @State private var isAspectFill = true
-    @State private var isPlaying = true
-    @State private var isLooping = true
-    @State private var playbackControlHideTask: Task<Void, Never>?
-
-    init(
-        url: URL,
-        startTime: CMTime,
-        onClose: @escaping () -> Void
-    ) {
-        self.url = url
-        self.startTime = startTime
-        self.onClose = onClose
-        _player = State(initialValue: AVPlayer(url: url))
-    }
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-
-            GeometryReader { proxy in
-                let displaySize = fullscreenDisplaySize(for: proxy.size)
-
-                fullscreenPlayer(in: displaySize)
-                    .frame(
-                        width: displaySize.width,
-                        height: displaySize.height
-                    )
-                    .rotationEffect(.degrees(displayRotationDegrees))
-                    .position(
-                        x: proxy.size.width / 2,
-                        y: proxy.size.height / 2
-                    )
-            }
-            .ignoresSafeArea()
-
-            Button {
-                toggleFullscreenPlayback()
-            } label: {
-                Color.clear
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .ignoresSafeArea()
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { _ in
-                        revealPlaybackControls()
-                    }
-            )
-            .accessibilityLabel(
-                isPlaybackControlVisible ? "전체 화면 재생" : "전체 화면 일시정지"
-            )
-
-            if isPlaybackControlVisible {
-                if usesLandscapeLayout {
-                    GeometryReader { proxy in
-                        playbackControls
-                            .frame(width: max(proxy.size.height - 108, 260))
-                            .rotationEffect(.degrees(displayRotationDegrees))
-                            .position(
-                                x: displayRotationDegrees > 0
-                                    ? 30
-                                    : proxy.size.width - 30,
-                                y: proxy.size.height / 2
-                            )
-                    }
-                    .ignoresSafeArea()
-                } else {
-                    VStack {
-                        Spacer()
-
-                        playbackControls
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 24)
-                    }
-                }
-            }
-
-            GeometryReader { proxy in
-                let displaySize = fullscreenDisplaySize(for: proxy.size)
-
-                fullscreenMiniProgressLine(in: displaySize)
-                    .frame(
-                        width: displaySize.width,
-                        height: displaySize.height
-                    )
-                    .rotationEffect(.degrees(displayRotationDegrees))
-                    .position(
-                        x: proxy.size.width / 2,
-                        y: proxy.size.height / 2
-                    )
-            }
-            .ignoresSafeArea()
-
-            Button {
-                player.pause()
-                onClose()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .black))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(Color.white.opacity(0.28), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 18)
-            .padding(.trailing, 18)
-            .accessibilityLabel("전체 화면 닫기")
-        }
-        .onAppear {
-            HanClipAudioSession.activatePlayback()
-            installOrientationObserverIfNeeded()
-            updateVideoOrientation()
-            installLoopObserverIfNeeded()
-            isPlaybackControlVisible = true
-            player.seek(
-                to: startTime,
-                toleranceBefore: .zero,
-                toleranceAfter: .zero
-            )
-            player.play()
-            isPlaying = true
-            schedulePlaybackControlHide()
-        }
-        .onDisappear {
-            playbackControlHideTask?.cancel()
-            removeOrientationObserver()
-            removeLoopObserver()
-            player.pause()
-        }
-    }
-
-    private func fullscreenDisplaySize(for viewportSize: CGSize) -> CGSize {
-        guard usesLandscapeLayout else { return viewportSize }
-        return CGSize(
-            width: viewportSize.height,
-            height: viewportSize.width
-        )
-    }
-
-    private func fullscreenPlayer(in size: CGSize) -> some View {
-        PreviewPlayerSurface(
-            player: player,
-            videoGravity: usesLandscapeLayout && isAspectFill
-                ? .resizeAspectFill
-                : .resizeAspect
-        )
-            .frame(width: size.width, height: size.height)
-    }
-
-    private func fullscreenMiniProgressLine(in size: CGSize) -> some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-
-            FullscreenVideoMiniProgressLine(player: player)
-                .frame(width: size.width, height: 2)
-                .allowsHitTesting(false)
-        }
-        .frame(width: size.width, height: size.height)
-    }
-
-    private var playbackControls: some View {
-        HStack(spacing: 10) {
-            FullscreenVideoProgressBar(player: player)
-
-            Button(action: toggleFullscreenPlayback) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(Color.white.opacity(0.28), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isPlaying ? "일시정지" : "재생")
-
-            Button {
-                isLooping.toggle()
-            } label: {
-                Image(systemName: "repeat")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(isLooping ? .white : .white.opacity(0.46))
-                    .frame(width: 44, height: 44)
-                    .background(
-                        isLooping
-                            ? Color.white.opacity(0.18)
-                            : Color.clear,
-                        in: Circle()
-                    )
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                Color.white.opacity(isLooping ? 0.5 : 0.2),
-                                lineWidth: 1
-                            )
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isLooping ? "반복 재생 끄기" : "반복 재생 켜기")
-
-            if usesLandscapeLayout {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isAspectFill.toggle()
-                    }
-                } label: {
-                    Image(
-                        systemName: isAspectFill
-                            ? "rectangle.arrowtriangle.2.inward"
-                            : "rectangle.arrowtriangle.2.outward"
-                    )
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay {
-                        Circle()
-                            .stroke(Color.white.opacity(0.28), lineWidth: 1)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    isAspectFill ? "화면에 맞추기" : "화면 채우기"
-                )
-            }
-        }
-        .transition(.opacity)
-    }
-
-    private func toggleFullscreenPlayback() {
-        if player.timeControlStatus == .playing {
-            playbackControlHideTask?.cancel()
-            player.pause()
-            isPlaying = false
-            withAnimation(.easeInOut(duration: 0.24)) {
-                isPlaybackControlVisible = true
-            }
-        } else {
-            if let duration = player.currentItem?.duration,
-               player.currentTime() >= duration {
-                player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-            }
-            HanClipAudioSession.activatePlayback()
-            player.play()
-            isPlaying = true
-            isPlaybackControlVisible = true
-            schedulePlaybackControlHide()
-        }
-    }
-
-    private func schedulePlaybackControlHide() {
-        playbackControlHideTask?.cancel()
-        playbackControlHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.2))
-            guard !Task.isCancelled,
-                  player.timeControlStatus == .playing
-            else { return }
-            withAnimation(.easeOut(duration: 0.7)) {
-                isPlaybackControlVisible = false
-            }
-        }
-    }
-
-    private func revealPlaybackControls() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isPlaybackControlVisible = true
-        }
-        if player.timeControlStatus == .playing {
-            schedulePlaybackControlHide()
-        }
-    }
-
-    private func installLoopObserverIfNeeded() {
-        guard loopObserver == nil else { return }
-        loopObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                if isLooping {
-                    player.seek(
-                        to: .zero,
-                        toleranceBefore: .zero,
-                        toleranceAfter: .zero
-                    )
-                    player.play()
-                    isPlaying = true
-                } else {
-                    playbackControlHideTask?.cancel()
-                    isPlaying = false
-                    withAnimation(.easeInOut(duration: 0.24)) {
-                        isPlaybackControlVisible = true
-                    }
-                }
-            }
-        }
-    }
-
-    private func removeLoopObserver() {
-        if let loopObserver {
-            NotificationCenter.default.removeObserver(loopObserver)
-            self.loopObserver = nil
-        }
-    }
-
-    private var usesLandscapeLayout: Bool {
-        UIDevice.current.userInterfaceIdiom != .pad
-            && deviceOrientation.isLandscape
-    }
-
-    private var displayRotationDegrees: Double {
-        guard usesLandscapeLayout else { return 0 }
-        if deviceOrientation == .landscapeRight {
-            return -90
-        }
-        return 90
-    }
-
-    private func installOrientationObserverIfNeeded() {
-        guard orientationObserver == nil else { return }
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        updateDeviceOrientation(UIDevice.current.orientation)
-        orientationObserver = NotificationCenter.default.addObserver(
-            forName: UIDevice.orientationDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            updateDeviceOrientation(UIDevice.current.orientation)
-        }
-    }
-
-    private func removeOrientationObserver() {
-        if let orientationObserver {
-            NotificationCenter.default.removeObserver(orientationObserver)
-            self.orientationObserver = nil
-        }
-        UIDevice.current.endGeneratingDeviceOrientationNotifications()
-    }
-
-    private func updateDeviceOrientation(_ orientation: UIDeviceOrientation) {
-        guard orientation == .portrait
-                || orientation == .portraitUpsideDown
-                || orientation.isLandscape
-        else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
-            deviceOrientation = orientation
-        }
-    }
-
-    private func updateVideoOrientation() {
-        Task {
-            let asset = AVURLAsset(url: url)
-            guard let track = try? await asset.loadTracks(
-                withMediaType: .video
-            ).first,
-                  let naturalSize = try? await track.load(.naturalSize),
-                  let preferredTransform = try? await track.load(
-                    .preferredTransform
-                  )
-            else { return }
-
-            let orientedRect = CGRect(
-                origin: .zero,
-                size: naturalSize
-            )
-            .applying(preferredTransform)
-            let orientedSize = CGSize(
-                width: abs(orientedRect.width),
-                height: abs(orientedRect.height)
-            )
-
-            await MainActor.run {
-                isAspectFill = orientedSize.width > orientedSize.height
-            }
-        }
-    }
-}
-
-private struct FullscreenVideoProgressBar: View {
-    let player: AVPlayer
-
-    @State private var currentSeconds = 0.0
-    @State private var durationSeconds = 0.0
-    @State private var timeObserver: Any?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(formattedTime(currentSeconds))
-                .frame(width: 42, alignment: .trailing)
-
-            Slider(
-                value: Binding(
-                    get: { min(currentSeconds, sliderMaximum) },
-                    set: { seek(to: $0) }
-                ),
-                in: 0...sliderMaximum
-            )
-            .tint(.white)
-
-            Text(formattedTime(durationSeconds))
-                .frame(width: 42, alignment: .leading)
-        }
-        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-        .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .frame(height: 44)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(0.28), lineWidth: 1)
-        }
-        .onAppear(perform: startObserving)
-        .onDisappear(perform: stopObserving)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var sliderMaximum: Double {
-        max(durationSeconds, 0.1)
-    }
-
-    private func seek(to seconds: Double) {
-        currentSeconds = min(max(seconds, 0), sliderMaximum)
-        player.seek(
-            to: CMTime(seconds: currentSeconds, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
-        )
-    }
-
-    private func startObserving() {
-        guard timeObserver == nil else { return }
-        timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
-            queue: .main
-        ) { time in
-            let seconds = time.seconds
-            if seconds.isFinite {
-                currentSeconds = max(0, seconds)
-            }
-            if let duration = player.currentItem?.duration.seconds,
-               duration.isFinite,
-               duration > 0 {
-                durationSeconds = duration
-            }
-        }
-    }
-
-    private func stopObserving() {
-        if let timeObserver {
-            player.removeTimeObserver(timeObserver)
-            self.timeObserver = nil
-        }
-    }
-
-    private func formattedTime(_ seconds: Double) -> String {
-        let totalSeconds = max(Int(seconds.rounded()), 0)
-        return String(
-            format: "%d:%02d",
-            totalSeconds / 60,
-            totalSeconds % 60
-        )
-    }
-}
-
-private struct FullscreenVideoMiniProgressLine: View {
-    let player: AVPlayer
-
-    @State private var currentSeconds = 0.0
-    @State private var durationSeconds = 0.0
-    @State private var timeObserver: Any?
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.white.opacity(0.22))
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(width: proxy.size.width * progress)
-            }
-        }
-        .onAppear(perform: startObserving)
-        .onDisappear(perform: stopObserving)
-        .accessibilityHidden(true)
-    }
-
-    private var progress: CGFloat {
-        guard durationSeconds > 0 else { return 0 }
-        return CGFloat(min(1, max(0, currentSeconds / durationSeconds)))
-    }
-
-    private func startObserving() {
-        guard timeObserver == nil else { return }
-        if let duration = player.currentItem?.duration.seconds,
-           duration.isFinite,
-           duration > 0 {
-            durationSeconds = duration
-        }
-        timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
-            queue: .main
-        ) { time in
-            let seconds = time.seconds
-            if seconds.isFinite {
-                currentSeconds = max(0, seconds)
-            }
-            if let duration = player.currentItem?.duration.seconds,
-               duration.isFinite,
-               duration > 0 {
-                durationSeconds = duration
-            }
-        }
-    }
-
-    private func stopObserving() {
-        if let timeObserver {
-            player.removeTimeObserver(timeObserver)
-            self.timeObserver = nil
-        }
-    }
-}
-
 private struct PreviewPlayerSurface: UIViewRepresentable {
     let player: AVPlayer
     var videoGravity: AVLayerVideoGravity = .resizeAspect
@@ -17830,523 +17336,6 @@ private struct PersistentVideoProgressBar: View {
             minutes,
             remainingSeconds
         )
-    }
-}
-
-private enum CollectionPlayerDragAxis {
-    case horizontal
-    case vertical
-}
-
-private struct CollectionMoviePlayerView: View {
-    @Environment(\.dismiss) private var dismiss
-    let movie: CollectedMovie
-    let url: URL
-    @State private var player: AVPlayer
-    @State private var deviceOrientation = UIDeviceOrientation.portrait
-    @State private var orientationObserver: NSObjectProtocol?
-    @State private var timeObserver: Any?
-    @State private var isPlaying = true
-    @State private var playerDragAxis: CollectionPlayerDragAxis?
-    @State private var dragStartSeconds = 0.0
-    @State private var dragPreviewSeconds: Double?
-    @State private var downwardDragOffset = 0.0
-    @State private var arePlayerControlsVisible = true
-    @State private var playerControlsHideTask: Task<Void, Never>?
-    @State private var playerZoomScale = 1.0
-    @State private var playerZoomStartScale = 1.0
-    @State private var playerZoomOffset = CGSize.zero
-    @State private var playerZoomStartOffset = CGSize.zero
-    @State private var isPlayerMagnifying = false
-
-    init(movie: CollectedMovie, url: URL) {
-        self.movie = movie
-        self.url = url
-        _player = State(initialValue: AVPlayer(url: url))
-    }
-
-    var body: some View {
-        GeometryReader { proxy in
-            let displaySize = collectionDisplaySize(for: proxy.size)
-            let topPadding = collectionPlayerTopPadding(
-                geometrySafeArea: proxy.safeAreaInsets
-            )
-
-            collectionPlayerContent(topPadding: topPadding)
-                .frame(width: displaySize.width, height: displaySize.height)
-                .rotationEffect(.degrees(displayRotationDegrees))
-                .contentShape(Rectangle())
-                .simultaneousGesture(
-                    collectionMagnificationGesture(viewportSize: displaySize)
-                )
-                .simultaneousGesture(
-                    collectionZoomPanGesture(viewportSize: displaySize)
-                )
-                .simultaneousGesture(collectionZoomResetGesture)
-                .position(
-                    x: proxy.size.width / 2,
-                    y: proxy.size.height / 2
-                )
-                .offset(y: downwardDragOffset)
-                .opacity(dismissDragOpacity(for: proxy.size.height))
-        }
-        .background(Color.black)
-        .ignoresSafeArea()
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
-        .onAppear {
-            HanClipAudioSession.activatePlayback()
-            installOrientationObserver()
-            installPlaybackObserver()
-            player.play()
-            isPlaying = true
-            showPlayerControlsTemporarily()
-        }
-        .onDisappear {
-            playerControlsHideTask?.cancel()
-            player.pause()
-            removePlaybackObserver()
-            removeOrientationObserver()
-        }
-    }
-
-    private func collectionPlayerContent(topPadding: CGFloat) -> some View {
-        ZStack {
-            Color.black
-
-            GeometryReader { proxy in
-                PreviewPlayerSurface(player: player, videoGravity: .resizeAspect)
-                    .scaleEffect(playerZoomScale)
-                    .offset(playerZoomOffset)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        togglePlayerControlsVisibility()
-                    }
-                    .simultaneousGesture(
-                        collectionPlaybackGesture(viewportSize: proxy.size)
-                    )
-            }
-            .clipped()
-
-            if let dragPreviewSeconds {
-                Text(collectionPlaybackTime(dragPreviewSeconds))
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .allowsHitTesting(false)
-            }
-
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    playerCircleButton(
-                        systemImage: "xmark",
-                        accessibilityLabel: "컬렉션 닫기"
-                    ) {
-                        dismiss()
-                    }
-
-                    Text(movie.title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 12)
-
-                    ShareLink(item: url) {
-                        playerCircleLabel(systemImage: "square.and.arrow.up")
-                    }
-                    .accessibilityLabel("컬렉션 영화 공유")
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, topPadding)
-
-                Spacer(minLength: 16)
-
-                HStack(spacing: 10) {
-                    FullscreenVideoProgressBar(player: player)
-
-                    playerCircleButton(
-                        systemImage: isPlaying ? "pause.fill" : "play.fill",
-                        accessibilityLabel: isPlaying ? "일시정지" : "재생"
-                    ) {
-                        togglePlayback()
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 24)
-            }
-            .opacity(arePlayerControlsVisible ? 1 : 0)
-            .allowsHitTesting(arePlayerControlsVisible)
-            .animation(
-                .easeInOut(duration: 0.20),
-                value: arePlayerControlsVisible
-            )
-        }
-    }
-
-    private func collectionPlayerTopPadding(
-        geometrySafeArea: EdgeInsets
-    ) -> CGFloat {
-        guard !usesManualLandscapeRotation else { return 18 }
-        let windowTopInset = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .safeAreaInsets.top ?? 0
-        return max(18, max(geometrySafeArea.top, windowTopInset) + 8)
-    }
-
-    private func playerCircleButton(
-        systemImage: String,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            playerCircleLabel(systemImage: systemImage)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private func playerCircleLabel(systemImage: String) -> some View {
-        Image(systemName: systemImage)
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 44, height: 44)
-            .background(.ultraThinMaterial, in: Circle())
-            .overlay {
-                Circle().stroke(Color.white.opacity(0.28), lineWidth: 1)
-            }
-    }
-
-    private func collectionDisplaySize(for viewportSize: CGSize) -> CGSize {
-        guard usesManualLandscapeRotation else { return viewportSize }
-        return CGSize(width: viewportSize.height, height: viewportSize.width)
-    }
-
-    private var displayRotationDegrees: Double {
-        guard usesManualLandscapeRotation else { return 0 }
-        return deviceOrientation == .landscapeRight ? -90 : 90
-    }
-
-    private var usesManualLandscapeRotation: Bool {
-        UIDevice.current.userInterfaceIdiom != .pad
-            && deviceOrientation.isLandscape
-    }
-
-    private func togglePlayback() {
-        showPlayerControlsTemporarily()
-        if player.timeControlStatus == .playing {
-            player.pause()
-            isPlaying = false
-        } else {
-            if let duration = player.currentItem?.duration,
-               player.currentTime() >= duration {
-                player.seek(to: .zero)
-            }
-            HanClipAudioSession.activatePlayback()
-            player.play()
-            isPlaying = true
-        }
-    }
-
-    private func collectionPlaybackGesture(
-        viewportSize: CGSize
-    ) -> some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .global)
-            .onChanged { value in
-                guard !isPlayerMagnifying,
-                      playerZoomScale <= 1.01
-                else { return }
-                let translation = collectionScreenTranslation(
-                    value.translation
-                )
-                if playerDragAxis == nil {
-                    playerControlsHideTask?.cancel()
-                    let horizontalDistance = abs(translation.width)
-                    let verticalDistance = abs(translation.height)
-                    playerDragAxis = horizontalDistance >= verticalDistance
-                        ? .horizontal
-                        : .vertical
-                    dragStartSeconds = player.currentTime().seconds.isFinite
-                        ? max(player.currentTime().seconds, 0)
-                        : 0
-                }
-
-                switch playerDragAxis {
-                case .horizontal:
-                    guard let duration = player.currentItem?.duration.seconds,
-                          duration.isFinite,
-                          duration > 0
-                    else { return }
-                    let width = max(viewportSize.width, 1)
-                    let delta = Double(translation.width / width) * duration
-                    let target = min(max(dragStartSeconds + delta, 0), duration)
-                    dragPreviewSeconds = target
-                    player.seek(
-                        to: CMTime(seconds: target, preferredTimescale: 600),
-                        toleranceBefore: .zero,
-                        toleranceAfter: .zero
-                    )
-
-                case .vertical:
-                    downwardDragOffset = max(translation.height, 0)
-
-                case nil:
-                    break
-                }
-            }
-            .onEnded { value in
-                guard !isPlayerMagnifying,
-                      playerZoomScale <= 1.01
-                else {
-                    playerDragAxis = nil
-                    dragPreviewSeconds = nil
-                    downwardDragOffset = 0
-                    return
-                }
-                let translation = collectionScreenTranslation(
-                    value.translation
-                )
-                let shouldDismiss = playerDragAxis == .vertical
-                    && translation.height
-                        > max(55, viewportSize.height * 0.08)
-
-                playerDragAxis = nil
-                dragPreviewSeconds = nil
-
-                if shouldDismiss {
-                    player.pause()
-                    dismiss()
-                } else {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                        downwardDragOffset = 0
-                    }
-                    showPlayerControlsTemporarily()
-                }
-            }
-    }
-
-    private func collectionMagnificationGesture(
-        viewportSize: CGSize
-    ) -> some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.001)
-            .onChanged { value in
-                isPlayerMagnifying = true
-                playerControlsHideTask?.cancel()
-                playerDragAxis = nil
-                dragPreviewSeconds = nil
-                downwardDragOffset = 0
-                playerZoomScale = min(
-                    max(playerZoomStartScale * value.magnification, 1),
-                    4
-                )
-                playerZoomOffset = clampedPlayerZoomOffset(
-                    playerZoomOffset,
-                    scale: playerZoomScale,
-                    viewportSize: viewportSize
-                )
-            }
-            .onEnded { value in
-                let finalScale = min(
-                    max(playerZoomStartScale * value.magnification, 1),
-                    4
-                )
-                if finalScale < 1.04 {
-                    resetPlayerZoom(animated: true)
-                } else {
-                    playerZoomScale = finalScale
-                    playerZoomStartScale = finalScale
-                    playerZoomOffset = clampedPlayerZoomOffset(
-                        playerZoomOffset,
-                        scale: finalScale,
-                        viewportSize: viewportSize
-                    )
-                    playerZoomStartOffset = playerZoomOffset
-                }
-                isPlayerMagnifying = false
-                showPlayerControlsTemporarily()
-            }
-    }
-
-    private func collectionZoomPanGesture(
-        viewportSize: CGSize
-    ) -> some Gesture {
-        DragGesture(minimumDistance: 2, coordinateSpace: .global)
-            .onChanged { value in
-                guard playerZoomScale > 1.01
-                else { return }
-                let translation = collectionScreenTranslation(
-                    value.translation
-                )
-                let proposedOffset = CGSize(
-                    width: playerZoomStartOffset.width + translation.width,
-                    height: playerZoomStartOffset.height + translation.height
-                )
-                playerZoomOffset = clampedPlayerZoomOffset(
-                    proposedOffset,
-                    scale: playerZoomScale,
-                    viewportSize: viewportSize
-                )
-            }
-            .onEnded { _ in
-                guard playerZoomScale > 1.01 else { return }
-                playerZoomStartOffset = playerZoomOffset
-            }
-    }
-
-    private var collectionZoomResetGesture: some Gesture {
-        TapGesture(count: 2)
-            .onEnded {
-                guard playerZoomScale > 1.01 else { return }
-                resetPlayerZoom(animated: true)
-                showPlayerControlsTemporarily()
-            }
-    }
-
-    private func clampedPlayerZoomOffset(
-        _ offset: CGSize,
-        scale: Double,
-        viewportSize: CGSize
-    ) -> CGSize {
-        let extraScale = max(scale - 1, 0)
-        let maximumX = viewportSize.width * extraScale / 2
-        let maximumY = viewportSize.height * extraScale / 2
-        return CGSize(
-            width: min(max(offset.width, -maximumX), maximumX),
-            height: min(max(offset.height, -maximumY), maximumY)
-        )
-    }
-
-    private func resetPlayerZoom(animated: Bool) {
-        let changes = {
-            playerZoomScale = 1
-            playerZoomStartScale = 1
-            playerZoomOffset = .zero
-            playerZoomStartOffset = .zero
-            isPlayerMagnifying = false
-        }
-        if animated {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
-                changes()
-            }
-        } else {
-            changes()
-        }
-    }
-
-    private func togglePlayerControlsVisibility() {
-        if arePlayerControlsVisible {
-            playerControlsHideTask?.cancel()
-            withAnimation(.easeInOut(duration: 0.20)) {
-                arePlayerControlsVisible = false
-            }
-        } else {
-            showPlayerControlsTemporarily()
-        }
-    }
-
-    private func showPlayerControlsTemporarily() {
-        playerControlsHideTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.20)) {
-            arePlayerControlsVisible = true
-        }
-        playerControlsHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled,
-                  playerDragAxis == nil
-            else { return }
-            withAnimation(.easeInOut(duration: 0.20)) {
-                arePlayerControlsVisible = false
-            }
-        }
-    }
-
-    private func collectionScreenTranslation(_ translation: CGSize) -> CGSize {
-        // The player is rotated manually while DragGesture reports in the
-        // unrotated global coordinate space. Convert with the inverse of the
-        // display rotation so visible left/right and up/down keep their
-        // expected directions in landscape.
-        guard usesManualLandscapeRotation else { return translation }
-        switch deviceOrientation {
-        case .landscapeLeft:
-            return CGSize(
-                width: translation.height,
-                height: -translation.width
-            )
-        case .landscapeRight:
-            return CGSize(
-                width: -translation.height,
-                height: translation.width
-            )
-        default:
-            return translation
-        }
-    }
-
-    private func dismissDragOpacity(for height: CGFloat) -> Double {
-        guard height > 0 else { return 1 }
-        return max(0.55, 1 - Double(downwardDragOffset / height) * 0.9)
-    }
-
-    private func collectionPlaybackTime(_ seconds: Double) -> String {
-        let totalSeconds = max(Int(seconds.rounded()), 0)
-        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
-    }
-
-    private func installOrientationObserver() {
-        guard orientationObserver == nil else { return }
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        updateDeviceOrientation(UIDevice.current.orientation)
-        orientationObserver = NotificationCenter.default.addObserver(
-            forName: UIDevice.orientationDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                updateDeviceOrientation(UIDevice.current.orientation)
-            }
-        }
-    }
-
-    private func removeOrientationObserver() {
-        if let orientationObserver {
-            NotificationCenter.default.removeObserver(orientationObserver)
-            self.orientationObserver = nil
-        }
-        UIDevice.current.endGeneratingDeviceOrientationNotifications()
-    }
-
-    private func updateDeviceOrientation(_ orientation: UIDeviceOrientation) {
-        guard orientation == .portrait
-                || orientation == .portraitUpsideDown
-                || orientation.isLandscape
-        else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
-            deviceOrientation = orientation
-            resetPlayerZoom(animated: false)
-        }
-    }
-
-    private func installPlaybackObserver() {
-        guard timeObserver == nil else { return }
-        timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.2, preferredTimescale: 600),
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                isPlaying = player.timeControlStatus == .playing
-            }
-        }
-    }
-
-    private func removePlaybackObserver() {
-        if let timeObserver {
-            player.removeTimeObserver(timeObserver)
-            self.timeObserver = nil
-        }
     }
 }
 
