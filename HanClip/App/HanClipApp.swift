@@ -238,9 +238,9 @@ enum HanClipTheme {
         alpha: 1
     )
     private static let blossomGlowPrimary = UIColor(
-        red: 214.0 / 255.0,
-        green: 94.0 / 255.0,
-        blue: 122.0 / 255.0,
+        red: 178.0 / 255.0,
+        green: 62.0 / 255.0,
+        blue: 93.0 / 255.0,
         alpha: 1
     )
     private static let blossomGlowSecondary = UIColor(
@@ -612,6 +612,89 @@ enum HanClipTheme {
     }
 }
 
+enum HanClipTypography {
+    static let screenTitle = Font.system(
+        .title3,
+        design: .default,
+        weight: .semibold
+    )
+    static let modalTitle = Font.system(
+        .headline,
+        design: .default,
+        weight: .semibold
+    )
+    static let sectionTitle = Font.system(
+        .subheadline,
+        design: .default,
+        weight: .semibold
+    )
+    static let body = Font.system(.body, design: .default, weight: .regular)
+    static let denseBody = Font.system(
+        .callout,
+        design: .default,
+        weight: .regular
+    )
+    static let rowTitle = Font.system(
+        .callout,
+        design: .default,
+        weight: .semibold
+    )
+    static let secondary = Font.system(
+        .subheadline,
+        design: .default,
+        weight: .regular
+    )
+    static let metadata = Font.system(
+        .footnote,
+        design: .default,
+        weight: .regular
+    )
+    static let metadataEmphasis = Font.system(
+        .footnote,
+        design: .default,
+        weight: .medium
+    )
+    static let caption = Font.system(
+        .caption,
+        design: .default,
+        weight: .medium
+    )
+    static let badge = Font.system(
+        .caption,
+        design: .default,
+        weight: .semibold
+    )
+    static let primaryNumber = Font.system(
+        .title2,
+        design: .rounded,
+        weight: .semibold
+    ).monospacedDigit()
+    static let compactNumber = Font.system(
+        .footnote,
+        design: .monospaced,
+        weight: .medium
+    ).monospacedDigit()
+    static let primaryCTA = Font.system(
+        .headline,
+        design: .default,
+        weight: .semibold
+    )
+
+    static func uiFont(
+        textStyle: UIFont.TextStyle,
+        weight: UIFont.Weight
+    ) -> UIFont {
+        let descriptor = UIFontDescriptor.preferredFontDescriptor(
+            withTextStyle: textStyle
+        )
+        let font = UIFont.systemFont(
+            ofSize: descriptor.pointSize,
+            weight: weight
+        )
+        return UIFontMetrics(forTextStyle: textStyle).scaledFont(for: font)
+    }
+}
+
 enum HanClipQuickAction: Equatable {
     case open
     case aiShot
@@ -720,6 +803,13 @@ struct HanClipGlassPanelModifier: ViewModifier {
 }
 
 extension View {
+    func hanClipMinimumTapTarget(
+        _ size: CGFloat = 44
+    ) -> some View {
+        frame(minWidth: size, minHeight: size)
+            .contentShape(Rectangle())
+    }
+
     func hanClipGlassPanel(
         cornerRadius: CGFloat,
         fillOpacity: Double = 0.035,

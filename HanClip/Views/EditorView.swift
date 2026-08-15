@@ -89,6 +89,10 @@ struct EditorView: View {
 
     @StateObject private var model = EditorViewModel()
     @StateObject private var movieCollection = MovieCollectionStore.shared
+    @ScaledMetric(relativeTo: .footnote)
+    private var homePresetSubtitleFontSize: CGFloat = 10.4
+    @ScaledMetric(relativeTo: .body)
+    private var homePresetScalableHeight: CGFloat = 72
     @State private var isReordering = false
     @State private var showResetConfirmation = false
     @State private var showHeaderExitConfirmation = false
@@ -212,6 +216,7 @@ struct EditorView: View {
         CopyrightPurchaseManager
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("hanClipSleepPreventionMode") private var sleepPreventionModeRaw =
         SleepPreventionMode.defaultValue.rawValue
 
@@ -334,8 +339,6 @@ struct EditorView: View {
             .safeAreaInset(edge: .bottom) {
                 if !model.clips.isEmpty {
                     makeButton
-                } else if !model.isProjectOpen {
-                    importantInfoButton
                 }
             }
             .blur(
@@ -1266,8 +1269,12 @@ struct EditorView: View {
     private var rootTopHeader: some View {
         HStack {
             HanClipHeaderPill {
-                HanClipLogoLabel()
-                    .fixedSize(horizontal: true, vertical: false)
+                HanClipLogoLabel(
+                    iconSize: 30,
+                    textSize: 22,
+                    width: 126
+                )
+                .fixedSize(horizontal: true, vertical: false)
             }
             .contentShape(Rectangle())
             .gesture(
@@ -1288,6 +1295,9 @@ struct EditorView: View {
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel("HanClip")
+            .accessibilityHint(
+                "첫 화면에서 누르면 테마가 바뀌고, 길게 누르면 테마 선택창을 엽니다."
+            )
 
             Spacer()
 
@@ -1303,9 +1313,6 @@ struct EditorView: View {
                 topHeaderScrim
             }
         }
-        .accessibilityHint(
-            "첫 화면에서 누르면 테마가 바뀌고, 길게 누르면 테마 선택창을 엽니다."
-        )
     }
 
     private var topHeaderScrim: some View {
@@ -1374,20 +1381,14 @@ struct EditorView: View {
                 .accessibilityHidden(true)
             }
         } else {
-            if model.isProjectOpen {
+            HStack(spacing: 8) {
+                importantInfoButton
+
                 mediaImportMenu {
                     HanClipHeaderActionCluster {
                         Image(systemName: "photo.badge.plus")
                             .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(HanClipTheme.primary)
-                    }
-                }
-            } else {
-                mediaImportMenu {
-                    HanClipHeaderActionCluster {
-                        Image(systemName: "photo.badge.plus")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(HanClipTheme.primary)
+                        .foregroundStyle(HanClipTheme.primary)
                     }
                 }
             }
@@ -1676,7 +1677,7 @@ struct EditorView: View {
                 .accessibilityHidden(true)
 
             Text(videoSegmentPreviewParentID == nil ? "편집" : "모클립 편집")
-                .font(.system(size: 12, weight: .black))
+                .font(HanClipTypography.modalTitle)
                 .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
         }
         .padding(.horizontal, 18)
@@ -1804,9 +1805,8 @@ struct EditorView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("공유파일 \(model.pendingSharedItemCount)개 발견")
-                        .font(.system(size: 25, weight: .black))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
+                        .font(HanClipTypography.screenTitle)
+                        .lineLimit(2)
                 }
 
                 Spacer(minLength: 0)
@@ -1943,10 +1943,9 @@ struct EditorView: View {
             .frame(height: 46)
 
             Text(title)
-                .font(.system(size: 12, weight: .black))
+                .font(HanClipTypography.rowTitle)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 8)
@@ -2265,11 +2264,11 @@ struct EditorView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("자클립 초기화?")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(HanClipTypography.modalTitle)
                     .foregroundStyle(HanClipTheme.primaryText)
 
                 Text("편집 내역을 처음 상태로 돌립니다.")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(HanClipTypography.metadata)
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
             }
@@ -2630,7 +2629,7 @@ struct EditorView: View {
             icon()
             Text(title)
                 .lineLimit(1)
-                .minimumScaleFactor(0.78)
+                .minimumScaleFactor(0.85)
         }
         .font(.system(size: 14, weight: .bold))
         .foregroundStyle(
@@ -2702,8 +2701,8 @@ struct EditorView: View {
 
     private var themeSelectionPopup: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("SELECT THEME")
-                .font(.system(size: 18, weight: .semibold))
+            Text("테마 선택")
+                .font(HanClipTypography.screenTitle)
                 .foregroundStyle(HanClipTheme.text)
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
@@ -2731,7 +2730,7 @@ struct EditorView: View {
                 }
             } label: {
                 Text("확인")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(HanClipTypography.primaryCTA)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 44)
@@ -2779,14 +2778,14 @@ struct EditorView: View {
     private var themePaletteSummary: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("COLOR SYSTEM")
-                    .font(.system(size: 10, weight: .bold))
+                Text("색상 구성")
+                    .font(HanClipTypography.sectionTitle)
                     .foregroundStyle(HanClipTheme.secondaryText)
 
                 Spacer()
 
                 Text(themeMode.displayName)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(HanClipTypography.metadata)
                     .foregroundStyle(HanClipTheme.secondaryText)
             }
 
@@ -2849,14 +2848,13 @@ struct EditorView: View {
                 }
 
             Text(title)
-                .font(.system(size: 10, weight: .bold))
+                .font(HanClipTypography.caption)
                 .foregroundStyle(HanClipTheme.primaryText)
 
             Text(description)
-                .font(.system(size: 8, weight: .medium))
+                .font(HanClipTypography.metadata)
                 .foregroundStyle(HanClipTheme.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity)
     }
@@ -2900,10 +2898,10 @@ struct EditorView: View {
                         .foregroundStyle(HanClipTheme.primary)
 
                         Text(mode.displayName)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(HanClipTypography.rowTitle)
                             .foregroundStyle(HanClipTheme.text)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.78)
+                            .truncationMode(.tail)
                     }
                     .frame(minHeight: 48)
                     .contentShape(Rectangle())
@@ -3147,11 +3145,11 @@ struct EditorView: View {
             Text(appBuildText)
             Text(aiModelText)
         }
-        .font(.system(size: 11, weight: .bold))
+        .font(HanClipTypography.metadata)
         .foregroundStyle(HanClipTheme.secondaryText.opacity(0.9))
         .monospacedDigit()
         .lineLimit(1)
-        .minimumScaleFactor(0.8)
+        .truncationMode(.tail)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .accessibilityElement(children: .combine)
@@ -3176,7 +3174,7 @@ struct EditorView: View {
         LazyVGrid(
             columns: Array(
                 repeating: GridItem(.flexible(), spacing: 8),
-                count: 3
+                count: homePresetColumnCount
             ),
             spacing: 10
         ) {
@@ -3244,6 +3242,20 @@ struct EditorView: View {
         .padding(.horizontal, 14)
     }
 
+    private var homePresetColumnCount: Int {
+        if dynamicTypeSize.isAccessibilitySize {
+            return 1
+        }
+        if dynamicTypeSize >= .xxxLarge {
+            return 2
+        }
+        return 3
+    }
+
+    private var homePresetCardHeight: CGFloat {
+        74 + homePresetScalableHeight
+    }
+
     private func homeQuickStartButton(
         title: String,
         subtitle: String,
@@ -3296,31 +3308,29 @@ struct EditorView: View {
                     radius: 5,
                     y: 3
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 Text(title)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(HanClipTypography.sectionTitle)
                     .foregroundStyle(HanClipTheme.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 18)
-                    .padding(.top, 7)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxHeight: .infinity)
 
                 Text(subtitle)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: homePresetSubtitleFontSize))
                     .foregroundStyle(HanClipTheme.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
+                    .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 14)
-                    .padding(.top, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxHeight: .infinity)
             }
             .padding(.horizontal, 5)
-            .padding(.top, 15)
-            .padding(.bottom, 12)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .frame(height: 108)
+            .frame(height: homePresetCardHeight)
             .background(
                 LinearGradient(
                     colors: [
@@ -3471,13 +3481,25 @@ struct EditorView: View {
             .foregroundStyle(HanClipTheme.secondary)
             .frame(width: 44, height: 44)
             .contentShape(Circle())
-            .onTapGesture {
-                showImportantInfo = true
-            }
-            .onLongPressGesture(minimumDuration: 0.55) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                showOnlineMusicBrowser = true
-            }
+            .gesture(
+                LongPressGesture(minimumDuration: 0.55)
+                    .exclusively(before: TapGesture())
+                    .onEnded { result in
+                        switch result {
+                        case .first(true):
+                            UIImpactFeedbackGenerator(style: .medium)
+                                .impactOccurred()
+                            showOnlineMusicBrowser = true
+                        case .second:
+                            showImportantInfo = true
+                        default:
+                            break
+                        }
+                    }
+            )
+        .accessibilityAction(named: "브라우저 열기") {
+            showOnlineMusicBrowser = true
+        }
         .background {
             if #available(iOS 26.0, *) {
                 Circle()
@@ -3503,8 +3525,8 @@ struct EditorView: View {
             radius: 10,
             y: 4
         )
-        .padding(.bottom, 8)
         .id("important-info-\(themeModeRaw)")
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel("카피라이터")
         .accessibilityHint("한 번 누르면 설정 창을 열고, 길게 누르면 브라우저를 엽니다.")
     }
@@ -3513,7 +3535,7 @@ struct EditorView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Text("\(model.savedProjects.count)/\(ProjectStore.maximumProjectCount)")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(HanClipTypography.compactNumber)
                     .foregroundStyle(HanClipTheme.secondaryText)
 
                 Spacer()
@@ -3532,7 +3554,7 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("영화 목록")
-                    .font(.system(size: 12, weight: .black))
+                    .font(HanClipTypography.sectionTitle)
                     .foregroundStyle(HanClipTheme.primaryText.opacity(0.76))
             }
             .padding(.horizontal, 18)
@@ -3566,7 +3588,7 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("컬렉션")
-                    .font(.system(size: 12, weight: .black))
+                    .font(HanClipTypography.sectionTitle)
                     .foregroundStyle(HanClipTheme.primaryText.opacity(0.76))
             }
             .padding(.horizontal, 18)
@@ -3639,10 +3661,10 @@ struct EditorView: View {
                             : "chevron.down"
                     )
                 }
-                .font(.system(size: 10, weight: .bold))
+                .font(HanClipTypography.metadataEmphasis)
                 .foregroundStyle(HanClipTheme.secondaryText.opacity(0.82))
                 .padding(.horizontal, 12)
-                .frame(height: 28)
+                .frame(minHeight: 44)
                 .background(
                     HanClipTheme.panelFill.opacity(0.62),
                     in: Capsule()
@@ -3671,7 +3693,7 @@ struct EditorView: View {
                 }
 
                 Text("선택한 해상도 이하인 영상은 그대로 둡니다.")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(HanClipTypography.metadata)
                     .foregroundStyle(HanClipTheme.secondaryText.opacity(0.72))
             }
         }
@@ -3686,10 +3708,10 @@ struct EditorView: View {
             beginCollectionBulkCompression(option: option)
         } label: {
             Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(HanClipTypography.metadataEmphasis)
                 .foregroundStyle(HanClipTheme.primaryText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 38)
+                .frame(minHeight: 44)
                 .background(
                     HanClipTheme.primary.opacity(0.10),
                     in: RoundedRectangle(cornerRadius: 11, style: .continuous)
@@ -3891,11 +3913,11 @@ struct EditorView: View {
                     .controlSize(.small)
                     .tint(HanClipTheme.primary)
                 Text("컬렉션으로 가져오는 중")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(HanClipTheme.primaryText)
                 Spacer()
                 Text("\(collectionImportCompletedCount)/\(collectionImportTotalCount)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(HanClipTypography.compactNumber)
                     .foregroundStyle(HanClipTheme.secondaryText)
             }
 
@@ -3920,17 +3942,17 @@ struct EditorView: View {
                     .controlSize(.small)
                     .tint(HanClipTheme.primary)
                 Text("\(collectionCompressionMovieTitle) 용량 줄이는 중")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(HanClipTheme.primaryText)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text("\(Int((collectionCompressionProgress * 100).rounded()))%")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(HanClipTypography.compactNumber)
                     .foregroundStyle(HanClipTheme.secondaryText)
                 Button("취소") {
                     collectionCompressionTask?.cancel()
                 }
-                .font(.system(size: 10, weight: .bold))
+                .font(HanClipTypography.caption)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
@@ -3958,11 +3980,11 @@ struct EditorView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(HanClipTheme.primary)
                 Text("AI가 컬렉션의 최고 순간을 고르는 중")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(HanClipTheme.primaryText)
                 Spacer()
                 Text("\(completed)/\(total)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(HanClipTypography.compactNumber)
                     .foregroundStyle(HanClipTheme.secondaryText)
             }
 
@@ -4103,10 +4125,9 @@ struct EditorView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(movie.title)
-                    .font(.custom("Cafe24Ssurround", size: 14))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(.white)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.62)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 34)
@@ -4409,9 +4430,9 @@ struct EditorView: View {
             Image(systemName: systemImage).frame(width: 11)
             Text(text)
                 .lineLimit(lineLimit)
-                .minimumScaleFactor(0.58)
+                .truncationMode(.tail)
         }
-        .font(.system(size: 11.25, weight: .semibold, design: .rounded))
+        .font(HanClipTypography.metadataEmphasis)
         .foregroundStyle(.white.opacity(0.84))
     }
 
@@ -4810,11 +4831,11 @@ struct EditorView: View {
                 )
 
             Text(title)
-                .font(.system(size: 13, weight: .bold))
+                .font(HanClipTypography.sectionTitle)
                 .foregroundStyle(HanClipTheme.primaryText)
 
             Text("\(count)")
-                .font(.system(size: 10, weight: .bold))
+                .font(HanClipTypography.compactNumber)
                 .foregroundStyle(HanClipTheme.secondary)
                 .frame(minWidth: 22, minHeight: 22)
                 .background(
@@ -4920,19 +4941,19 @@ struct EditorView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(compactHomeProjectDateText(project.updatedAt))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(HanClipTheme.primaryText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .truncationMode(.tail)
 
                 Text(
                     "클립 \(project.clipCount)개 · "
                         + projectDurationText(project.totalDuration)
                 )
-                .font(.system(size: 9, weight: .semibold))
+                .font(HanClipTypography.metadata)
                 .foregroundStyle(HanClipTheme.secondaryText)
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .truncationMode(.tail)
 
                 HStack(spacing: 4) {
                     ForEach(
@@ -5154,13 +5175,13 @@ struct EditorView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Text(homeProjectDateText(project.updatedAt))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(HanClipTypography.rowTitle)
                         .foregroundStyle(HanClipTheme.primaryText)
                         .lineLimit(1)
 
                         if model.newlySavedProjectID == project.id {
                             Text("NEW")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(HanClipTypography.badge)
                                 .foregroundStyle(Color(red: 0.78, green: 0.13, blue: 0.18))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
@@ -5201,10 +5222,10 @@ struct EditorView: View {
                                 )
                         )
                     }
-                    .font(.system(size: 12))
+                    .font(HanClipTypography.metadata)
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .truncationMode(.tail)
 
                     projectThumbnailStrip(project)
                 }
@@ -5885,7 +5906,7 @@ struct EditorView: View {
                         .accessibilityHidden(true)
 
                     Text("클립 설정")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(HanClipTypography.sectionTitle)
                         .foregroundStyle(
                             HanClipTheme.secondaryText.opacity(0.90)
                         )
@@ -6041,7 +6062,7 @@ struct EditorView: View {
                 .accessibilityHidden(true)
 
             Text("클립 \(model.renderableClips.count)개")
-                .font(.system(size: 14, weight: .bold))
+                .font(HanClipTypography.sectionTitle)
                 .foregroundStyle(HanClipTheme.secondaryText.opacity(0.90))
 
             Spacer()
@@ -6117,7 +6138,7 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("영상 길이")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(HanClipTheme.secondaryText)
 
                 Spacer()
@@ -6146,7 +6167,7 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 48)
+            .frame(minHeight: 56)
 
             settingsPanelDivider
 
@@ -6158,7 +6179,7 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("기본시간")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -6178,9 +6199,11 @@ struct EditorView: View {
                         .accessibilityLabel("기본시간 줄이기")
 
                         Text("\(model.defaultDuration, specifier: "%.1f")초")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(HanClipTypography.compactNumber)
                             .monospacedDigit()
-                            .frame(width: 38)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 48)
                             .accessibilityLabel(
                                 "기본시간 \(model.defaultDuration, specifier: "%.1f")초"
                             )
@@ -6198,7 +6221,7 @@ struct EditorView: View {
                         .accessibilityLabel("기본시간 늘리기")
                 }
                 .foregroundStyle(HanClipTheme.secondaryText)
-                .frame(width: 118, height: 44)
+                .frame(width: 128, height: 44)
                     .background {
                         Capsule()
                             .fill(HanClipTheme.secondary.opacity(0.09))
@@ -6221,9 +6244,9 @@ struct EditorView: View {
                         showTopActionNotice("전체 클립에 적용했습니다")
                     } label: {
                         Text("적용")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(HanClipTypography.metadataEmphasis)
                             .foregroundStyle(.white)
-                            .frame(width: 112, height: 44)
+                            .frame(width: 76, height: 44)
                             .contentShape(Rectangle())
                             .background {
                                 LinearGradient(
@@ -6264,7 +6287,7 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 48)
+            .frame(minHeight: 56)
 
             settingsPanelDivider
 
@@ -6276,7 +6299,7 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("라이브포토")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(HanClipTheme.secondaryText)
 
                 Spacer()
@@ -6303,7 +6326,7 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 48)
+            .frame(minHeight: 56)
 
             settingsPanelDivider
 
@@ -6315,7 +6338,7 @@ struct EditorView: View {
                     .accessibilityHidden(true)
 
                 Text("영상")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(HanClipTheme.secondaryText)
 
                 Spacer()
@@ -6350,99 +6373,64 @@ struct EditorView: View {
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 48)
+            .frame(minHeight: 56)
 
             settingsPanelDivider
 
-            HStack(spacing: 8) {
-                Image(systemName: "photo.stack")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
-                    .frame(width: 24, alignment: .center)
-                    .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
+                        .frame(width: 24, alignment: .center)
+                        .accessibilityHidden(true)
 
-                Text("묶음사진")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.secondaryText)
-                    .frame(width: 52, alignment: .leading)
+                    Text("묶음사진")
+                        .font(HanClipTypography.rowTitle)
+                        .foregroundStyle(HanClipTheme.secondaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
 
-                HStack(spacing: 0) {
-                    Button {
-                        model.setSimilarPhotoRepresentativeInterval(
-                            model.similarPhotoRepresentativeInterval - 1
-                        )
-                    } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 9, weight: .bold))
-                            .frame(width: 40, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(model.similarPhotoRepresentativeInterval <= 1)
-                    .accessibilityLabel("대표사진 간격 줄이기")
+                    Spacer()
 
-                    Text(
-                        "1/\(model.similarPhotoRepresentativeInterval)"
+                    similarPhotoIntervalStepper
+                }
+                .frame(minHeight: 48)
+
+                HStack(spacing: 8) {
+                    Color.clear
+                        .frame(width: 24, height: 1)
+                        .accessibilityHidden(true)
+
+                    Text("선택 방식")
+                        .font(HanClipTypography.metadata)
+                        .foregroundStyle(HanClipTheme.secondaryText.opacity(0.72))
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    SimilarPhotoGroupModeSegmentedControl(
+                        mode: Binding(
+                            get: { bulkSimilarPhotoGroupMode },
+                            set: { mode in
+                                bulkSimilarPhotoGroupMode = mode
+                                model.applySimilarPhotoGroupModeToAll(mode)
+                            }
+                        ),
+                        tint: HanClipTheme.secondary,
+                        width: 144,
+                        height: 26
                     )
-                    .font(.system(size: 10, weight: .semibold))
-                    .monospacedDigit()
-                    .frame(width: 38)
-                    .accessibilityLabel(
-                        "\(model.similarPhotoRepresentativeInterval)장 중 1장"
+                    .accessibilityLabel("모든 묶음사진 선택 방식")
+                    .accessibilityValue(bulkSimilarPhotoGroupModeTitle)
+                    .accessibilityHint(
+                        "모든 묶음사진을 자동, 수동 또는 전체 선택으로 전환합니다."
                     )
-
-                    Button {
-                        model.setSimilarPhotoRepresentativeInterval(
-                            model.similarPhotoRepresentativeInterval + 1
-                        )
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 9, weight: .bold))
-                            .frame(width: 40, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(model.similarPhotoRepresentativeInterval >= 20)
-                    .accessibilityLabel("대표사진 간격 늘리기")
                 }
-                .foregroundStyle(HanClipTheme.secondaryText)
-                .frame(width: 118, height: 44)
-                .background {
-                    Capsule()
-                        .fill(HanClipTheme.secondary.opacity(0.09))
-                        .frame(height: 24)
-                }
-                .overlay {
-                    Capsule()
-                        .stroke(
-                            HanClipTheme.secondary.opacity(0.20),
-                            lineWidth: 1
-                        )
-                        .frame(height: 24)
-                }
-                Spacer(minLength: 4)
-
-                SimilarPhotoGroupModeSegmentedControl(
-                    mode: Binding(
-                        get: { bulkSimilarPhotoGroupMode },
-                        set: { mode in
-                            bulkSimilarPhotoGroupMode = mode
-                            model.applySimilarPhotoGroupModeToAll(mode)
-                        }
-                    ),
-                    tint: HanClipTheme.secondary,
-                    width: 112,
-                    height: 24
-                )
-                .accessibilityLabel("모든 묶음사진 선택 방식")
-                .accessibilityValue(bulkSimilarPhotoGroupModeTitle)
-                .accessibilityHint(
-                    "모든 묶음사진을 자동, 수동 또는 전체 선택으로 전환합니다."
-                )
+                .frame(minHeight: 48)
             }
             .padding(.leading, 16)
             .padding(.trailing, 12)
-            .frame(height: 48)
 
             if model.isProjectOpen {
                 settingsPanelDivider
@@ -6482,6 +6470,62 @@ struct EditorView: View {
                     ),
                     lineWidth: 1.15
                 )
+        }
+    }
+
+    private var similarPhotoIntervalStepper: some View {
+        HStack(spacing: 0) {
+            Button {
+                model.setSimilarPhotoRepresentativeInterval(
+                    model.similarPhotoRepresentativeInterval - 1
+                )
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.similarPhotoRepresentativeInterval <= 1)
+            .accessibilityLabel("대표사진 간격 줄이기")
+
+            Text("1/\(model.similarPhotoRepresentativeInterval)")
+                .font(HanClipTypography.compactNumber)
+                .monospacedDigit()
+                .lineLimit(1)
+                .frame(width: 38)
+                .accessibilityLabel(
+                    "\(model.similarPhotoRepresentativeInterval)장 중 1장"
+                )
+
+            Button {
+                model.setSimilarPhotoRepresentativeInterval(
+                    model.similarPhotoRepresentativeInterval + 1
+                )
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold))
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.similarPhotoRepresentativeInterval >= 20)
+            .accessibilityLabel("대표사진 간격 늘리기")
+        }
+        .foregroundStyle(HanClipTheme.secondaryText)
+        .frame(width: 118, height: 44)
+        .background {
+            Capsule()
+                .fill(HanClipTheme.secondary.opacity(0.09))
+                .frame(height: 24)
+        }
+        .overlay {
+            Capsule()
+                .stroke(
+                    HanClipTheme.secondary.opacity(0.20),
+                    lineWidth: 1
+                )
+                .frame(height: 24)
         }
     }
 
@@ -6812,10 +6856,10 @@ struct EditorView: View {
 
     private func reorderGridTitleBadge(for clip: ClipItem) -> some View {
         Text(reorderMediaTitle(for: clip))
-            .font(.system(size: 12, weight: .black))
+            .font(HanClipTypography.metadataEmphasis)
             .foregroundStyle(.white)
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
+            .truncationMode(.tail)
             .padding(.horizontal, 6)
             .frame(height: 22)
             .background(Color.black.opacity(0.34), in: Capsule())
@@ -7292,7 +7336,7 @@ struct EditorView: View {
                                 lineWidth: model.outputAspectRatio == nil ? 2 : 1
                             )
                     }
-                    .frame(maxWidth: .infinity, minHeight: 32)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -7307,7 +7351,7 @@ struct EditorView: View {
                             isSelected: model.outputAspectRatio == ratio,
                             themeModeRaw: themeModeRaw
                         )
-                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -7321,7 +7365,7 @@ struct EditorView: View {
             }
             .contentShape(Rectangle())
             .highPriorityGesture(
-                DragGesture(minimumDistance: 4)
+                DragGesture(minimumDistance: 12)
                     .onChanged { value in
                         selectAspectRatio(
                             at: value.location.x,
@@ -7337,7 +7381,7 @@ struct EditorView: View {
                     }
             )
         }
-        .frame(height: 32)
+        .frame(height: 44)
     }
 
     private func selectAspectRatio(
@@ -7450,7 +7494,9 @@ struct EditorView: View {
                         Text("만들기")
                     }
                     .font(.headline)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundStyle(.white)
+                    .lineLimit(1)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
                     .background(
@@ -7557,9 +7603,11 @@ struct EditorView: View {
                 .frame(width: 34, height: 34)
             } else {
                 Text("첫\n사진")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .lineSpacing(0)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(HanClipTheme.primary)
                     .frame(width: 34, height: 34)
                     .overlay {
@@ -8189,10 +8237,12 @@ struct HanClipTitleLine: View {
             }
 
             Text(title)
-                .font(.system(size: titleFontSize, weight: .black))
+                .font(HanClipTypography.sectionTitle)
                 .foregroundStyle(HanClipTheme.primaryText.opacity(0.76))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, leadingInset)
             .padding(.trailing, trailingInset)
     }
@@ -8283,10 +8333,10 @@ private struct CollectionVideoSizeOptionsSheet: View {
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(option.title)
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(HanClipTypography.rowTitle)
                                     .foregroundStyle(HanClipTheme.primaryText)
                                 Text(option.detail)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(HanClipTypography.metadata)
                                     .foregroundStyle(HanClipTheme.secondaryText)
                             }
 
@@ -8296,7 +8346,7 @@ private struct CollectionVideoSizeOptionsSheet: View {
                                     Text(
                                         "예상 약 \(byteCount(compressionInfo.estimatedBytes(for: option)))"
                                     )
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .font(HanClipTypography.metadataEmphasis)
                                     .foregroundStyle(HanClipTheme.primary)
                                     .lineLimit(1)
                                 }
@@ -8324,7 +8374,7 @@ private struct CollectionVideoSizeOptionsSheet: View {
                 }
 
                 Text("예상 용량은 영상 장면에 따라 달라질 수 있습니다. 결과가 원본보다 크면 원본을 유지합니다.")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(HanClipTypography.caption)
                     .foregroundStyle(HanClipTheme.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 2)
@@ -8395,7 +8445,7 @@ private struct ImportantInfoSheet: View {
 
     private let items: [(title: String, body: String)] = [
         (SpecialThanksInfo.title, SpecialThanksInfo.body),
-        ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 설정과 설정 정보를 보여주는 창입니다."),
+        ("카피라이터", "첫 화면 하단의 i 원형 유리 버튼입니다. 카피라이터 설정과 설정 정보를 보여주는 창이며, 만든 사람의 GitHub를 열 수 있습니다."),
         ("로고", "상단의 앱 심볼과 HanClip 글자 부분입니다. 화면에 따라 닫기, 첫 화면 이동, 테마 선택 같은 동작의 기준점이 됩니다."),
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
         ("iPad 지원", "iPad에서 세로·가로 방향과 분할 화면 크기에 맞춰 사용할 수 있습니다. 넓은 화면에서는 편집 콘텐츠의 읽기 좋은 폭을 유지하며 사진 선택, 공유 확장과 잠금 화면 위젯도 함께 사용할 수 있습니다."),
@@ -8618,6 +8668,29 @@ private struct ImportantInfoSheet: View {
                 trailingInset: -2
             )
 
+            Link(
+                destination: URL(string: "https://github.com/armsone")!
+            ) {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle")
+                    Text("만든 사람 · github.com/armsone")
+                    Spacer(minLength: 8)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .font(HanClipTypography.metadataEmphasis)
+                .foregroundStyle(HanClipTheme.secondaryText)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 42)
+                .background(
+                    HanClipTheme.secondary.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("만든 사람 GitHub, armsone")
+            .accessibilityHint("기본 브라우저에서 GitHub 프로필을 엽니다")
+
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
                     Button {
@@ -8809,11 +8882,11 @@ private struct ImportantInfoSheet: View {
     private var copyrightPurchaseOptions: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("카피라이터 워터마크 이용권")
-                .font(.system(size: 15, weight: .bold))
+                .font(HanClipTypography.sectionTitle)
                 .foregroundStyle(HanClipTheme.text)
 
             Text("영구 이용권 또는 자동 갱신 구독을 선택하세요.")
-                .font(.system(size: 12, weight: .medium))
+                .font(HanClipTypography.denseBody)
                 .foregroundStyle(HanClipTheme.secondaryText)
 
             ForEach(CopyrightPurchasePlan.allCases) { plan in
@@ -8821,7 +8894,7 @@ private struct ImportantInfoSheet: View {
             }
 
             Text("월간 및 연간 상품은 결제 확인 후 자동 갱신되며, Apple 계정의 구독 관리에서 언제든 해지할 수 있습니다.")
-                .font(.system(size: 11, weight: .regular))
+                .font(HanClipTypography.metadata)
                 .foregroundStyle(HanClipTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -8838,18 +8911,18 @@ private struct ImportantInfoSheet: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(plan.title)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(HanClipTypography.rowTitle)
                         .foregroundStyle(HanClipTheme.text)
 
                     Text(plan.detail)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(HanClipTypography.metadata)
                         .foregroundStyle(HanClipTheme.secondaryText)
                 }
 
                 Spacer(minLength: 8)
 
                 Text(purchaseManager.displayPrice(for: plan))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(HanClipTheme.primary)
             }
             .padding(.horizontal, 12)
@@ -8909,7 +8982,7 @@ private struct ImportantInfoSheet: View {
             .pickerStyle(.segmented)
 
             Text(sleepPreventionMode.detail)
-                .font(.system(size: 11, weight: .medium))
+                .font(HanClipTypography.metadata)
                 .foregroundStyle(HanClipTheme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -9743,6 +9816,9 @@ private struct TextOverlaySettingsSheet: View {
             applyDefaultSettingsIfNeeded()
             normalizeSelectedFont()
             beginEditingSessionIfNeeded()
+            if !textEnabled {
+                textEnabled = true
+            }
             hasUserEditedCaptionText = !isBasicDateCaptionText
             refreshTextInputBackground()
         }
@@ -9847,7 +9923,7 @@ private struct TextOverlaySettingsSheet: View {
             .background(HanClipTheme.panelFill, in: RoundedRectangle(cornerRadius: 15))
         } else {
             ProgressView("정보를 확인하는 중…")
-                .font(.system(size: 11, weight: .medium))
+                .font(HanClipTypography.metadata)
                 .tint(HanClipTheme.primary)
                 .foregroundStyle(HanClipTheme.secondaryText)
                 .frame(maxWidth: .infinity)
@@ -9886,7 +9962,7 @@ private struct TextOverlaySettingsSheet: View {
                         Image(systemName: theme.systemImage)
                             .font(.system(size: 10, weight: .bold))
                         Text(theme.title)
-                            .font(.system(size: 8.5, weight: .bold))
+                            .font(HanClipTypography.caption)
                             .lineLimit(1)
                     }
                     .foregroundStyle(
@@ -9895,7 +9971,7 @@ private struct TextOverlaySettingsSheet: View {
                             : endingInfoPreviewSecondaryColor
                     )
                     .frame(maxWidth: .infinity)
-                    .frame(height: 35)
+                    .frame(minHeight: 44)
                     .background(
                         endingInfoCardTheme == theme
                             ? endingInfoPreviewAccentColor.opacity(0.15)
@@ -9920,7 +9996,7 @@ private struct TextOverlaySettingsSheet: View {
     private var endingInfoDurationControl: some View {
         HStack(spacing: 12) {
             Text("표시 시간")
-                .font(.system(size: 10, weight: .semibold))
+                .font(HanClipTypography.metadataEmphasis)
                 .foregroundStyle(endingInfoPreviewSecondaryColor)
 
             Spacer(minLength: 0)
@@ -9937,7 +10013,7 @@ private struct TextOverlaySettingsSheet: View {
             .disabled(endingInfoCardDuration <= 1)
 
             Text(String(format: "%.1f초", endingInfoCardDuration))
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(HanClipTypography.compactNumber)
                 .foregroundStyle(endingInfoPreviewTextColor)
                 .frame(width: 45)
 
@@ -9952,7 +10028,7 @@ private struct TextOverlaySettingsSheet: View {
             }
             .disabled(endingInfoCardDuration >= 10)
         }
-        .font(.system(size: 11, weight: .bold))
+        .font(HanClipTypography.caption)
         .foregroundStyle(endingInfoPreviewAccentColor)
         .buttonStyle(.plain)
     }
@@ -9981,7 +10057,7 @@ private struct TextOverlaySettingsSheet: View {
                 )
                 .font(.system(size: 9.5, weight: .bold))
                 Text("엔딩")
-                    .font(.system(size: 10.5, weight: .bold))
+                    .font(HanClipTypography.caption)
             }
             .foregroundStyle(
                 includesEndingInfoCard
@@ -9989,7 +10065,7 @@ private struct TextOverlaySettingsSheet: View {
                     : HanClipTheme.primary.opacity(0.58)
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 21)
+            .frame(minHeight: 44)
             .background(
                 includesEndingInfoCard
                     ? HanClipTheme.primary.opacity(0.13)
@@ -10040,14 +10116,14 @@ private struct TextOverlaySettingsSheet: View {
             textEnabled = true
         } label: {
             Text(title)
-                .font(.system(size: 10.5, weight: .bold))
+                .font(HanClipTypography.caption)
                 .foregroundStyle(
                     isSelected
                         ? HanClipTheme.primary
                         : HanClipTheme.primary.opacity(0.58)
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 21)
+                .frame(minHeight: 44)
                 .background(
                     isSelected
                         ? HanClipTheme.primary.opacity(0.13)
@@ -10469,7 +10545,7 @@ private struct TextOverlaySettingsSheet: View {
                         )
                     )
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.85)
 
                 Spacer(minLength: 4)
 
@@ -10521,7 +10597,7 @@ private struct TextOverlaySettingsSheet: View {
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(isSelected ? .white : HanClipTheme.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity)
                 .frame(height: 32)
                 .background {
@@ -10686,7 +10762,7 @@ private struct TextOverlaySettingsSheet: View {
                         )
                     )
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.85)
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
@@ -10739,7 +10815,7 @@ private struct TextOverlaySettingsSheet: View {
                 Text(title)
                     .font(defaultFontPreview(normalizedID, size: 12))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.85)
             }
             .foregroundStyle(
                 isSelected ? HanClipTheme.primary : HanClipTheme.secondary
@@ -11892,7 +11968,7 @@ private struct EmbeddedFontCopyrightRow: View {
 
     private func detailText(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 14))
+            .font(HanClipTypography.denseBody)
             .foregroundStyle(HanClipTheme.text.opacity(0.78))
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
@@ -11915,17 +11991,17 @@ private struct EmbeddedFontCopyrightRow: View {
                     tableCell(row.fontName)
 
                     Text(row.fileSize)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(HanClipTypography.metadataEmphasis)
                         .foregroundStyle(HanClipTheme.text.opacity(0.72))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.78)
+                        .minimumScaleFactor(0.85)
 
                     Text("안녕하세요")
                         .font(.custom(row.fontFamily, size: 15))
                         .foregroundStyle(HanClipTheme.primary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                        .minimumScaleFactor(0.85)
                 }
             }
         }
@@ -11943,17 +12019,17 @@ private struct EmbeddedFontCopyrightRow: View {
 
     private func tableHeader(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .bold))
+            .font(HanClipTypography.caption)
             .foregroundStyle(HanClipTheme.text.opacity(0.58))
             .lineLimit(1)
     }
 
     private func tableCell(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(HanClipTypography.metadataEmphasis)
             .foregroundStyle(HanClipTheme.text.opacity(0.78))
             .lineLimit(1)
-            .minimumScaleFactor(0.76)
+            .minimumScaleFactor(0.85)
     }
 }
 
@@ -12003,6 +12079,21 @@ private struct ThemeOrderDropDelegate: DropDelegate {
 }
 
 private struct EndingInfoSettingsSheet: View {
+    private struct SessionState: Equatable {
+        var isEnabled: Bool
+        var duration: Double
+        var theme: EndingInfoCardTheme
+        var variation: Int
+        var fontName: String
+        var textColorHex: String
+        var shadowEnabled: Bool
+        var shadowOpacity: Double
+        var shadowColorHex: String
+        var fontSize: WatermarkFontSize
+        var lineSpacing: WatermarkLineSpacing
+        var lineSpacingScale: Double
+    }
+
     private struct CaptionPreset: Identifiable {
         let id: String
         let title: String
@@ -12034,6 +12125,7 @@ private struct EndingInfoSettingsSheet: View {
 
     @State private var previewData: EndingInfoPreviewData?
     @State private var previewImage: UIImage?
+    @State private var originalSessionState: SessionState?
 
     var body: some View {
         NavigationStack {
@@ -12065,19 +12157,47 @@ private struct EndingInfoSettingsSheet: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        dismiss()
+                        resetSettings()
                     } label: {
-                        Image(systemName: "xmark")
+                        Image(systemName: "arrow.counterclockwise")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(HanClipTheme.primary)
                     }
-                    .accessibilityLabel("닫기")
+                    .foregroundStyle(HanClipTheme.primary)
+                    .accessibilityLabel("초기화")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if hasSessionChanges {
+                        HStack(spacing: 2) {
+                            Button {
+                                discardChangesAndDismiss()
+                            } label: {
+                                settingsToolbarIcon("xmark")
+                            }
+                            .accessibilityLabel("저장 없이 나가기")
+
+                            Button {
+                                dismiss()
+                            } label: {
+                                settingsToolbarSaveIcon
+                            }
+                            .accessibilityLabel("저장 후 닫기")
+                        }
+                    } else {
+                        Button {
+                            dismiss()
+                        } label: {
+                            settingsToolbarIcon("xmark")
+                        }
+                        .accessibilityLabel("닫기")
+                    }
                 }
             }
         }
         .task {
+            beginEditingSessionIfNeeded()
             previewData = await loadPreview() ?? samplePreviewData
             refreshPreviewImage()
         }
@@ -12099,6 +12219,86 @@ private struct EndingInfoSettingsSheet: View {
         .onChange(of: lineSpacingScale) { _, _ in refreshPreviewImage() }
     }
 
+    private func resetSettings() {
+        let defaults = WatermarkSettings.projectDefault()
+        isEnabled = defaults.includesEndingInfoCard
+        duration = defaults.endingInfoCardDuration
+        theme = defaults.endingInfoCardTheme
+        variation = defaults.endingInfoCardVariation
+        fontName = defaults.fontName
+        textColorHex = defaults.textColorHex
+        shadowEnabled = defaults.shadowEnabled
+        shadowOpacity = defaults.shadowOpacity
+        shadowColorHex = defaults.shadowColorHex
+        fontSize = defaults.fontSize
+        lineSpacing = defaults.lineSpacing
+        lineSpacingScale = defaults.lineSpacingScale
+        refreshPreviewImage()
+    }
+
+    private func beginEditingSessionIfNeeded() {
+        guard originalSessionState == nil else { return }
+        originalSessionState = currentSessionState()
+    }
+
+    private func discardChangesAndDismiss() {
+        if let originalSessionState {
+            applySessionState(originalSessionState)
+        }
+        dismiss()
+    }
+
+    private func applySessionState(_ state: SessionState) {
+        isEnabled = state.isEnabled
+        duration = state.duration
+        theme = state.theme
+        variation = state.variation
+        fontName = state.fontName
+        textColorHex = state.textColorHex
+        shadowEnabled = state.shadowEnabled
+        shadowOpacity = state.shadowOpacity
+        shadowColorHex = state.shadowColorHex
+        fontSize = state.fontSize
+        lineSpacing = state.lineSpacing
+        lineSpacingScale = state.lineSpacingScale
+    }
+
+    private var hasSessionChanges: Bool {
+        guard let originalSessionState else { return false }
+        return currentSessionState() != originalSessionState
+    }
+
+    private func currentSessionState() -> SessionState {
+        SessionState(
+            isEnabled: isEnabled,
+            duration: duration,
+            theme: theme,
+            variation: variation,
+            fontName: fontName,
+            textColorHex: textColorHex,
+            shadowEnabled: shadowEnabled,
+            shadowOpacity: shadowOpacity,
+            shadowColorHex: shadowColorHex,
+            fontSize: fontSize,
+            lineSpacing: lineSpacing,
+            lineSpacingScale: lineSpacingScale
+        )
+    }
+
+    private func settingsToolbarIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 40, height: 44)
+    }
+
+    private var settingsToolbarSaveIcon: some View {
+        FloppyDiskIcon()
+            .foregroundStyle(HanClipTheme.primary)
+            .frame(width: 23, height: 23)
+            .frame(width: 40, height: 44)
+    }
+
     private var themePicker: some View {
         HStack(spacing: 5) {
             ForEach(EndingInfoCardTheme.allCases) { candidate in
@@ -12114,7 +12314,7 @@ private struct EndingInfoSettingsSheet: View {
                         Image(systemName: candidate.systemImage)
                             .font(.system(size: 10, weight: .bold))
                         Text(candidate.title)
-                            .font(.system(size: 8.5, weight: .bold))
+                            .font(HanClipTypography.caption)
                             .lineLimit(1)
                     }
                     .foregroundStyle(
@@ -12123,7 +12323,7 @@ private struct EndingInfoSettingsSheet: View {
                             : HanClipTheme.secondaryText
                     )
                     .frame(maxWidth: .infinity)
-                    .frame(height: 38)
+                    .frame(minHeight: 44)
                     .background(
                         theme == candidate
                             ? HanClipTheme.primary.opacity(0.14)
@@ -12159,7 +12359,7 @@ private struct EndingInfoSettingsSheet: View {
             .disabled(duration <= 1)
 
             Text(String(format: "%.1f초", duration))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(HanClipTypography.compactNumber)
                 .monospacedDigit()
                 .frame(maxWidth: .infinity)
 
@@ -12206,7 +12406,7 @@ private struct EndingInfoSettingsSheet: View {
                 .accessibilityLabel("\(theme.title) 엔딩 카드 미리보기")
         } else {
             ProgressView("정보를 확인하는 중…")
-                .font(.system(size: 11, weight: .medium))
+                .font(HanClipTypography.metadata)
                 .tint(HanClipTheme.primary)
                 .frame(maxWidth: .infinity, minHeight: 130)
         }
@@ -12314,7 +12514,7 @@ private struct EndingInfoSettingsSheet: View {
                         )
                     )
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.85)
                 Spacer(minLength: 0)
                 Text("Aa")
                     .font(
@@ -12375,7 +12575,7 @@ private struct TextOverlaySummaryRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Text("T")
                 .font(.system(size: 12, weight: .black))
                 .foregroundStyle(
@@ -12383,41 +12583,49 @@ private struct TextOverlaySummaryRow: View {
                         ? HanClipTheme.primary.opacity(0.86)
                         : HanClipTheme.text.opacity(0.38)
                 )
-                .frame(width: 24, alignment: .center)
+                .frame(width: 24, height: 44, alignment: .center)
 
-            Button(action: onSelect) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Button(action: onSelect) {
                         Text("자막")
-                            .font(.system(size: 12, weight: .black))
+                            .font(HanClipTypography.rowTitle)
                             .foregroundStyle(HanClipTheme.secondaryText.opacity(0.82))
                             .lineLimit(1)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
+                    Spacer(minLength: 8)
+
+                    InlineStatusSegmentedControl(
+                        isOn: $isEnabled,
+                        isEnabled: true
+                    )
+                }
+
+                Button(action: onSelect) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(textPreview)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(HanClipTypography.secondary)
                             .foregroundStyle(HanClipTheme.primaryText.opacity(0.74))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.78)
+                            .truncationMode(.tail)
+
+                        Text(detailText)
+                            .font(HanClipTypography.metadata)
+                            .foregroundStyle(HanClipTheme.text.opacity(0.48))
+                            .lineLimit(2)
                     }
-
-                    Text(detailText)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(HanClipTheme.text.opacity(0.48))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 48, alignment: .center)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
             }
-            .buttonStyle(.plain)
-
-            InlineStatusSegmentedControl(
-                isOn: $isEnabled,
-                isEnabled: true
-            )
         }
-        .frame(height: 48)
+        .frame(minHeight: 82)
         .contentShape(Rectangle())
         .accessibilityLabel("자막")
         .accessibilityHint("자막 편집 화면을 엽니다.")
@@ -12431,50 +12639,56 @@ private struct EndingInfoSummaryRow: View {
     let onSelect: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button(action: onSelect) {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "map.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
+                .frame(width: 24, height: 44, alignment: .center)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
-                    Image(systemName: "map.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(
-                            HanClipTheme.secondaryText.opacity(0.78)
-                        )
-                        .frame(width: 24, alignment: .center)
-                        .accessibilityHidden(true)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("엔딩 :")
-                            .font(.system(size: 12, weight: .black))
+                    Button(action: onSelect) {
+                        Text("엔딩")
+                            .font(HanClipTypography.rowTitle)
                             .foregroundStyle(
                                 HanClipTheme.secondaryText.opacity(0.82)
                             )
                             .lineLimit(1)
-
-                        Text(theme.title)
-                            .font(.system(size: 12, weight: .black))
-                            .foregroundStyle(
-                                HanClipTheme.secondaryText.opacity(0.82)
-                            )
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+
+                    Spacer(minLength: 8)
+
+                    InlineStatusSegmentedControl(
+                        isOn: $isEnabled,
+                        isEnabled: true
+                    )
                 }
-                .frame(width: 84, alignment: .leading)
-                .frame(height: 44, alignment: .center)
-                .contentShape(Rectangle())
+
+                HStack(spacing: 8) {
+                    Button(action: onSelect) {
+                        Text(theme.title)
+                            .font(HanClipTypography.secondary)
+                            .foregroundStyle(
+                                HanClipTheme.secondaryText.opacity(0.82)
+                            )
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    endingInfoDurationStepper
+                }
+                .padding(.bottom, 6)
             }
-            .buttonStyle(.plain)
-
-            endingInfoDurationStepper
-
-            Spacer(minLength: 4)
-
-            InlineStatusSegmentedControl(
-                isOn: $isEnabled,
-                isEnabled: true
-            )
         }
-        .frame(height: 48)
+        .frame(minHeight: 88)
         .contentShape(Rectangle())
         .accessibilityLabel("엔딩, \(theme.title) 테마")
         .accessibilityHint("엔딩 카드 설정 화면을 엽니다.")
@@ -12497,9 +12711,10 @@ private struct EndingInfoSummaryRow: View {
             .accessibilityLabel("엔딩 표시 시간 줄이기")
 
             Text(String(format: "%.1f초", duration))
-                .font(.system(size: 10, weight: .semibold))
-                .monospacedDigit()
-                .frame(width: 38)
+                .font(HanClipTypography.compactNumber)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 48)
 
             Button {
                 duration = WatermarkSettings.normalizedEndingInfoCardDuration(
@@ -12516,7 +12731,7 @@ private struct EndingInfoSummaryRow: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(HanClipTheme.secondaryText)
-        .frame(width: 118, height: 44)
+        .frame(width: 128, height: 44)
         .background {
             Capsule()
                 .fill(HanClipTheme.secondary.opacity(0.09))
@@ -12558,7 +12773,7 @@ private struct BackgroundMusicSummaryRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "music.note")
                 .font(.system(size: 13, weight: .black))
                 .foregroundStyle(
@@ -12566,41 +12781,49 @@ private struct BackgroundMusicSummaryRow: View {
                         ? HanClipTheme.primary.opacity(0.86)
                         : HanClipTheme.text.opacity(0.38)
                 )
-                .frame(width: 24, alignment: .center)
+                .frame(width: 24, height: 44, alignment: .center)
 
-            Button(action: onSelect) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Button(action: onSelect) {
                         Text("음악")
-                            .font(.system(size: 12, weight: .black))
+                            .font(HanClipTypography.rowTitle)
                             .foregroundStyle(HanClipTheme.secondaryText.opacity(0.82))
                             .lineLimit(1)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
+                    Spacer(minLength: 8)
+
+                    InlineStatusSegmentedControl(
+                        isOn: $isEnabled,
+                        isEnabled: settings.hasMusicFile
+                    )
+                }
+
+                Button(action: onSelect) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(musicTitle)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(HanClipTypography.secondary)
                             .foregroundStyle(HanClipTheme.primaryText.opacity(0.74))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.78)
+                            .truncationMode(.tail)
+
+                        Text(detailText)
+                            .font(HanClipTypography.metadata)
+                            .foregroundStyle(HanClipTheme.text.opacity(0.48))
+                            .lineLimit(2)
                     }
-
-                    Text(detailText)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(HanClipTheme.text.opacity(0.48))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 48, alignment: .center)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .padding(.bottom, 10)
             }
-            .buttonStyle(.plain)
-
-            InlineStatusSegmentedControl(
-                isOn: $isEnabled,
-                isEnabled: settings.hasMusicFile
-            )
         }
-        .frame(height: 48)
+        .frame(minHeight: 82)
         .contentShape(Rectangle())
         .accessibilityLabel("음악")
         .accessibilityHint("음악 설정 화면을 엽니다.")
@@ -12620,14 +12843,15 @@ private struct InlineStatusSegmentedControl: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            segment(title: "사용", selected: effectiveIsOn)
-            segment(title: "안함", selected: !effectiveIsOn)
-        }
-        .padding(2)
-        .frame(width: 112, height: 28)
-        .background(HanClipTheme.secondary.opacity(0.13), in: Capsule())
-        .overlay {
+        ZStack {
+            HStack(spacing: 0) {
+                segment(title: "사용", selected: effectiveIsOn)
+                segment(title: "안함", selected: !effectiveIsOn)
+            }
+            .padding(2)
+            .frame(width: 104, height: 30)
+            .background(HanClipTheme.secondary.opacity(0.13), in: Capsule())
+
             Button {
                 guard isEnabled else { return }
                 withAnimation(.snappy) {
@@ -12635,7 +12859,7 @@ private struct InlineStatusSegmentedControl: View {
                 }
             } label: {
                 Color.clear
-                    .frame(width: 94, height: 42)
+                    .frame(width: 112, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -12643,12 +12867,13 @@ private struct InlineStatusSegmentedControl: View {
             .accessibilityLabel(effectiveIsOn ? "사용" : "안함")
             .accessibilityHint("어디를 눌러도 사용 상태가 전환됩니다.")
         }
+        .frame(width: 112, height: 44)
         .opacity(isEnabled ? 1 : 0.48)
     }
 
     private func segment(title: String, selected: Bool) -> some View {
         Text(title)
-            .font(.system(size: 10, weight: .bold))
+            .font(HanClipTypography.caption)
             .foregroundStyle(
                 selected ? .white : HanClipTheme.secondaryText.opacity(0.78)
             )
@@ -12671,11 +12896,22 @@ private struct VideoRangeSegmentedControl: View {
 
     var body: some View {
         GeometryReader { proxy in
-            HStack(spacing: 0) {
-                segment(title: "선택구간", isFullVideo: false)
-                segment(title: "전체영상", isFullVideo: true)
+            ZStack {
+                HStack(spacing: 0) {
+                    segment(title: "선택구간", isFullVideo: false)
+                    segment(title: "전체영상", isFullVideo: true)
+                }
+                .padding(2)
+                .frame(width: proxy.size.width, height: height)
+                .background(
+                    tint.opacity(0.060),
+                    in: RoundedRectangle(cornerRadius: height / 2)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: height / 2)
+                        .stroke(tint.opacity(0.18), lineWidth: 0.8)
+                }
             }
-            .padding(2)
             .frame(width: proxy.size.width, height: proxy.size.height)
             .contentShape(RoundedRectangle(cornerRadius: height / 2))
             .highPriorityGesture(
@@ -12689,15 +12925,7 @@ private struct VideoRangeSegmentedControl: View {
                     }
             )
         }
-        .frame(width: width, height: height)
-        .background(
-            tint.opacity(0.060),
-            in: RoundedRectangle(cornerRadius: height / 2)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: height / 2)
-                .stroke(tint.opacity(0.18), lineWidth: 0.8)
-        }
+        .frame(width: width, height: max(height, 44))
         .accessibilityElement(children: .contain)
     }
 
@@ -12705,14 +12933,9 @@ private struct VideoRangeSegmentedControl: View {
         let isSelected = usesFullVideo == isFullVideo
 
         return Text(title)
-            .font(
-                .system(
-                    size: 10,
-                    weight: isSelected ? .bold : .semibold
-                )
-            )
+            .font(HanClipTypography.caption)
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
+            .truncationMode(.tail)
             .foregroundStyle(
                 isSelected
                     ? HanClipTheme.primaryText
@@ -12965,10 +13188,10 @@ private struct BackgroundMusicSettingsSheet: View {
 
             if settings.hasMusicFile && !isBundledSampleSelected {
                 Text(settings.displayTitle)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(HanClipTypography.metadata)
                     .foregroundStyle(HanClipTheme.text.opacity(0.56))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.74)
+                    .minimumScaleFactor(0.85)
             }
         }
     }
@@ -13015,7 +13238,7 @@ private struct BackgroundMusicSettingsSheet: View {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 13, weight: .bold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.78)
+                .minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity)
                 .frame(height: 42)
                 .contentShape(
@@ -13056,9 +13279,9 @@ private struct BackgroundMusicSettingsSheet: View {
                         .font(.system(size: 15, weight: .black))
 
                         Text(sampleTrack.title)
-                            .font(.system(size: 12, weight: .black))
+                            .font(HanClipTypography.rowTitle)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.72)
+                            .truncationMode(.tail)
                     }
                     .foregroundStyle(
                         isSelected
@@ -13067,10 +13290,9 @@ private struct BackgroundMusicSettingsSheet: View {
                     )
 
                     Text(sampleTrack.subtitle)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(HanClipTypography.metadata)
                         .foregroundStyle(HanClipTheme.text.opacity(0.48))
                         .lineLimit(2)
-                        .minimumScaleFactor(0.78)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -13270,7 +13492,7 @@ private struct BackgroundMusicSettingsSheet: View {
 
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 13, weight: .black))
+            .font(HanClipTypography.sectionTitle)
             .foregroundStyle(HanClipTheme.text.opacity(0.68))
     }
 
@@ -13288,11 +13510,11 @@ private struct BackgroundMusicSettingsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(HanClipTheme.text.opacity(0.76))
                 Spacer()
                 Text(Self.percentText(value.wrappedValue))
-                    .font(.system(size: 12, weight: .bold))
+                    .font(HanClipTypography.compactNumber)
                     .foregroundStyle(HanClipTheme.text.opacity(0.58))
             }
             Slider(value: value, in: 0...1)
@@ -13404,6 +13626,7 @@ private struct OnlineMusicBrowserView: View {
     @State private var downloadStatusText = "음악을 가져오는 중"
     @State private var showFavoriteEditor = false
     @State private var showFavoritePanel = false
+    @State private var favoritePendingDeletion: String?
     @State private var detectedVideo: BrowserDetectedVideo?
     @State private var detectedVideoPreviewURL: URL?
     @State private var dismissedVideoURLString: String?
@@ -13528,6 +13751,21 @@ private struct OnlineMusicBrowserView: View {
             .onDisappear {
                 pauseAndRetainTrigger += 1
             }
+            .confirmationDialog(
+                "즐겨찾기를 삭제할까요?",
+                isPresented: Binding(
+                    get: { favoritePendingDeletion != nil },
+                    set: { if !$0 { favoritePendingDeletion = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("삭제", role: .destructive) {
+                    guard let favoritePendingDeletion else { return }
+                    removeFavorite(favoritePendingDeletion)
+                    self.favoritePendingDeletion = nil
+                }
+                Button("취소", role: .cancel) {}
+            }
         }
     }
 
@@ -13592,6 +13830,7 @@ private struct OnlineMusicBrowserView: View {
                             lineWidth: 1
                         )
                 }
+                .hanClipMinimumTapTarget()
                 .contentShape(Circle())
                 .gesture(favoriteButtonGesture)
                 .accessibilityAddTraits(.isButton)
@@ -13651,6 +13890,7 @@ private struct OnlineMusicBrowserView: View {
                 Circle()
                     .stroke(HanClipTheme.secondary.opacity(0.14), lineWidth: 1)
             }
+            .hanClipMinimumTapTarget()
             .contentShape(Circle())
             .gesture(browserBackOrCloseGesture)
             .accessibilityAddTraits(.isButton)
@@ -13725,6 +13965,7 @@ private struct OnlineMusicBrowserView: View {
                         lineWidth: 1
                     )
             }
+            .hanClipMinimumTapTarget()
     }
 
     private var primaryAddressButtonGesture: some Gesture {
@@ -13793,9 +14034,9 @@ private struct OnlineMusicBrowserView: View {
     private var favoritePanelTopPadding: CGFloat { 8 }
     private var favoritePanelSidePadding: CGFloat { 0 }
     private var favoritePanelBottomPadding: CGFloat { 0 }
-    private var favoritePanelHeaderHeight: CGFloat { 53 }
+    private var favoritePanelHeaderHeight: CGFloat { 56 }
     private var favoritePanelEmptyHeight: CGFloat { 112 }
-    private var favoritePanelRowHeight: CGFloat { 50 }
+    private var favoritePanelRowHeight: CGFloat { 56 }
     private var favoritePanelRowSpacing: CGFloat { 4 }
     private var favoritePanelListVerticalPadding: CGFloat { 16 }
 
@@ -13806,7 +14047,7 @@ private struct OnlineMusicBrowserView: View {
         VStack(spacing: 0) {
             HStack {
                 Label("즐겨찾기", systemImage: "bookmark.fill")
-                    .font(.system(size: 15, weight: .black))
+                    .font(HanClipTypography.modalTitle)
                     .foregroundStyle(HanClipTheme.primaryText)
                 Spacer()
                 Button {
@@ -13902,15 +14143,11 @@ private struct OnlineMusicBrowserView: View {
     private func favoritePanelRow(_ favorite: String) -> some View {
         HStack(spacing: 10) {
             BrowserFavicon(favorite: favorite)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    removeFavorite(favorite)
-                }
                 .onLongPressGesture(minimumDuration: 0.55) {
                     makeHomepage(favorite)
                 }
                 .accessibilityElement()
-                .accessibilityLabel("\(favoriteDisplayTitle(favorite)) 삭제")
+                .accessibilityLabel("\(favoriteDisplayTitle(favorite)) 아이콘")
                 .accessibilityAction(named: "홈페이지로 지정") {
                     makeHomepage(favorite)
                 }
@@ -13922,13 +14159,14 @@ private struct OnlineMusicBrowserView: View {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(favoriteDisplayTitle(favorite))
-                            .font(.system(size: 13, weight: .bold))
+                            .font(HanClipTypography.rowTitle)
                             .foregroundStyle(HanClipTheme.primaryText)
                             .lineLimit(1)
                         Text(favorite)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(HanClipTypography.caption)
                             .foregroundStyle(HanClipTheme.secondaryText)
                             .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     Spacer(minLength: 4)
                     if favorite == favoriteMusicSites.first {
@@ -13940,9 +14178,21 @@ private struct OnlineMusicBrowserView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            Button {
+                favoritePendingDeletion = favorite
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.red.opacity(0.78))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(favoriteDisplayTitle(favorite)) 삭제")
         }
         .padding(.horizontal, 8)
-        .frame(height: 50)
+        .frame(minHeight: 56)
         .background(
             HanClipTheme.panelFill.opacity(0.84),
             in: RoundedRectangle(cornerRadius: 8)
@@ -13961,7 +14211,7 @@ private struct OnlineMusicBrowserView: View {
             Button {
                 downloadDetectedVideoTrigger += 1
             } label: {
-                Text("다운")
+                Text("다운로드")
             }
             .buttonStyle(.borderedProminent)
             .accessibilityLabel("영상 다운로드")
@@ -13986,10 +14236,10 @@ private struct OnlineMusicBrowserView: View {
             .buttonStyle(.bordered)
             .accessibilityHint("영상 인식 알림만 닫습니다")
         }
-        .font(.system(size: 12, weight: .bold))
+        .font(HanClipTypography.caption)
         .tint(HanClipTheme.primary)
         .padding(.horizontal, 12)
-        .frame(height: 52)
+        .frame(minHeight: 56)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -14199,6 +14449,8 @@ private struct OnlineMusicFavoritesEditorView: View {
     @State private var editMode = EditMode.active
     @State private var showFavoritesExporter = false
     @State private var exportErrorMessage: String?
+    @State private var favoritePendingDeletion: String?
+    @State private var showDeleteAllConfirmation = false
 
     init(favoritesRaw: Binding<String>) {
         _favoritesRaw = favoritesRaw
@@ -14263,8 +14515,7 @@ private struct OnlineMusicFavoritesEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        favorites = []
-                        save()
+                        showDeleteAllConfirmation = true
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "trash")
@@ -14310,6 +14561,35 @@ private struct OnlineMusicFavoritesEditorView: View {
                 exportErrorMessage = error.localizedDescription
             }
         }
+        .confirmationDialog(
+            "즐겨찾기를 삭제할까요?",
+            isPresented: Binding(
+                get: { favoritePendingDeletion != nil },
+                set: { if !$0 { favoritePendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("삭제", role: .destructive) {
+                guard let favorite = favoritePendingDeletion,
+                      let index = favorites.firstIndex(of: favorite)
+                else { return }
+                favorites.remove(at: index)
+                favoritePendingDeletion = nil
+                save()
+            }
+            Button("취소", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "즐겨찾기를 모두 삭제할까요?",
+            isPresented: $showDeleteAllConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("전체 삭제", role: .destructive) {
+                favorites = []
+                save()
+            }
+            Button("취소", role: .cancel) {}
+        }
         .alert(
             "즐겨찾기를 저장할 수 없습니다.",
             isPresented: Binding(
@@ -14340,11 +14620,9 @@ private struct OnlineMusicFavoritesEditorView: View {
             Spacer(minLength: 8)
 
             favoriteIconButton("trash") {
-                if let index = favorites.firstIndex(of: favorite) {
-                    favorites.remove(at: index)
-                    save()
-                }
+                favoritePendingDeletion = favorite
             }
+            .accessibilityLabel("\(displayTitle(for: favorite)) 삭제")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -14367,7 +14645,7 @@ private struct OnlineMusicFavoritesEditorView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .black))
                 .foregroundStyle(HanClipTheme.primary)
-                .frame(width: 28, height: 28)
+                .frame(width: 44, height: 44)
                 .background(
                     Color.white.opacity(0.45),
                     in: Circle()
@@ -15263,7 +15541,7 @@ private struct WatermarkPlatformLogo: View {
                     Text("HanClip")
                         .font(.system(size: 11, weight: .bold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.85)
                 }
             case .instagram:
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -15848,6 +16126,8 @@ private struct SwipeToDeleteRow<Content: View>: View {
     let content: Content
 
     @GestureState private var dragTranslation: CGFloat = 0
+    @State private var isDeleteActionRevealed = false
+    @State private var showDeleteConfirmation = false
 
     private let actionWidth: CGFloat = 72
     private let deleteThreshold: CGFloat = 82
@@ -15867,14 +16147,18 @@ private struct SwipeToDeleteRow<Content: View>: View {
     private var visibleOffset: CGFloat {
         min(
             0,
-            max(-actionWidth, dragTranslation)
+            max(
+                -actionWidth,
+                (isDeleteActionRevealed ? -actionWidth : 0)
+                    + dragTranslation
+            )
         )
     }
 
     var body: some View {
         ZStack(alignment: .trailing) {
             Button(role: .destructive) {
-                onDelete()
+                showDeleteConfirmation = true
             } label: {
                 Image(systemName: "trash.fill")
                     .font(.system(size: 18, weight: .semibold))
@@ -15885,36 +16169,74 @@ private struct SwipeToDeleteRow<Content: View>: View {
             .buttonStyle(.plain)
             .background(Color.red)
             .opacity(visibleOffset < -1 ? 1 : 0)
+            .allowsHitTesting(isDeleteActionRevealed)
+            .accessibilityHidden(!isDeleteActionRevealed)
             .accessibilityLabel(accessibilityLabel)
 
             content
                 .offset(x: visibleOffset)
-                .allowsHitTesting(!isSwiping)
+                .allowsHitTesting(!isDeleteActionRevealed)
                 .highPriorityGesture(swipeGesture)
+
+            if isDeleteActionRevealed {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .padding(.trailing, actionWidth)
+                    .onTapGesture {
+                        withAnimation(.snappy) {
+                            isDeleteActionRevealed = false
+                        }
+                    }
+                    .accessibilityHidden(true)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .accessibilityAction(named: accessibilityLabel) {
+            showDeleteConfirmation = true
+        }
+        .alert(confirmationTitle, isPresented: $showDeleteConfirmation) {
+            Button("삭제", role: .destructive) {
+                withAnimation(.snappy) {
+                    isDeleteActionRevealed = false
+                    onDelete()
+                }
+            }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text(confirmationMessage)
+        }
     }
 
-    private var isSwiping: Bool {
-        abs(visibleOffset) > 1
+    private var confirmationTitle: String {
+        accessibilityLabel.contains("클립")
+            ? "이 클립을 삭제할까요?"
+            : "이 영화를 삭제할까요?"
+    }
+
+    private var confirmationMessage: String {
+        accessibilityLabel.contains("클립")
+            ? "삭제한 클립은 현재 영화에서 제거됩니다."
+            : "삭제한 영화는 복구할 수 없습니다."
     }
 
     private var swipeGesture: some Gesture {
         DragGesture(minimumDistance: 24)
             .updating($dragTranslation) { value, state, _ in
-                guard isHorizontalSwipe(value),
-                      value.translation.width < 0
-                else { return }
+                guard isHorizontalSwipe(value) else { return }
+                if !isDeleteActionRevealed,
+                   value.translation.width > 0 {
+                    return
+                }
                 state = value.translation.width
             }
             .onEnded { value in
-                guard isHorizontalSwipe(value),
-                      value.translation.width < 0
-                else { return }
-
-                if value.predictedEndTranslation.width < -deleteThreshold {
-                    withAnimation(.snappy) {
-                        onDelete()
+                guard isHorizontalSwipe(value) else { return }
+                let predictedWidth = value.predictedEndTranslation.width
+                withAnimation(.snappy) {
+                    if isDeleteActionRevealed {
+                        isDeleteActionRevealed = predictedWidth < 28
+                    } else {
+                        isDeleteActionRevealed = predictedWidth < -deleteThreshold
                     }
                 }
             }
@@ -16019,8 +16341,12 @@ private struct QuickMovieDurationPicker: View {
                     Spacer()
 
                     Text("퀵모드 영상 길이")
-                        .font(.system(size: 18, weight: .black))
+                        .font(HanClipTypography.screenTitle)
                         .foregroundStyle(HanClipTheme.primaryText)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
 
                     Spacer()
 
@@ -16041,67 +16367,72 @@ private struct QuickMovieDurationPicker: View {
                     .accessibilityLabel("미디어 추가")
                 }
 
-                VStack(spacing: 16) {
-                    durationStepper
+                ScrollView {
+                    VStack(spacing: 16) {
+                        durationStepper
 
                     HStack(spacing: 9) {
                         Rectangle()
                             .fill(HanClipTheme.secondary.opacity(0.18))
                             .frame(height: 1)
                         Text("시간 변경")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(HanClipTypography.caption)
                             .foregroundStyle(HanClipTheme.secondaryText)
-                            .fixedSize()
+                            .fixedSize(horizontal: false, vertical: true)
                         Rectangle()
                             .fill(HanClipTheme.secondary.opacity(0.18))
                             .frame(height: 1)
                     }
 
-                    LazyVGrid(
-                        columns: Array(
-                            repeating: GridItem(.flexible(), spacing: 8),
-                            count: 2
-                        ),
-                        spacing: 12
-                    ) {
-                        durationChoice("30초", seconds: 30)
-                        durationChoice("45초", seconds: 45)
-                        durationChoice("1분", seconds: 60)
-                        durationChoice("2분", seconds: 120)
-                        durationChoice("3분", seconds: 180)
-                        durationChoice("5분", seconds: 300)
-                        specialDurationChoice(
-                            title: "추천시간",
-                            duration: recommendedDuration,
-                            usesDefaultDuration: true
-                        )
-                        specialDurationChoice(
-                            title: "최소시간",
-                            duration: minimumSelectableDuration,
-                            usesDefaultDuration: false
-                        )
+                        LazyVGrid(
+                            columns: Array(
+                                repeating: GridItem(.flexible(), spacing: 8),
+                                count: 2
+                            ),
+                            spacing: 12
+                        ) {
+                            durationChoice("30초", seconds: 30)
+                            durationChoice("45초", seconds: 45)
+                            durationChoice("1분", seconds: 60)
+                            durationChoice("2분", seconds: 120)
+                            durationChoice("3분", seconds: 180)
+                            durationChoice("5분", seconds: 300)
+                            specialDurationChoice(
+                                title: "추천시간",
+                                duration: recommendedDuration,
+                                usesDefaultDuration: true
+                            )
+                            specialDurationChoice(
+                                title: "최소시간",
+                                duration: minimumSelectableDuration,
+                                usesDefaultDuration: false
+                            )
+                        }
+
+                        quickSettingsGroup
+                            .padding(.top, 4)
                     }
-
+                    .padding(.top, 24)
+                    .padding(.bottom, 12)
                 }
-                .padding(.top, 24)
-
-                Spacer(minLength: 8)
-
-                quickSettingsGroup
-
-                Spacer(minLength: 8)
+                .scrollIndicators(.hidden)
 
                 Button {
                     onMake(usesRecommendedDuration ? nil : selectedDuration)
                 } label: {
                     Text("이 시간으로 만들기")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(HanClipTypography.primaryCTA)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity)
                         .frame(height: 93)
                         .background(HanClipTheme.primary, in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .padding(.top, 8)
                 .padding(.bottom, 10)
             }
             .padding(.horizontal, 20)
@@ -16174,20 +16505,22 @@ private struct QuickMovieDurationPicker: View {
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 18, weight: .bold))
-                    .frame(width: 72, height: 51)
+                    .frame(width: 72)
+                    .frame(minHeight: 56)
                     .contentShape(Rectangle())
             }
             .disabled(selectedDuration <= minimumSelectableDuration)
 
             VStack(spacing: 2) {
                 Text("선택시간")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(HanClipTypography.caption)
                 Text(durationText(selectedDuration))
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                    .monospacedDigit()
+                    .font(HanClipTypography.primaryNumber)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 51)
+            .frame(minHeight: 56)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 4)
 
             Button {
                 usesRecommendedDuration = false
@@ -16195,7 +16528,8 @@ private struct QuickMovieDurationPicker: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .bold))
-                    .frame(width: 72, height: 51)
+                    .frame(width: 72)
+                    .frame(minHeight: 56)
                     .contentShape(Rectangle())
             }
         }
@@ -16228,20 +16562,22 @@ private struct QuickMovieDurationPicker: View {
         } label: {
             VStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(HanClipTypography.rowTitle)
                 Text(
                     adjustedSeconds <= seconds
                         ? "최대 \(maximumMediaCount)개"
                         : "최소 \(durationText(adjustedSeconds))로 적용"
                 )
-                .font(.system(size: 10, weight: .semibold))
+                .font(HanClipTypography.caption)
                 .opacity(0.70)
             }
                 .foregroundStyle(
                     isSelected ? Color.white : HanClipTheme.primaryText
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 54)
+                .frame(minHeight: 58)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 6)
                 .background(
                     isSelected
                         ? HanClipTheme.primary
@@ -16268,16 +16604,18 @@ private struct QuickMovieDurationPicker: View {
         } label: {
             VStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(HanClipTypography.rowTitle)
                 Text(durationText(duration))
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(HanClipTypography.caption)
                     .opacity(0.70)
             }
             .foregroundStyle(
                 isSelected ? Color.white : HanClipTheme.primaryText
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 54)
+            .frame(minHeight: 58)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6)
             .background(
                 isSelected
                     ? HanClipTheme.primary
@@ -16357,7 +16695,8 @@ private struct QuickMovieDurationPicker: View {
                             )
 
                         Text("첫\n사진")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(HanClipTypography.caption)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                             .multilineTextAlignment(.center)
                             .lineSpacing(0)
                             .foregroundStyle(
@@ -17492,7 +17831,7 @@ private struct CalendarMediaPickerView: View {
             HStack(spacing: 0) {
                 ForEach(weekdays, id: \.self) { weekday in
                     Text(weekday)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(HanClipTypography.caption)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 30)
@@ -17582,21 +17921,14 @@ private struct CalendarMediaPickerView: View {
             } label: {
                 VStack(spacing: 6) {
                     Text(monthTitle)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(HanClipTypography.screenTitle)
 
                     if isLoadingMonth {
                         HStack(spacing: 8) {
                             Text(
                                 "\(Int((monthLoadProgress * 100).rounded()))%"
                             )
-                            .font(
-                                .system(
-                                    size: 12,
-                                    weight: .semibold,
-                                    design: .monospaced
-                                )
-                            )
-                            .frame(width: 34, alignment: .trailing)
+                            .font(HanClipTypography.compactNumber)
 
                             ProgressView(value: monthLoadProgress, total: 1)
                                 .progressViewStyle(.linear)
@@ -17674,7 +18006,7 @@ private struct CalendarMediaPickerView: View {
 
             Spacer()
 
-            Button("달력") {
+            Button("사진") {
                 thumbnailLoadTask?.cancel()
                 onShowPhotos(resolvedSelectedAssetIdentifiers())
             }
@@ -18340,10 +18672,9 @@ private struct CalendarMediaPickerView: View {
 
                     Text("\(calendar.component(.day, from: date))")
                         .font(
-                            .system(
-                                size: 16,
-                                weight: hasMedia ? .semibold : .regular
-                            )
+                            hasMedia
+                                ? HanClipTypography.rowTitle
+                                : HanClipTypography.denseBody
                         )
                         .monospacedDigit()
                         .foregroundStyle(dateTextColor(for: date))
@@ -18351,10 +18682,10 @@ private struct CalendarMediaPickerView: View {
                 .frame(height: 25)
 
                 if let holidayName {
-                    Text(String(holidayName.prefix(7)))
-                        .font(.system(size: 8, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                    Text(holidayName)
+                        .font(HanClipTypography.caption)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
                         .foregroundStyle(restDayColor)
                 }
             }
@@ -18373,9 +18704,18 @@ private struct CalendarMediaPickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!hasMedia)
         .accessibilityLabel(
-            "\(calendar.component(.day, from: date))일"
+            [
+                "\(calendar.component(.day, from: date))일",
+                holidayName,
+                hasMedia ? "미디어 \(mediaCountsByDate[normalizedDate] ?? 0)개" : "미디어 없음"
+            ]
+            .compactMap { $0 }
+            .joined(separator: ", ")
         )
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var monthCells: [Date?] {
@@ -18424,11 +18764,11 @@ private struct CalendarMediaPickerView: View {
     }
 
     private var calendarRowHeight: CGFloat {
-        calendarGridHeight / CGFloat(neededCalendarRowCount)
+        max(44, calendarBaseRowHeight)
     }
 
     private var calendarGridHeight: CGFloat {
-        calendarBaseRowHeight * 4
+        calendarRowHeight * CGFloat(neededCalendarRowCount)
     }
 
     private var yearRange: ClosedRange<Int> {

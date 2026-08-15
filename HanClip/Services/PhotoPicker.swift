@@ -267,6 +267,8 @@ private struct PhotoDurationFilterEditor: View {
                         HanClipTheme.secondary.opacity(0.12),
                         in: Circle()
                     )
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("닫기")
@@ -462,7 +464,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             var title: String {
                 switch self {
                 case .photo: "사진"
-                case .livePhoto: "Live"
+                case .livePhoto: "라이브"
                 case .video: "영상"
                 }
             }
@@ -559,10 +561,13 @@ struct PhotoPicker: UIViewControllerRepresentable {
             let titleButton = PhotoPickerGlassButton(type: .system)
             titleButton.setTitle("사진", for: .normal)
             titleButton.setTitleColor(UIColor(HanClipTheme.text), for: .normal)
-            titleButton.titleLabel?.font = .systemFont(
-                ofSize: 16,
-                weight: .semibold
+            titleButton.titleLabel?.font = UIFontMetrics(
+                forTextStyle: .headline
+            ).scaledFont(
+                for: .systemFont(ofSize: 17, weight: .semibold),
+                maximumPointSize: 24
             )
+            titleButton.titleLabel?.adjustsFontForContentSizeCategory = true
             titleButton.accessibilityHint = "달력 선택 화면으로 전환합니다."
             titleButton.backgroundColor = .clear
             titleButton.layer.cornerRadius = 20
@@ -701,14 +706,15 @@ struct PhotoPicker: UIViewControllerRepresentable {
             )
             button.tintColor = foregroundColor
             button.setTitleColor(foregroundColor, for: .normal)
-            button.titleLabel?.font = .systemFont(
-                ofSize: fontSize,
-                weight: .semibold
+            button.titleLabel?.font = UIFontMetrics(
+                forTextStyle: .headline
+            ).scaledFont(
+                for: .systemFont(ofSize: fontSize, weight: .semibold),
+                maximumPointSize: 24
             )
-            button.titleLabel?.adjustsFontForContentSizeCategory = false
-            button.titleLabel?.adjustsFontSizeToFitWidth = true
-            button.titleLabel?.minimumScaleFactor = 0.82
-            button.titleLabel?.lineBreakMode = .byClipping
+            button.titleLabel?.adjustsFontForContentSizeCategory = true
+            button.titleLabel?.adjustsFontSizeToFitWidth = false
+            button.titleLabel?.lineBreakMode = .byTruncatingTail
             button.setPreferredSymbolConfiguration(
                 UIImage.SymbolConfiguration(
                     pointSize: fontSize,
@@ -912,8 +918,15 @@ struct PhotoPicker: UIViewControllerRepresentable {
             button.configuration = nil
             button.setTitle(title, for: .normal)
             button.setTitleColor(HanClipTheme.primaryUIColor, for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
-            button.titleLabel?.adjustsFontForContentSizeCategory = false
+            button.titleLabel?.font = UIFontMetrics(
+                forTextStyle: .footnote
+            ).scaledFont(
+                for: .systemFont(ofSize: 13, weight: .semibold),
+                maximumPointSize: 18
+            )
+            button.titleLabel?.adjustsFontForContentSizeCategory = true
+            button.titleLabel?.adjustsFontSizeToFitWidth = false
+            button.titleLabel?.lineBreakMode = .byTruncatingTail
             button.backgroundColor = UIColor(HanClipTheme.background)
                 .withAlphaComponent(0.86)
             button.layer.cornerRadius = 29
@@ -1273,16 +1286,22 @@ struct PhotoPicker: UIViewControllerRepresentable {
                   let asset = asset(at: indexPath)
             else { return UICollectionViewCell() }
 
-            cell.representedAssetIdentifier = asset.localIdentifier
-            cell.updateSelection(
-                selectedIdentifierSet.contains(asset.localIdentifier)
-            )
-            cell.updateMediaKind(
+            let mediaKind: DragSelectionPhotoCell.MediaKind =
                 asset.mediaType == .video
                     ? .video
                     : asset.mediaSubtypes.contains(.photoLive)
                         ? .livePhoto
                         : .photo
+            let selectionOrder = selectedIdentifiers.firstIndex(
+                of: asset.localIdentifier
+            ).map { $0 + 1 }
+            cell.representedAssetIdentifier = asset.localIdentifier
+            cell.updateSelection(selectionOrder != nil)
+            cell.updateMediaKind(mediaKind)
+            cell.updateAccessibility(
+                mediaKind: mediaKind,
+                creationDate: asset.creationDate,
+                selectionOrder: selectionOrder
             )
             imageManager.requestImage(
                 for: asset,
@@ -1319,7 +1338,14 @@ struct PhotoPicker: UIViewControllerRepresentable {
             layout collectionViewLayout: UICollectionViewLayout,
             referenceSizeForHeaderInSection section: Int
         ) -> CGSize {
-            CGSize(width: collectionView.bounds.width, height: 42)
+            let font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+                for: .systemFont(ofSize: 13, weight: .semibold),
+                maximumPointSize: 18
+            )
+            return CGSize(
+                width: collectionView.bounds.width,
+                height: max(42, font.lineHeight + 22)
+            )
         }
 
         func collectionView(
@@ -1607,7 +1633,30 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
             (collectionView.cellForItem(at: indexPath)
                 as? DragSelectionPhotoCell)?.updateSelection(selected)
+            updateVisibleCellAccessibility()
             updateSelectionCount()
+        }
+
+        private func updateVisibleCellAccessibility() {
+            for indexPath in collectionView.indexPathsForVisibleItems {
+                guard let asset = asset(at: indexPath),
+                      let cell = collectionView.cellForItem(at: indexPath)
+                        as? DragSelectionPhotoCell
+                else { continue }
+                let mediaKind: DragSelectionPhotoCell.MediaKind =
+                    asset.mediaType == .video
+                        ? .video
+                        : asset.mediaSubtypes.contains(.photoLive)
+                            ? .livePhoto
+                            : .photo
+                cell.updateAccessibility(
+                    mediaKind: mediaKind,
+                    creationDate: asset.creationDate,
+                    selectionOrder: selectedIdentifiers.firstIndex(
+                        of: asset.localIdentifier
+                    ).map { $0 + 1 }
+                )
+            }
         }
 
         private func updateSelectionCount() {
@@ -1755,6 +1804,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 }
                 cell.updateSelection(selectedIdentifierSet.contains(identifier))
             }
+            updateVisibleCellAccessibility()
             updateSelectionCount()
         }
 
@@ -1796,6 +1846,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 in collectionView.visibleCells {
                 cell.updateSelection(false)
             }
+            updateVisibleCellAccessibility()
             updateSelectionCount()
         }
 
@@ -1822,7 +1873,11 @@ struct PhotoPicker: UIViewControllerRepresentable {
         override init(frame: CGRect) {
             super.init(frame: frame)
             backgroundColor = UIColor(HanClipTheme.background)
-            dateLabel.font = .systemFont(ofSize: 13, weight: .bold)
+            dateLabel.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+                for: .systemFont(ofSize: 13, weight: .semibold),
+                maximumPointSize: 18
+            )
+            dateLabel.adjustsFontForContentSizeCategory = true
             dateLabel.textColor = UIColor(HanClipTheme.text).withAlphaComponent(0.84)
             dateLabel.backgroundColor = HanClipTheme.secondaryUIColor
                 .withAlphaComponent(0.12)
@@ -2262,7 +2317,11 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 UIColor(HanClipTheme.onSecondary),
                 for: .normal
             )
-            button.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
+            button.titleLabel?.font = HanClipTypography.uiFont(
+                textStyle: .footnote,
+                weight: .semibold
+            )
+            button.titleLabel?.adjustsFontForContentSizeCategory = true
             button.tintColor = UIColor(HanClipTheme.onSecondary)
             button.backgroundColor = HanClipTheme.secondaryUIColor
                 .withAlphaComponent(0.86)
@@ -2609,6 +2668,14 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 case .video: "video.fill"
                 }
             }
+
+            var accessibilityTitle: String {
+                switch self {
+                case .photo: "사진"
+                case .livePhoto: "라이브 포토"
+                case .video: "영상"
+                }
+            }
         }
 
         static let reuseID = "DragSelectionPhotoCell"
@@ -2625,6 +2692,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             contentView.layer.cornerRadius = 8
             contentView.layer.cornerCurve = .continuous
             contentView.clipsToBounds = true
+            isAccessibilityElement = true
+            accessibilityTraits = [.button]
             imageView.contentMode = .scaleAspectFill
             imageView.clipsToBounds = true
             imageView.translatesAutoresizingMaskIntoConstraints = false
@@ -2701,6 +2770,8 @@ struct PhotoPicker: UIViewControllerRepresentable {
             representedAssetIdentifier = nil
             imageView.image = nil
             updateSelection(false)
+            accessibilityLabel = nil
+            accessibilityValue = nil
         }
 
         func updateSelection(_ isSelected: Bool) {
@@ -2720,6 +2791,35 @@ struct PhotoPicker: UIViewControllerRepresentable {
             mediaKindBadge.image = UIImage(systemName: mediaKind.symbolName)
             mediaKindBadge.isHidden = false
         }
+
+        func updateAccessibility(
+            mediaKind: MediaKind,
+            creationDate: Date?,
+            selectionOrder: Int?
+        ) {
+            let dateText = creationDate.map {
+                Self.accessibilityDateFormatter.string(from: $0)
+            }
+            accessibilityLabel = [dateText, mediaKind.accessibilityTitle]
+                .compactMap { $0 }
+                .joined(separator: ", ")
+            if let selectionOrder {
+                accessibilityValue = "선택됨, \(selectionOrder)번째"
+                accessibilityTraits.insert(.selected)
+            } else {
+                accessibilityValue = "선택 안 됨"
+                accessibilityTraits.remove(.selected)
+            }
+            accessibilityHint = "두 번 탭하여 선택하거나 선택 해제합니다."
+        }
+
+        private static let accessibilityDateFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            return formatter
+        }()
     }
 
     final class PhotoPickerContainerViewController: UIViewController {
@@ -2761,10 +2861,11 @@ struct PhotoPicker: UIViewControllerRepresentable {
 
             let cancelButton = UIButton(type: .system)
             cancelButton.setTitle("취소", for: .normal)
-            cancelButton.titleLabel?.font = .systemFont(
-                ofSize: 17,
+            cancelButton.titleLabel?.font = HanClipTypography.uiFont(
+                textStyle: .headline,
                 weight: .semibold
             )
+            cancelButton.titleLabel?.adjustsFontForContentSizeCategory = true
             cancelButton.addTarget(
                 self,
                 action: #selector(cancelTapped),
@@ -2773,18 +2874,23 @@ struct PhotoPicker: UIViewControllerRepresentable {
             cancelButton.translatesAutoresizingMaskIntoConstraints = false
 
             selectionLabel.text = "사진을 누른 채 드래그 · 0개 선택"
-            selectionLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+            selectionLabel.font = HanClipTypography.uiFont(
+                textStyle: .subheadline,
+                weight: .semibold
+            )
             selectionLabel.textColor = .secondaryLabel
             selectionLabel.textAlignment = .center
-            selectionLabel.adjustsFontSizeToFitWidth = true
-            selectionLabel.minimumScaleFactor = 0.72
+            selectionLabel.adjustsFontForContentSizeCategory = true
+            selectionLabel.adjustsFontSizeToFitWidth = false
+            selectionLabel.lineBreakMode = .byTruncatingTail
             selectionLabel.translatesAutoresizingMaskIntoConstraints = false
 
             doneButton.setTitle("추가", for: .normal)
-            doneButton.titleLabel?.font = .systemFont(
-                ofSize: 17,
-                weight: .bold
+            doneButton.titleLabel?.font = HanClipTypography.uiFont(
+                textStyle: .headline,
+                weight: .semibold
             )
+            doneButton.titleLabel?.adjustsFontForContentSizeCategory = true
             doneButton.isEnabled = false
             doneButton.addTarget(
                 self,

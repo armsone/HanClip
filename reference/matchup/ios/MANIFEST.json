@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-15T10:58:32+09:00",
+  "platform": "iOS",
+  "app": {
+    "bundleIdentifier": "com.intosharp.hanclip",
+    "marketingVersion": "1.0.1",
+    "buildVersion": "3.11.47"
+  },
+  "source": {
+    "repository": "/Users/armsone/git/HanClip",
+    "branch": "main",
+    "head": "31e60ec5feb100b3dfcec78d47040e54e2d682ca",
+    "dirty": true,
+    "trackedDiffSha256": "b308fd79c0f91750f35e613df598877e5109820b5527e78b371fbc868869f911",
+    "statusSha256": "ffa655e050d8a81e7d8980eb3b7aeab441a85a5161423b0192136a5877d73c93",
+    "fingerprintScope": "capture-time working tree before the post-capture accessibility-only patch"
+  },
+  "postCaptureChanges": [
+    {
+      "file": "HanClip/Views/EditorView.swift",
+      "symbol": "rootTopHeader",
+      "change": "Move the theme accessibility hint from the entire header HStack to HanClipHeaderPill only.",
+      "visualPixelImpact": false,
+      "buildVerified": false,
+      "runtimeAccessibilityVerified": false
+    }
+  ],
+  "profile": {
+    "runtime": "iOS 26.5 (23F77)",
+    "device": "iPhone 17 Pro",
+    "temporaryDeviceUdid": "FDBAD52F-464A-44EF-ADF6-1A123A603064",
+    "pixelWidth": 1206,
+    "pixelHeight": 2622,
+    "logicalWidthPt": 402,
+    "logicalHeightPt": 874,
+    "scale": 3,
+    "orientation": "portrait",
+    "locale": "ko-KR",
+    "timezone": "Asia/Seoul",
+    "contentSizeCategory": "default",
+    "systemAppearance": "light",
+    "statusBarTime": "9:41",
+    "statusBarBatteryLevel": 100,
+    "appBounds": "x=0,y=0,width=402pt,height=874pt",
+    "safeAreaInsets": "확인 필요: 이번 캡처에는 runtime safe-area 수치 주입이 없음",
+    "osOwnedMask": "확인 필요: 상태바/Dynamic Island/home-indicator의 최소 정확 사각형을 paired diff 전에 측정"
+  },
+  "fixture": {
+    "id": "fresh-empty-v1",
+    "description": "새 임시 Simulator에 앱을 최초 설치한 빈 프로젝트/빈 컬렉션 상태",
+    "savedProjects": 0,
+    "collectionMovies": 0,
+    "photoLibraryAssetsAtCapture": 0,
+    "productionUserDataReadOrModified": false
+  },
+  "captures": [
+    {
+      "stateId": "HOME.empty.automatic-light",
+      "file": "current/home_empty_default.png",
+      "sha256": "33c07c980ce01cd28f9862885ec8c728e21666f1ee5be86a417a5187afda58a7",
+      "entryTrace": ["fresh install", "launch com.intosharp.hanclip"],
+      "themeMode": "automatic",
+      "stable": false,
+      "unstableReason": "initial automatic-light main content is displaced about 111pt below the same source after a dark-theme refresh; content and color remain usable, vertical geometry does not"
+    },
+    {
+      "stateId": "MEDIA_MENU.open.automatic-light",
+      "file": "current/media_menu_open.png",
+      "sha256": "f38b51c517794f3c5a43b760994b2f0452f675991ad4a7d98faf4dcb06056c14",
+      "entryTrace": ["HOME.empty.automatic-light", "tap media add button"],
+      "themeMode": "automatic",
+      "stable": false,
+      "unstableReason": "inherits the initial automatic-light HOME vertical displacement; menu anatomy is usable but page vertical geometry is not"
+    },
+    {
+      "stateId": "HOME.empty.dark",
+      "file": "current/home_empty_dark.png",
+      "sha256": "a0f666094a76f7b979a8680b94768cda9cee9b6dcfc19ebe40527daa56432b31",
+      "entryTrace": ["HOME.empty.automatic-light", "tap logo to Light Mode", "tap logo to Dark Mode", "wait until theme notice disappears"],
+      "themeMode": "dark",
+      "stable": true
+    },
+    {
+      "stateId": "COPYRIGHT.collapsed.dark",
+      "file": "current/copyright_collapsed_dark.png",
+      "sha256": "1176891ecdebdae853f74b09326294cd908273414594ae35e6cc6b1662b27f29",
+      "entryTrace": ["HOME.empty.dark", "tap i button"],
+      "themeMode": "dark",
+      "stable": true
+    },
+    {
+      "stateId": "COPYRIGHT.expanded.dark",
+      "file": "current/copyright_expanded_dark.png",
+      "sha256": "c61a37654369c89da47736943f25071bdf97ca08aca6ea467d3d0ff4342d5743",
+      "entryTrace": ["COPYRIGHT.collapsed.dark", "tap 워터마크 설정"],
+      "themeMode": "dark",
+      "stable": true
+    },
+    {
+      "stateId": "BROWSER.default.dark",
+      "file": "current/browser_default_dark.png",
+      "sha256": "765f581bdba54bc915e6ed866ed90ae42bcbea27681c90a8ba61868f40a09134",
+      "entryTrace": ["HOME.empty.dark", "run i-button accessibility action 브라우저 열기"],
+      "themeMode": "dark",
+      "stable": false,
+      "unstableReason": "embedded web content is network-owned and changed during capture; app-owned header is usable"
+    },
+    {
+      "stateId": "BROWSER.favorites.dark",
+      "file": "current/browser_favorites_dark.png",
+      "sha256": "f65d455700afb5d02bef16f5a5dc9ec0ae508b7e2029180b321e357aae7e4f1b",
+      "entryTrace": ["BROWSER.default.dark", "tap bookmark button"],
+      "themeMode": "dark",
+      "stable": false,
+      "unstableReason": "favorites panel is app-owned; web page and cookie banner below it are external dynamic content and require a mask"
+    }
+  ]
+}

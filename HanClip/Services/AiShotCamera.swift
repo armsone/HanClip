@@ -319,7 +319,7 @@ struct AiShotCameraView: View {
                 .foregroundStyle(headerIconColor)
                 .frame(width: 18, height: 18)
                 Text(headerStatusTitle)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(HanClipTypography.modalTitle)
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -349,7 +349,7 @@ struct AiShotCameraView: View {
                         .font(.system(size: 14, weight: .black))
                         .foregroundStyle(captureDangerColor)
                     Text("닫기")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(HanClipTypography.rowTitle)
                         .foregroundStyle(.white)
                 }
                     .padding(.horizontal, 15)
@@ -370,6 +370,7 @@ struct AiShotCameraView: View {
                         radius: 5,
                         y: 2
                     )
+                    .hanClipMinimumTapTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("AiShot 닫기")
@@ -441,14 +442,14 @@ struct AiShotCameraView: View {
                 soundMeter
 
                 Text(statusBadgeText)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(statusColor)
                     .frame(minWidth: 42, alignment: .trailing)
             }
 
             HStack(spacing: 8) {
                 Label("감도", systemImage: "waveform")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(.white.opacity(0.78))
                     .fixedSize()
 
@@ -652,7 +653,7 @@ struct AiShotCameraView: View {
         } label: {
             ZStack {
                 Text(camera.cameraPosition == .front ? "전면" : "후면")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(.white)
                     .contentTransition(.interpolate)
                     .lineLimit(1)
@@ -721,9 +722,9 @@ struct AiShotCameraView: View {
             sensitivityRaw = sensitivity.rawValue
         } label: {
             Text(sensitivity.title)
-                .font(.system(size: 11, weight: .bold))
+                .font(HanClipTypography.metadataEmphasis)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .truncationMode(.tail)
                 .foregroundStyle(
                     isSelected
                         ? captureSelectionForeground
@@ -743,6 +744,7 @@ struct AiShotCameraView: View {
                             .stroke(.white.opacity(0.24), lineWidth: 1)
                     }
                 }
+                .hanClipMinimumTapTarget()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(sensitivity.title) 환경 감도")
@@ -782,7 +784,7 @@ struct AiShotCameraView: View {
         } label: {
             ZStack {
                 Text(selectedDurationPreset.title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(HanClipTypography.rowTitle)
                     .foregroundStyle(.white)
                     .contentTransition(.interpolate)
                     .lineLimit(1)
@@ -865,11 +867,11 @@ struct AiShotCameraView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("샷 시간")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(HanClipTypography.metadata)
                         .foregroundStyle(.white.opacity(0.66))
 
                     Text(preset.timingDescription)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(HanClipTypography.rowTitle)
                         .foregroundStyle(.white)
                         .contentTransition(.interpolate)
                 }
@@ -877,7 +879,7 @@ struct AiShotCameraView: View {
                 Spacer(minLength: 8)
 
                 Text(preset.totalDurationDescription)
-                    .font(.system(size: 13, weight: .heavy))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .frame(height: 28)
@@ -890,7 +892,7 @@ struct AiShotCameraView: View {
             HStack(spacing: 0) {
                 ForEach(AiShotDurationPreset.allCases) { option in
                     Text(option.title)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(HanClipTypography.metadataEmphasis)
                         .foregroundStyle(
                             option == preset
                                 ? Color.white
@@ -926,7 +928,9 @@ struct AiShotCameraView: View {
             }
         }
         .padding(14)
-        .frame(width: 280, height: 116)
+        .frame(minWidth: 280, maxWidth: 340)
+        .frame(minHeight: 116)
+        .fixedSize(horizontal: false, vertical: true)
         .background(
             LinearGradient(
                 colors: [
@@ -1774,7 +1778,7 @@ private struct AiShotPrecisionZoomDial: View {
                 )
                 context.draw(
                     Text(focalLengthTitle(zoom))
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(accentColor.opacity(0.82)),
                     at: CGPoint(x: center.x, y: 80),
                     anchor: .center

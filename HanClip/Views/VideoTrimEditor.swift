@@ -323,6 +323,7 @@ struct VideoTrimEditor: View {
                     radius: 8,
                     y: 4
                 )
+                .hanClipMinimumTapTarget()
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
@@ -402,15 +403,15 @@ struct VideoTrimEditor: View {
         HStack {
             Text(
                 clip.isLivePhoto
-                    ? clip.livePhotoMode.rawValue
-                    : "Photo"
+                    ? clip.livePhotoMode.displayTitle
+                    : "사진"
             )
-            .font(.system(size: 16, weight: .semibold))
+            .font(HanClipTypography.rowTitle)
 
             Spacer()
 
             Text(nonVideoDurationText)
-                .font(.system(size: 14).monospacedDigit())
+                .font(HanClipTypography.compactNumber)
                 .foregroundStyle(HanClipTheme.secondaryText)
         }
         .frame(height: 60)
@@ -445,7 +446,7 @@ struct VideoTrimEditor: View {
                     height: 28
                 )
                 .accessibilityLabel("Live Photo 사용 방식")
-                .accessibilityValue(clip.livePhotoMode.rawValue)
+                .accessibilityValue(clip.livePhotoMode.displayTitle)
                 .accessibilityHint("포토와 라이브 모드를 전환합니다.")
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -461,19 +462,12 @@ struct VideoTrimEditor: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .frame(height: 40)
+        .frame(height: 44)
     }
 
     private var previewPositionText: some View {
         Text("\(currentPosition) / \(totalClipCount)")
-            .font(
-                .system(
-                    size: 15,
-                    weight: .semibold,
-                    design: .rounded
-                )
-            )
-            .monospacedDigit()
+            .font(HanClipTypography.compactNumber)
             .foregroundStyle(HanClipTheme.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 2)
@@ -526,6 +520,7 @@ struct VideoTrimEditor: View {
                     Circle()
                         .stroke(Color.red.opacity(0.24), lineWidth: 1)
                 }
+                .hanClipMinimumTapTarget()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("미디어 삭제")
@@ -578,7 +573,7 @@ struct VideoTrimEditor: View {
 
             Button(action: resetSelection) {
                 Label("리셋", systemImage: "arrow.counterclockwise")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(HanClipTypography.metadataEmphasis)
                     .foregroundStyle(HanClipTheme.primary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
@@ -599,17 +594,11 @@ struct VideoTrimEditor: View {
                     Image(systemName: "wand.and.stars")
 
                     Text(totalDurationText)
-                        .font(
-                            .system(
-                                size: 12,
-                                weight: .semibold,
-                                design: .monospaced
-                            )
-                        )
+                        .font(HanClipTypography.compactNumber)
 
                     Text("만들기")
                 }
-                .font(.system(size: 13, weight: .bold))
+                .font(HanClipTypography.metadataEmphasis)
                 .foregroundStyle(HanClipTheme.primaryText.opacity(0.82))
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
@@ -1060,6 +1049,7 @@ struct VideoTrimEditor: View {
                     radius: 8,
                     y: 4
                 )
+                .hanClipMinimumTapTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel(playbackButtonAccessibilityLabel)
@@ -1107,7 +1097,7 @@ struct VideoTrimEditor: View {
                 design: .monospaced
             )
         )
-        .frame(height: 40)
+        .frame(height: 44)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(.ultraThinMaterial, in: Capsule())
@@ -1178,6 +1168,7 @@ struct VideoTrimEditor: View {
                 }
             }
             .frame(width: 34, height: 34)
+            .hanClipMinimumTapTarget()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(

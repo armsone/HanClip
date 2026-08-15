@@ -493,9 +493,11 @@ struct HanClipFullscreenVideoPlayer: View {
 
                 if let title = configuration.title, !title.isEmpty {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(HanClipTypography.modalTitle)
                         .foregroundStyle(.white)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
                 }
 
                 Spacer(minLength: 12)
@@ -1350,7 +1352,7 @@ private struct HanClipVideoProgressBar: View {
             Text(formattedTime(durationSeconds))
                 .frame(width: 42, alignment: .leading)
         }
-        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        .font(HanClipTypography.compactNumber)
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .frame(height: 44)

@@ -259,6 +259,13 @@ enum LivePhotoMode: String, CaseIterable, Identifiable {
     case motion = "Live"
 
     var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .still: "사진"
+        case .motion: "라이브"
+        }
+    }
 }
 
 enum ClipSource {
