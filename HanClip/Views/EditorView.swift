@@ -73,6 +73,20 @@ private struct HomeLaunchButtonStyle: ButtonStyle {
     }
 }
 
+private struct IOSAppOnMacShortcutModifier: ViewModifier {
+    let key: KeyEquivalent
+    let modifiers: EventModifiers
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.isiOSAppOnMac {
+            content.keyboardShortcut(key, modifiers: modifiers)
+        } else {
+            content
+        }
+    }
+}
+
 struct EditorView: View {
     private struct SelectAllClipSnapshot: Equatable {
         let id: UUID
@@ -220,8 +234,15 @@ struct EditorView: View {
     @AppStorage("hanClipSleepPreventionMode") private var sleepPreventionModeRaw =
         SleepPreventionMode.defaultValue.rawValue
 
+    private var isRunningOnMac: Bool {
+        ProcessInfo.processInfo.isiOSAppOnMac
+    }
+
     private var adaptiveContentMaxWidth: CGFloat? {
-        horizontalSizeClass == .regular ? 920 : nil
+        if isRunningOnMac {
+            return 840
+        }
+        return horizontalSizeClass == .regular ? 920 : nil
     }
 
     private var themeMode: HanClipThemeMode {
@@ -3249,11 +3270,14 @@ struct EditorView: View {
         if dynamicTypeSize >= .xxxLarge {
             return 2
         }
+        if isRunningOnMac {
+            return 4
+        }
         return 3
     }
 
     private var homePresetCardHeight: CGFloat {
-        74 + homePresetScalableHeight
+        isRunningOnMac ? 112 : 74 + homePresetScalableHeight
     }
 
     private func homeQuickStartButton(
@@ -7522,6 +7546,12 @@ struct EditorView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(model.isExporting)
+                .modifier(
+                    IOSAppOnMacShortcutModifier(
+                        key: .return,
+                        modifiers: [.command]
+                    )
+                )
             }
             .frame(maxWidth: adaptiveContentMaxWidth)
             .frame(maxWidth: .infinity)
