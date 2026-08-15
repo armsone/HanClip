@@ -1418,6 +1418,7 @@ struct EditorView: View {
 
     private var importantInfoSheet: some View {
         ImportantInfoSheet(
+            themeModeRaw: $themeModeRaw,
             sleepPreventionModeRaw: $sleepPreventionModeRaw,
             copyrightEnabled: $logoWatermarkEnabled,
             purchaseManager: purchaseManager,
@@ -8458,6 +8459,7 @@ private struct ImportantInfoSheet: View {
     @AppStorage(WatermarkSettings.customCopyrightIconPathStorageKey)
     private var customIconPath =
         WatermarkSettings.defaultCustomCopyrightIconPath
+    @Binding var themeModeRaw: String
     @Binding var sleepPreventionModeRaw: String
     @Binding var copyrightEnabled: Bool
     @ObservedObject var purchaseManager: CopyrightPurchaseManager
@@ -8591,6 +8593,7 @@ private struct ImportantInfoSheet: View {
                         .padding(.bottom, 14)
 
                     VStack(alignment: .leading, spacing: 14) {
+                        themeSettings
                         copyrightSettings
                         sleepPreventionSettings
 
@@ -8675,6 +8678,32 @@ private struct ImportantInfoSheet: View {
         WatermarkPlatform(rawValue: platformRaw) ?? .hanclip
     }
 
+    private var themeSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("테마 설정", systemImage: "paintpalette.fill")
+
+            Picker("테마 설정", selection: $themeModeRaw) {
+                ForEach(HanClipThemeMode.visibleModes, id: \.rawValue) { mode in
+                    Text(mode.displayName).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 12)
+            .background(
+                HanClipTheme.secondary.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            HanClipTheme.panelFill.opacity(0.9),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+    }
+
     private var selectedPosition: WatermarkPosition {
         WatermarkPosition(rawValue: positionRaw)
             ?? WatermarkSettings.defaultCopyrightPosition
@@ -8721,6 +8750,26 @@ private struct ImportantInfoSheet: View {
             .accessibilityLabel("만든 사람 GitHub, armsone")
             .accessibilityHint("기본 브라우저에서 GitHub 프로필을 엽니다")
 
+            Link(destination: URL(string: "https://nasfinder.com")!) {
+                HStack(spacing: 8) {
+                    Image(systemName: "globe")
+                    Text("공식 사이트 · nasfinder.com")
+                    Spacer(minLength: 8)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .font(HanClipTypography.metadataEmphasis)
+                .foregroundStyle(HanClipTheme.secondaryText)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 42)
+                .background(
+                    HanClipTheme.secondary.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("공식 사이트, nasfinder.com")
+
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
                     Button {
@@ -8732,8 +8781,6 @@ private struct ImportantInfoSheet: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(purchaseManager.isPurchasing)
-
-                    Spacer(minLength: 8)
 
                     if purchaseManager.isPurchasing {
                         ProgressView()
@@ -8755,6 +8802,8 @@ private struct ImportantInfoSheet: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(HanClipTheme.secondaryText)
                     }
+
+                    Spacer(minLength: 8)
 
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -11588,6 +11637,7 @@ private struct InfoRow: View {
     let systemImage: String
     let imageName: String?
     let isCentered: Bool
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(
@@ -11604,19 +11654,26 @@ private struct InfoRow: View {
                     Image(systemName: systemImage)
                 }
                 Text(title)
+                Spacer(minLength: 8)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(HanClipTheme.secondary)
             }
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(HanClipTheme.primary)
                 .frame(maxWidth: .infinity, alignment: isCentered ? .center : .leading)
                 .textSelection(.enabled)
 
-            Text(detail)
-                .font(.system(size: 14))
-                .foregroundStyle(HanClipTheme.text.opacity(0.78))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: isCentered ? .center : .leading)
-                .multilineTextAlignment(isCentered ? .center : .leading)
-                .textSelection(.enabled)
+            if isExpanded {
+                Text(detail)
+                    .font(.system(size: 14))
+                    .foregroundStyle(HanClipTheme.text.opacity(0.78))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: isCentered ? .center : .leading)
+                    .multilineTextAlignment(isCentered ? .center : .leading)
+                    .textSelection(.enabled)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -11629,6 +11686,14 @@ private struct InfoRow: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(HanClipTheme.secondary.opacity(0.12), lineWidth: 1)
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded.toggle()
+            }
+        }
+        .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
+        .accessibilityHint("두 번 탭하여 내용을 펼치거나 접습니다")
     }
 }
 
@@ -11869,6 +11934,7 @@ private struct EmbeddedFontCopyrightRow: View {
     let title: String
     let detail: String
     let systemImage: String
+    @State private var isExpanded = false
 
     private let tableMarker = "[[embedded_font_size_table]]"
 
@@ -11957,19 +12023,27 @@ private struct EmbeddedFontCopyrightRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(HanClipTheme.primary)
-                .textSelection(.enabled)
+            HStack(spacing: 7) {
+                Label(title, systemImage: systemImage)
+                Spacer(minLength: 8)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(HanClipTheme.secondary)
+            }
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(HanClipTheme.primary)
 
-            ForEach(detailParts.indices, id: \.self) { index in
-                if !detailParts[index].isEmpty {
-                    detailText(detailParts[index])
-                }
+            if isExpanded {
+                ForEach(detailParts.indices, id: \.self) { index in
+                    if !detailParts[index].isEmpty {
+                        detailText(detailParts[index])
+                    }
 
-                if index == 0 {
-                    embeddedFontSizeTable
+                    if index == 0 {
+                        embeddedFontSizeTable
+                    }
                 }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.horizontal, 14)
@@ -11982,6 +12056,10 @@ private struct EmbeddedFontCopyrightRow: View {
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(HanClipTheme.secondary.opacity(0.12), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.snappy) { isExpanded.toggle() }
         }
         .onAppear {
             _ = FontRegistry.registerBundledCaptionFonts()
