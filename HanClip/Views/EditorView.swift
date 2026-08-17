@@ -1063,6 +1063,9 @@ struct EditorView: View {
                 originalAudioVolume: backgroundMusicBinding(
                     \.originalAudioVolume
                 ),
+                automaticallyDucksForOriginalAudio: backgroundMusicBinding(
+                    \.automaticallyDucksForOriginalAudio
+                ),
                 loopsToFillVideo: backgroundMusicBinding(\.loopsToFillVideo),
                 fadeInEnabled: backgroundMusicBinding(\.fadeInEnabled),
                 fadeOutEnabled: backgroundMusicBinding(\.fadeOutEnabled),
@@ -8580,7 +8583,8 @@ private struct ImportantInfoSheet: View {
         ("영상 생성 진행창", "영상을 만드는 동안 썸네일, 진행바, 진행률, 취소 버튼이 표시되는 창입니다."),
         ("시사회", "만들기 완료 후, 저장 또는 개봉하기 직전에 제작된 전체 영화를 확인하는 화면입니다."),
         ("개봉하기 창", "시사회에서 사진 앱 또는 파일 앱 개봉 방식을 선택하는 창입니다."),
-        ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 웹페이지에서 영상이 감지되면 다운, 보기, 닫기 버튼이 나타납니다. 다운은 영상을 가져오고, 보기는 감지된 영상을 전체 화면으로 재생하며, 닫기는 영상 감지 알림만 닫습니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
+        ("브라우저", "외부 웹페이지를 이용하는 화면입니다. 최초 기본 홈페이지는 Google이며 즐겨찾기 패널에서 원하는 주소를 홈페이지로 다시 지정할 수 있습니다. 웹페이지에서 영상이 감지되면 다운, 보기, 닫기 버튼이 나타납니다. 다운은 영상이나 음악을 한클립으로 가져오고 iCloud Drive의 HanClip/Downloads 폴더에도 같은 파일을 복사합니다. 보기는 감지된 영상을 전체 화면으로 재생하며, 닫기는 영상 감지 알림만 닫습니다. 즐겨찾기 패널의 파비콘을 누르면 삭제하고, 길게 누르면 첫 홈페이지로 지정합니다. 즐겨찾기 편집에서는 현재 목록을 파일로 저장할 수 있습니다. 저장한 즐겨찾기 파일을 한클립으로 공유해 불러오면 같은 주소는 가져온 값으로 덮어쓰고 새 주소만 추가합니다."),
+        ("자동 음량 낮춤", "음악 설정의 기본 사용 옵션입니다. 배경음악은 기본 75%로 재생하고, 원본 소리가 있는 구간에서는 음악을 15%까지 부드럽게 낮춘 뒤 원본 소리가 끝나면 다시 올립니다."),
         ("자막", "영화 화면의 미디어 추가 메뉴에서 여는 설정창입니다. 결과 영상 위에 문구를 합성할지, 문구와 색상, 서체, 그림자, 위치를 설정합니다. 자막 문구가 비어 있어도 사용을 선택할 수 있어 마지막 엔딩 카드만 넣는 방식으로도 사용할 수 있습니다."),
         ("촬영 기간 삽입", "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣는 기능입니다. 기본 자막이면 기존 문구를 바꾸고, 사용자가 편집한 자막이면 현재 커서 위치에 삽입합니다."),
         ("엔딩", "클립 설정의 음악 아래에 독립된 행으로 표시되며 기본값은 안함입니다. 지도 아이콘과 현재 테마명, 표시 시간 조절, 사용·안함 상태를 한 행에서 설정합니다. 현재 위치 정보가 없어도 사용과 테마를 미리 설정할 수 있고, 이후 위치 정보가 있는 미디어를 추가하면 저장된 설정이 적용됩니다. 촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 엔딩 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다. 퀵모드에서도 같은 행과 설정 화면을 사용합니다."),
@@ -12945,6 +12949,9 @@ private struct BackgroundMusicSummaryRow: View {
         return [
             "음악 \(Self.percentText(settings.musicVolume))",
             "원본 \(Self.percentText(settings.originalAudioVolume))",
+            settings.automaticallyDucksForOriginalAudio
+                ? "자동 낮춤"
+                : "자동 낮춤 안함",
             settings.loopsToFillVideo ? "반복" : "반복 안함",
             settings.fadeInEnabled || settings.fadeOutEnabled
                 ? "페이드"
@@ -13156,6 +13163,7 @@ private struct BackgroundMusicSettingsSheet: View {
         var displayName: String
         var musicVolume: Double
         var originalAudioVolume: Double
+        var automaticallyDucksForOriginalAudio: Bool
         var loopsToFillVideo: Bool
         var fadeInEnabled: Bool
         var fadeOutEnabled: Bool
@@ -13167,6 +13175,8 @@ private struct BackgroundMusicSettingsSheet: View {
                 && abs(
                     originalAudioVolume - other.originalAudioVolume
                 ) < 0.001
+                && automaticallyDucksForOriginalAudio
+                    == other.automaticallyDucksForOriginalAudio
                 && loopsToFillVideo == other.loopsToFillVideo
                 && fadeInEnabled == other.fadeInEnabled
                 && fadeOutEnabled == other.fadeOutEnabled
@@ -13177,6 +13187,7 @@ private struct BackgroundMusicSettingsSheet: View {
     @Binding var isEnabled: Bool
     @Binding var musicVolume: Double
     @Binding var originalAudioVolume: Double
+    @Binding var automaticallyDucksForOriginalAudio: Bool
     @Binding var loopsToFillVideo: Bool
     @Binding var fadeInEnabled: Bool
     @Binding var fadeOutEnabled: Bool
@@ -13218,6 +13229,19 @@ private struct BackgroundMusicSettingsSheet: View {
                                 title: "원본 소리",
                                 value: $originalAudioVolume
                             )
+                        }
+
+                        settingSection(spacing: 6, padding: 12) {
+                            toggleRow(
+                                "원본 소리 때 음악 낮춤",
+                                isOn: $automaticallyDucksForOriginalAudio
+                            )
+
+                            Text("원본 소리가 있는 동안 음악을 15%로 낮춥니다.")
+                                .font(HanClipTypography.metadata)
+                                .foregroundStyle(
+                                    HanClipTheme.text.opacity(0.52)
+                                )
                         }
 
                         settingSection(spacing: 0, padding: 12) {
@@ -13574,6 +13598,8 @@ private struct BackgroundMusicSettingsSheet: View {
         isEnabled = defaultSettings.isEnabled
         musicVolume = defaultSettings.musicVolume
         originalAudioVolume = defaultSettings.originalAudioVolume
+        automaticallyDucksForOriginalAudio =
+            defaultSettings.automaticallyDucksForOriginalAudio
         loopsToFillVideo = defaultSettings.loopsToFillVideo
         fadeInEnabled = defaultSettings.fadeInEnabled
         fadeOutEnabled = defaultSettings.fadeOutEnabled
@@ -13620,6 +13646,8 @@ private struct BackgroundMusicSettingsSheet: View {
         settings.displayName = state.displayName
         settings.musicVolume = state.musicVolume
         settings.originalAudioVolume = state.originalAudioVolume
+        settings.automaticallyDucksForOriginalAudio =
+            state.automaticallyDucksForOriginalAudio
         settings.loopsToFillVideo = state.loopsToFillVideo
         settings.fadeInEnabled = state.fadeInEnabled
         settings.fadeOutEnabled = state.fadeOutEnabled
@@ -13627,6 +13655,8 @@ private struct BackgroundMusicSettingsSheet: View {
         isEnabled = state.isEnabled
         musicVolume = state.musicVolume
         originalAudioVolume = state.originalAudioVolume
+        automaticallyDucksForOriginalAudio =
+            state.automaticallyDucksForOriginalAudio
         loopsToFillVideo = state.loopsToFillVideo
         fadeInEnabled = state.fadeInEnabled
         fadeOutEnabled = state.fadeOutEnabled
@@ -13650,6 +13680,8 @@ private struct BackgroundMusicSettingsSheet: View {
             displayName: settings.displayName,
             musicVolume: musicVolume,
             originalAudioVolume: originalAudioVolume,
+            automaticallyDucksForOriginalAudio:
+                automaticallyDucksForOriginalAudio,
             loopsToFillVideo: loopsToFillVideo,
             fadeInEnabled: fadeInEnabled,
             fadeOutEnabled: fadeOutEnabled
@@ -13710,6 +13742,65 @@ private struct BackgroundMusicSettingsSheet: View {
 private enum BrowserDownloadKind: Equatable {
     case audio
     case video
+}
+
+private enum BrowserICloudDownloads {
+    private static let containerIdentifier = "iCloud.com.intosharp.hanclip"
+
+    static func copyDownloadedFile(_ sourceURL: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: sourceURL.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        guard let containerURL = fileManager.url(
+            forUbiquityContainerIdentifier: containerIdentifier
+        ) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        let downloadsURL = containerURL
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent("Downloads", isDirectory: true)
+        try fileManager.createDirectory(
+            at: downloadsURL,
+            withIntermediateDirectories: true
+        )
+
+        let destinationURL = availableDestinationURL(
+            for: sourceURL.lastPathComponent,
+            in: downloadsURL,
+            fileManager: fileManager
+        )
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+    }
+
+    private static func availableDestinationURL(
+        for filename: String,
+        in directoryURL: URL,
+        fileManager: FileManager
+    ) -> URL {
+        let safeFilename = filename.isEmpty ? "HanClip-Download" : filename
+        let initialURL = directoryURL.appendingPathComponent(safeFilename)
+        guard fileManager.fileExists(atPath: initialURL.path) else {
+            return initialURL
+        }
+
+        let filenameURL = URL(fileURLWithPath: safeFilename)
+        let pathExtension = filenameURL.pathExtension
+        let basename = filenameURL.deletingPathExtension().lastPathComponent
+        var suffix = 2
+        while true {
+            let candidateName = pathExtension.isEmpty
+                ? "\(basename) \(suffix)"
+                : "\(basename) \(suffix).\(pathExtension)"
+            let candidateURL = directoryURL
+                .appendingPathComponent(candidateName)
+            if !fileManager.fileExists(atPath: candidateURL.path) {
+                return candidateURL
+            }
+            suffix += 1
+        }
+    }
 }
 
 private struct BrowserDetectedVideo: Equatable {
@@ -13787,10 +13878,10 @@ private struct OnlineMusicBrowserView: View {
     let onDownloaded: (URL, BrowserDownloadKind) -> Void
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hanClipOnlineMusicFavorites")
-    private var favoriteMusicSitesRaw = "https://pixabay.com/music/\nhttps://mixkit.co/free-stock-music/\nhttps://intosharp.com/"
+    private var favoriteMusicSitesRaw = "https://www.google.com/\nhttps://pixabay.com/music/\nhttps://mixkit.co/free-stock-music/\nhttps://intosharp.com/"
     @State private var isDownloading = false
-    @State private var currentURLText = "https://pixabay.com/music/"
-    @State private var addressText = "https://pixabay.com/music/"
+    @State private var currentURLText = "https://www.google.com/"
+    @State private var addressText = "https://www.google.com/"
     @State private var requestedURL: URL?
     @State private var canGoBack = false
     @State private var isPageLoading = false
@@ -14534,7 +14625,7 @@ private struct OnlineMusicBrowserView: View {
         favoriteMusicSites
             .compactMap(Self.normalizedURL)
             .first
-            ?? URL(string: "https://pixabay.com/music/")!
+            ?? URL(string: "https://www.google.com/")!
     }
 
     private var normalizedCurrentURLString: String? {
@@ -14578,16 +14669,23 @@ private struct OnlineMusicBrowserView: View {
 
     private func ensureDefaultFavorites() {
         var favorites = favoriteMusicSites
-        guard favorites.contains("https://pixabay.com/music/") else { return }
-
+        let google = "https://www.google.com/"
+        let pixabay = "https://pixabay.com/music/"
         let mixkit = "https://mixkit.co/free-stock-music/"
         let intosharp = "https://intosharp.com/"
+
+        if favorites.first == pixabay {
+            favorites.removeAll { $0 == google }
+            favorites.insert(google, at: 0)
+        } else if !favorites.contains(google) {
+            favorites.append(google)
+        }
 
         if let existingMixkitIndex = favorites.firstIndex(of: mixkit) {
             favorites.remove(at: existingMixkitIndex)
         }
 
-        if let pixabayIndex = favorites.firstIndex(of: "https://pixabay.com/music/") {
+        if let pixabayIndex = favorites.firstIndex(of: pixabay) {
             favorites.insert(mixkit, at: min(pixabayIndex + 1, favorites.endIndex))
         } else {
             favorites.append(mixkit)
@@ -15466,6 +15564,18 @@ private struct OnlineMusicWebView: UIViewRepresentable {
             downloadStatusText = "음악을 가져오는 중"
             guard let destinationURL else { return }
             onDownloaded(destinationURL, activeDownloadKind)
+            Task.detached(priority: .utility) {
+                do {
+                    try BrowserICloudDownloads.copyDownloadedFile(
+                        destinationURL
+                    )
+                } catch {
+                    NSLog(
+                        "HanClip iCloud download copy failed: %@",
+                        error.localizedDescription
+                    )
+                }
+            }
             self.destinationURL = nil
             activeDownload = nil
         }

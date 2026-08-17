@@ -816,7 +816,11 @@ final class VideoComposer {
         Self.configureMusicVolume(
             musicParameters,
             settings: settings,
-            totalDuration: totalDuration
+            totalDuration: totalDuration,
+            originalAudioRanges: Self.originalAudioRanges(
+                in: originalAudioTrack,
+                totalDuration: totalDuration
+            )
         )
         inputParameters.append(musicParameters)
 
@@ -828,44 +832,188 @@ final class VideoComposer {
     private static func configureMusicVolume(
         _ parameters: AVMutableAudioMixInputParameters,
         settings: BackgroundMusicSettings,
-        totalDuration: CMTime
+        totalDuration: CMTime,
+        originalAudioRanges: [Range<Double>]
     ) {
-        let targetVolume = Float(clampedVolume(settings.musicVolume))
         let totalSeconds = max(0, totalDuration.seconds)
+        let baseVolume = clampedVolume(settings.musicVolume)
         guard totalSeconds.isFinite, totalSeconds > 0 else {
-            parameters.setVolume(targetVolume, at: .zero)
+            parameters.setVolume(Float(baseVolume), at: .zero)
             return
         }
 
         let fadeInSeconds = min(0.3, totalSeconds / 2)
         let fadeOutSeconds = min(1.0, totalSeconds / 2)
-        let fadeInDuration = CMTime(
-            seconds: fadeInSeconds,
-            preferredTimescale: totalDuration.timescale
-        )
-        let fadeOutDuration = CMTime(
-            seconds: fadeOutSeconds,
-            preferredTimescale: totalDuration.timescale
-        )
+        let duckRanges = settings.automaticallyDucksForOriginalAudio
+            ? originalAudioRanges
+            : []
+        let duckInSeconds = 0.15
+        let duckOutSeconds = 0.25
+        var controlPoints = [0.0, totalSeconds]
 
         if settings.fadeInEnabled, fadeInSeconds > 0 {
-            parameters.setVolumeRamp(
-                fromStartVolume: 0,
-                toEndVolume: targetVolume,
-                timeRange: CMTimeRange(start: .zero, duration: fadeInDuration)
+            controlPoints.append(fadeInSeconds)
+        }
+        if settings.fadeOutEnabled, fadeOutSeconds > 0 {
+            controlPoints.append(max(0, totalSeconds - fadeOutSeconds))
+        }
+        for range in duckRanges {
+            controlPoints.append(max(0, range.lowerBound - duckInSeconds))
+            controlPoints.append(max(0, range.lowerBound))
+            controlPoints.append(min(totalSeconds, range.upperBound))
+            controlPoints.append(
+                min(totalSeconds, range.upperBound + duckOutSeconds)
             )
-        } else {
-            parameters.setVolume(targetVolume, at: .zero)
+        }
+        controlPoints = Array(Set(controlPoints))
+            .filter { $0.isFinite && $0 >= 0 && $0 <= totalSeconds }
+            .sorted()
+
+        parameters.setVolume(
+            Float(
+                musicVolume(
+                    at: 0,
+                    baseVolume: baseVolume,
+                    settings: settings,
+                    totalSeconds: totalSeconds,
+                    fadeInSeconds: fadeInSeconds,
+                    fadeOutSeconds: fadeOutSeconds,
+                    duckRanges: duckRanges,
+                    duckInSeconds: duckInSeconds,
+                    duckOutSeconds: duckOutSeconds
+                )
+            ),
+            at: .zero
+        )
+
+        for (startSeconds, endSeconds) in zip(
+            controlPoints,
+            controlPoints.dropFirst()
+        ) where endSeconds > startSeconds {
+            let start = CMTime(
+                seconds: startSeconds,
+                preferredTimescale: totalDuration.timescale
+            )
+            let duration = CMTime(
+                seconds: endSeconds - startSeconds,
+                preferredTimescale: totalDuration.timescale
+            )
+            parameters.setVolumeRamp(
+                fromStartVolume: Float(
+                    musicVolume(
+                        at: startSeconds,
+                        baseVolume: baseVolume,
+                        settings: settings,
+                        totalSeconds: totalSeconds,
+                        fadeInSeconds: fadeInSeconds,
+                        fadeOutSeconds: fadeOutSeconds,
+                        duckRanges: duckRanges,
+                        duckInSeconds: duckInSeconds,
+                        duckOutSeconds: duckOutSeconds
+                    )
+                ),
+                toEndVolume: Float(
+                    musicVolume(
+                        at: endSeconds,
+                        baseVolume: baseVolume,
+                        settings: settings,
+                        totalSeconds: totalSeconds,
+                        fadeInSeconds: fadeInSeconds,
+                        fadeOutSeconds: fadeOutSeconds,
+                        duckRanges: duckRanges,
+                        duckInSeconds: duckInSeconds,
+                        duckOutSeconds: duckOutSeconds
+                    )
+                ),
+                timeRange: CMTimeRange(start: start, duration: duration)
+            )
+        }
+    }
+
+    private static func musicVolume(
+        at seconds: Double,
+        baseVolume: Double,
+        settings: BackgroundMusicSettings,
+        totalSeconds: Double,
+        fadeInSeconds: Double,
+        fadeOutSeconds: Double,
+        duckRanges: [Range<Double>],
+        duckInSeconds: Double,
+        duckOutSeconds: Double
+    ) -> Double {
+        var level = baseVolume
+        let duckedVolume = min(
+            baseVolume,
+            BackgroundMusicSettings.duckedMusicVolume
+        )
+
+        for range in duckRanges {
+            if range.contains(seconds) {
+                level = min(level, duckedVolume)
+            } else if seconds < range.lowerBound,
+                      seconds >= range.lowerBound - duckInSeconds,
+                      duckInSeconds > 0 {
+                let progress = (seconds - range.lowerBound + duckInSeconds)
+                    / duckInSeconds
+                level = min(
+                    level,
+                    baseVolume + (duckedVolume - baseVolume) * progress
+                )
+            } else if seconds >= range.upperBound,
+                      seconds <= range.upperBound + duckOutSeconds,
+                      duckOutSeconds > 0 {
+                let progress = (seconds - range.upperBound) / duckOutSeconds
+                level = min(
+                    level,
+                    duckedVolume + (baseVolume - duckedVolume) * progress
+                )
+            }
         }
 
+        var fadeFactor = 1.0
+        if settings.fadeInEnabled, fadeInSeconds > 0 {
+            fadeFactor = min(fadeFactor, max(0, seconds / fadeInSeconds))
+        }
         if settings.fadeOutEnabled, fadeOutSeconds > 0 {
-            let fadeStart = CMTimeSubtract(totalDuration, fadeOutDuration)
-            parameters.setVolumeRamp(
-                fromStartVolume: targetVolume,
-                toEndVolume: 0,
-                timeRange: CMTimeRange(start: fadeStart, duration: fadeOutDuration)
+            fadeFactor = min(
+                fadeFactor,
+                max(0, (totalSeconds - seconds) / fadeOutSeconds)
             )
         }
+        return clampedVolume(level * fadeFactor)
+    }
+
+    private static func originalAudioRanges(
+        in track: AVMutableCompositionTrack?,
+        totalDuration: CMTime
+    ) -> [Range<Double>] {
+        guard let track else { return [] }
+        let totalSeconds = totalDuration.seconds
+        guard totalSeconds.isFinite, totalSeconds > 0 else { return [] }
+
+        let ranges = track.segments.compactMap { segment -> Range<Double>? in
+            guard !segment.isEmpty else { return nil }
+            let target = segment.timeMapping.target
+            let start = max(0, target.start.seconds)
+            let end = min(totalSeconds, target.end.seconds)
+            guard start.isFinite, end.isFinite, end > start else { return nil }
+            return start..<end
+        }
+        .sorted { $0.lowerBound < $1.lowerBound }
+
+        var merged: [Range<Double>] = []
+        for range in ranges {
+            if let last = merged.last,
+               range.lowerBound <= last.upperBound + 0.40 {
+                merged[merged.count - 1] = last.lowerBound..<max(
+                    last.upperBound,
+                    range.upperBound
+                )
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
     }
 
     private func export(

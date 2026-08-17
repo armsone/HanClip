@@ -32,12 +32,14 @@ struct BackgroundMusicSettings: Codable, Equatable {
     var displayName: String
     var musicVolume: Double
     var originalAudioVolume: Double
+    var automaticallyDucksForOriginalAudio: Bool
     var loopsToFillVideo: Bool
     var fadeInEnabled: Bool
     var fadeOutEnabled: Bool
 
-    static let defaultMusicVolume = 0.35
+    static let defaultMusicVolume = 0.75
     static let defaultOriginalAudioVolume = 1.0
+    static let duckedMusicVolume = 0.15
     static let sampleTracks = [
         BackgroundMusicSampleTrack(
             id: "daily-loop",
@@ -90,6 +92,7 @@ struct BackgroundMusicSettings: Codable, Equatable {
             displayName: "",
             musicVolume: defaultMusicVolume,
             originalAudioVolume: defaultOriginalAudioVolume,
+            automaticallyDucksForOriginalAudio: true,
             loopsToFillVideo: true,
             fadeInEnabled: true,
             fadeOutEnabled: true
@@ -126,6 +129,7 @@ struct BackgroundMusicSettings: Codable, Equatable {
         case displayName
         case musicVolume
         case originalAudioVolume
+        case automaticallyDucksForOriginalAudio
         case loopsToFillVideo
         case fadeInEnabled
         case fadeOutEnabled
@@ -137,6 +141,7 @@ struct BackgroundMusicSettings: Codable, Equatable {
         displayName: String,
         musicVolume: Double,
         originalAudioVolume: Double,
+        automaticallyDucksForOriginalAudio: Bool,
         loopsToFillVideo: Bool,
         fadeInEnabled: Bool,
         fadeOutEnabled: Bool
@@ -146,6 +151,8 @@ struct BackgroundMusicSettings: Codable, Equatable {
         self.displayName = displayName
         self.musicVolume = musicVolume
         self.originalAudioVolume = originalAudioVolume
+        self.automaticallyDucksForOriginalAudio =
+            automaticallyDucksForOriginalAudio
         self.loopsToFillVideo = loopsToFillVideo
         self.fadeInEnabled = fadeInEnabled
         self.fadeOutEnabled = fadeOutEnabled
@@ -170,6 +177,10 @@ struct BackgroundMusicSettings: Codable, Equatable {
             Double.self,
             forKey: .originalAudioVolume
         ) ?? Self.defaultOriginalAudioVolume
+        automaticallyDucksForOriginalAudio = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .automaticallyDucksForOriginalAudio
+        ) ?? true
         loopsToFillVideo = try values.decodeIfPresent(
             Bool.self,
             forKey: .loopsToFillVideo
