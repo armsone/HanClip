@@ -284,7 +284,7 @@ struct WatermarkSettings: Codable {
     }
     static let defaultAddress = ""
     static let defaultPlatform = WatermarkPlatform.hanclip
-    static let defaultPosition = WatermarkPosition.topLeading
+    static let defaultPosition = WatermarkPosition.upperCenter
     static let defaultFontName = "poppins"
     static let defaultTextColor = "#FFE45C"
     static let defaultShadowEnabled = true

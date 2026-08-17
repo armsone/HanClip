@@ -92,6 +92,85 @@ final class VideoComposer {
     private let frameRate: Int32 = 30
     private static let maximumItemsPerComposition = 120
 
+    static func progressWatermarkOverlayImage(
+        renderSize requestedRenderSize: CGSize,
+        settings: WatermarkSettings
+    ) -> UIImage? {
+        guard settings.shouldRender else { return nil }
+
+        let renderSize = codecSafeRenderSize(requestedRenderSize)
+        let scale = max(1, min(renderSize.width, renderSize.height) / 390)
+        let inset = 20 * scale
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+
+        return UIGraphicsImageRenderer(
+            size: renderSize,
+            format: format
+        ).image { _ in
+            if settings.shouldRenderText {
+                let textImage = textWatermarkImage(
+                    text: settings.displayText,
+                    fontName: settings.fontName,
+                    textColor: UIColor(hexString: settings.textColorHex)
+                        ?? .white,
+                    shadowOpacity: settings.shadowOpacity,
+                    shadowColor: UIColor(hexString: settings.shadowColorHex)
+                        ?? .black,
+                    position: settings.position,
+                    lineSpacingScale: settings.lineSpacingScale,
+                    fontSize: settings.fontSize,
+                    renderSize: renderSize
+                )
+                textImage.draw(
+                    at: progressWatermarkOrigin(
+                        watermarkSize: textImage.size,
+                        renderSize: renderSize,
+                        position: settings.position,
+                        inset: inset
+                    )
+                )
+            }
+
+            if settings.logoEnabled {
+                let logoImage = copyrightWatermarkImage(
+                    settings: settings,
+                    renderSize: renderSize
+                )
+                logoImage.draw(
+                    at: progressWatermarkOrigin(
+                        watermarkSize: logoImage.size,
+                        renderSize: renderSize,
+                        position: settings.copyrightPosition,
+                        inset: inset
+                    )
+                )
+            }
+        }
+    }
+
+    private static func progressWatermarkOrigin(
+        watermarkSize: CGSize,
+        renderSize: CGSize,
+        position: WatermarkPosition,
+        inset: CGFloat
+    ) -> CGPoint {
+        let availableWidth = max(
+            0,
+            renderSize.width - watermarkSize.width - inset * 2
+        )
+        let availableHeight = max(
+            0,
+            renderSize.height - watermarkSize.height - inset * 2
+        )
+        return CGPoint(
+            x: inset + availableWidth * CGFloat(position.horizontalFraction),
+            y: inset
+                + availableHeight * CGFloat(position.verticalFractionFromTop)
+        )
+    }
+
     func compose(
         items: [ClipItem],
         renderSize requestedRenderSize: CGSize,
@@ -1060,6 +1139,7 @@ final class VideoComposer {
             image: image,
             duration: max(0.1, item.duration),
             renderSize: renderSize,
+            appliesMotion: !item.usesStaticPhotoFrame,
             progressHandler: progressHandler
         )
         return (url, true, true)
@@ -1069,6 +1149,7 @@ final class VideoComposer {
         image: UIImage,
         duration: Double,
         renderSize: CGSize,
+        appliesMotion: Bool,
         progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         let encodingTask = Task.detached(priority: .userInitiated) {
@@ -1130,8 +1211,10 @@ final class VideoComposer {
             }
             let fps: Int32 = 30
             let frameCount = max(1, Int(ceil(duration * Double(fps))))
-            let zoomsIn = Bool.random()
-            let focalPoint = Self.randomFocalPoint(in: renderSize)
+            let zoomsIn = appliesMotion && Bool.random()
+            let focalPoint = appliesMotion
+                ? Self.randomFocalPoint(in: renderSize)
+                : CGPoint(x: renderSize.width / 2, y: renderSize.height / 2)
             let progressInterval = max(1, frameCount / 100)
 
             for frame in 0..<frameCount {
@@ -1160,7 +1243,9 @@ final class VideoComposer {
                 let zoomProgress = zoomsIn
                     ? easedProgress
                     : 1 - easedProgress
-                let zoomScale = 1 + 0.10 * zoomProgress
+                let zoomScale = appliesMotion
+                    ? 1 + 0.10 * zoomProgress
+                    : 1
 
                 try Self.draw(
                     image: image,

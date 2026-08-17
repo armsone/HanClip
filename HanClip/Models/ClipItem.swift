@@ -500,6 +500,7 @@ struct ClipItem: Identifiable {
     var isSimilarPhotoGroupRepresentative: Bool
     var sourceCreatedAt: Date?
     let sourcePixelSize: CGSize
+    let usesStaticPhotoFrame: Bool
 
     var sourceAspectRatio: CGFloat {
         sourcePixelSize.width / max(1, sourcePixelSize.height)
@@ -531,7 +532,8 @@ struct ClipItem: Identifiable {
         similarPhotoGroupCount: Int = 1,
         isSimilarPhotoGroupRepresentative: Bool = true,
         sourceCreatedAt: Date? = nil,
-        sourcePixelSize: CGSize? = nil
+        sourcePixelSize: CGSize? = nil,
+        usesStaticPhotoFrame: Bool = false
     ) {
         self.id = id
         self.source = source
@@ -570,6 +572,7 @@ struct ClipItem: Identifiable {
         self.isSimilarPhotoGroupRepresentative = isSimilarPhotoGroupRepresentative
         self.sourceCreatedAt = sourceCreatedAt
         self.sourcePixelSize = sourcePixelSize ?? thumbnail.size
+        self.usesStaticPhotoFrame = usesStaticPhotoFrame
     }
 
     var trimEnd: Double {
@@ -641,7 +644,8 @@ struct ClipItem: Identifiable {
             similarPhotoGroupCount: similarPhotoGroupCount,
             isSimilarPhotoGroupRepresentative: isSimilarPhotoGroupRepresentative,
             sourceCreatedAt: sourceCreatedAt,
-            sourcePixelSize: sourcePixelSize
+            sourcePixelSize: sourcePixelSize,
+            usesStaticPhotoFrame: usesStaticPhotoFrame
         )
     }
 }
@@ -710,6 +714,7 @@ enum VideoClipSegmenter {
     ) -> [Double] {
         let safeDuration = min(max(0.1, selectedDuration), sourceDuration)
         let safeLimit = normalizedSegmentCount(limit)
+        let minimumGap = max(0.75, safeDuration * 0.5)
         var selected: [(peak: Double, start: Double, end: Double)] = []
 
         for peak in rankedPeaks {
@@ -724,7 +729,8 @@ enum VideoClipSegmenter {
             let end = start + safeDuration
 
             guard selected.allSatisfy({
-                end <= $0.start + 0.001 || start >= $0.end - 0.001
+                end + minimumGap <= $0.start + 0.001
+                    || start >= $0.end + minimumGap - 0.001
             }) else { continue }
 
             selected.append((clampedPeak, start, end))

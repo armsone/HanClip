@@ -24,7 +24,7 @@ struct EndingInfoPreviewData: Equatable {
 
 private struct EndingInfoPackage {
     let preview: EndingInfoPreviewData
-    let sourceLocation: CLLocation
+    let sourceLocation: CLLocation?
     let temporaryImageURL: URL
     let image: UIImage
 }
@@ -142,16 +142,32 @@ final class EditorViewModel: ObservableObject {
     }
 
     var hasEndingInfoData: Bool {
-        selectedMediaDateRange != nil
-            && orderedPhotoLocations(in: renderableClips).isEmpty == false
+        !renderableClips.isEmpty
     }
 
     var quickRecommendedDuration: Double {
-        let sourceMediaCount = max(
-            1,
-            clips.filter { !$0.isVideoSegmentChild }.count
-        )
-        return Double(sourceMediaCount)
+        Double(max(1, quickContentSceneCount))
+    }
+
+    var quickMinimumDuration: Double {
+        max(0.1, Double(quickContentSceneCount) * 0.1)
+    }
+
+    var quickDurationPickerInitialDuration: Double {
+        if activeMoviePreset == .quick, activeProjectID != nil {
+            return max(0.1, totalDuration - quickEndingDuration)
+        }
+        return quickRecommendedDuration
+    }
+
+    var quickSceneCount: Int {
+        quickContentSceneCount + (quickEndingDuration > 0 ? 1 : 0)
+    }
+
+    private var quickContentSceneCount: Int {
+        clips.filter { clip in
+            clip.isVideoSegmentChild || clip.isRenderableClip
+        }.count
     }
     @Published var isPickerPresented = false
     @Published var isCalendarPickerPresented = false
@@ -177,6 +193,7 @@ final class EditorViewModel: ObservableObject {
     @Published var sharedImportProgress = 0.0
     @Published var sharedImportThumbnail: UIImage?
     @Published var previewThumbnail: UIImage?
+    @Published var previewWatermarkOverlay: UIImage?
     @Published var exportedURL: URL?
     @Published var showPreview = false
     @Published var showFileExporter = false
@@ -191,6 +208,7 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var activeMoviePreset: MoviePreset?
     @Published var isQuickDurationPickerPresented = false
     private var shouldReturnToQuickDurationPickerAfterPreview = false
+    private var quickPickerCancelReturnsToEditor = false
     private var photoLibraryImportCancellationHandler: (() -> Void)?
     @Published private var expandedSimilarPhotoGroupIDs: Set<UUID> = []
 
@@ -751,6 +769,7 @@ final class EditorViewModel: ObservableObject {
         let musicTrackID: String?
         activeMoviePreset = preset
         isQuickModeProject = preset == .quick
+        quickPickerCancelReturnsToEditor = false
 
         switch preset {
         case .newMovie:
@@ -811,18 +830,11 @@ final class EditorViewModel: ObservableObject {
               !isExporting
         else { return }
         isQuickDurationPickerPresented = false
-        if let targetDuration {
-            let sourceMediaCount = max(
-                1,
-                clips.filter { !$0.isVideoSegmentChild }.count
-            )
-            defaultDuration = max(
-                0.2,
-                targetDuration / Double(sourceMediaCount)
-            )
-            applyDefaultDurationToAll()
-        }
+        applyQuickMovieTargetDuration(
+            targetDuration ?? quickRecommendedDuration
+        )
         shouldReturnToQuickDurationPickerAfterPreview = true
+        quickPickerCancelReturnsToEditor = false
         isQuickModeProject = false
         saveProjectAndOpenPreview()
     }
@@ -830,7 +842,143 @@ final class EditorViewModel: ObservableObject {
     func cancelQuickMovieDurationSelection() {
         isQuickDurationPickerPresented = false
         isQuickModeProject = false
+        if quickPickerCancelReturnsToEditor {
+            quickPickerCancelReturnsToEditor = false
+            return
+        }
         reset()
+    }
+
+    func reopenQuickMovieDurationPicker() {
+        guard activeMoviePreset == .quick,
+              !renderableClips.isEmpty,
+              !isExporting
+        else { return }
+        isQuickModeProject = true
+        quickPickerCancelReturnsToEditor = true
+        isQuickDurationPickerPresented = true
+    }
+
+    func quickEstimatedTotalDuration(for targetDuration: Double) -> Double {
+        let endingDuration = quickEndingDuration
+        let requestedContentDuration = max(0.1, targetDuration)
+        let availableContentDuration = quickContentDurationCapacity(
+            requestedDuration: requestedContentDuration
+        )
+        return min(requestedContentDuration, availableContentDuration)
+            + endingDuration
+    }
+
+    private var quickEndingDuration: Double {
+        textOverlaySettings.includesEndingInfoCard && hasEndingInfoData
+            ? textOverlaySettings.endingInfoCardDuration
+            : 0
+    }
+
+    private func quickContentDurationCapacity(
+        requestedDuration: Double
+    ) -> Double {
+        var total = 0.0
+
+        for clip in clips {
+            if clip.videoSegmentParentID != nil {
+                total += min(
+                    requestedDuration,
+                    clip.sourceDuration ?? clip.duration
+                )
+                continue
+            }
+            guard clip.isRenderableClip else { continue }
+            if clip.mediaKind == .video || clip.livePhotoMode == .motion {
+                total += min(
+                    requestedDuration,
+                    clip.sourceDuration
+                        ?? clip.livePhotoDuration
+                        ?? clip.duration
+                )
+            } else {
+                total += requestedDuration
+            }
+        }
+        return total
+    }
+
+    private func applyQuickMovieTargetDuration(_ targetDuration: Double) {
+        includeAllImportantVideoMoments()
+
+        let candidateIndices = clips.indices.filter {
+            clips[$0].isRenderableClip
+        }
+        guard !candidateIndices.isEmpty else { return }
+
+        let requestedContentDuration = max(0.1, targetDuration)
+        var allocations: [Int: Double] = [:]
+        var remainingIndices = candidateIndices
+        var remainingDuration = requestedContentDuration
+
+        while !remainingIndices.isEmpty {
+            let share = remainingDuration / Double(remainingIndices.count)
+            let capped = remainingIndices.filter {
+                quickDurationCapacity(for: clips[$0]) < share
+            }
+            guard !capped.isEmpty else {
+                for index in remainingIndices {
+                    allocations[index] = share
+                }
+                break
+            }
+
+            for index in capped {
+                let capacity = quickDurationCapacity(for: clips[index])
+                allocations[index] = capacity
+                remainingDuration = max(0, remainingDuration - capacity)
+            }
+            let cappedSet = Set(capped)
+            remainingIndices.removeAll { cappedSet.contains($0) }
+        }
+
+        defaultDuration = max(
+            0.1,
+            requestedContentDuration / Double(candidateIndices.count)
+        )
+        for index in candidateIndices {
+            guard let duration = allocations[index] else { continue }
+            let sourceDuration = quickDurationCapacity(for: clips[index])
+            let selectedDuration = min(duration, sourceDuration)
+            let center = clips[index].trimStart + clips[index].duration / 2
+            clips[index].duration = selectedDuration
+            clips[index].photoDuration = selectedDuration
+            if clips[index].mediaKind == .video
+                || clips[index].livePhotoMode == .motion {
+                clips[index].trimStart = max(
+                    0,
+                    min(
+                        sourceDuration - selectedDuration,
+                        center - selectedDuration / 2
+                    )
+                )
+            } else {
+                clips[index].trimStart = 0
+            }
+        }
+    }
+
+    private func quickDurationCapacity(for clip: ClipItem) -> Double {
+        if clip.mediaKind == .video || clip.livePhotoMode == .motion {
+            return max(
+                0.1,
+                clip.sourceDuration
+                    ?? clip.livePhotoDuration
+                    ?? clip.duration
+            )
+        }
+        return .greatestFiniteMagnitude
+    }
+
+    private func includeAllImportantVideoMoments() {
+        for index in clips.indices where clips[index].isVideoSegmentChild {
+            clips[index].isVideoSegmentSelected = true
+        }
     }
 
     func refreshPresetCaptionAfterMediaImport() async {
@@ -1703,6 +1851,7 @@ final class EditorViewModel: ObservableObject {
         sharedImportProgress = 0
         sharedImportThumbnail = nil
         previewThumbnail = nil
+        previewWatermarkOverlay = nil
         exportedURL = nil
         showPreview = false
         previewSaveRequest = nil
@@ -1815,6 +1964,10 @@ final class EditorViewModel: ObservableObject {
         isPreviewRendering = true
         previewProgress = 0
         previewThumbnail = renderableClips.first?.thumbnail
+        previewWatermarkOverlay = VideoComposer.progressWatermarkOverlayImage(
+            renderSize: outputRenderSize,
+            settings: previewRenderWatermarkSettings()
+        )
         progressMessage = "영화를 저장하는 중…"
 
         previewTask = Task {
@@ -1875,9 +2028,10 @@ final class EditorViewModel: ObservableObject {
                                 .endingInfoCardDuration,
                             photoDuration: textOverlaySettings
                                 .endingInfoCardDuration,
-                            mediaKind: .photo,
+                            mediaKind: .video,
                             sourceCreatedAt: shootingRange?.upperBound,
-                            sourcePixelSize: outputRenderSize
+                            sourcePixelSize: outputRenderSize,
+                            usesStaticPhotoFrame: true
                         )
                     )
                 }
@@ -1912,18 +2066,19 @@ final class EditorViewModel: ObservableObject {
                 var renderWatermarkSettings = textOverlaySettings
                 renderWatermarkSettings.includesEndingInfoCard =
                     endingInfoPackage != nil
+                renderWatermarkSettings = renderWatermarkSettings
+                    .withCopyrightSettings(previewCopyrightSettings())
+                previewWatermarkOverlay =
+                    VideoComposer.progressWatermarkOverlayImage(
+                        renderSize: outputRenderSize,
+                        settings: renderWatermarkSettings
+                    )
                 previewProgress = 0.10
                 progressMessage = "시사회 영화를 준비하는 중…"
                 let output = try await VideoComposer().compose(
                     items: compositionItems,
                     renderSize: outputRenderSize,
-                    watermarkSettings: renderWatermarkSettings
-                        .withCopyrightSettings(
-                            CopyrightPurchaseManager.shared.isPurchased
-                                ? WatermarkSettings.stored()
-                                : WatermarkSettings.stored()
-                                    .withLogoEnabled(false)
-                    ),
+                    watermarkSettings: renderWatermarkSettings,
                     backgroundMusicSettings: backgroundMusicSettings,
                     movieMetadata: movieMetadata
                 ) { [self] progress in
@@ -1952,6 +2107,7 @@ final class EditorViewModel: ObservableObject {
                 isExporting = false
                 isPreviewRendering = false
                 previewThumbnail = nil
+                previewWatermarkOverlay = nil
                 previewTask = nil
                 showPreview = true
                 Task { @MainActor in
@@ -1970,6 +2126,7 @@ final class EditorViewModel: ObservableObject {
                 isExporting = false
                 isPreviewRendering = false
                 previewThumbnail = nil
+                previewWatermarkOverlay = nil
                 previewTask = nil
                 restoreQuickModeAfterPreviewCancellationIfNeeded()
             } catch {
@@ -1978,6 +2135,7 @@ final class EditorViewModel: ObservableObject {
                 isExporting = false
                 isPreviewRendering = false
                 previewThumbnail = nil
+                previewWatermarkOverlay = nil
                 previewTask = nil
                 alertMessage = error.localizedDescription
             }
@@ -1989,7 +2147,22 @@ final class EditorViewModel: ObservableObject {
         shouldReturnToQuickDurationPickerAfterPreview = false
         activeMoviePreset = .quick
         isQuickModeProject = true
+        quickPickerCancelReturnsToEditor = true
         isQuickDurationPickerPresented = true
+    }
+
+    private func previewRenderWatermarkSettings() -> WatermarkSettings {
+        textOverlaySettings.withCopyrightSettings(previewCopyrightSettings())
+    }
+
+    private func previewCopyrightSettings() -> WatermarkSettings {
+        var settings = WatermarkSettings.stored()
+        if !CopyrightPurchaseManager.shared.isPurchased {
+            settings.logoEnabled = true
+            settings.platform = .hanclip
+            settings.address = ""
+        }
+        return settings
     }
 
     private func firstPhotoLocation(in items: [ClipItem]) -> CLLocation? {
@@ -2098,9 +2271,9 @@ final class EditorViewModel: ObservableObject {
         for items: [ClipItem],
         shootingRange: ClosedRange<Date>?
     ) async -> EndingInfoPreviewData? {
-        guard let shootingRange else { return nil }
+        let fallbackDate = items.compactMap(\.sourceCreatedAt).first ?? Date()
+        let shootingRange = shootingRange ?? fallbackDate...fallbackDate
         let samples = orderedPhotoLocationSamples(in: items)
-        guard !samples.isEmpty else { return nil }
 
         var stops: [EndingInfoRouteStop] = []
         var previousCountryCode: String?
@@ -2136,7 +2309,6 @@ final class EditorViewModel: ObservableObject {
             previousCityName = place.cityName
             previousDate = date
         }
-        guard !stops.isEmpty else { return nil }
         return EndingInfoPreviewData(
             dateText: Self.endingInfoDateText(shootingRange),
             stops: stops
@@ -2152,9 +2324,10 @@ final class EditorViewModel: ObservableObject {
         guard let preview = await makeEndingInfoPreview(
             for: items,
             shootingRange: shootingRange
-        ), let sourceLocation = orderedPhotoLocations(in: items).first else {
+        ) else {
             return nil
         }
+        let sourceLocation = orderedPhotoLocations(in: items).first
         let image = Self.renderEndingInfoCard(
             preview,
             backgroundImage: items.first?.thumbnail,
@@ -3469,6 +3642,7 @@ final class EditorViewModel: ObservableObject {
         clips = []
         WorkingClipSourceStore.clear()
         isQuickModeProject = false
+        quickPickerCancelReturnsToEditor = false
         activeMoviePreset = nil
         isQuickDurationPickerPresented = false
         defaultDuration = Self.storedDefaultDuration()
@@ -3537,6 +3711,7 @@ final class EditorViewModel: ObservableObject {
         backgroundMusicSettings = project.backgroundMusicSettings
         activeMoviePreset = project.initialMoviePreset
         isQuickModeProject = false
+        quickPickerCancelReturnsToEditor = false
         exportedURL = nil
         showPreview = false
         activeProjectID = project.id
@@ -3584,6 +3759,7 @@ final class EditorViewModel: ObservableObject {
             guard let self, didLoad, shouldReturnToQuickPicker else { return }
             activeMoviePreset = .quick
             isQuickModeProject = true
+            quickPickerCancelReturnsToEditor = true
             isQuickDurationPickerPresented = true
         }
     }

@@ -112,6 +112,7 @@ struct EditorView: View {
     @State private var showHeaderExitConfirmation = false
     @State private var showThemeSelection = false
     @State private var showImportantInfo = false
+    @State private var shouldShowThemeSelectionAfterInfoDismiss = false
     @State private var showTextOverlaySettings = false
     @State private var showEndingInfoSettings = false
     @State private var showBackgroundMusicSettings = false
@@ -727,7 +728,9 @@ struct EditorView: View {
         .fullScreenCover(isPresented: $model.isQuickDurationPickerPresented) {
             QuickMovieDurationPicker(
                 recommendedDuration: model.quickRecommendedDuration,
-                mediaCount: model.selectedSourceMediaCount,
+                minimumDuration: model.quickMinimumDuration,
+                initialDuration: model.quickDurationPickerInitialDuration,
+                sceneCount: model.quickSceneCount,
                 textSettings: model.textOverlaySettings,
                 textEnabled: textOverlayBinding(\.isEnabled),
                 endingInfoEnabled: textOverlayBinding(
@@ -747,6 +750,7 @@ struct EditorView: View {
                 onSelectMusic: openQuickMusicSettings,
                 onAddPhoto: openQuickMediaPicker,
                 onAddFile: openQuickFilePicker,
+                estimatedTotalDuration: model.quickEstimatedTotalDuration,
                 onMake: model.confirmQuickMovieDuration,
                 onCancel: model.cancelQuickMovieDurationSelection
             )
@@ -997,7 +1001,16 @@ struct EditorView: View {
                 )
             }
         }
-        .fullScreenCover(isPresented: $showImportantInfo) {
+        .fullScreenCover(
+            isPresented: $showImportantInfo,
+            onDismiss: {
+                guard shouldShowThemeSelectionAfterInfoDismiss else { return }
+                shouldShowThemeSelectionAfterInfoDismiss = false
+                withAnimation(.snappy) {
+                    showThemeSelection = true
+                }
+            }
+        ) {
             importantInfoSheet
         }
         .fullScreenCover(
@@ -1429,7 +1442,11 @@ struct EditorView: View {
             shadowColorHex: $copyrightShadowColorHex,
             shadowOpacity: $copyrightShadowOpacity,
             iconColorModeRaw: $copyrightIconColorModeRaw,
-            iconColorHex: $copyrightIconColorHex
+            iconColorHex: $copyrightIconColorHex,
+            onRequestThemeSelection: {
+                shouldShowThemeSelectionAfterInfoDismiss = true
+                showImportantInfo = false
+            }
         )
     }
 
@@ -5912,84 +5929,104 @@ struct EditorView: View {
     }
 
     private var clipSettingsSectionTitle: some View {
-        Button {
-            isClipSettingsExpanded.toggle()
-        } label: {
-            ZStack {
-                HStack(spacing: 9) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(HanClipTheme.primary.opacity(0.86))
-                        .frame(width: 28, height: 28)
-                        .background(
-                            HanClipTheme.secondary.opacity(0.10),
-                            in: RoundedRectangle(
-                                cornerRadius: 8,
-                                style: .continuous
+        ZStack {
+            Button {
+                isClipSettingsExpanded.toggle()
+            } label: {
+                ZStack {
+                    HStack(spacing: 9) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(HanClipTheme.primary.opacity(0.86))
+                            .frame(width: 28, height: 28)
+                            .background(
+                                HanClipTheme.secondary.opacity(0.10),
+                                in: RoundedRectangle(
+                                    cornerRadius: 8,
+                                    style: .continuous
+                                )
                             )
-                        )
-                        .accessibilityHidden(true)
+                            .accessibilityHidden(true)
 
-                    Text("클립 설정")
-                        .font(HanClipTypography.sectionTitle)
-                        .foregroundStyle(
-                            HanClipTheme.secondaryText.opacity(0.90)
-                        )
+                        Text("클립 설정")
+                            .font(HanClipTypography.sectionTitle)
+                            .foregroundStyle(
+                                HanClipTheme.secondaryText.opacity(0.90)
+                            )
 
-                    Spacer()
-
-                    HStack(spacing: 6) {
-                        Image(
-                            systemName: model.activeMoviePreset?.systemImage
-                                ?? "film"
-                        )
-                        .accessibilityHidden(true)
-
-                        Text(
-                            model.activeMoviePreset?.displayTitle
-                                ?? "기존 영화"
-                        )
-                        .lineLimit(1)
+                        Spacer()
+                            .frame(width: 112, height: 34)
                     }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(HanClipTheme.secondaryText)
-                    .padding(.horizontal, 12)
-                    .frame(width: 112, height: 34)
-                    .background(
-                        HanClipTheme.secondary.opacity(0.10),
-                        in: Capsule()
+
+                    Image(
+                        systemName: isClipSettingsExpanded
+                            ? "chevron.up"
+                            : "chevron.down"
                     )
-                    .overlay {
-                        Capsule()
-                            .stroke(
-                                HanClipTheme.secondary.opacity(0.28),
-                                lineWidth: 1
-                            )
-                    }
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
+                    .frame(width: 32, height: 48, alignment: .center)
+                    .accessibilityHidden(true)
                 }
-
-                Image(
-                    systemName: isClipSettingsExpanded
-                        ? "chevron.up"
-                        : "chevron.down"
-                )
-                .font(.system(size: 14, weight: .black))
-                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.78))
-                .frame(width: 32, height: 48, alignment: .center)
-                .accessibilityHidden(true)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48, alignment: .center)
+                .padding(.horizontal, 14)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 48, alignment: .center)
-            .padding(.horizontal, 14)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel("클립 설정")
+            .accessibilityValue(
+                "\(model.activeMoviePreset?.displayTitle ?? "기존 영화"), "
+                    + (isClipSettingsExpanded ? "펼쳐짐" : "접힘")
+            )
+            .accessibilityHint("두 번 탭하여 클립 설정을 펼치거나 접습니다.")
+
+            HStack {
+                Spacer()
+                if model.activeMoviePreset == .quick {
+                    Button {
+                        model.reopenQuickMovieDurationPicker()
+                    } label: {
+                        clipSettingsPresetBadge
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("퀵모드 설정")
+                    .accessibilityHint("퀵모드 영상 길이 패널을 다시 엽니다.")
+                } else {
+                    clipSettingsPresetBadge
+                }
+            }
+            .padding(.trailing, 14)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("클립 설정")
-        .accessibilityValue(
-            "\(model.activeMoviePreset?.displayTitle ?? "기존 영화"), "
-                + (isClipSettingsExpanded ? "펼쳐짐" : "접힘")
+        .frame(height: 48)
+    }
+
+    private var clipSettingsPresetBadge: some View {
+        HStack(spacing: 6) {
+            Image(
+                systemName: model.activeMoviePreset?.systemImage ?? "film"
+            )
+            .accessibilityHidden(true)
+
+            Text(model.activeMoviePreset?.displayTitle ?? "기존 영화")
+                .lineLimit(1)
+        }
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(HanClipTheme.secondaryText)
+        .padding(.horizontal, 12)
+        .frame(width: 112, height: 34)
+        .background(
+            HanClipTheme.secondary.opacity(0.10),
+            in: Capsule()
         )
-        .accessibilityHint("두 번 탭하여 클립 설정을 펼치거나 접습니다.")
+        .overlay {
+            Capsule()
+                .stroke(
+                    HanClipTheme.secondary.opacity(0.28),
+                    lineWidth: 1
+                )
+        }
+        .contentShape(Capsule())
     }
 
     private var clipListFooterControls: some View {
@@ -7965,6 +8002,18 @@ struct EditorView: View {
                             )
                     }
             }
+            .overlay {
+                if let watermarkOverlay = model.previewWatermarkOverlay {
+                    Image(uiImage: watermarkOverlay)
+                        .resizable()
+                        .frame(
+                            width: proxy.size.width,
+                            height: proxy.size.height
+                        )
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -8471,6 +8520,7 @@ private struct ImportantInfoSheet: View {
     @Binding var shadowOpacity: Double
     @Binding var iconColorModeRaw: String
     @Binding var iconColorHex: String
+    let onRequestThemeSelection: () -> Void
     @State private var customIconPickerItem: PhotosPickerItem?
     @State private var customIconRefreshID = UUID()
     @State private var isWatermarkSettingsExpanded = false
@@ -8482,7 +8532,7 @@ private struct ImportantInfoSheet: View {
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
         ("iPad 지원", "iPad에서 세로·가로 방향과 분할 화면 크기에 맞춰 사용할 수 있습니다. 넓은 화면에서는 편집 콘텐츠의 읽기 좋은 폭을 유지하며 사진 선택, 공유 확장과 잠금 화면 위젯도 함께 사용할 수 있습니다."),
         ("영화 프리셋", "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
-        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 선택한 미디어가 많으면 정해진 시간보다 최소시간이 길 때 가능한 최소 시간으로 자동 보정하며, −와 +로 5초씩 조절할 수 있습니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 확정하면 선택 시간÷원본 미디어 수로 기본시간을 정해 편집 화면을 거치지 않고 영화를 만들며, 시사회에서 다시 편집을 누르면 퀵모드 영상 길이 화면으로 돌아갑니다. 외부 주소 hanclip://quick으로 바로 실행할 수 있습니다."),
+        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 하단 만들기 버튼은 실제로 생성될 영화 길이를 표시합니다. 영상에서 찾은 서로 다른 중요 순간은 모두 사용하되 각 순간의 재생 시간을 균등하게 줄여 선택한 전체 길이에 맞추며, 가까워서 같은 장면이 반복되는 후보만 제외합니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 저장한 퀵영화를 다시 열면 클립 설정 오른쪽의 퀵모드 버튼으로 영상 길이 화면을 다시 열 수 있으며, 시사회에서 다시 편집을 눌러도 같은 화면으로 돌아갑니다. 외부 주소 hanclip://quick으로 바로 실행할 수 있습니다."),
         ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 엔딩 카드는 보물지도를 기본으로 사용합니다."),
         ("인생 영화", "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다."),
         ("Ai", """
@@ -8682,18 +8732,30 @@ private struct ImportantInfoSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("테마 설정", systemImage: "paintpalette.fill")
 
-            Picker("테마 설정", selection: $themeModeRaw) {
-                ForEach(HanClipThemeMode.visibleModes, id: \.rawValue) { mode in
-                    Text(mode.displayName).tag(mode.rawValue)
+            Button(action: onRequestThemeSelection) {
+                HStack(spacing: 10) {
+                    Text(selectedThemeMode.displayName)
+                        .font(HanClipTypography.rowTitle)
+                        .foregroundStyle(HanClipTheme.text)
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(HanClipTheme.secondary)
                 }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
             }
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .background(
                 HanClipTheme.secondary.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
+            .accessibilityLabel("테마 설정")
+            .accessibilityValue(selectedThemeMode.displayName)
+            .accessibilityHint("첫 화면 로고의 테마 선택창을 엽니다")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -8702,6 +8764,16 @@ private struct ImportantInfoSheet: View {
             HanClipTheme.panelFill.opacity(0.9),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
+    }
+
+    private var selectedThemeMode: HanClipThemeMode {
+        if themeModeRaw == "readableComfort" {
+            return .light
+        }
+        if themeModeRaw == "rosyBrown" || themeModeRaw == "electricCobalt" {
+            return .automatic
+        }
+        return HanClipThemeMode(rawValue: themeModeRaw) ?? .automatic
     }
 
     private var selectedPosition: WatermarkPosition {
@@ -16374,7 +16446,9 @@ private extension OutputAspectRatio {
 
 private struct QuickMovieDurationPicker: View {
     let recommendedDuration: Double
-    let mediaCount: Int
+    let minimumDuration: Double
+    let initialDuration: Double
+    let sceneCount: Int
     let textSettings: WatermarkSettings
     @Binding var textEnabled: Bool
     @Binding var endingInfoEnabled: Bool
@@ -16387,6 +16461,7 @@ private struct QuickMovieDurationPicker: View {
     let onSelectMusic: () -> Void
     let onAddPhoto: () -> Void
     let onAddFile: () -> Void
+    let estimatedTotalDuration: (Double) -> Double
     let onMake: (Double?) -> Void
     let onCancel: () -> Void
 
@@ -16397,7 +16472,9 @@ private struct QuickMovieDurationPicker: View {
 
     init(
         recommendedDuration: Double,
-        mediaCount: Int,
+        minimumDuration: Double,
+        initialDuration: Double,
+        sceneCount: Int,
         textSettings: WatermarkSettings,
         textEnabled: Binding<Bool>,
         endingInfoEnabled: Binding<Bool>,
@@ -16410,11 +16487,15 @@ private struct QuickMovieDurationPicker: View {
         onSelectMusic: @escaping () -> Void,
         onAddPhoto: @escaping () -> Void,
         onAddFile: @escaping () -> Void,
+        estimatedTotalDuration: @escaping (Double) -> Double,
         onMake: @escaping (Double?) -> Void,
         onCancel: @escaping () -> Void
     ) {
+        let normalizedMinimumDuration = max(0.1, minimumDuration)
         self.recommendedDuration = max(1, recommendedDuration)
-        self.mediaCount = mediaCount
+        self.minimumDuration = normalizedMinimumDuration
+        self.initialDuration = max(normalizedMinimumDuration, initialDuration)
+        self.sceneCount = sceneCount
         self.textSettings = textSettings
         _textEnabled = textEnabled
         _endingInfoEnabled = endingInfoEnabled
@@ -16427,9 +16508,14 @@ private struct QuickMovieDurationPicker: View {
         self.onSelectMusic = onSelectMusic
         self.onAddPhoto = onAddPhoto
         self.onAddFile = onAddFile
+        self.estimatedTotalDuration = estimatedTotalDuration
         self.onMake = onMake
         self.onCancel = onCancel
-        _selectedDuration = State(initialValue: max(1, recommendedDuration))
+        let safeInitialDuration = max(normalizedMinimumDuration, initialDuration)
+        _selectedDuration = State(initialValue: safeInitialDuration)
+        _usesRecommendedDuration = State(
+            initialValue: abs(safeInitialDuration - recommendedDuration) < 0.01
+        )
     }
 
     var body: some View {
@@ -16526,9 +16612,12 @@ private struct QuickMovieDurationPicker: View {
                 .scrollIndicators(.hidden)
 
                 Button {
-                    onMake(usesRecommendedDuration ? nil : selectedDuration)
+                    onMake(selectedDuration)
                 } label: {
-                    Text("이 시간으로 만들기")
+                    Text(
+                        "\(sceneCount)개 화면을 "
+                            + "\(durationText(estimatedTotalDuration(selectedDuration)))로 만들기"
+                    )
                         .font(HanClipTypography.primaryCTA)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         .foregroundStyle(.white)
@@ -16663,7 +16752,7 @@ private struct QuickMovieDurationPicker: View {
         let adjustedSeconds = max(seconds, minimumSelectableDuration)
         let isSelected = !usesRecommendedDuration
             && abs(selectedDuration - adjustedSeconds) < 0.01
-        let maximumMediaCount = Int(seconds * 5)
+        let maximumMediaCount = Int(seconds * 10)
         return Button {
             usesRecommendedDuration = false
             selectedDuration = adjustedSeconds
@@ -16696,7 +16785,7 @@ private struct QuickMovieDurationPicker: View {
     }
 
     private var minimumSelectableDuration: Double {
-        max(0.2, Double(mediaCount) * 0.2)
+        minimumDuration
     }
 
     private func specialDurationChoice(
@@ -16734,15 +16823,19 @@ private struct QuickMovieDurationPicker: View {
     }
 
     private func durationText(_ seconds: Double) -> String {
-        if seconds < 1 {
-            return String(format: "%.1f초", seconds)
-        }
-        let rounded = max(1, Int(seconds.rounded()))
-        let minutes = rounded / 60
-        let remainingSeconds = rounded % 60
-        if minutes == 0 { return "\(remainingSeconds)초" }
-        if remainingSeconds == 0 { return "\(minutes)분" }
-        return "\(minutes)분 \(remainingSeconds)초"
+        let tenths = max(0.1, (seconds * 10).rounded() / 10)
+        let wholeSeconds = Int(tenths)
+        let fractionalSeconds = tenths - Double(wholeSeconds)
+        let minutes = wholeSeconds / 60
+        let remainingWholeSeconds = wholeSeconds % 60
+        let remainingSeconds = Double(remainingWholeSeconds)
+            + fractionalSeconds
+        let secondsText = fractionalSeconds < 0.05
+            ? "\(remainingWholeSeconds)"
+            : String(format: "%.1f", remainingSeconds)
+        if minutes == 0 { return "\(secondsText)초" }
+        if remainingSeconds < 0.05 { return "\(minutes)분" }
+        return "\(minutes)분 \(secondsText)초"
     }
 
     @ViewBuilder
