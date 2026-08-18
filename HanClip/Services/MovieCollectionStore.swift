@@ -16,6 +16,11 @@ struct HanClipPlace: Equatable, Sendable {
     }
 }
 
+enum MovieLibraryKind: String, Codable, Sendable {
+    case collection
+    case released
+}
+
 struct CollectedMovie: Codable, Identifiable, Equatable {
     let id: UUID
     var title: String
@@ -30,6 +35,11 @@ struct CollectedMovie: Codable, Identifiable, Equatable {
     var isPinned: Bool?
     var pinnedAt: Date?
     var posterSelectionVersion: Int?
+    var storedLibraryKind: MovieLibraryKind?
+
+    var libraryKind: MovieLibraryKind {
+        storedLibraryKind ?? .collection
+    }
 }
 
 enum CollectionVideoSizeOption: String, CaseIterable, Identifiable {
@@ -138,11 +148,20 @@ private struct AnalyzedPosterFrame {
 final class MovieCollectionStore: ObservableObject {
     static let shared = MovieCollectionStore()
     static let maximumMovieCount = 30
+    static let maximumReleasedMovieCount = 30
     private nonisolated static let currentPosterSelectionVersion = 2
 
     @Published private(set) var movies: [CollectedMovie] = []
     @Published private(set) var aiPosterCompletedCount = 0
     @Published private(set) var aiPosterTotalCount = 0
+
+    var collectionMovies: [CollectedMovie] {
+        movies.filter { $0.libraryKind == .collection }
+    }
+
+    var releasedMovies: [CollectedMovie] {
+        movies.filter { $0.libraryKind == .released }
+    }
 
     private let fileManager = FileManager.default
     private var attemptedPosterRepairs: Set<UUID> = []
@@ -306,11 +325,18 @@ final class MovieCollectionStore: ObservableObject {
         madeAt: Date? = nil,
         shootingRange: ClosedRange<Date>? = nil,
         location: CLLocation? = nil,
-        locationName: String? = nil
+        locationName: String? = nil,
+        libraryKind: MovieLibraryKind = .collection
     ) async throws
         -> CollectedMovie {
-        guard movies.count < Self.maximumMovieCount else {
-            throw MovieCollectionStoreError.collectionFull
+        let currentCount = movies.lazy.filter {
+            $0.libraryKind == libraryKind
+        }.count
+        let maximumCount = libraryKind == .released
+            ? Self.maximumReleasedMovieCount
+            : Self.maximumMovieCount
+        guard currentCount < maximumCount else {
+            throw MovieCollectionStoreError.libraryFull(libraryKind)
         }
         let id = UUID()
         let sourceExtension = sourceURL.pathExtension.isEmpty
@@ -386,7 +412,8 @@ final class MovieCollectionStore: ObservableObject {
                 pinnedAt: nil,
                 posterSelectionVersion: posterData == nil
                     ? nil
-                    : Self.currentPosterSelectionVersion
+                    : Self.currentPosterSelectionVersion,
+                storedLibraryKind: libraryKind
             )
         }.value
         movies.append(movie)
@@ -1191,7 +1218,7 @@ private final class CollectionExportSessionReference: @unchecked Sendable {
 }
 
 private enum MovieCollectionStoreError: LocalizedError {
-    case collectionFull
+    case libraryFull(MovieLibraryKind)
     case movieNotFound
     case compressionUnavailable
     case compressionFailed(String?)
@@ -1199,8 +1226,13 @@ private enum MovieCollectionStoreError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .collectionFull:
-            return "컬렉션에는 영화를 최대 30개까지 보관할 수 있습니다."
+        case .libraryFull(let kind):
+            switch kind {
+            case .collection:
+                return "컬렉션에는 영화를 최대 30개까지 보관할 수 있습니다."
+            case .released:
+                return "개봉영화는 최대 30개까지 보관할 수 있습니다."
+            }
         case .movieNotFound:
             return "컬렉션에서 영상을 찾을 수 없습니다."
         case .compressionUnavailable:

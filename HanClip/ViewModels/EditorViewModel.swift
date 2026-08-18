@@ -146,11 +146,11 @@ final class EditorViewModel: ObservableObject {
     }
 
     var quickRecommendedDuration: Double {
-        Double(max(1, quickContentSceneCount))
+        max(0.2, Double(quickContentSceneCount) * 0.7)
     }
 
     var quickMinimumDuration: Double {
-        max(0.1, Double(quickContentSceneCount) * 0.1)
+        max(0.2, Double(quickContentSceneCount) * 0.2)
     }
 
     var quickDurationPickerInitialDuration: Double {
@@ -2111,14 +2111,21 @@ final class EditorViewModel: ObservableObject {
                 previewTask = nil
                 showPreview = true
                 Task { @MainActor in
-                    try? await MovieCollectionStore.shared.importMovie(
-                        from: storedOutput,
-                        title: automaticCollectionTitle,
-                        madeAt: Date(),
-                        shootingRange: shootingRange,
-                        location: sourceLocation,
-                        locationName: sourceLocationName
-                    )
+                    do {
+                        try await MovieCollectionStore.shared.importMovie(
+                            from: storedOutput,
+                            title: automaticCollectionTitle,
+                            madeAt: Date(),
+                            shootingRange: shootingRange,
+                            location: sourceLocation,
+                            locationName: sourceLocationName,
+                            libraryKind: .released
+                        )
+                    } catch {
+                        self.alertMessage =
+                            "영화는 완성됐지만 개봉영화 보관함에 저장하지 못했습니다. "
+                                + error.localizedDescription
+                    }
                 }
             } catch is CancellationError {
                 progressMessage = ""

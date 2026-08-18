@@ -117,6 +117,7 @@ struct EditorView: View {
     @State private var showEndingInfoSettings = false
     @State private var showBackgroundMusicSettings = false
     @State private var shouldReturnToQuickDurationPicker = false
+    @State private var isOpeningQuickMusicImporter = false
     @State private var isAddingQuickMedia = false
     @State private var showOnlineMusicBrowser = false
     @State private var showAiShotCamera = false
@@ -848,16 +849,7 @@ struct EditorView: View {
                 allowedContentTypes: [.audio],
                 allowsMultipleSelection: false
             ) { result in
-                model.isBackgroundMusicImporterPresented = false
-                switch result {
-                case .success(let urls):
-                    model.importBackgroundMusic(urls)
-                    if model.backgroundMusicSettings.hasMusicFile {
-                        showBackgroundMusicSettings = true
-                    }
-                case .failure(let error):
-                    model.alertMessage = error.localizedDescription
-                }
+                handleBackgroundMusicPickerCompletion(result)
             }
             .ignoresSafeArea()
         }
@@ -1054,7 +1046,7 @@ struct EditorView: View {
         }
         .fullScreenCover(
             isPresented: $showBackgroundMusicSettings,
-            onDismiss: restoreQuickDurationPickerIfNeeded
+            onDismiss: handleBackgroundMusicSettingsDismiss
         ) {
             BackgroundMusicSettingsSheet(
                 settings: $model.backgroundMusicSettings,
@@ -1073,6 +1065,8 @@ struct EditorView: View {
                     model.useSampleBackgroundMusic(sampleTrack)
                 },
                 onPickMusic: {
+                    isOpeningQuickMusicImporter =
+                        shouldReturnToQuickDurationPicker
                     showBackgroundMusicSettings = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         model.openBackgroundMusicPicker()
@@ -3490,6 +3484,39 @@ struct EditorView: View {
         }
     }
 
+    private func handleBackgroundMusicSettingsDismiss() {
+        guard !isOpeningQuickMusicImporter else { return }
+        restoreQuickDurationPickerIfNeeded()
+    }
+
+    private func handleBackgroundMusicPickerCompletion(
+        _ result: Result<[URL], Error>
+    ) {
+        let shouldReopenQuickMusicSettings = isOpeningQuickMusicImporter
+        isOpeningQuickMusicImporter = false
+        model.isBackgroundMusicImporterPresented = false
+
+        switch result {
+        case .success(let urls):
+            model.importBackgroundMusic(urls)
+            if shouldReopenQuickMusicSettings
+                || model.backgroundMusicSettings.hasMusicFile {
+                reopenBackgroundMusicSettingsAfterPickerDismissal()
+            }
+        case .failure(let error):
+            model.alertMessage = error.localizedDescription
+            if shouldReopenQuickMusicSettings {
+                reopenBackgroundMusicSettingsAfterPickerDismissal()
+            }
+        }
+    }
+
+    private func reopenBackgroundMusicSettingsAfterPickerDismissal() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+            showBackgroundMusicSettings = true
+        }
+    }
+
     private func restartAiShotAfterInterruption() {
         guard scenePhase == .active,
               isAiShotRestartPending,
@@ -3609,9 +3636,11 @@ struct EditorView: View {
                 count: max(0, 2 - model.savedProjects.count)
             )
 
+            releasedMovieSection
+
             HStack(spacing: 7) {
                 Text(
-                    "\(movieCollection.movies.count)/"
+                    "\(movieCollection.collectionMovies.count)/"
                         + "\(MovieCollectionStore.maximumMovieCount)"
                 )
                 .font(.system(size: 12, weight: .semibold))
@@ -3643,6 +3672,135 @@ struct EditorView: View {
         }
     }
 
+    private var releasedMovieSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                Text(
+                    "\(movieCollection.releasedMovies.count)/"
+                        + "\(MovieCollectionStore.maximumReleasedMovieCount)"
+                )
+                .font(HanClipTypography.compactNumber)
+                .foregroundStyle(HanClipTheme.secondaryText)
+
+                Spacer()
+
+                Text("🎬")
+                    .font(.system(size: 15))
+                    .frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
+
+                Text("개봉영화")
+                    .font(HanClipTypography.sectionTitle)
+                    .foregroundStyle(HanClipTheme.primaryText.opacity(0.76))
+            }
+            .padding(.horizontal, 18)
+
+            if movieCollection.releasedMovies.isEmpty {
+                Text("완성한 영화가 여기에 표시됩니다.")
+                    .font(HanClipTypography.metadata)
+                    .foregroundStyle(HanClipTheme.secondaryText.opacity(0.86))
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(
+                        HanClipTheme.panelFill.opacity(0.42),
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(
+                                HanClipTheme.panelStroke.opacity(0.55),
+                                lineWidth: 1
+                            )
+                    }
+                    .padding(.horizontal, 18)
+            } else {
+                LazyVGrid(
+                    columns: Array(
+                        repeating: GridItem(.flexible(), spacing: 6),
+                        count: 5
+                    ),
+                    spacing: 8
+                ) {
+                    ForEach(movieCollection.releasedMovies) { movie in
+                        releasedMovieGridCell(movie)
+                    }
+                }
+                .padding(.horizontal, 18)
+            }
+        }
+        .padding(.top, 10)
+    }
+
+    private func releasedMovieGridCell(_ movie: CollectedMovie) -> some View {
+        Button {
+            guard let currentMovie = movieCollection.releasedMovies.first(
+                where: { $0.id == movie.id }
+            ) else { return }
+            HanClipFullscreenVideoOrientationPolicy.prepareForPresentation()
+            selectedCollectionMovie = currentMovie
+        } label: {
+            GeometryReader { proxy in
+                ZStack(alignment: .bottomTrailing) {
+                    if let poster = movieCollection.poster(for: movie) {
+                        Image(uiImage: poster)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(
+                                width: proxy.size.width,
+                                height: proxy.size.height
+                            )
+                            .clipped()
+                    } else {
+                        ZStack {
+                            HanClipTheme.panelFill
+                            Image(systemName: "film.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(HanClipTheme.secondaryText)
+                        }
+                    }
+
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(.black.opacity(0.58), in: Circle())
+                        .padding(4)
+                        .accessibilityHidden(true)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 9))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(
+                            HanClipTheme.panelStroke.opacity(0.72),
+                            lineWidth: 1
+                        )
+                }
+            }
+            .aspectRatio(1, contentMode: .fit)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                beginRenamingCollectionMovie(movie)
+            } label: {
+                Label("제목 수정", systemImage: "pencil")
+            }
+
+            ShareLink(item: movieCollection.videoURL(for: movie)) {
+                Label("공유", systemImage: "square.and.arrow.up")
+            }
+
+            Button(role: .destructive) {
+                withAnimation(.snappy) {
+                    movieCollection.remove(movie)
+                }
+            } label: {
+                Label("개봉영화에서 제거", systemImage: "trash")
+            }
+        }
+        .accessibilityLabel("개봉영화, \(movie.title)")
+        .accessibilityHint("두 번 탭하면 영화를 재생합니다.")
+    }
+
     private var movieCollectionShelf: some View {
         VStack(spacing: 10) {
             LazyVGrid(
@@ -3653,11 +3811,11 @@ struct EditorView: View {
                 alignment: .center,
                 spacing: 12
             ) {
-                ForEach(movieCollection.movies) { movie in
+                ForEach(movieCollection.collectionMovies) { movie in
                     collectionPosterGridCell(movie)
                 }
 
-                if movieCollection.movies.count
+                if movieCollection.collectionMovies.count
                     < MovieCollectionStore.maximumMovieCount {
                     GeometryReader { proxy in
                         collectionImportCard(width: proxy.size.width)
@@ -3723,7 +3881,7 @@ struct EditorView: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(movieCollection.movies.isEmpty)
+            .disabled(movieCollection.collectionMovies.isEmpty)
 
             if isCollectionBulkCompressionExpanded {
                 HStack(spacing: 10) {
@@ -3770,7 +3928,10 @@ struct EditorView: View {
                 }
         }
         .buttonStyle(.plain)
-        .disabled(isCompressingCollectionMovie || movieCollection.movies.isEmpty)
+        .disabled(
+            isCompressingCollectionMovie
+                || movieCollection.collectionMovies.isEmpty
+        )
     }
 
     private func collectionPosterGridCell(
@@ -3784,7 +3945,7 @@ struct EditorView: View {
                     .allowsHitTesting(false)
 
                 Button {
-                    guard let currentMovie = movieCollection.movies.first(
+                    guard let currentMovie = movieCollection.collectionMovies.first(
                         where: { $0.id == movie.id }
                     ) else { return }
                     HanClipFullscreenVideoOrientationPolicy
@@ -4527,12 +4688,18 @@ struct EditorView: View {
     }
 
     private var collectionTitleEditorSheet: some View {
-        NavigationStack {
+        let isReleasedMovie = collectionMovieBeingRenamed?.libraryKind == .released
+
+        return NavigationStack {
             GeometryReader { proxy in
                 let maximumEditorHeight = max(56, proxy.size.height - 170)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("포스터에 표시할 제목을 입력하세요.")
+                    Text(
+                        isReleasedMovie
+                            ? "개봉영화 목록에 표시할 제목을 입력하세요."
+                            : "포스터에 표시할 제목을 입력하세요."
+                    )
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(HanClipTheme.secondaryText)
 
@@ -4561,7 +4728,7 @@ struct EditorView: View {
                 }
                 .padding(18)
             }
-            .navigationTitle("포스터 제목")
+            .navigationTitle(isReleasedMovie ? "개봉영화 제목" : "포스터 제목")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -4643,7 +4810,7 @@ struct EditorView: View {
     private func beginCollectionBulkCompression(
         option: CollectionVideoSizeOption
     ) {
-        let movies = movieCollection.movies
+        let movies = movieCollection.collectionMovies
         guard !movies.isEmpty else { return }
 
         collectionCompressionTask?.cancel()
@@ -8535,7 +8702,7 @@ private struct ImportantInfoSheet: View {
         ("첫 화면", "앱 실행 후 영화 프리셋과 저장된 영화 목록이 보이는 홈 화면입니다."),
         ("iPad 지원", "iPad에서 세로·가로 방향과 분할 화면 크기에 맞춰 사용할 수 있습니다. 넓은 화면에서는 편집 콘텐츠의 읽기 좋은 폭을 유지하며 사진 선택, 공유 확장과 잠금 화면 위젯도 함께 사용할 수 있습니다."),
         ("영화 프리셋", "첫 화면 상단에서 새 영화, 퀵모드, AiShot, 여행 영화, 인생 영화, 골프 영화 중 원하는 설정으로 영화 제작을 시작하는 영역입니다."),
-        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 45초, 1분, 2분, 3분, 5분, 추천시간 또는 최소시간을 고릅니다. 추천시간은 미디어당 1초, 최소시간은 미디어당 0.2초로 계산합니다. 하단 만들기 버튼은 실제로 생성될 영화 길이를 표시합니다. 영상에서 찾은 서로 다른 중요 순간은 모두 사용하되 각 순간의 재생 시간을 균등하게 줄여 선택한 전체 길이에 맞추며, 가까워서 같은 장면이 반복되는 후보만 제외합니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 저장한 퀵영화를 다시 열면 클립 설정 오른쪽의 퀵모드 버튼으로 영상 길이 화면을 다시 열 수 있으며, 시사회에서 다시 편집을 눌러도 같은 화면으로 돌아갑니다. 외부 주소 hanclip://quick으로 바로 실행할 수 있습니다."),
+        ("퀵모드", "새 영화의 기본 설정에 음악을 켠 빠른 제작 기능입니다. 미디어를 고르면 30초, 1분, 3분, 5분, 추천시간, 최소시간 또는 음악 시간에 맞춤을 고릅니다. 추천시간은 화면당 0.7초, 최소시간은 화면당 0.2초로 계산합니다. 음악을 사용 중이고 파일 시간이 확인되며 현재 영상 분량으로 그 길이를 실제로 만들 수 있을 때만 음악 시간에 맞춤 버튼이 활성화되며, 엔딩을 포함한 실제 생성 길이를 음악 길이에 맞춥니다. 하단 만들기 버튼은 실제로 생성될 영화 길이를 표시합니다. 영상에서 찾은 서로 다른 중요 순간은 모두 사용하되 각 순간의 재생 시간을 균등하게 줄여 선택한 전체 길이에 맞추며, 가까워서 같은 장면이 반복되는 후보만 제외합니다. 시간 화면에서 영화 제작과 같은 자막·음악 패널을 사용할 수 있습니다. 저장한 퀵영화를 다시 열면 클립 설정 오른쪽의 퀵모드 버튼으로 영상 길이 화면을 다시 열 수 있으며, 시사회에서 다시 편집을 눌러도 같은 화면으로 돌아갑니다. 외부 주소 hanclip://quick으로 바로 실행할 수 있습니다."),
         ("여행 영화", "기본시간 1초, 라이브포토 영상, 영상 분할, 묶음사진 1/6 자동, 여행 서체와 여행의 설렘 음악을 적용합니다. 촬영 기간과 많이 촬영한 지역 최대 두 곳을 자막에 넣고, 마지막 엔딩 카드는 보물지도를 기본으로 사용합니다."),
         ("인생 영화", "기본시간 2초, 라이브포토 영상, 영상 분할, 묶음사진 1/3 자동과 오늘 날짜 자막을 적용해 삶의 기록을 영화로 만드는 프리셋입니다."),
         ("Ai", """
@@ -8555,7 +8722,8 @@ private struct ImportantInfoSheet: View {
         """),
         ("AiShot", "필요한 순간을 자동으로 찾아 클립에 담는 실시간 촬영 기능입니다. 촬영을 닫을 때까지 계속 살피며, 만들어진 클립은 Ai 영화에 차례로 추가됩니다.\n\n감지 중, 감지 됨, 저장 중으로 촬영 상태를 보여줍니다. 주변 환경에 맞춰 시끄러움, 일반, 조용함, 자동 감도를 선택할 수 있으며 기본값인 자동은 주변 상황에 맞춰 감도를 조절합니다. 샷 시간은 짧게(앞뒤 2초), 일반(앞 2초·뒤 3초), 길게(앞뒤 5초) 중에서 선택하며 촬영 중 변경하면 다음 촬영부터 적용됩니다.\n\n전면 또는 후면 카메라와 줌 배율을 선택해 3:4 화면 비율로 촬영합니다. 필요한 순간에는 촬영 버튼을 눌러 수동으로 클립을 남길 수 있습니다."),
         ("영화 목록", "첫 화면에 저장된 일반 영화와 AiShot 영화가 한 목록에 표시됩니다. 왼쪽의 숫자는 최대 10개 중 현재 저장된 영화 수이며, 각 행의 시간 앞 아이콘은 영화를 시작할 때 사용한 프리셋 종류를 보여줍니다."),
-        ("컬렉션", "완성된 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 컬렉션 선반 아래의 숨김 메뉴에서는 전체 영상을 720p 또는 540p로 일괄 변환하며 이미 해당 해상도 이하인 영상은 유지합니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 실제 기기 방향에 맞춰 앱 화면 방향 자체와 안전영역을 세로·가로로 함께 전환합니다. 한 손가락을 위로 밀어 시작하면 시스템 볼륨을 조절하며 손을 떼지 않고 아래로 되돌리면 음량이 낮아지고, 아래로 밀어 시작하면 플레이어를 닫습니다. 세로와 가로 모두 핀치로 0.5배부터 4배까지 확대·축소하고 확대 상태에서 한 손가락으로 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
+        ("개봉영화", "한클립에서 새로 완성한 영화를 영화 목록 아래에 정사각형 썸네일 5열로 따로 보관합니다. 썸네일을 누르면 전체화면으로 재생하고, 길게 누르면 제목 수정, 공유 또는 개봉영화에서 제거할 수 있습니다. 사진이나 파일에서 직접 가져온 영상은 개봉영화가 아니라 컬렉션에 표시됩니다."),
+        ("컬렉션", "사진이나 파일에서 직접 가져온 영화를 포스터 형태로 최대 30개까지 보관합니다. 기기 내 Vision AI가 영상 여러 구간의 얼굴·주목 영역·구도·밝기·대비·선명도를 비교해 가장 좋은 순간을 포스터로 선택합니다. 기존 포스터도 새 AI 기준으로 한 번 자동 재생성합니다. 포스터 롱터치 메뉴의 썸네일 AI 재선택은 전체화면에서 디바이스 AI 후보 8개와 한클립 AI 후보 8개를 좌우로 비교합니다. 모든 후보에는 실제 제목·핀·제작·촬영·위치·재생시간이 적용됩니다. 재생성을 누르면 지금까지 거절한 후보의 프레임 시간과 이미지 특징을 제외하고 다른 느낌의 후보 16개를 다시 찾습니다. 핀이 꽂힌 포스터는 길게 누른 채 다른 핀 포스터로 끌어 놓아 순서를 바꿀 수 있습니다. 컬렉션 선반 아래의 숨김 메뉴에서는 전체 영상을 720p 또는 540p로 일괄 변환하며 이미 해당 해상도 이하인 영상은 유지합니다. 포스터를 누르면 한클립 전용 전체화면 플레이어로 재생하며, 실제 기기 방향에 맞춰 앱 화면 방향 자체와 안전영역을 세로·가로로 함께 전환합니다. 한 손가락을 위로 밀어 시작하면 시스템 볼륨을 조절하며 손을 떼지 않고 아래로 되돌리면 음량이 낮아지고, 아래로 밀어 시작하면 플레이어를 닫습니다. 세로와 가로 모두 핀치로 0.5배부터 4배까지 확대·축소하고 확대 상태에서 한 손가락으로 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
         ("한클립 전체화면 플레이어", "컬렉션 재생, 웹에서 찾은 동영상 보기, 완성본 시사회가 함께 사용하는 공통 동영상 플레이어입니다. 실제 기기 방향에 맞춰 앱 화면과 안전영역을 전환하며 가로 화면에서는 화면 맞춤과 채우기를 선택할 수 있습니다. 화면을 한 번 누르면 재생하거나 멈추고, 가로 밀기로 재생 위치를 찾습니다. 위로 밀어 시작하면 손을 떼기 전까지 시스템 볼륨 조절로 유지되어 아래로 되돌릴 때 바로 음량이 낮아지며, 아래로 밀어 시작하면 플레이어를 닫습니다. 핀치로 0.5배부터 4배까지 확대·축소하고 확대 상태에서 화면을 이동하며 더블 탭하면 100% 크기로 돌아갑니다."),
         ("테마 선택창", "로고를 길게 눌렀을 때 테마를 선택하는 창입니다."),
         ("첫 화면 이동 팝업", "편집 중 로고를 눌렀을 때 홈 + 저장, 홈으로를 선택하는 창입니다."),
@@ -8589,7 +8757,7 @@ private struct ImportantInfoSheet: View {
         ("촬영 기간 삽입", "선택한 미디어의 첫 촬영일부터 마지막 촬영일까지를 자막에 넣는 기능입니다. 기본 자막이면 기존 문구를 바꾸고, 사용자가 편집한 자막이면 현재 커서 위치에 삽입합니다."),
         ("엔딩", "클립 설정의 음악 아래에 독립된 행으로 표시되며 기본값은 안함입니다. 지도 아이콘과 현재 테마명, 표시 시간 조절, 사용·안함 상태를 한 행에서 설정합니다. 현재 위치 정보가 없어도 사용과 테마를 미리 설정할 수 있고, 이후 위치 정보가 있는 미디어를 추가하면 저장된 설정이 적용됩니다. 촬영 날짜와 위치 정보가 있는 영화의 마지막에 촬영기간과 도시 이동 경로를 여행 기록 카드로 넣습니다. 같은 도시라도 촬영 날짜가 바뀌면 새 일정으로 표시하며, 지역 이동은 차량, 국가 이동은 비행기 아이콘으로 연결합니다. 대한민국은 도시만 표시하고 해외는 국가가 처음 나오거나 바뀔 때만 국가명을 표시합니다. 도시 이름은 줄을 바꾸지 않고 한 줄로 표시합니다. 엔딩 카드 시간은 1~10초 범위에서 0.5초 단위로 조절하며 자막, 보물지도, 여행일정, 랜드마크, 오피스 테마를 선택할 수 있습니다. 퀵모드에서도 같은 행과 설정 화면을 사용합니다."),
         ("엔딩 카드 테마", "영화 마지막 여행 기록 카드의 디자인입니다. 설정 위쪽에서 테마와 표시 시간을 고르고 현재 영화 화면 비율 그대로 실제 결과를 미리 봅니다. 자막은 현재 자막 서체·글자색·그림자를 이어받습니다. 보물지도는 고전 서체와 점선 경로를 사용하며 선택된 보물지도를 다시 누르면 새 경로로 재생성합니다. 여행일정은 DAY 번호 대신 각 지역의 실제 촬영 날짜를 표시합니다. 랜드마크는 국내외 주요 도시의 대표 명소와 iPhone 기본 그림문자를 자동 조합하고 미등록 지역에는 대표 여행 아이콘을 사용합니다. 오피스는 문서번호, 촬영기간, 날짜·지역·이동수단 표가 있는 정형 보고서입니다."),
-        ("컬렉션 포스터", "컬렉션은 영화 포스터를 세로로 이어지는 2열 배열로 보여주며 영화 추가 포스터는 목록의 마지막에 배치합니다. 사진은 영화 제작과 같은 사진·달력 전환 화면을 사용하되 완성 영화를 가져오는 용도이므로 영상만 표시하고 선택합니다. 파일에서도 동영상만 가져옵니다. 가져오는 동안 진행바와 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용하며 제목 수정 입력창은 글의 줄 수에 맞춰 커지고 키보드 위 가용 높이를 넘으면 내부에서 스크롤합니다."),
+        ("컬렉션 포스터", "컬렉션은 사진이나 파일에서 가져온 영화 포스터를 세로로 이어지는 2열 배열로 보여주며 영화 추가 포스터는 목록의 마지막에 배치합니다. 사진은 영화 제작과 같은 사진·달력 전환 화면을 사용하되 완성 영화를 가져오는 용도이므로 영상만 표시하고 선택합니다. 파일에서도 동영상만 가져옵니다. 가져오는 동안 진행바와 완료 개수를 표시합니다. 포스터를 길게 눌러 제목 수정, 공유, 컬렉션 제거를 사용하며 제목 수정 입력창은 글의 줄 수에 맞춰 커지고 키보드 위 가용 높이를 넘으면 내부에서 스크롤합니다."),
         ("워터마크", "카피라이터에서 설정하는 기능입니다. 한클립 로고 또는 사용자가 선택한 표시를 결과 영상에 합성할지 결정합니다."),
         ("외부 호출 주소", "Ai  hanclip://aishot\n퀵모드  hanclip://quick\n파일  hanclip://files\n달력  hanclip://calendar\n사진  hanclip://photo\n검색  hanclip://search\n첫 화면  hanclip://open"),
         ("샘플 음악", """
@@ -8602,7 +8770,7 @@ private struct ImportantInfoSheet: View {
         영화 프리셋의 '여행의 설렘'과 '골프치러 가자'도 HanClip에 포함된 샘플 음악이며 각 프리셋에서 자동으로 선택됩니다.
         """),
         ("외부 음악", """
-        음악 설정 화면의 '브라우저'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다.
+        음악 설정 화면의 '브라우저'는 사용자가 외부 무료 음원 사이트에서 직접 음악을 찾고 다운로드할 수 있도록 Pixabay Music과 Mixkit Music 같은 공식 웹페이지를 여는 기능입니다. HanClip은 이 외부 사이트의 음원을 앱에 내장하거나 샘플 음악으로 재배포하지 않으며, 사용자가 직접 다운로드한 파일을 사용자의 영화 배경음악으로 불러와 합성하는 방식으로 동작합니다. 불러온 음악은 파일명과 전체 재생 시간을 음악 설정 및 영화 화면의 음악 행에 표시합니다.
 
         Pixabay Music과 Mixkit Music에서 다운로드한 음악은 HanClip 내장 샘플 음악이 아니며, 각 음원의 권리와 이용 조건은 해당 사이트의 라이선스와 곡별 안내를 따릅니다. 사용자는 다운로드 시점의 Pixabay Content License, Mixkit License, 곡별 안내, 다운로드 기록을 확인하고 보관한 뒤 자신이 만든 영상에 사용할 책임이 있습니다.
 
@@ -12932,14 +13100,32 @@ private struct EndingInfoSummaryRow: View {
     }
 }
 
+private enum MusicDurationMetadata {
+    static func load(from url: URL?) async -> Double? {
+        guard let url,
+              let duration = try? await AVURLAsset(url: url).load(.duration)
+        else { return nil }
+        let seconds = duration.seconds
+        return seconds.isFinite && seconds > 0 ? seconds : nil
+    }
+
+    static func text(_ duration: Double) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let hours = totalSeconds / 3_600
+        let minutes = totalSeconds % 3_600 / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
 private struct BackgroundMusicSummaryRow: View {
     let settings: BackgroundMusicSettings
     @Binding var isEnabled: Bool
     let onSelect: () -> Void
-
-    private var musicTitle: String {
-        settings.hasMusicFile ? settings.displayTitle : "음악 파일 선택"
-    }
+    @State private var musicDuration: Double?
 
     private var detailText: String {
         guard settings.hasMusicFile else {
@@ -12992,11 +13178,24 @@ private struct BackgroundMusicSummaryRow: View {
 
                 Button(action: onSelect) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(musicTitle)
+                        HStack(spacing: 4) {
+                            Text(
+                                settings.hasMusicFile
+                                    ? settings.displayTitle
+                                    : "음악 파일 선택"
+                            )
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                            if let musicDuration {
+                                Text(
+                                    "· \(MusicDurationMetadata.text(musicDuration))"
+                                )
+                                    .fixedSize()
+                            }
+                        }
                             .font(HanClipTypography.secondary)
                             .foregroundStyle(HanClipTheme.primaryText.opacity(0.74))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
 
                         Text(detailText)
                             .font(HanClipTypography.metadata)
@@ -13014,11 +13213,18 @@ private struct BackgroundMusicSummaryRow: View {
         .contentShape(Rectangle())
         .accessibilityLabel("음악")
         .accessibilityHint("음악 설정 화면을 엽니다.")
+        .task(id: settings.fileURL) {
+            let fileURL = settings.fileURL
+            let duration = await MusicDurationMetadata.load(from: fileURL)
+            guard !Task.isCancelled, settings.fileURL == fileURL else { return }
+            musicDuration = duration
+        }
     }
 
     private static func percentText(_ value: Double) -> String {
         "\(Int((min(max(value, 0), 1) * 100).rounded()))%"
     }
+
 }
 
 private struct InlineStatusSegmentedControl: View {
@@ -13201,6 +13407,7 @@ private struct BackgroundMusicSettingsSheet: View {
     @State private var originalSessionState: SessionState?
     @State private var isOpeningMusicPicker = false
     @State private var showOnlineMusicBrowser = false
+    @State private var selectedMusicDuration: Double?
 
     var body: some View {
         NavigationStack {
@@ -13311,6 +13518,12 @@ private struct BackgroundMusicSettingsSheet: View {
         .onChange(of: musicVolume) { _, volume in
             previewPlayer?.volume = previewVolume(for: volume)
         }
+        .task(id: settings.fileURL) {
+            let fileURL = settings.fileURL
+            let duration = await MusicDurationMetadata.load(from: fileURL)
+            guard !Task.isCancelled, settings.fileURL == fileURL else { return }
+            selectedMusicDuration = duration
+        }
         .onDisappear {
             stopPreview()
             restoreDisabledStateIfUnchanged()
@@ -13391,10 +13604,20 @@ private struct BackgroundMusicSettingsSheet: View {
             }
 
             if settings.hasMusicFile && !isBundledSampleSelected {
-                Text(settings.displayTitle)
+                HStack(spacing: 4) {
+                    Text(settings.displayTitle)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if let selectedMusicDuration {
+                        Text(
+                            "· \(MusicDurationMetadata.text(selectedMusicDuration))"
+                        )
+                            .fixedSize()
+                    }
+                }
                     .font(HanClipTypography.metadata)
                     .foregroundStyle(HanClipTheme.text.opacity(0.56))
-                    .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
         }
@@ -13737,6 +13960,7 @@ private struct BackgroundMusicSettingsSheet: View {
     private static func percentText(_ value: Double) -> String {
         "\(Int((min(max(value, 0), 1) * 100).rounded()))%"
     }
+
 }
 
 private enum BrowserDownloadKind: Equatable {
@@ -16577,6 +16801,8 @@ private struct QuickMovieDurationPicker: View {
 
     @State private var selectedDuration: Double
     @State private var usesRecommendedDuration = true
+    @State private var usesMusicDuration = false
+    @State private var musicDuration: Double?
     @AppStorage("hanClipThemeMode") private var themeModeRaw =
         HanClipThemeMode.automatic.rawValue
 
@@ -16601,8 +16827,11 @@ private struct QuickMovieDurationPicker: View {
         onMake: @escaping (Double?) -> Void,
         onCancel: @escaping () -> Void
     ) {
-        let normalizedMinimumDuration = max(0.1, minimumDuration)
-        self.recommendedDuration = max(1, recommendedDuration)
+        let normalizedMinimumDuration = max(0.2, minimumDuration)
+        self.recommendedDuration = max(
+            normalizedMinimumDuration,
+            recommendedDuration
+        )
         self.minimumDuration = normalizedMinimumDuration
         self.initialDuration = max(normalizedMinimumDuration, initialDuration)
         self.sceneCount = sceneCount
@@ -16696,9 +16925,7 @@ private struct QuickMovieDurationPicker: View {
                             spacing: 12
                         ) {
                             durationChoice("30초", seconds: 30)
-                            durationChoice("45초", seconds: 45)
                             durationChoice("1분", seconds: 60)
-                            durationChoice("2분", seconds: 120)
                             durationChoice("3분", seconds: 180)
                             durationChoice("5분", seconds: 300)
                             specialDurationChoice(
@@ -16712,6 +16939,8 @@ private struct QuickMovieDurationPicker: View {
                                 usesDefaultDuration: false
                             )
                         }
+
+                        musicDurationChoice
 
                         quickSettingsGroup
                             .padding(.top, 4)
@@ -16747,6 +16976,24 @@ private struct QuickMovieDurationPicker: View {
         .buttonStyle(.plain)
         .safeAreaPadding(.top, 6)
         .safeAreaPadding(.bottom, 6)
+        .task(id: musicSettings.fileURL) {
+            let fileURL = musicSettings.fileURL
+            let duration = await MusicDurationMetadata.load(from: fileURL)
+            guard !Task.isCancelled, musicSettings.fileURL == fileURL else {
+                return
+            }
+            musicDuration = duration
+        }
+        .onChange(of: musicMatchedContentDuration) { _, duration in
+            guard usesMusicDuration else { return }
+            guard let duration else {
+                usesMusicDuration = false
+                usesRecommendedDuration = true
+                selectedDuration = recommendedDuration
+                return
+            }
+            selectedDuration = duration
+        }
     }
 
     private var quickSettingsGroup: some View {
@@ -16805,6 +17052,7 @@ private struct QuickMovieDurationPicker: View {
         HStack(spacing: 8) {
             Button {
                 usesRecommendedDuration = false
+                usesMusicDuration = false
                 selectedDuration = max(
                     minimumSelectableDuration,
                     selectedDuration - 5
@@ -16831,6 +17079,7 @@ private struct QuickMovieDurationPicker: View {
 
             Button {
                 usesRecommendedDuration = false
+                usesMusicDuration = false
                 selectedDuration = min(3_600, selectedDuration + 5)
             } label: {
                 Image(systemName: "plus")
@@ -16848,6 +17097,7 @@ private struct QuickMovieDurationPicker: View {
         .overlay {
             Capsule().stroke(
                 usesRecommendedDuration
+                    || usesMusicDuration
                     ? HanClipTheme.primary.opacity(0.42)
                     : HanClipTheme.secondary.opacity(0.20),
                 lineWidth: 1
@@ -16861,10 +17111,12 @@ private struct QuickMovieDurationPicker: View {
     ) -> some View {
         let adjustedSeconds = max(seconds, minimumSelectableDuration)
         let isSelected = !usesRecommendedDuration
+            && !usesMusicDuration
             && abs(selectedDuration - adjustedSeconds) < 0.01
-        let maximumMediaCount = Int(seconds * 10)
+        let maximumMediaCount = Int((seconds / 0.2).rounded(.down))
         return Button {
             usesRecommendedDuration = false
+            usesMusicDuration = false
             selectedDuration = adjustedSeconds
         } label: {
             VStack(spacing: 3) {
@@ -16898,15 +17150,91 @@ private struct QuickMovieDurationPicker: View {
         minimumDuration
     }
 
+    private var musicMatchedContentDuration: Double? {
+        guard musicEnabled,
+              musicSettings.hasMusicFile,
+              let musicDuration
+        else { return nil }
+
+        let endingDuration = endingInfoEnabled ? endingInfoDuration : 0
+        let targetContentDuration = max(
+            minimumSelectableDuration,
+            musicDuration - endingDuration
+        )
+        let achievedTotalDuration = estimatedTotalDuration(
+            targetContentDuration
+        )
+        guard abs(achievedTotalDuration - musicDuration) < 0.05 else {
+            return nil
+        }
+        return targetContentDuration
+    }
+
+    private var musicDurationChoice: some View {
+        let isSelected = usesMusicDuration
+            && musicMatchedContentDuration != nil
+
+        return Button {
+            guard let musicMatchedContentDuration else { return }
+            usesRecommendedDuration = false
+            usesMusicDuration = true
+            selectedDuration = musicMatchedContentDuration
+        } label: {
+            VStack(spacing: 3) {
+                Text("음악 시간에 맞춤")
+                    .font(HanClipTypography.rowTitle)
+                Text(musicDurationChoiceDetail)
+                    .font(HanClipTypography.caption)
+                    .opacity(0.70)
+            }
+            .foregroundStyle(
+                isSelected ? Color.white : HanClipTheme.primaryText
+            )
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 58)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? HanClipTheme.primary
+                    : HanClipTheme.secondary.opacity(0.08),
+                in: Capsule()
+            )
+        }
+        .disabled(musicMatchedContentDuration == nil)
+        .opacity(musicMatchedContentDuration == nil ? 0.46 : 1)
+        .accessibilityHint(
+            musicMatchedContentDuration != nil
+                ? "영화 길이를 음악의 전체 재생 시간에 맞춥니다."
+                : musicDurationChoiceDetail
+        )
+    }
+
+    private var musicDurationChoiceDetail: String {
+        guard musicSettings.hasMusicFile else {
+            return "음악 선택 후 사용"
+        }
+        guard musicEnabled else {
+            return "음악 사용 설정 후 이용 가능"
+        }
+        guard let musicDuration else { return "시간 확인 중…" }
+        guard musicMatchedContentDuration != nil else {
+            return "영상 분량이 부족해 맞출 수 없음"
+        }
+        return MusicDurationMetadata.text(musicDuration)
+    }
+
     private func specialDurationChoice(
         title: String,
         duration: Double,
         usesDefaultDuration: Bool
     ) -> some View {
         let isSelected = usesRecommendedDuration == usesDefaultDuration
+            && !usesMusicDuration
             && abs(selectedDuration - duration) < 0.01
         return Button {
             usesRecommendedDuration = usesDefaultDuration
+            usesMusicDuration = false
             selectedDuration = duration
         } label: {
             VStack(spacing: 3) {
