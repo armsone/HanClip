@@ -159,6 +159,8 @@ enum ProjectStore {
                         audioWaveform: clip.audioWaveform,
                         audioPeakTime: clip.audioPeakTime,
                         audioPeakTimes: clip.audioPeakTimes,
+                        audioAvailability: clip.audioAvailability.rawValue,
+                        highlightSource: clip.highlightSource.rawValue,
                         videoSegmentMode: clip.videoSegmentMode.rawValue,
                         isVideoSegmentParent: clip.isVideoSegmentParent,
                         videoSegmentParentID: clip.videoSegmentParentID,
@@ -394,6 +396,12 @@ enum ProjectStore {
                     audioWaveform: storedClip.audioWaveform ?? [],
                     audioPeakTime: storedClip.audioPeakTime,
                     audioPeakTimes: storedClip.audioPeakTimes ?? [],
+                    audioAvailability: storedClip.audioAvailability
+                        .flatMap(ClipAudioAvailability.init(rawValue:))
+                        ?? .unknown,
+                    highlightSource: storedClip.highlightSource
+                        .flatMap(ClipHighlightSource.init(rawValue:))
+                        ?? .audio,
                     videoSegmentMode: storedClip.videoSegmentMode
                         .map(VideoSegmentMode.init(storedValue:)) ?? .single,
                     isVideoSegmentParent: storedClip.isVideoSegmentParent
@@ -899,6 +907,8 @@ private struct StoredClip: Codable {
     let audioWaveform: [Double]?
     let audioPeakTime: Double?
     let audioPeakTimes: [Double]?
+    let audioAvailability: String?
+    let highlightSource: String?
     let videoSegmentMode: String?
     let isVideoSegmentParent: Bool?
     let videoSegmentParentID: UUID?

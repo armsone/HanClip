@@ -89,6 +89,8 @@ private struct ClipEditSignature: Equatable {
     let trimStart: Double
     let audioPeakTime: Double?
     let audioPeakTimes: [Double]
+    let audioAvailability: ClipAudioAvailability
+    let highlightSource: ClipHighlightSource
     let videoSegmentMode: VideoSegmentMode
     let isVideoSegmentParent: Bool
     let videoSegmentParentID: UUID?
@@ -1268,6 +1270,8 @@ final class EditorViewModel: ObservableObject {
                     audioWaveform: sourceClip.audioWaveform,
                     audioPeakTime: peak,
                     audioPeakTimes: peaks,
+                    audioAvailability: sourceClip.audioAvailability,
+                    highlightSource: sourceClip.highlightSource,
                     videoSegmentMode: .single,
                     videoSegmentParentID: sourceClip.id,
                     isVideoSegmentSelected: true,
@@ -1623,6 +1627,8 @@ final class EditorViewModel: ObservableObject {
                     audioWaveform: analysis?.waveform ?? [],
                     audioPeakTime: triggerTime,
                     audioPeakTimes: analysis?.peakTimes ?? [triggerTime],
+                    audioAvailability: analysis?.audioAvailability ?? .unknown,
+                    highlightSource: analysis?.highlightSource ?? .audio,
                     sourcePixelSize: thumbnail.size
                 )
 
@@ -3847,6 +3853,8 @@ final class EditorViewModel: ObservableObject {
             trimStart: roundedSignatureValue(clip.trimStart),
             audioPeakTime: clip.audioPeakTime.map(roundedSignatureValue),
             audioPeakTimes: clip.audioPeakTimes.map(roundedSignatureValue),
+            audioAvailability: clip.audioAvailability,
+            highlightSource: clip.highlightSource,
             videoSegmentMode: clip.videoSegmentMode,
             isVideoSegmentParent: clip.isVideoSegmentParent,
             videoSegmentParentID: clip.videoSegmentParentID,
@@ -4908,6 +4916,8 @@ final class EditorViewModel: ObservableObject {
                 clips[index].audioWaveform = analysis.waveform
                 clips[index].audioPeakTime = analysis.peakTime
                 clips[index].audioPeakTimes = analysis.peakTimes
+                clips[index].audioAvailability = analysis.audioAvailability
+                clips[index].highlightSource = analysis.highlightSource
             }
 
             let updatedClip = clips[index]
@@ -5005,6 +5015,8 @@ final class EditorViewModel: ObservableObject {
                 audioWaveform: sourceClip.audioWaveform,
                 audioPeakTime: peak,
                 audioPeakTimes: peaks,
+                audioAvailability: sourceClip.audioAvailability,
+                highlightSource: sourceClip.highlightSource,
                 videoSegmentMode: .single,
                 videoSegmentParentID: sourceClip.id,
                 isVideoSegmentSelected: true,

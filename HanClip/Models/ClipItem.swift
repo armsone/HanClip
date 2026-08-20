@@ -500,6 +500,8 @@ struct ClipItem: Identifiable {
     var audioWaveform: [Double]
     var audioPeakTime: Double?
     var audioPeakTimes: [Double]
+    var audioAvailability: ClipAudioAvailability
+    var highlightSource: ClipHighlightSource
     var videoSegmentMode: VideoSegmentMode
     var isVideoSegmentParent: Bool
     var videoSegmentParentID: UUID?
@@ -533,6 +535,8 @@ struct ClipItem: Identifiable {
         audioWaveform: [Double] = [],
         audioPeakTime: Double? = nil,
         audioPeakTimes: [Double] = [],
+        audioAvailability: ClipAudioAvailability = .unknown,
+        highlightSource: ClipHighlightSource = .audio,
         videoSegmentMode: VideoSegmentMode = .single,
         isVideoSegmentParent: Bool = false,
         videoSegmentParentID: UUID? = nil,
@@ -571,6 +575,8 @@ struct ClipItem: Identifiable {
         self.audioWaveform = audioWaveform
         self.audioPeakTime = audioPeakTime
         self.audioPeakTimes = audioPeakTimes
+        self.audioAvailability = audioAvailability
+        self.highlightSource = highlightSource
         self.videoSegmentMode = videoSegmentMode
         self.isVideoSegmentParent = isVideoSegmentParent
         self.videoSegmentParentID = videoSegmentParentID
@@ -645,6 +651,8 @@ struct ClipItem: Identifiable {
             audioWaveform: audioWaveform,
             audioPeakTime: audioPeakTime,
             audioPeakTimes: audioPeakTimes,
+            audioAvailability: audioAvailability,
+            highlightSource: highlightSource,
             videoSegmentMode: videoSegmentMode,
             isVideoSegmentParent: isVideoSegmentParent,
             videoSegmentParentID: videoSegmentParentID,
@@ -711,6 +719,8 @@ enum VideoClipSegmenter {
                 audioWaveform: analysis?.waveform ?? [],
                 audioPeakTime: peak,
                 audioPeakTimes: rankedPeaks,
+                audioAvailability: analysis?.audioAvailability ?? .unknown,
+                highlightSource: analysis?.highlightSource ?? .audio,
                 videoSegmentMode: segmentCount > 1 ? .multiple : .single,
                 sourcePixelSize: sourcePixelSize
             )

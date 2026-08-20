@@ -711,9 +711,28 @@ struct VideoTrimEditor: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(HanClipTheme.primary.opacity(0.18), lineWidth: 1)
             }
+            .overlay(alignment: .topLeading) {
+                if clip.highlightSource != .audio {
+                    Text(clip.highlightSource.displayTitle)
+                        .font(HanClipTypography.compactNumber)
+                        .foregroundStyle(HanClipTheme.primaryText.opacity(0.72))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            HanClipTheme.background.opacity(0.78),
+                            in: Capsule()
+                        )
+                        .padding(8)
+                        .allowsHitTesting(false)
+                }
+            }
             .shadow(color: Color.black.opacity(0.08), radius: 8, y: 3)
         }
-        .accessibilityLabel("사운드 인디케이터와 영상 선택 구간")
+        .accessibilityLabel(
+            clip.highlightSource == .audio
+                ? "사운드 인디케이터와 영상 선택 구간"
+                : "\(clip.highlightSource.displayTitle)와 영상 선택 구간"
+        )
     }
 
     private func playbackPositionBar(
@@ -1190,7 +1209,7 @@ struct VideoTrimEditor: View {
     private var waveformValues: [Double] {
         let displaySampleCount = 80
         let source = clip.audioWaveform.isEmpty
-            ? Array(repeating: 0.08, count: displaySampleCount)
+            ? Array(repeating: 0.02, count: displaySampleCount)
             : clip.audioWaveform
         let sampledValues: [Double]
 
@@ -1300,6 +1319,8 @@ struct VideoTrimEditor: View {
                 clip.audioWaveform = analysis.waveform
                 clip.audioPeakTime = analysis.peakTime
                 clip.audioPeakTimes = analysis.peakTimes
+                clip.audioAvailability = analysis.audioAvailability
+                clip.highlightSource = analysis.highlightSource
                 selectionCenterMarkerTime = analysis.peakTime
             }
         }

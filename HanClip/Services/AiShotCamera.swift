@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import Vision
 import SwiftUI
 import UIKit
 
@@ -1907,11 +1908,30 @@ private struct AiShotVisualSignal {
     let score: Double
 }
 
+private struct AiShotPendingImpact {
+    let time: CFTimeInterval
+    let metrics: AudioImpactMetrics
+    let decision: AudioImpactDecision
+}
+
+private struct AiShotPoseTarget: Sendable {
+    let centerX: Double
+    let centerY: Double
+    let bodyScale: Double
+}
+
+private struct AiShotPoseResult: Sendable {
+    let sample: GolfSwingPoseSample
+    let target: AiShotPoseTarget
+}
+
 final class AiShotCameraController: NSObject, ObservableObject,
     @unchecked Sendable
 {
     private static let captureRenderSize = CGSize(width: 1080, height: 1440)
-    private static let visualAnalysisInterval: CFTimeInterval = 0.22
+    private static let visualAnalysisInterval: CFTimeInterval = 0.10
+    private static let poseAnalysisInterval: CFTimeInterval = 0.20
+    private static let poseResultMaximumAge: CFTimeInterval = 0.65
     private static let readyPromptSuppressionDuration: CFTimeInterval = 1.05
     private static let defaultDisplayZoomFactor: CGFloat = 1
 
@@ -1949,6 +1969,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
         label: "hanclip.aiShot.session"
     )
     private let audioQueue = DispatchQueue(label: "hanclip.aiShot.audio")
+    private let poseQueue = DispatchQueue(label: "hanclip.aiShot.pose")
     private let movieOutput = AVCaptureMovieFileOutput()
     private let audioOutput = AVCaptureAudioDataOutput()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -1964,6 +1985,18 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private var visualBaseline = 0.04
     private var lastVisualFrame: AiShotVisualFrame?
     private var latestVisualSignal = AiShotVisualSignal(time: 0, score: 0)
+    private var swingMotionAnalyzer = GolfSwingMotionAnalyzer()
+    private var latestMotionImpactSignal: GolfSwingMotionSignal?
+    private var swingPoseAnalyzer = GolfSwingPoseAnalyzer()
+    private var latestPoseSignal: GolfSwingPoseSignal?
+    private var latestPoseObservationConfidence = 0.0
+    private var poseTarget: AiShotPoseTarget?
+    private var lastPoseAnalysisTime: CFTimeInterval = 0
+    private var lastValidPoseTime: CFTimeInterval = 0
+    private var poseRequestInFlight = false
+    private var analysisGeneration = 0
+    private var isAutomaticAnalysisSuspended = false
+    private var pendingImpact: AiShotPendingImpact?
     private var lastVisualAnalysisTime: CFTimeInterval = 0
     private var didRequestStop = false
     private var didAnnounceReady = false
@@ -2022,6 +2055,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.isActive = false
+            self.suspendAutomaticAnalysis()
             if self.movieOutput.isRecording {
                 self.movieOutput.stopRecording()
             }
@@ -2087,16 +2121,26 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private func updateCaptureRotationAngle(_ angle: CGFloat) {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            let didRotate = abs(self.captureRotationAngle - angle) >= 1
             self.captureRotationAngle = angle
             self.applyCaptureRotationAngle()
+            if didRotate {
+                self.audioQueue.async { [weak self] in
+                    self?.resetVisualAnalysis()
+                }
+            }
         }
     }
 
     private func applyCaptureRotationAngle() {
-        guard let connection = movieOutput.connection(with: .video),
-              connection.isVideoRotationAngleSupported(captureRotationAngle)
-        else { return }
-        connection.videoRotationAngle = captureRotationAngle
+        for output in [movieOutput, videoOutput] {
+            guard let connection = output.connection(with: .video),
+                  connection.isVideoRotationAngleSupported(
+                    captureRotationAngle
+                  )
+            else { continue }
+            connection.videoRotationAngle = captureRotationAngle
+        }
     }
 
     @objc private func sessionWasInterrupted(_ notification: Notification) {
@@ -2122,6 +2166,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private func beginSessionRecovery() {
         guard isActive else { return }
         isRecoveringFromInterruption = true
+        suspendAutomaticAnalysis()
         discardNextRecordingResult = movieOutput.isRecording
         triggerTime = nil
         didRequestStop = false
@@ -2176,6 +2221,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
             else { return }
 
             let isFinishingTriggeredCapture = self.triggerTime != nil
+            self.suspendAutomaticAnalysis()
             self.pendingCameraPosition = self.activeCameraPosition == .back
                 ? .front
                 : .back
@@ -2211,6 +2257,9 @@ final class AiShotCameraController: NSObject, ObservableObject,
                 try device.lockForConfiguration()
                 device.videoZoomFactor = zoom
                 device.unlockForConfiguration()
+                self.audioQueue.async { [weak self] in
+                    self?.resetVisualAnalysis()
+                }
                 DispatchQueue.main.async {
                     self.zoomFactor = zoom
                         * self.activeDisplayZoomMultiplier
@@ -2521,15 +2570,19 @@ final class AiShotCameraController: NSObject, ObservableObject,
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mov")
         outputURL = url
-        recordingStartTime = CACurrentMediaTime()
-        triggerTime = nil
+        let newRecordingStartTime = CACurrentMediaTime()
         activeDurationPreset = nil
         didRequestStop = false
         didAnnounceReady = false
         readyPromptSuppressionUntil = 0
-        baseline = 0.008
-        recentLevel = 0.008
-        resetVisualAnalysis()
+        audioQueue.sync {
+            recordingStartTime = newRecordingStartTime
+            triggerTime = nil
+            baseline = 0.008
+            recentLevel = 0.008
+            resetVisualAnalysis()
+            isAutomaticAnalysisSuspended = false
+        }
 
         updateStatus("준비 중")
         DispatchQueue.main.async {
@@ -2587,29 +2640,51 @@ final class AiShotCameraController: NSObject, ObservableObject,
             previousRecentLevel: previousRecentLevel,
             sensitivity: sensitivity.audioImpactSensitivity
         )
-        let visualScore = AudioImpactClassifier
-            .currentModelVersion
-            .supportsRealtimeVisualAssist
-            ? recentVisualScore(at: elapsed)
-            : 0
-        let isVisuallySupportedImpact = visualScore >= 0.62
-            && decision.confidence + visualScore * 0.32 >= 0.96
-            && score >= max(0.04, baseline * 1.45)
-        let isInsideReadyPromptWindow = elapsed < readyPromptSuppressionUntil
-        let isClearlyPhysicalImpact = visualScore >= 0.5
-            && score >= max(0.16, baseline * 2.4)
-            && metrics.peak >= 0.25
-        let isAudioTriggerAllowed = decision.isTriggered
-            && (!isInsideReadyPromptWindow || isClearlyPhysicalImpact)
-        let isVisualTriggerAllowed = isVisuallySupportedImpact
-            && (!isInsideReadyPromptWindow || isClearlyPhysicalImpact)
-        guard isAudioTriggerAllowed || isVisualTriggerAllowed else {
+        guard !isAutomaticAnalysisSuspended else { return }
+        if !AudioImpactClassifier.currentModelVersion
+            .usesGolfSwingMotionFusion {
+            let visualScore = AudioImpactClassifier
+                .currentModelVersion
+                .supportsRealtimeVisualAssist
+                ? recentVisualScore(at: elapsed)
+                : 0
+            let isVisuallySupportedImpact = visualScore >= 0.62
+                && decision.confidence + visualScore * 0.32 >= 0.96
+                && score >= max(0.04, baseline * 1.45)
+            let isInsideReadyPromptWindow =
+                elapsed < readyPromptSuppressionUntil
+            let isClearlyPhysicalImpact = visualScore >= 0.5
+                && score >= max(0.16, baseline * 2.4)
+                && metrics.peak >= 0.25
+            let isAudioTriggerAllowed = decision.isTriggered
+                && (!isInsideReadyPromptWindow || isClearlyPhysicalImpact)
+            let isVisualTriggerAllowed = isVisuallySupportedImpact
+                && (!isInsideReadyPromptWindow || isClearlyPhysicalImpact)
+            guard isAudioTriggerAllowed || isVisualTriggerAllowed else {
+                return
+            }
+            activeDurationPreset = durationPreset
+            triggerTime = elapsed
+            requestStopAfterTrigger()
             return
         }
 
-        activeDurationPreset = durationPreset
-        triggerTime = elapsed
-        requestStopAfterTrigger()
+        if let pendingImpact,
+           elapsed - pendingImpact.time > Self.poseResultMaximumAge {
+            self.pendingImpact = nil
+        }
+        guard decision.isTriggered else { return }
+
+        let candidate = AiShotPendingImpact(
+            time: elapsed,
+            metrics: metrics,
+            decision: decision
+        )
+        pendingImpact = candidate
+        _ = attemptAutomaticTrigger(
+            candidate,
+            referenceTime: elapsed
+        )
     }
 
     private func soundMetrics(
@@ -2687,10 +2762,28 @@ final class AiShotCameraController: NSObject, ObservableObject,
     }
 
     private func resetVisualAnalysis() {
+        analysisGeneration += 1
         lastVisualFrame = nil
         latestVisualSignal = AiShotVisualSignal(time: 0, score: 0)
         lastVisualAnalysisTime = 0
         visualBaseline = 0.04
+        swingMotionAnalyzer.reset()
+        latestMotionImpactSignal = nil
+        swingPoseAnalyzer.reset()
+        latestPoseSignal = nil
+        latestPoseObservationConfidence = 0
+        poseTarget = nil
+        lastPoseAnalysisTime = 0
+        lastValidPoseTime = 0
+        pendingImpact = nil
+    }
+
+    private func suspendAutomaticAnalysis() {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.isAutomaticAnalysisSuspended = true
+            self.resetVisualAnalysis()
+        }
     }
 
     private func recentVisualScore(at elapsed: CFTimeInterval) -> Double {
@@ -2699,8 +2792,15 @@ final class AiShotCameraController: NSObject, ObservableObject,
     }
 
     private func handleVideoSample(_ sampleBuffer: CMSampleBuffer) {
-        guard let recordingStartTime, triggerTime == nil else { return }
+        guard !isAutomaticAnalysisSuspended,
+              let recordingStartTime,
+              triggerTime == nil
+        else { return }
         let elapsed = CACurrentMediaTime() - recordingStartTime
+        schedulePoseAnalysisIfNeeded(
+            sampleBuffer,
+            elapsed: elapsed
+        )
         guard elapsed - lastVisualAnalysisTime
             >= Self.visualAnalysisInterval
         else { return }
@@ -2718,11 +2818,11 @@ final class AiShotCameraController: NSObject, ObservableObject,
               previous.cells.count == frame.cells.count
         else { return }
 
-        var motion = 0.0
-        for index in frame.cells.indices {
-            motion += abs(frame.cells[index] - previous.cells[index])
+        let differences = frame.cells.indices.map {
+            abs(frame.cells[$0] - previous.cells[$0])
         }
-        motion /= Double(max(1, frame.cells.count))
+        let motion = differences.reduce(0, +)
+            / Double(max(1, differences.count))
 
         let brightnessChange = abs(
             frame.averageBrightness - previous.averageBrightness
@@ -2738,6 +2838,413 @@ final class AiShotCameraController: NSObject, ObservableObject,
                 + min(1, brightnessChange * 3.0) * 0.24
         )
         latestVisualSignal = AiShotVisualSignal(time: elapsed, score: score)
+
+        let swingSample = golfSwingVisualSample(
+            frame: frame,
+            previous: previous,
+            differences: differences
+        )
+        let swingSignal = swingMotionAnalyzer.observe(swingSample)
+        if swingSignal.isImpactWindow {
+            latestMotionImpactSignal = swingSignal
+        }
+        guard swingSignal.isImpactWindow,
+              let pendingImpact,
+              elapsed - pendingImpact.time <= 0.20
+        else { return }
+        _ = attemptAutomaticTrigger(
+            pendingImpact,
+            referenceTime: elapsed
+        )
+    }
+
+    private func schedulePoseAnalysisIfNeeded(
+        _ sampleBuffer: CMSampleBuffer,
+        elapsed: CFTimeInterval
+    ) {
+        guard AudioImpactClassifier.currentModelVersion.usesBodyPoseAssist,
+              !poseRequestInFlight,
+              ProcessInfo.processInfo.thermalState != .critical,
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+        else { return }
+
+        let interval: CFTimeInterval
+        if ProcessInfo.processInfo.isLowPowerModeEnabled {
+            interval = 0.33
+        } else if ProcessInfo.processInfo.thermalState == .serious {
+            interval = 0.40
+        } else {
+            interval = Self.poseAnalysisInterval
+        }
+        guard elapsed - lastPoseAnalysisTime >= interval else { return }
+
+        lastPoseAnalysisTime = elapsed
+        poseRequestInFlight = true
+        let generation = analysisGeneration
+        let target = poseTarget
+
+        poseQueue.async { [weak self] in
+            guard let self else { return }
+            let result = Self.detectGolfPose(
+                in: pixelBuffer,
+                elapsed: elapsed,
+                target: target
+            )
+            self.audioQueue.async { [weak self] in
+                guard let self else { return }
+                self.poseRequestInFlight = false
+                guard generation == self.analysisGeneration,
+                      self.isActive,
+                      self.triggerTime == nil,
+                      let recordingStartTime = self.recordingStartTime
+                else { return }
+                let now = CACurrentMediaTime() - recordingStartTime
+                guard now - elapsed <= Self.poseResultMaximumAge else {
+                    return
+                }
+
+                guard let result else {
+                    if elapsed - self.lastValidPoseTime > 0.35 {
+                        self.swingPoseAnalyzer.reset()
+                        self.latestPoseSignal = nil
+                        self.latestPoseObservationConfidence = 0
+                        if elapsed - self.lastValidPoseTime > 0.60 {
+                            self.poseTarget = nil
+                        }
+                        if let pendingImpact = self.pendingImpact,
+                           elapsed - pendingImpact.time <= 0.42 {
+                            _ = self.attemptAutomaticTrigger(
+                                pendingImpact,
+                                referenceTime: elapsed
+                            )
+                        }
+                    }
+                    return
+                }
+
+                self.poseTarget = result.target
+                self.lastValidPoseTime = elapsed
+                self.latestPoseObservationConfidence =
+                    result.sample.confidence
+                self.latestPoseSignal = self.swingPoseAnalyzer.observe(
+                    result.sample
+                )
+                guard let pendingImpact = self.pendingImpact,
+                      elapsed - pendingImpact.time
+                        <= Self.poseResultMaximumAge
+                else { return }
+                _ = self.attemptAutomaticTrigger(
+                    pendingImpact,
+                    referenceTime: elapsed
+                )
+            }
+        }
+    }
+
+    private static func detectGolfPose(
+        in pixelBuffer: CVPixelBuffer,
+        elapsed: CFTimeInterval,
+        target: AiShotPoseTarget?
+    ) -> AiShotPoseResult? {
+        let request = VNDetectHumanBodyPoseRequest()
+        let handler = VNImageRequestHandler(
+            cvPixelBuffer: pixelBuffer,
+            orientation: .up,
+            options: [:]
+        )
+        do {
+            try handler.perform([request])
+        } catch {
+            return nil
+        }
+
+        let candidates = (request.results ?? []).compactMap {
+            golfPoseCandidate(from: $0, elapsed: elapsed)
+        }
+        guard !candidates.isEmpty else { return nil }
+
+        if let target {
+            let rankedByDistance = candidates.sorted {
+                poseTargetDistance($0.target, target)
+                    < poseTargetDistance($1.target, target)
+            }
+            let bestDistance = poseTargetDistance(
+                rankedByDistance[0].target,
+                target
+            )
+            guard bestDistance <= 0.65 else { return nil }
+            if rankedByDistance.count > 1 {
+                let secondDistance = poseTargetDistance(
+                    rankedByDistance[1].target,
+                    target
+                )
+                guard secondDistance - bestDistance >= 0.25 else {
+                    return nil
+                }
+            }
+            return rankedByDistance[0].result
+        }
+
+        let ranked = candidates.sorted { $0.score > $1.score }
+        if ranked.count > 1,
+           ranked[0].score - ranked[1].score < 0.08 {
+            return nil
+        }
+        return ranked[0].result
+    }
+
+    private static func golfPoseCandidate(
+        from observation: VNHumanBodyPoseObservation,
+        elapsed: CFTimeInterval
+    ) -> (result: AiShotPoseResult, target: AiShotPoseTarget, score: Double)? {
+        func point(
+            _ name: VNHumanBodyPoseObservation.JointName,
+            minimumConfidence: Float
+        ) -> VNRecognizedPoint? {
+            guard let recognized = try? observation.recognizedPoint(name),
+                  recognized.confidence >= minimumConfidence
+            else { return nil }
+            return recognized
+        }
+
+        let leftShoulder = point(.leftShoulder, minimumConfidence: 0.35)
+        let rightShoulder = point(.rightShoulder, minimumConfidence: 0.35)
+        let leftHip = point(.leftHip, minimumConfidence: 0.35)
+        let rightHip = point(.rightHip, minimumConfidence: 0.35)
+        let shoulders = [leftShoulder, rightShoulder].compactMap { $0 }
+        let hips = [leftHip, rightHip].compactMap { $0 }
+        guard shoulders.count + hips.count >= 3,
+              !shoulders.isEmpty,
+              !hips.isEmpty
+        else { return nil }
+
+        func average(_ points: [VNRecognizedPoint]) -> (Double, Double) {
+            let divisor = Double(points.count)
+            return (
+                points.reduce(0) { $0 + Double($1.location.x) } / divisor,
+                points.reduce(0) { $0 + Double($1.location.y) } / divisor
+            )
+        }
+        let midShoulder = average(shoulders)
+        let midHip = average(hips)
+        let axisX = midShoulder.0 - midHip.0
+        let axisY = midShoulder.1 - midHip.1
+        let bodyScale = hypot(axisX, axisY)
+        guard bodyScale >= 0.04 else { return nil }
+
+        let leftWrist = point(.leftWrist, minimumConfidence: 0.30)
+        let rightWrist = point(.rightWrist, minimumConfidence: 0.30)
+        let wristPoints = [leftWrist, rightWrist].compactMap { $0 }
+        let hand: (Double, Double)
+        if let leftWrist, let rightWrist {
+            hand = average([leftWrist, rightWrist])
+        } else if let leftWrist {
+            guard leftWrist.confidence >= 0.55,
+                  point(.leftElbow, minimumConfidence: 0.40) != nil
+            else {
+                return nil
+            }
+            hand = (
+                Double(leftWrist.location.x),
+                Double(leftWrist.location.y)
+            )
+        } else if let rightWrist {
+            guard rightWrist.confidence >= 0.55,
+                  point(.rightElbow, minimumConfidence: 0.40) != nil
+            else {
+                return nil
+            }
+            hand = (
+                Double(rightWrist.location.x),
+                Double(rightWrist.location.y)
+            )
+        } else {
+            return nil
+        }
+
+        let unitX = axisX / bodyScale
+        let unitY = axisY / bodyScale
+        let lateralX = unitY
+        let lateralY = -unitX
+        let relativeX = hand.0 - midHip.0
+        let relativeY = hand.1 - midHip.1
+        let handX = (relativeX * lateralX + relativeY * lateralY)
+            / bodyScale
+        let handY = (relativeX * unitX + relativeY * unitY)
+            / bodyScale
+        let confidences = shoulders + hips + wristPoints
+        let confidence = confidences.reduce(0) {
+            $0 + Double($1.confidence)
+        } / Double(confidences.count)
+        guard observation.confidence >= 0.50 else { return nil }
+
+        let target = AiShotPoseTarget(
+            centerX: midHip.0,
+            centerY: midHip.1,
+            bodyScale: bodyScale
+        )
+        let sample = GolfSwingPoseSample(
+            time: elapsed,
+            handX: handX,
+            handY: handY,
+            coreX: midHip.0,
+            coreY: midHip.1,
+            bodyScale: bodyScale,
+            confidence: confidence
+        )
+        let centerDistance = hypot(midHip.0 - 0.5, midHip.1 - 0.48)
+        let score = confidence * 0.52
+            + min(1, bodyScale * 3.2) * 0.33
+            + max(0, 1 - centerDistance * 1.8) * 0.15
+        return (
+            result: AiShotPoseResult(sample: sample, target: target),
+            target: target,
+            score: score
+        )
+    }
+
+    private static func poseTargetDistance(
+        _ lhs: AiShotPoseTarget,
+        _ rhs: AiShotPoseTarget
+    ) -> Double {
+        let centerDistance = hypot(
+            lhs.centerX - rhs.centerX,
+            lhs.centerY - rhs.centerY
+        ) / max(0.04, rhs.bodyScale)
+        let scaleDistance = abs(lhs.bodyScale - rhs.bodyScale)
+            / max(0.04, rhs.bodyScale)
+        return centerDistance + scaleDistance * 0.65
+    }
+
+    private func attemptAutomaticTrigger(
+        _ candidate: AiShotPendingImpact,
+        referenceTime: CFTimeInterval
+    ) -> Bool {
+        guard !isAutomaticAnalysisSuspended,
+              pendingCameraPosition == nil,
+              !isRecoveringFromInterruption
+        else { return false }
+        let currentMotion = swingMotionAnalyzer.currentSignal(
+            at: referenceTime
+        )
+        func isAlignedMotion(_ signal: GolfSwingMotionSignal) -> Bool {
+            guard signal.isImpactWindow,
+                  let impactTime = signal.impactTime
+            else { return false }
+            let alignment = candidate.time - impactTime
+            return alignment >= -0.20 && alignment <= 0.32
+        }
+        let motion: GolfSwingMotionSignal
+        if isAlignedMotion(currentMotion) {
+            motion = currentMotion
+        } else if let latestMotionImpactSignal,
+                  isAlignedMotion(latestMotionImpactSignal) {
+            motion = latestMotionImpactSignal
+        } else {
+            motion = GolfSwingMotionSignal(
+                phase: .seekingAddress,
+                confidence: 0,
+                impactTime: nil
+            )
+        }
+        let pose = latestPoseSignal
+        let requiresPoseConfirmation = pose.map {
+            referenceTime - lastValidPoseTime <= 0.35
+                && latestPoseObservationConfidence >= 0.72
+                && $0.phase != .seekingAddress
+        } ?? false
+        let hasRecentVisualFrame = lastVisualFrame.map {
+            referenceTime - $0.time <= 0.35
+        } ?? false
+        if hasRecentVisualFrame {
+            let hasAlignedMotion = motion.isImpactWindow
+            let hasAlignedPose = pose?.isImpactWindow(at: candidate.time)
+                == true
+            guard hasAlignedMotion || hasAlignedPose else { return false }
+        }
+
+        let shouldTrigger = GolfSwingFusionPolicy.shouldTrigger(
+            decision: candidate.decision,
+            metrics: candidate.metrics,
+            motion: motion,
+            pose: pose,
+            referenceTime: candidate.time,
+            requiresPoseConfirmation: requiresPoseConfirmation,
+            hasRecentVisualFrame: hasRecentVisualFrame,
+            isInsideReadyPromptWindow:
+                candidate.time < readyPromptSuppressionUntil
+        )
+        guard shouldTrigger else { return false }
+
+        pendingImpact = nil
+        activeDurationPreset = durationPreset
+        triggerTime = candidate.time
+        requestStopAfterTrigger()
+        return true
+    }
+
+    private func golfSwingVisualSample(
+        frame: AiShotVisualFrame,
+        previous: AiShotVisualFrame,
+        differences: [Double]
+    ) -> GolfSwingVisualSample {
+        let globalComponent = median(differences)
+        let residuals = differences.map {
+            max(0, $0 - globalComponent * 0.65)
+        }
+        let activeThreshold = max(0.025, globalComponent * 1.8)
+        let widespreadMotion = Double(
+            differences.filter { $0 >= activeThreshold }.count
+        ) / Double(max(1, differences.count))
+
+        let regionStarts = [0, 2, 4]
+        var bestRegion = 1
+        var bestRegionMotion = 0.0
+        for (region, startColumn) in regionStarts.enumerated() {
+            var values: [Double] = []
+            for row in 1...6 {
+                for column in startColumn..<(startColumn + 4) {
+                    values.append(residuals[row * 8 + column])
+                }
+            }
+            let strongest = values.sorted(by: >).prefix(10)
+            let motion = strongest.reduce(0, +)
+                / Double(max(1, strongest.count)) * 4.0
+            if motion > bestRegionMotion {
+                bestRegionMotion = motion
+                bestRegion = region
+            }
+        }
+
+        let totalResidual = residuals.reduce(0, +)
+        let strongestResidual = residuals.sorted(by: >)
+            .prefix(16)
+            .reduce(0, +)
+        let concentration = totalResidual > 0.0001
+            ? strongestResidual / totalResidual
+            : 0
+
+        return GolfSwingVisualSample(
+            time: frame.time,
+            localMotion: min(1, bestRegionMotion),
+            globalMotion: min(1, globalComponent * 4.0),
+            widespreadMotion: widespreadMotion,
+            concentration: min(1, concentration),
+            brightnessChange: abs(
+                frame.averageBrightness - previous.averageBrightness
+            ),
+            dominantRegion: bestRegion
+        )
+    }
+
+    private func median(_ values: [Double]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[middle - 1] + sorted[middle]) / 2
+        }
+        return sorted[middle]
     }
 
     private func visualFrame(

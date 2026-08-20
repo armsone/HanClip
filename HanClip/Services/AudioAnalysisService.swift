@@ -1,15 +1,53 @@
 import AVFoundation
 import Foundation
 
+enum ClipAudioAvailability: String, Codable, Sendable {
+    case unknown
+    case present
+    case noTrack
+    case silent
+
+    var hasUsableAudio: Bool {
+        self == .present || self == .unknown
+    }
+}
+
+enum ClipHighlightSource: String, Codable, Sendable {
+    case audio
+    case visualMotion
+    case fallback
+
+    var displayTitle: String {
+        switch self {
+        case .audio:
+            "소리 분석"
+        case .visualMotion:
+            "화면 움직임 분석"
+        case .fallback:
+            "화면 변화 적음 · 중앙 선택"
+        }
+    }
+}
+
 struct AudioAnalysisResult: Sendable {
     let waveform: [Double]
     let peakTime: Double
     let peakTimes: [Double]
+    let audioAvailability: ClipAudioAvailability
+    let highlightSource: ClipHighlightSource
 
-    init(waveform: [Double], peakTime: Double, peakTimes: [Double]? = nil) {
+    init(
+        waveform: [Double],
+        peakTime: Double,
+        peakTimes: [Double]? = nil,
+        audioAvailability: ClipAudioAvailability = .present,
+        highlightSource: ClipHighlightSource = .audio
+    ) {
         self.waveform = waveform
         self.peakTime = peakTime
         self.peakTimes = peakTimes ?? [peakTime]
+        self.audioAvailability = audioAvailability
+        self.highlightSource = highlightSource
     }
 }
 
@@ -20,14 +58,18 @@ enum AudioAnalysisService {
             let bucketCount = max(1, bucketCount)
             let asset = AVURLAsset(url: url)
             let duration = try await asset.load(.duration).seconds
-            guard duration.isFinite, duration > 0,
-                  let track = try await asset.loadTracks(
-                    withMediaType: .audio
-                  ).first
-            else {
-                return AudioAnalysisResult(
-                    waveform: Array(repeating: 0.08, count: bucketCount),
-                    peakTime: max(0, duration / 2)
+            guard duration.isFinite, duration > 0 else {
+                throw MediaError.videoTrackUnavailable
+            }
+
+            guard let track = try await asset.loadTracks(
+                withMediaType: .audio
+            ).first else {
+                return try await analyzeVisualMotionOrFallback(
+                    asset: asset,
+                    duration: duration,
+                    bucketCount: bucketCount,
+                    audioAvailability: .noTrack
                 )
             }
 
@@ -117,6 +159,17 @@ enum AudioAnalysisService {
                 )
             }
 
+            let maximumPeak = peaks.max() ?? 0
+            let maximumRMS = metrics.map(\.rms).max() ?? 0
+            if maximumPeak < 0.0032, maximumRMS < 0.0016 {
+                return try await analyzeVisualMotionOrFallback(
+                    asset: asset,
+                    duration: duration,
+                    bucketCount: bucketCount,
+                    audioAvailability: .silent
+                )
+            }
+
             var values = metrics.map(\.impactScore)
             let impactFrames = metrics.enumerated().map { index, metrics in
                 AudioImpactFrame(
@@ -198,7 +251,9 @@ enum AudioAnalysisService {
                     / Double(bucketCount) * duration,
                 peakTimes: selected.map {
                     (Double($0.index) + 0.5) / Double(bucketCount) * duration
-                }
+                },
+                audioAvailability: .present,
+                highlightSource: .audio
             )
         }.value
     }
@@ -209,5 +264,352 @@ enum AudioAnalysisService {
         values.enumerated().map { index, value in
             (index: index, score: value * 0.55)
         }
+    }
+
+    private static func analyzeVisualMotionOrFallback(
+        asset: AVAsset,
+        duration: Double,
+        bucketCount: Int,
+        audioAvailability: ClipAudioAvailability
+    ) async throws -> AudioAnalysisResult {
+        do {
+            return try await VisualMotionAnalysisService.analyze(
+                asset: asset,
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            let center = max(0, duration / 2)
+            return AudioAnalysisResult(
+                waveform: Array(repeating: 0, count: bucketCount),
+                peakTime: center,
+                peakTimes: [center],
+                audioAvailability: audioAvailability,
+                highlightSource: .fallback
+            )
+        }
+    }
+}
+
+private enum VisualMotionAnalysisService {
+    private struct FrameSummary {
+        let time: Double
+        let cells: [Double]
+        let averageBrightness: Double
+    }
+
+    private struct MotionSample {
+        let time: Double
+        let score: Double
+    }
+
+    static func analyze(
+        asset: AVAsset,
+        duration: Double,
+        bucketCount: Int,
+        audioAvailability: ClipAudioAvailability
+    ) async throws -> AudioAnalysisResult {
+        guard let track = try await asset.loadTracks(
+            withMediaType: .video
+        ).first else {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(
+            track: track,
+            outputSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String:
+                    kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: 160,
+                kCVPixelBufferHeightKey as String: 90,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+            ]
+        )
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+        reader.add(output)
+        guard reader.startReading() else {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+
+        let maximumSamples = 1_200.0
+        let sampleInterval = max(0.2, duration / maximumSamples)
+        var nextSampleTime = 0.0
+        var previousFrame: FrameSummary?
+        var motionBaseline = 0.008
+        var samples: [MotionSample] = []
+        samples.reserveCapacity(
+            min(Int(ceil(duration / sampleInterval)), Int(maximumSamples))
+        )
+
+        do {
+            while let sampleBuffer = output.copyNextSampleBuffer() {
+                try Task.checkCancellation()
+                let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                    .seconds
+                guard time.isFinite, time + 0.000_1 >= nextSampleTime else {
+                    continue
+                }
+                while nextSampleTime <= time {
+                    nextSampleTime += sampleInterval
+                }
+
+                guard let frame = frameSummary(
+                    from: sampleBuffer,
+                    time: time
+                ) else { continue }
+                defer { previousFrame = frame }
+                guard let previousFrame,
+                      previousFrame.cells.count == frame.cells.count
+                else { continue }
+
+                let differences = zip(frame.cells, previousFrame.cells).map {
+                    abs($0 - $1)
+                }
+                let meanDifference = differences.reduce(0, +)
+                    / Double(max(1, differences.count))
+                let sortedDifferences = differences.sorted()
+                let medianDifference = sortedDifferences[
+                    sortedDifferences.count / 2
+                ]
+                let residuals = differences
+                    .map { max(0, $0 - medianDifference * 0.9) }
+                    .sorted(by: >)
+                let focusedCount = max(1, residuals.count / 4)
+                let localMotion = residuals.prefix(focusedCount).reduce(0, +)
+                    / Double(focusedCount)
+                let widespreadRatio = Double(
+                    differences.filter { $0 > 0.12 }.count
+                ) / Double(max(1, differences.count))
+                let brightnessChange = abs(
+                    frame.averageBrightness
+                        - previousFrame.averageBrightness
+                )
+                let isSceneBoundary = widespreadRatio > 0.72
+                    && meanDifference > 0.14
+                let isFlash = brightnessChange > 0.22
+                    && widespreadRatio > 0.55
+
+                let cappedBaselineSample = min(
+                    localMotion,
+                    max(0.006, motionBaseline * 1.5)
+                )
+                motionBaseline = motionBaseline * 0.94
+                    + cappedBaselineSample * 0.06
+                let contrast = localMotion / max(0.004, motionBaseline)
+                let score: Double
+                if isSceneBoundary || isFlash || localMotion < 0.0035 {
+                    score = 0
+                } else {
+                    score = min(
+                        1,
+                        max(0, contrast - 1) * 0.28
+                            + min(1, localMotion * 8) * 0.72
+                    )
+                }
+                samples.append(MotionSample(time: time, score: score))
+            }
+        } catch {
+            reader.cancelReading()
+            throw error
+        }
+
+        if reader.status == .failed {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+        guard samples.count >= 3 else {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+
+        let edgeDuration = min(
+            max(0.5, duration * 0.05),
+            max(0.5, duration / 3)
+        )
+        var smoothed = samples.indices.map { index -> Double in
+            let previous = index > 0 ? samples[index - 1].score : 0
+            let current = samples[index].score
+            let next = index + 1 < samples.count
+                ? samples[index + 1].score
+                : 0
+            let value = previous * 0.22 + current * 0.56 + next * 0.22
+            let time = samples[index].time
+            guard time >= edgeDuration,
+                  time <= duration - edgeDuration
+            else { return 0 }
+            return value
+        }
+
+        let maximumScore = smoothed.max() ?? 0
+        guard maximumScore >= 0.12 else {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+        smoothed = smoothed.map { min(1, max(0, $0 / maximumScore)) }
+
+        var candidates: [(index: Int, score: Double)] = []
+        for index in smoothed.indices {
+            let previous = index > 0 ? smoothed[index - 1] : 0
+            let next = index + 1 < smoothed.count
+                ? smoothed[index + 1]
+                : 0
+            guard smoothed[index] >= 0.28,
+                  smoothed[index] >= previous,
+                  smoothed[index] >= next
+            else { continue }
+            candidates.append((index, smoothed[index]))
+        }
+
+        let minimumSeparation = max(0.75, duration / 20)
+        var selected: [(index: Int, score: Double)] = []
+        for candidate in candidates.sorted(by: {
+            if abs($0.score - $1.score) < 0.000_1 {
+                return samples[$0.index].time < samples[$1.index].time
+            }
+            return $0.score > $1.score
+        }) {
+            guard selected.allSatisfy({
+                abs(
+                    samples[$0.index].time
+                        - samples[candidate.index].time
+                ) >= minimumSeparation
+            }) else { continue }
+            selected.append(candidate)
+            if selected.count >= 12 { break }
+        }
+
+        guard let strongest = selected.first else {
+            return fallbackResult(
+                duration: duration,
+                bucketCount: bucketCount,
+                audioAvailability: audioAvailability
+            )
+        }
+
+        var waveform = Array(repeating: 0.0, count: bucketCount)
+        for (index, sample) in samples.enumerated() {
+            let bucket = min(
+                bucketCount - 1,
+                max(0, Int(sample.time / duration * Double(bucketCount)))
+            )
+            waveform[bucket] = max(waveform[bucket], smoothed[index])
+        }
+
+        return AudioAnalysisResult(
+            waveform: waveform,
+            peakTime: samples[strongest.index].time,
+            peakTimes: selected.map { samples[$0.index].time },
+            audioAvailability: audioAvailability,
+            highlightSource: .visualMotion
+        )
+    }
+
+    private static func frameSummary(
+        from sampleBuffer: CMSampleBuffer,
+        time: Double
+    ) -> FrameSummary? {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+        else { return nil }
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard CVPixelBufferGetPixelFormatType(pixelBuffer)
+            == kCVPixelFormatType_32BGRA,
+              let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer)
+        else { return nil }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard width > 0, height > 0 else { return nil }
+
+        let gridWidth = 8
+        let gridHeight = 8
+        let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
+        var cells: [Double] = []
+        cells.reserveCapacity(gridWidth * gridHeight)
+        var brightnessTotal = 0.0
+
+        for yCell in 0..<gridHeight {
+            for xCell in 0..<gridWidth {
+                var cellBrightness = 0.0
+                for yQuarter in [1, 3] {
+                    let y = min(
+                        height - 1,
+                        (yCell * height + yQuarter * height / 4)
+                            / gridHeight
+                    )
+                    for xQuarter in [1, 3] {
+                        let x = min(
+                            width - 1,
+                            (xCell * width + xQuarter * width / 4)
+                                / gridWidth
+                        )
+                        let offset = y * bytesPerRow + x * 4
+                        let blue = Double(bytes[offset])
+                        let green = Double(bytes[offset + 1])
+                        let red = Double(bytes[offset + 2])
+                        cellBrightness += (
+                            red * 0.299
+                                + green * 0.587
+                                + blue * 0.114
+                        ) / 255
+                    }
+                }
+                let average = cellBrightness / 4
+                cells.append(average)
+                brightnessTotal += average
+            }
+        }
+
+        return FrameSummary(
+            time: time,
+            cells: cells,
+            averageBrightness: brightnessTotal
+                / Double(max(1, cells.count))
+        )
+    }
+
+    private static func fallbackResult(
+        duration: Double,
+        bucketCount: Int,
+        audioAvailability: ClipAudioAvailability
+    ) -> AudioAnalysisResult {
+        let center = max(0, duration / 2)
+        return AudioAnalysisResult(
+            waveform: Array(repeating: 0, count: bucketCount),
+            peakTime: center,
+            peakTimes: [center],
+            audioAvailability: audioAvailability,
+            highlightSource: .fallback
+        )
     }
 }

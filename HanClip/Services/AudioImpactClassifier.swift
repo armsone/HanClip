@@ -33,10 +33,489 @@ struct AudioImpactDecision: Sendable {
     let confidence: Double
 }
 
+enum GolfSwingMotionPhase: Equatable, Sendable {
+    case seekingAddress
+    case addressed
+    case backswing
+    case downswing
+}
+
+struct GolfSwingVisualSample: Sendable {
+    let time: Double
+    let localMotion: Double
+    let globalMotion: Double
+    let widespreadMotion: Double
+    let concentration: Double
+    let brightnessChange: Double
+    let dominantRegion: Int
+}
+
+struct GolfSwingMotionSignal: Sendable {
+    let phase: GolfSwingMotionPhase
+    let confidence: Double
+    let impactTime: Double?
+
+    var isImpactWindow: Bool {
+        phase == .downswing && impactTime != nil
+    }
+}
+
+struct GolfSwingMotionAnalyzer: Sendable {
+    private(set) var phase = GolfSwingMotionPhase.seekingAddress
+
+    private var quietSince: Double?
+    private var motionCandidateSince: Double?
+    private var motionCandidateCount = 0
+    private var backswingStart: Double?
+    private var backswingPeak = 0.0
+    private var backswingSamples = 0
+    private var previousMotion = 0.0
+    private var lockedRegion: Int?
+    private var downswingTime: Double?
+    private var globalMotionCount = 0
+
+    mutating func reset() {
+        phase = .seekingAddress
+        quietSince = nil
+        motionCandidateSince = nil
+        motionCandidateCount = 0
+        backswingStart = nil
+        backswingPeak = 0
+        backswingSamples = 0
+        previousMotion = 0
+        lockedRegion = nil
+        downswingTime = nil
+        globalMotionCount = 0
+    }
+
+    mutating func observe(
+        _ sample: GolfSwingVisualSample
+    ) -> GolfSwingMotionSignal {
+        let isGlobalChange = sample.globalMotion >= 0.16
+            || sample.widespreadMotion >= 0.68
+            || sample.brightnessChange >= 0.14
+        if isGlobalChange {
+            globalMotionCount += 1
+            if globalMotionCount >= 2 {
+                reset()
+            }
+            return currentSignal(at: sample.time)
+        }
+        globalMotionCount = 0
+
+        switch phase {
+        case .seekingAddress:
+            let isQuiet = sample.localMotion <= 0.075
+                && sample.globalMotion <= 0.08
+                && sample.widespreadMotion <= 0.32
+            if isQuiet {
+                quietSince = quietSince ?? sample.time
+                if sample.time - (quietSince ?? sample.time) >= 0.55 {
+                    phase = .addressed
+                    motionCandidateSince = nil
+                    motionCandidateCount = 0
+                }
+            } else {
+                quietSince = nil
+            }
+
+        case .addressed:
+            let isBackswingCandidate = sample.localMotion >= 0.12
+                && sample.concentration >= 0.38
+                && sample.widespreadMotion >= 0.04
+                && sample.widespreadMotion <= 0.58
+            if isBackswingCandidate {
+                if let since = motionCandidateSince,
+                   sample.time - since <= 0.35,
+                   abs((lockedRegion ?? sample.dominantRegion)
+                       - sample.dominantRegion) <= 1 {
+                    motionCandidateCount += 1
+                } else {
+                    motionCandidateSince = sample.time
+                    motionCandidateCount = 1
+                    lockedRegion = sample.dominantRegion
+                }
+
+                if motionCandidateCount >= 2 {
+                    phase = .backswing
+                    backswingStart = motionCandidateSince
+                    backswingPeak = sample.localMotion
+                    backswingSamples = motionCandidateCount
+                    previousMotion = sample.localMotion
+                }
+            } else if sample.localMotion <= 0.085 {
+                motionCandidateSince = nil
+                motionCandidateCount = 0
+                lockedRegion = nil
+            }
+
+        case .backswing:
+            guard let backswingStart else {
+                reset()
+                return currentSignal(at: sample.time)
+            }
+            let elapsed = sample.time - backswingStart
+            let movedToAnotherRegion = abs(
+                (lockedRegion ?? sample.dominantRegion)
+                    - sample.dominantRegion
+            ) > 1
+                && sample.localMotion >= 0.18
+            if elapsed > 1.8 || movedToAnotherRegion {
+                reset()
+                return currentSignal(at: sample.time)
+            }
+
+            if sample.localMotion >= 0.10 {
+                backswingSamples += 1
+            }
+            let acceleration = sample.localMotion - previousMotion
+            let previousPeak = backswingPeak
+            let isDownswing = elapsed >= 0.18
+                && backswingSamples >= 3
+                && sample.localMotion >= 0.20
+                && (acceleration >= 0.035
+                    || sample.localMotion >= max(0.26, previousPeak * 1.15))
+            backswingPeak = max(backswingPeak, sample.localMotion)
+            previousMotion = sample.localMotion
+
+            if isDownswing {
+                phase = .downswing
+                downswingTime = sample.time
+            }
+
+        case .downswing:
+            if let downswingTime, sample.time - downswingTime > 0.42 {
+                reset()
+            }
+        }
+
+        return currentSignal(at: sample.time)
+    }
+
+    func currentSignal(at time: Double) -> GolfSwingMotionSignal {
+        switch phase {
+        case .downswing:
+            guard let downswingTime,
+                  time - downswingTime <= 0.42
+            else {
+                return GolfSwingMotionSignal(
+                    phase: .seekingAddress,
+                    confidence: 0,
+                    impactTime: nil
+                )
+            }
+            let confidence = max(
+                0.72,
+                min(1, 0.62 + backswingPeak * 0.95)
+            )
+            return GolfSwingMotionSignal(
+                phase: .downswing,
+                confidence: confidence,
+                impactTime: downswingTime
+            )
+        case .backswing:
+            return GolfSwingMotionSignal(
+                phase: .backswing,
+                confidence: min(0.7, 0.34 + backswingPeak),
+                impactTime: nil
+            )
+        case .addressed:
+            return GolfSwingMotionSignal(
+                phase: .addressed,
+                confidence: 0.28,
+                impactTime: nil
+            )
+        case .seekingAddress:
+            return GolfSwingMotionSignal(
+                phase: .seekingAddress,
+                confidence: 0,
+                impactTime: nil
+            )
+        }
+    }
+}
+
+enum GolfSwingPosePhase: Equatable, Sendable {
+    case seekingAddress
+    case addressed
+    case backswing
+    case impactWindow
+}
+
+struct GolfSwingPoseSample: Sendable {
+    let time: Double
+    let handX: Double
+    let handY: Double
+    let coreX: Double
+    let coreY: Double
+    let bodyScale: Double
+    let confidence: Double
+}
+
+struct GolfSwingPoseSignal: Sendable {
+    let phase: GolfSwingPosePhase
+    let confidence: Double
+    let impactWindowStart: Double?
+    let impactWindowEnd: Double?
+
+    func isImpactWindow(at time: Double) -> Bool {
+        guard phase == .impactWindow,
+              let impactWindowStart,
+              let impactWindowEnd
+        else { return false }
+        return time >= impactWindowStart && time <= impactWindowEnd
+    }
+}
+
+struct GolfSwingPoseAnalyzer: Sendable {
+    private(set) var phase = GolfSwingPosePhase.seekingAddress
+
+    private var quietSince: Double?
+    private var addressX = 0.0
+    private var addressY = 0.0
+    private var addressSamples = 0
+    private var previousSample: GolfSwingPoseSample?
+    private var backswingDirectionX = 0.0
+    private var backswingDirectionY = 0.0
+    private var backswingStart: Double?
+    private var peakProgress = 0.0
+    private var previousProgress = 0.0
+    private var downswingSamples = 0
+    private var impactWindowStart: Double?
+    private var impactWindowEnd: Double?
+    private var latestConfidence = 0.0
+
+    mutating func reset() {
+        phase = .seekingAddress
+        quietSince = nil
+        addressX = 0
+        addressY = 0
+        addressSamples = 0
+        previousSample = nil
+        backswingDirectionX = 0
+        backswingDirectionY = 0
+        backswingStart = nil
+        peakProgress = 0
+        previousProgress = 0
+        downswingSamples = 0
+        impactWindowStart = nil
+        impactWindowEnd = nil
+        latestConfidence = 0
+    }
+
+    mutating func observe(
+        _ sample: GolfSwingPoseSample
+    ) -> GolfSwingPoseSignal {
+        guard sample.confidence >= 0.45,
+              sample.bodyScale >= 0.04
+        else {
+            return currentSignal(at: sample.time)
+        }
+        latestConfidence = sample.confidence
+
+        if let previousSample {
+            let sampleGap = sample.time - previousSample.time
+            let scaleChange = abs(sample.bodyScale - previousSample.bodyScale)
+                / max(0.001, previousSample.bodyScale)
+            if sampleGap <= 0 || sampleGap > 0.6 || scaleChange > 0.25 {
+                reset()
+            }
+        }
+
+        let previous = previousSample
+        defer { previousSample = sample }
+
+        switch phase {
+        case .seekingAddress:
+            guard let previous else {
+                beginAddressAverage(with: sample)
+                return currentSignal(at: sample.time)
+            }
+            let handSpeed = distance(
+                x1: sample.handX,
+                y1: sample.handY,
+                x2: previous.handX,
+                y2: previous.handY
+            ) / max(0.05, sample.time - previous.time)
+            let coreSpeed = distance(
+                x1: sample.coreX,
+                y1: sample.coreY,
+                x2: previous.coreX,
+                y2: previous.coreY
+            ) / max(0.05, sample.time - previous.time)
+                / max(0.04, sample.bodyScale)
+            if handSpeed <= 0.22 && coreSpeed <= 0.20 {
+                quietSince = quietSince ?? previous.time
+                addToAddressAverage(sample)
+                if sample.time - (quietSince ?? sample.time) >= 0.55,
+                   addressSamples >= 3 {
+                    phase = .addressed
+                }
+            } else {
+                quietSince = nil
+                beginAddressAverage(with: sample)
+            }
+
+        case .addressed:
+            let dx = sample.handX - addressX
+            let dy = sample.handY - addressY
+            let displacement = hypot(dx, dy)
+            if displacement >= 0.20 {
+                backswingDirectionX = dx / displacement
+                backswingDirectionY = dy / displacement
+                backswingStart = sample.time
+                peakProgress = displacement
+                previousProgress = displacement
+                downswingSamples = 0
+                phase = .backswing
+            }
+
+        case .backswing:
+            guard let backswingStart else {
+                reset()
+                return currentSignal(at: sample.time)
+            }
+            let elapsed = sample.time - backswingStart
+            if elapsed > 1.8 {
+                reset()
+                return currentSignal(at: sample.time)
+            }
+            let progress = (sample.handX - addressX) * backswingDirectionX
+                + (sample.handY - addressY) * backswingDirectionY
+            peakProgress = max(peakProgress, progress)
+            let deltaTime = max(
+                0.05,
+                sample.time - (previous?.time ?? sample.time - 0.2)
+            )
+            let returnSpeed = (previousProgress - progress) / deltaTime
+            if elapsed >= 0.18,
+               peakProgress >= 0.28,
+               progress < previousProgress,
+               returnSpeed >= 0.55 {
+                downswingSamples += 1
+            } else if progress >= previousProgress {
+                downswingSamples = 0
+            }
+            previousProgress = progress
+
+            let returnedEnough = peakProgress - progress
+                >= max(0.18, peakProgress * 0.55)
+            if downswingSamples >= 2 && returnedEnough {
+                phase = .impactWindow
+                impactWindowStart = sample.time - 0.45
+                impactWindowEnd = sample.time + 0.30
+            }
+
+        case .impactWindow:
+            if sample.time > (impactWindowEnd ?? sample.time) {
+                reset()
+            }
+        }
+
+        return currentSignal(at: sample.time)
+    }
+
+    func currentSignal(at time: Double) -> GolfSwingPoseSignal {
+        switch phase {
+        case .impactWindow:
+            return GolfSwingPoseSignal(
+                phase: .impactWindow,
+                confidence: min(
+                    latestConfidence,
+                    min(1, 0.72 + peakProgress * 0.45)
+                ),
+                impactWindowStart: impactWindowStart,
+                impactWindowEnd: impactWindowEnd
+            )
+        case .backswing:
+            return GolfSwingPoseSignal(
+                phase: .backswing,
+                confidence: min(0.7, 0.35 + peakProgress),
+                impactWindowStart: nil,
+                impactWindowEnd: nil
+            )
+        case .addressed:
+            return GolfSwingPoseSignal(
+                phase: .addressed,
+                confidence: 0.32,
+                impactWindowStart: nil,
+                impactWindowEnd: nil
+            )
+        case .seekingAddress:
+            return GolfSwingPoseSignal(
+                phase: .seekingAddress,
+                confidence: 0,
+                impactWindowStart: nil,
+                impactWindowEnd: nil
+            )
+        }
+    }
+
+    private mutating func beginAddressAverage(
+        with sample: GolfSwingPoseSample
+    ) {
+        addressX = sample.handX
+        addressY = sample.handY
+        addressSamples = 1
+    }
+
+    private mutating func addToAddressAverage(
+        _ sample: GolfSwingPoseSample
+    ) {
+        addressSamples += 1
+        let weight = 1.0 / Double(addressSamples)
+        addressX += (sample.handX - addressX) * weight
+        addressY += (sample.handY - addressY) * weight
+    }
+
+    private func distance(
+        x1: Double,
+        y1: Double,
+        x2: Double,
+        y2: Double
+    ) -> Double {
+        hypot(x1 - x2, y1 - y2)
+    }
+}
+
+enum GolfSwingFusionPolicy {
+    static func shouldTrigger(
+        decision: AudioImpactDecision,
+        metrics: AudioImpactMetrics,
+        motion: GolfSwingMotionSignal,
+        pose: GolfSwingPoseSignal? = nil,
+        referenceTime: Double = 0,
+        requiresPoseConfirmation: Bool = false,
+        hasRecentVisualFrame: Bool,
+        isInsideReadyPromptWindow: Bool
+    ) -> Bool {
+        guard decision.isTriggered else { return false }
+        guard hasRecentVisualFrame else {
+            return !isInsideReadyPromptWindow
+        }
+        let hasMotionEvidence = motion.isImpactWindow
+            && motion.confidence >= 0.72
+        let hasPoseEvidence = pose?.confidence ?? 0 >= 0.72
+            && pose?.isImpactWindow(at: referenceTime) == true
+        guard hasMotionEvidence,
+              !requiresPoseConfirmation || hasPoseEvidence
+        else { return false }
+
+        if isInsideReadyPromptWindow {
+            return metrics.peak >= 0.16
+                && metrics.impactScore >= 0.08
+        }
+        return true
+    }
+}
+
 enum HanClipAiModelVersion: String, CaseIterable, Sendable {
     case v0_1_0 = "0.1.0"
     case v0_2_0 = "0.2.0"
     case v0_2_1 = "0.2.1"
+    case v0_3_0 = "0.3.0"
+    case v0_4_0 = "0.4.0"
+    case v0_5_0 = "0.5.0"
 
     var title: String {
         switch self {
@@ -46,6 +525,12 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "소리 + 화면 보조 Ai"
         case .v0_2_1:
             "798 영상 보정 Ai"
+        case .v0_3_0:
+            "소리·화면 독립 Ai"
+        case .v0_4_0:
+            "골프 동작 결합 Ai"
+        case .v0_5_0:
+            "몸동작 인식 Ai"
         }
     }
 
@@ -57,6 +542,10 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "2026.08.06"
         case .v0_2_1:
             "2026.08.06"
+        case .v0_3_0:
+            "2026.08.20"
+        case .v0_4_0, .v0_5_0:
+            "2026.08.20"
         }
     }
 
@@ -68,6 +557,12 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "소리를 중심으로 보되, AiShot 촬영 중 화면의 움직임과 밝기 변화를 함께 참고해 더 좋은 순간을 찾습니다."
         case .v0_2_1:
             "798개 영상 공부 결과를 반영해, 소리의 피크보다 행복한 순간 뒤에 이어지는 반응과 화면 변화를 더 차분하게 함께 봅니다."
+        case .v0_3_0:
+            "소리가 없는 영상은 화면 움직임을 독립적으로 분석하고, 화면 변화가 적으면 중앙 구간을 정직하게 제안합니다."
+        case .v0_4_0:
+            "AiShot에서 정지 자세 뒤의 연속 스윙 움직임과 충격음을 함께 확인해, 준비 음성과 주변 타석 소리에 덜 반응합니다."
+        case .v0_5_0:
+            "기기 안에서 골퍼의 어깨·골반·팔 관절 흐름을 보조로 확인해, 단순 화면 변화보다 실제 몸동작이 있는 샷을 더 잘 구분합니다."
         }
     }
 
@@ -75,7 +570,7 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
         switch self {
         case .v0_1_0:
             false
-        case .v0_2_0, .v0_2_1:
+        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0:
             true
         }
     }
@@ -84,14 +579,22 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
         switch self {
         case .v0_1_0:
             false
-        case .v0_2_0, .v0_2_1:
+        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0:
             true
         }
+    }
+
+    var usesGolfSwingMotionFusion: Bool {
+        self == .v0_4_0 || self == .v0_5_0
+    }
+
+    var usesBodyPoseAssist: Bool {
+        self == .v0_5_0
     }
 }
 
 enum AudioImpactClassifier {
-    static let currentModelVersion = HanClipAiModelVersion.v0_2_1
+    static let currentModelVersion = HanClipAiModelVersion.v0_5_0
     static var modelVersion: String { currentModelVersion.rawValue }
     static var modelFeatureSummary: String {
         currentModelVersion.featureSummary
