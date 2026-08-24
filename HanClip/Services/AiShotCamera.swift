@@ -1988,6 +1988,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private var swingMotionAnalyzer = GolfSwingMotionAnalyzer()
     private var latestMotionImpactSignal: GolfSwingMotionSignal?
     private var swingPoseAnalyzer = GolfSwingPoseAnalyzer()
+    private var puttStrokeAnalyzer = GolfPuttStrokeAnalyzer()
     private var latestPoseSignal: GolfSwingPoseSignal?
     private var latestPoseObservationConfidence = 0.0
     private var poseTarget: AiShotPoseTarget?
@@ -1998,6 +1999,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
     private var isAutomaticAnalysisSuspended = false
     private var pendingImpact: AiShotPendingImpact?
     private var lastVisualAnalysisTime: CFTimeInterval = 0
+    private var lastGlobalSceneChangeTime: CFTimeInterval = 0
     private var didRequestStop = false
     private var didAnnounceReady = false
     private var readyPromptSuppressionUntil: CFTimeInterval = 0
@@ -2770,11 +2772,13 @@ final class AiShotCameraController: NSObject, ObservableObject,
         swingMotionAnalyzer.reset()
         latestMotionImpactSignal = nil
         swingPoseAnalyzer.reset()
+        puttStrokeAnalyzer.reset()
         latestPoseSignal = nil
         latestPoseObservationConfidence = 0
         poseTarget = nil
         lastPoseAnalysisTime = 0
         lastValidPoseTime = 0
+        lastGlobalSceneChangeTime = 0
         pendingImpact = nil
     }
 
@@ -2844,6 +2848,11 @@ final class AiShotCameraController: NSObject, ObservableObject,
             previous: previous,
             differences: differences
         )
+        if swingSample.globalMotion >= 0.16
+            || swingSample.widespreadMotion >= 0.68
+            || swingSample.brightnessChange >= 0.14 {
+            lastGlobalSceneChangeTime = elapsed
+        }
         let swingSignal = swingMotionAnalyzer.observe(swingSample)
         if swingSignal.isImpactWindow {
             latestMotionImpactSignal = swingSignal
@@ -2906,6 +2915,7 @@ final class AiShotCameraController: NSObject, ObservableObject,
                 guard let result else {
                     if elapsed - self.lastValidPoseTime > 0.35 {
                         self.swingPoseAnalyzer.reset()
+                        self.puttStrokeAnalyzer.reset()
                         self.latestPoseSignal = nil
                         self.latestPoseObservationConfidence = 0
                         if elapsed - self.lastValidPoseTime > 0.60 {
@@ -2929,12 +2939,20 @@ final class AiShotCameraController: NSObject, ObservableObject,
                 self.latestPoseSignal = self.swingPoseAnalyzer.observe(
                     result.sample
                 )
-                guard let pendingImpact = self.pendingImpact,
-                      elapsed - pendingImpact.time
-                        <= Self.poseResultMaximumAge
-                else { return }
-                _ = self.attemptAutomaticTrigger(
-                    pendingImpact,
+                let puttStroke = self.puttStrokeAnalyzer.observe(
+                    result.sample
+                )
+                if let pendingImpact = self.pendingImpact,
+                   elapsed - pendingImpact.time
+                       <= Self.poseResultMaximumAge,
+                   self.attemptAutomaticTrigger(
+                       pendingImpact,
+                       referenceTime: elapsed
+                   ) {
+                    return
+                }
+                _ = self.attemptSoundlessPuttTrigger(
+                    puttStroke,
                     referenceTime: elapsed
                 )
             }
@@ -3179,6 +3197,39 @@ final class AiShotCameraController: NSObject, ObservableObject,
         pendingImpact = nil
         activeDurationPreset = durationPreset
         triggerTime = candidate.time
+        requestStopAfterTrigger()
+        return true
+    }
+
+    private func attemptSoundlessPuttTrigger(
+        _ stroke: GolfPuttStrokeSignal,
+        referenceTime: CFTimeInterval
+    ) -> Bool {
+        guard !isAutomaticAnalysisSuspended,
+              pendingCameraPosition == nil,
+              !isRecoveringFromInterruption,
+              didAnnounceReady,
+              triggerTime == nil
+        else { return false }
+        let hasRecentVisualFrame = lastVisualFrame.map {
+            referenceTime - $0.time <= 0.35
+        } ?? false
+        let strokeTime = stroke.strokeTime ?? referenceTime
+        let shouldTrigger = GolfPuttFusionPolicy.shouldTrigger(
+            stroke: stroke,
+            poseObservationConfidence: latestPoseObservationConfidence,
+            hasRecentPose: referenceTime - lastValidPoseTime <= 0.35,
+            hasRecentVisualFrame: hasRecentVisualFrame,
+            isSceneStable:
+                referenceTime - lastGlobalSceneChangeTime >= 1.0,
+            isInsideReadyPromptWindow:
+                strokeTime < readyPromptSuppressionUntil
+        )
+        guard shouldTrigger else { return false }
+
+        pendingImpact = nil
+        activeDurationPreset = durationPreset
+        triggerTime = min(referenceTime, max(0, strokeTime))
         requestStopAfterTrigger()
         return true
     }
