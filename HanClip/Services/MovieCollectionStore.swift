@@ -294,7 +294,12 @@ final class MovieCollectionStore: ObservableObject {
         do {
             try save()
             if sourceURL != outputURL {
-                try? fileManager.removeItem(at: sourceURL)
+                let isSourceUsedElsewhere = movies.contains {
+                    $0.id != movies[movieIndex].id && $0.videoFilename == previousFilename
+                }
+                if !isSourceUsedElsewhere {
+                    try? fileManager.removeItem(at: sourceURL)
+                }
             }
             await progressHandler(1)
             objectWillChange.send()
@@ -957,12 +962,69 @@ final class MovieCollectionStore: ObservableObject {
         return formatter.string(from: date)
     }
 
-    func remove(_ movie: CollectedMovie) {
-        try? fileManager.removeItem(at: videoURL(for: movie))
-        try? fileManager.removeItem(
-            at: collectionDirectory.appendingPathComponent(movie.posterFilename)
+    @discardableResult
+    func addReleasedMovieToCollection(
+        _ movie: CollectedMovie
+    ) throws -> CollectedMovie {
+        guard let sourceMovie = movies.first(where: {
+            $0.id == movie.id && $0.libraryKind == .released
+        }) else {
+            throw MovieCollectionStoreError.movieNotFound
+        }
+        if let existing = collectionMovies.first(where: {
+            $0.videoFilename == sourceMovie.videoFilename
+        }) {
+            return existing
+        }
+        guard collectionMovies.count < Self.maximumMovieCount else {
+            throw MovieCollectionStoreError.libraryFull(.collection)
+        }
+        let newMovie = CollectedMovie(
+            id: UUID(),
+            title: sourceMovie.title,
+            videoFilename: sourceMovie.videoFilename,
+            posterFilename: sourceMovie.posterFilename,
+            createdAt: Date(),
+            duration: sourceMovie.duration,
+            madeAt: sourceMovie.madeAt,
+            shootingStartAt: sourceMovie.shootingStartAt,
+            shootingEndAt: sourceMovie.shootingEndAt,
+            locationName: sourceMovie.locationName,
+            isPinned: false,
+            pinnedAt: nil,
+            posterSelectionVersion: sourceMovie.posterSelectionVersion,
+            storedLibraryKind: .collection
         )
-        movies.removeAll { $0.id == movie.id }
+        movies.append(newMovie)
+        sortMovies()
+        do {
+            try save()
+        } catch {
+            movies.removeAll { $0.id == newMovie.id }
+            sortMovies()
+            throw error
+        }
+        objectWillChange.send()
+        return newMovie
+    }
+
+    func remove(_ movie: CollectedMovie) {
+        let remainingMovies = movies.filter { $0.id != movie.id }
+        let isVideoUsed = remainingMovies.contains {
+            $0.videoFilename == movie.videoFilename
+        }
+        let isPosterUsed = remainingMovies.contains {
+            $0.posterFilename == movie.posterFilename
+        }
+        if !isVideoUsed {
+            try? fileManager.removeItem(at: videoURL(for: movie))
+        }
+        if !isPosterUsed {
+            try? fileManager.removeItem(
+                at: collectionDirectory.appendingPathComponent(movie.posterFilename)
+            )
+        }
+        movies = remainingMovies
         try? save()
     }
 

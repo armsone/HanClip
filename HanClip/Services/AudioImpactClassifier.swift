@@ -765,28 +765,45 @@ struct GolfPuttStrokeAnalyzer: Sendable {
 }
 
 enum GolfPuttFusionPolicy {
+    static let minimumStrokeConfidence = 0.72
+    static let minimumPoseObservationConfidence = 0.72
+    static let minimumSceneStableSeconds = 1.0
+
     static func shouldTrigger(
-        stroke: GolfPuttStrokeSignal,
+        stroke: GolfPuttStrokeSignal?,
         poseObservationConfidence: Double,
-        hasRecentPose: Bool,
-        hasRecentVisualFrame: Bool,
-        isSceneStable: Bool,
-        isInsideReadyPromptWindow: Bool
+        secondsSinceLatestPose: Double,
+        secondsSinceLatestVisualFrame: Double,
+        secondsSinceLastGlobalChange: Double,
+        isReady: Bool,
+        isInsideReadyPromptWindow: Bool,
+        isTriggerPending: Bool,
+        modelVersion: HanClipAiModelVersion = AudioImpactClassifier.currentModelVersion
     ) -> Bool {
-        guard AudioImpactClassifier.currentModelVersion
-            .supportsSoundlessPuttFallback
-        else { return false }
-        return stroke.isConfirmedStroke
-            && stroke.confidence >= 0.72
-            && poseObservationConfidence >= 0.72
-            && hasRecentPose
-            && hasRecentVisualFrame
-            && isSceneStable
-            && !isInsideReadyPromptWindow
+        guard modelVersion.supportsSoundlessPuttFallback else { return false }
+        guard let stroke, stroke.isConfirmedStroke else { return false }
+        guard stroke.confidence >= minimumStrokeConfidence else { return false }
+        guard poseObservationConfidence >= minimumPoseObservationConfidence else { return false }
+        let maximumAge = modelVersion == .v0_7_0 ? 0.55 : 0.35
+        guard secondsSinceLatestPose <= maximumAge else { return false }
+        guard secondsSinceLatestVisualFrame <= maximumAge else { return false }
+        guard secondsSinceLastGlobalChange >= minimumSceneStableSeconds else { return false }
+        guard isReady, !isInsideReadyPromptWindow else { return false }
+        guard !isTriggerPending else { return false }
+        return true
     }
 }
 
 enum GolfSwingFusionPolicy {
+    static let minimumVisualConfidence = 0.72
+    static let motionAlignmentWindow: ClosedRange<Double> = -0.20...0.32
+    static let readyPromptPeakFloor = 0.16
+    static let readyPromptImpactScoreFloor = 0.08
+    static let weakImpactPeakFloor = 0.10
+    static let weakImpactScoreFloor = 0.065
+    static let weakImpactCrossingRateFloor = 0.08
+    static let weakImpactCrestFactorFloor = 3.5
+
     static func shouldTrigger(
         decision: AudioImpactDecision,
         metrics: AudioImpactMetrics,
@@ -795,27 +812,45 @@ enum GolfSwingFusionPolicy {
         referenceTime: Double = 0,
         requiresPoseConfirmation: Bool = false,
         hasRecentVisualFrame: Bool,
-        isInsideReadyPromptWindow: Bool
+        isInsideReadyPromptWindow: Bool,
+        modelVersion: HanClipAiModelVersion = AudioImpactClassifier.currentModelVersion
     ) -> Bool {
-        guard decision.isTriggered else { return false }
         guard hasRecentVisualFrame else {
-            return !isInsideReadyPromptWindow
+            return decision.isTriggered
+                && !modelVersion.requiresVisualShotEvidence
+                && !isInsideReadyPromptWindow
         }
-        let hasMotionEvidence = motion.isImpactWindow
-            && motion.confidence >= 0.72
-        let hasPoseEvidence = pose?.confidence ?? 0 >= 0.72
+        let hasMotionEvidence: Bool = {
+            guard motion.isImpactWindow,
+                  motion.confidence >= minimumVisualConfidence,
+                  let impactTime = motion.impactTime
+            else { return false }
+            return motionAlignmentWindow.contains(referenceTime - impactTime)
+        }()
+        let hasPoseEvidence = (pose?.confidence ?? 0) >= minimumVisualConfidence
             && pose?.isImpactWindow(at: referenceTime) == true
-        let allowsPoseOnlyEvidence = AudioImpactClassifier
-            .currentModelVersion.usesPoseBackedImpactEvidence
+        let allowsPoseOnlyEvidence = modelVersion.usesPoseBackedImpactEvidence
         let hasVisualEvidence = hasMotionEvidence
             || (allowsPoseOnlyEvidence && hasPoseEvidence)
         guard hasVisualEvidence,
               !requiresPoseConfirmation || hasPoseEvidence
         else { return false }
 
+        if !decision.isTriggered {
+            let crestFactor = metrics.peak / max(0.001, metrics.rms)
+            guard modelVersion.supportsVisualBackedWeakImpact,
+                  !isInsideReadyPromptWindow,
+                  metrics.peak >= weakImpactPeakFloor,
+                  metrics.impactScore >= weakImpactScoreFloor,
+                  metrics.crossingRate >= weakImpactCrossingRateFloor,
+                  crestFactor >= weakImpactCrestFactorFloor
+            else { return false }
+            return true
+        }
+
         if isInsideReadyPromptWindow {
-            return metrics.peak >= 0.16
-                && metrics.impactScore >= 0.08
+            return metrics.peak >= readyPromptPeakFloor
+                && metrics.impactScore >= readyPromptImpactScoreFloor
         }
         return true
     }
@@ -830,6 +865,7 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
     case v0_5_0 = "0.5.0"
     case v0_5_1 = "0.5.1"
     case v0_6_0 = "0.6.0"
+    case v0_7_0 = "0.7.0"
 
     var title: String {
         switch self {
@@ -849,6 +885,8 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "몸동작 근거 보강 Ai"
         case .v0_6_0:
             "무음 퍼팅 안전망 Ai"
+        case .v0_7_0:
+            "혼합 클럽 연속 동작 Ai"
         }
     }
 
@@ -866,6 +904,8 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "2026.08.20"
         case .v0_5_1, .v0_6_0:
             "2026.08.24"
+        case .v0_7_0:
+            "2026.08.25"
         }
     }
 
@@ -887,6 +927,8 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "화면 격자 움직임이 약해도 같은 순간의 몸동작 임팩트가 확실하면 시각 근거로 인정합니다. 충격음 판정은 항상 함께 요구하며, 자세를 충분히 보지 못하면 0.5.0과 같은 화면 움직임·소리 결합으로 판단합니다."
         case .v0_6_0:
             "타구음이 거의 없는 퍼팅을 위한 안전망을 더합니다. 준비 자세, 작은 백스윙, 전진 스트로크, 짧은 팔로스루가 시간 순서로 확인되고 화면이 안정적일 때만 소리 없이 촬영합니다. 일반 스윙의 충격음·몸동작 결합 판단은 0.5.1 그대로 유지합니다."
+        case .v0_7_0:
+            "드라이버부터 작은 어프로치까지 소리 크기보다 연속된 샷 동작을 함께 봅니다. 빗소리 속 약한 접촉음도 동작과 맞으면 살리고, 화면 근거가 없는 소리만으로는 촬영하지 않습니다. 짧은 퍼팅의 자세 근거를 조금 더 오래 유지합니다."
         }
     }
 
@@ -894,7 +936,7 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
         switch self {
         case .v0_1_0:
             false
-        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0:
+        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0, .v0_7_0:
             true
         }
     }
@@ -903,31 +945,40 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
         switch self {
         case .v0_1_0:
             false
-        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0:
+        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0, .v0_7_0:
             true
         }
     }
 
     var usesGolfSwingMotionFusion: Bool {
         self == .v0_4_0 || self == .v0_5_0 || self == .v0_5_1
-            || self == .v0_6_0
+            || self == .v0_6_0 || self == .v0_7_0
     }
 
     var usesBodyPoseAssist: Bool {
         self == .v0_5_0 || self == .v0_5_1 || self == .v0_6_0
+            || self == .v0_7_0
     }
 
     var usesPoseBackedImpactEvidence: Bool {
-        self == .v0_5_1 || self == .v0_6_0
+        self == .v0_5_1 || self == .v0_6_0 || self == .v0_7_0
     }
 
     var supportsSoundlessPuttFallback: Bool {
-        self == .v0_6_0
+        self == .v0_6_0 || self == .v0_7_0
+    }
+
+    var requiresVisualShotEvidence: Bool {
+        self == .v0_7_0
+    }
+
+    var supportsVisualBackedWeakImpact: Bool {
+        self == .v0_7_0
     }
 }
 
 enum AudioImpactClassifier {
-    static let currentModelVersion = HanClipAiModelVersion.v0_6_0
+    static let currentModelVersion = HanClipAiModelVersion.v0_7_0
     static var modelVersion: String { currentModelVersion.rawValue }
     static var modelFeatureSummary: String {
         currentModelVersion.featureSummary

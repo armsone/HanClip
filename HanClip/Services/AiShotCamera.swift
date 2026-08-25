@@ -2675,7 +2675,12 @@ final class AiShotCameraController: NSObject, ObservableObject,
            elapsed - pendingImpact.time > Self.poseResultMaximumAge {
             self.pendingImpact = nil
         }
-        guard decision.isTriggered else { return }
+        let isWeakImpactCandidate = AudioImpactClassifier.currentModelVersion
+            .supportsVisualBackedWeakImpact
+            && metrics.peak >= GolfSwingFusionPolicy.weakImpactPeakFloor
+            && metrics.impactScore >= GolfSwingFusionPolicy.weakImpactScoreFloor
+            && metrics.crossingRate >= GolfSwingFusionPolicy.weakImpactCrossingRateFloor
+        guard decision.isTriggered || isWeakImpactCandidate else { return }
 
         let candidate = AiShotPendingImpact(
             time: elapsed,
@@ -3174,13 +3179,6 @@ final class AiShotCameraController: NSObject, ObservableObject,
         let hasRecentVisualFrame = lastVisualFrame.map {
             referenceTime - $0.time <= 0.35
         } ?? false
-        if hasRecentVisualFrame {
-            let hasAlignedMotion = motion.isImpactWindow
-            let hasAlignedPose = pose?.isImpactWindow(at: candidate.time)
-                == true
-            guard hasAlignedMotion || hasAlignedPose else { return false }
-        }
-
         let shouldTrigger = GolfSwingFusionPolicy.shouldTrigger(
             decision: candidate.decision,
             metrics: candidate.metrics,
@@ -3211,19 +3209,21 @@ final class AiShotCameraController: NSObject, ObservableObject,
               didAnnounceReady,
               triggerTime == nil
         else { return false }
-        let hasRecentVisualFrame = lastVisualFrame.map {
-            referenceTime - $0.time <= 0.35
-        } ?? false
+        let secondsSinceLatestVisualFrame = lastVisualFrame.map {
+            referenceTime - $0.time
+        } ?? .infinity
         let strokeTime = stroke.strokeTime ?? referenceTime
         let shouldTrigger = GolfPuttFusionPolicy.shouldTrigger(
             stroke: stroke,
             poseObservationConfidence: latestPoseObservationConfidence,
-            hasRecentPose: referenceTime - lastValidPoseTime <= 0.35,
-            hasRecentVisualFrame: hasRecentVisualFrame,
-            isSceneStable:
-                referenceTime - lastGlobalSceneChangeTime >= 1.0,
+            secondsSinceLatestPose: referenceTime - lastValidPoseTime,
+            secondsSinceLatestVisualFrame: secondsSinceLatestVisualFrame,
+            secondsSinceLastGlobalChange:
+                referenceTime - lastGlobalSceneChangeTime,
+            isReady: didAnnounceReady,
             isInsideReadyPromptWindow:
-                strokeTime < readyPromptSuppressionUntil
+                strokeTime < readyPromptSuppressionUntil,
+            isTriggerPending: pendingImpact != nil
         )
         guard shouldTrigger else { return false }
 
