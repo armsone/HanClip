@@ -3,7 +3,7 @@
 - 시작: 2026-08-25 18:00:43 KST
 - 종료: 2026-08-25 18:22:59 KST
 - 경과: 22분 16초
-- 동기화 그룹: `hanclip` — HanAI(shared-core, 이번 범위 해당 없음), HanClip(Apple), HanClip-Android, NasFinder.com(공개 정보)
+- 동기화 그룹: `hanclip` — HanClip(Apple), HanClip-Android, NasFinder.com(공개 정보)
 - 범위: 개봉영화 항목의 길게 누르기 패널에 `컬렉션에 추가`를 `개봉영화에서 제거` 바로 위에 배치하고, 원본을 유지한 비파괴 컬렉션 추가를 Apple·Android에 구현
 
 ## 실제 동기화 표
