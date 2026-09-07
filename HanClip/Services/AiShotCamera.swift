@@ -2675,7 +2675,15 @@ final class AiShotCameraController: NSObject, ObservableObject,
            elapsed - pendingImpact.time > Self.poseResultMaximumAge {
             self.pendingImpact = nil
         }
-        guard decision.isTriggered else { return }
+        let crestFactor = metrics.peak / max(0.001, metrics.rms)
+        let canBeWeakVisualBackedImpact = AudioImpactClassifier
+            .currentModelVersion.supportsVisualBackedWeakImpact
+            && elapsed >= readyPromptSuppressionUntil
+            && metrics.peak >= 0.10
+            && metrics.impactScore >= 0.065
+            && metrics.crossingRate >= 0.08
+            && crestFactor >= 3.5
+        guard decision.isTriggered || canBeWeakVisualBackedImpact else { return }
 
         let candidate = AiShotPendingImpact(
             time: elapsed,
@@ -3176,6 +3184,9 @@ final class AiShotCameraController: NSObject, ObservableObject,
         } ?? false
         if hasRecentVisualFrame {
             let hasAlignedMotion = motion.isImpactWindow
+                && motion.confidence >= 0.72
+                && (candidate.time - (motion.impactTime ?? candidate.time)) >= -0.20
+                && (candidate.time - (motion.impactTime ?? candidate.time)) <= 0.32
             let hasAlignedPose = pose?.isImpactWindow(at: candidate.time)
                 == true
             guard hasAlignedMotion || hasAlignedPose else { return false }
@@ -3211,14 +3222,16 @@ final class AiShotCameraController: NSObject, ObservableObject,
               didAnnounceReady,
               triggerTime == nil
         else { return false }
+        let puttEvidenceAge = AudioImpactClassifier.currentModelVersion == .v0_7_0
+            ? 0.55 : 0.35
         let hasRecentVisualFrame = lastVisualFrame.map {
-            referenceTime - $0.time <= 0.35
+            referenceTime - $0.time <= puttEvidenceAge
         } ?? false
         let strokeTime = stroke.strokeTime ?? referenceTime
         let shouldTrigger = GolfPuttFusionPolicy.shouldTrigger(
             stroke: stroke,
             poseObservationConfidence: latestPoseObservationConfidence,
-            hasRecentPose: referenceTime - lastValidPoseTime <= 0.35,
+            hasRecentPose: referenceTime - lastValidPoseTime <= puttEvidenceAge,
             hasRecentVisualFrame: hasRecentVisualFrame,
             isSceneStable:
                 referenceTime - lastGlobalSceneChangeTime >= 1.0,

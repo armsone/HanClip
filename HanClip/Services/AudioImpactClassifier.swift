@@ -787,6 +787,11 @@ enum GolfPuttFusionPolicy {
 }
 
 enum GolfSwingFusionPolicy {
+    private static let weakImpactPeakFloor = 0.10
+    private static let weakImpactScoreFloor = 0.065
+    private static let weakImpactCrossingRateFloor = 0.08
+    private static let weakImpactCrestFactorFloor = 3.5
+
     static func shouldTrigger(
         decision: AudioImpactDecision,
         metrics: AudioImpactMetrics,
@@ -797,12 +802,15 @@ enum GolfSwingFusionPolicy {
         hasRecentVisualFrame: Bool,
         isInsideReadyPromptWindow: Bool
     ) -> Bool {
-        guard decision.isTriggered else { return false }
         guard hasRecentVisualFrame else {
-            return !isInsideReadyPromptWindow
+            return decision.isTriggered
+                && !AudioImpactClassifier.currentModelVersion.requiresVisualShotEvidence
+                && !isInsideReadyPromptWindow
         }
         let hasMotionEvidence = motion.isImpactWindow
             && motion.confidence >= 0.72
+            && (referenceTime - (motion.impactTime ?? referenceTime)) >= -0.20
+            && (referenceTime - (motion.impactTime ?? referenceTime)) <= 0.32
         let hasPoseEvidence = pose?.confidence ?? 0 >= 0.72
             && pose?.isImpactWindow(at: referenceTime) == true
         let allowsPoseOnlyEvidence = AudioImpactClassifier
@@ -812,6 +820,19 @@ enum GolfSwingFusionPolicy {
         guard hasVisualEvidence,
               !requiresPoseConfirmation || hasPoseEvidence
         else { return false }
+
+        if !decision.isTriggered {
+            let crestFactor = metrics.peak / max(0.001, metrics.rms)
+            guard AudioImpactClassifier.currentModelVersion
+                .supportsVisualBackedWeakImpact,
+                !isInsideReadyPromptWindow,
+                metrics.peak >= weakImpactPeakFloor,
+                metrics.impactScore >= weakImpactScoreFloor,
+                metrics.crossingRate >= weakImpactCrossingRateFloor,
+                crestFactor >= weakImpactCrestFactorFloor
+            else { return false }
+            return true
+        }
 
         if isInsideReadyPromptWindow {
             return metrics.peak >= 0.16
@@ -830,6 +851,7 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
     case v0_5_0 = "0.5.0"
     case v0_5_1 = "0.5.1"
     case v0_6_0 = "0.6.0"
+    case v0_7_0 = "0.7.0"
 
     var title: String {
         switch self {
@@ -849,6 +871,8 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "몸동작 근거 보강 Ai"
         case .v0_6_0:
             "무음 퍼팅 안전망 Ai"
+        case .v0_7_0:
+            "혼합 클럽 연속 동작 Ai"
         }
     }
 
@@ -866,6 +890,8 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "2026.08.20"
         case .v0_5_1, .v0_6_0:
             "2026.08.24"
+        case .v0_7_0:
+            "2026.09.07"
         }
     }
 
@@ -887,6 +913,8 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
             "화면 격자 움직임이 약해도 같은 순간의 몸동작 임팩트가 확실하면 시각 근거로 인정합니다. 충격음 판정은 항상 함께 요구하며, 자세를 충분히 보지 못하면 0.5.0과 같은 화면 움직임·소리 결합으로 판단합니다."
         case .v0_6_0:
             "타구음이 거의 없는 퍼팅을 위한 안전망을 더합니다. 준비 자세, 작은 백스윙, 전진 스트로크, 짧은 팔로스루가 시간 순서로 확인되고 화면이 안정적일 때만 소리 없이 촬영합니다. 일반 스윙의 충격음·몸동작 결합 판단은 0.5.1 그대로 유지합니다."
+        case .v0_7_0:
+            "드라이버부터 작은 어프로치까지 소리 크기보다 연속된 샷 동작을 함께 봅니다. 약한 접촉음도 동작과 맞으면 살리고, 화면 근거가 없는 소리만으로는 촬영하지 않습니다. 퍼팅 자세 근거는 조금 더 오래 유지합니다."
         }
     }
 
@@ -894,7 +922,7 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
         switch self {
         case .v0_1_0:
             false
-        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0:
+        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0, .v0_7_0:
             true
         }
     }
@@ -903,31 +931,34 @@ enum HanClipAiModelVersion: String, CaseIterable, Sendable {
         switch self {
         case .v0_1_0:
             false
-        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0:
+        case .v0_2_0, .v0_2_1, .v0_3_0, .v0_4_0, .v0_5_0, .v0_5_1, .v0_6_0, .v0_7_0:
             true
         }
     }
 
     var usesGolfSwingMotionFusion: Bool {
         self == .v0_4_0 || self == .v0_5_0 || self == .v0_5_1
-            || self == .v0_6_0
+            || self == .v0_6_0 || self == .v0_7_0
     }
 
     var usesBodyPoseAssist: Bool {
-        self == .v0_5_0 || self == .v0_5_1 || self == .v0_6_0
+        self == .v0_5_0 || self == .v0_5_1 || self == .v0_6_0 || self == .v0_7_0
     }
 
     var usesPoseBackedImpactEvidence: Bool {
-        self == .v0_5_1 || self == .v0_6_0
+        self == .v0_5_1 || self == .v0_6_0 || self == .v0_7_0
     }
 
     var supportsSoundlessPuttFallback: Bool {
-        self == .v0_6_0
+        self == .v0_6_0 || self == .v0_7_0
     }
+
+    var requiresVisualShotEvidence: Bool { self == .v0_7_0 }
+    var supportsVisualBackedWeakImpact: Bool { self == .v0_7_0 }
 }
 
 enum AudioImpactClassifier {
-    static let currentModelVersion = HanClipAiModelVersion.v0_6_0
+    static let currentModelVersion = HanClipAiModelVersion.v0_7_0
     static var modelVersion: String { currentModelVersion.rawValue }
     static var modelFeatureSummary: String {
         currentModelVersion.featureSummary

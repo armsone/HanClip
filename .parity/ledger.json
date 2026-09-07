@@ -1,0 +1,59 @@
+{
+  "ledger_version": 1,
+  "rows": [
+    {
+      "id": "aishot_engine.v070.swing_fusion",
+      "route_state": "aishot_automatic_capture",
+      "element": "swing_fusion_policy",
+      "dimension": "v0.7 visual evidence and weak-impact gates",
+      "classification": "functional",
+      "source_ref": {
+        "kind": "source",
+        "value": "HanAI v0.7 GolfSwingFusionPolicy",
+        "location": "HanAI/Sources/HanAI/Golf/GolfFusionPolicies.swift"
+      },
+      "target_observation": "source implementation aligned; runtime capture pending",
+      "implementation_ref": "HanClip/Services/AudioImpactClassifier.swift; app/src/main/java/com/hanclip/android/feature/aishot/AiShotMotionFusion.kt",
+      "fixture": "aishot_v070_source_review",
+      "fallback_capable": false,
+      "evidence": [],
+      "status": "implemented_source_only",
+      "attempts": [
+        {
+          "attempt": 1,
+          "date": "2026-09-07",
+          "action": "Aligned iOS and Android v0.7 fusion gates with HanAI source",
+          "result": "source build completed; paired runtime behavior trace pending"
+        }
+      ],
+      "reopen_history": []
+    },
+    {
+      "id": "feature_dictionary.ai.v070_copy",
+      "route_state": "feature_dictionary_ai",
+      "element": "ai_version_history",
+      "dimension": "0.7.0 explanatory text",
+      "classification": "visual",
+      "source_ref": {
+        "kind": "source",
+        "value": "HanClip/Views/EditorView.swift Ai dictionary entry",
+        "location": "HanClip/Views/EditorView.swift"
+      },
+      "target_observation": "iOS and Android source text aligned; paired rendered capture pending",
+      "implementation_ref": "HanClip/Views/EditorView.swift; app/src/main/java/com/hanclip/android/feature/home/HomeRoute.kt",
+      "fixture": "feature_dictionary_ai_v070",
+      "fallback_capable": false,
+      "evidence": [],
+      "status": "implemented_source_only",
+      "attempts": [
+        {
+          "attempt": 1,
+          "date": "2026-09-07",
+          "action": "Added 0.7.0 version history text on both platforms",
+          "result": "source text checked; paired visual capture pending"
+        }
+      ],
+      "reopen_history": []
+    }
+  ]
+}
