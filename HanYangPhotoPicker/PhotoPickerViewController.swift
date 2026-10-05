@@ -100,6 +100,9 @@ final class PhotoPickerViewController: UIViewController {
         explainLabel.numberOfLines = 0
 
         countLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        countLabel.numberOfLines = 0
+        countLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        countStepper.setContentCompressionResistancePriority(.required, for: .horizontal)
         countStepper.minimumValue = 1
         countStepper.value = 1
         countStepper.addTarget(self, action: #selector(countChanged), for: .valueChanged)
@@ -195,7 +198,9 @@ final class PhotoPickerViewController: UIViewController {
         configuration.baseForegroundColor = .white
         configuration.cornerStyle = .capsule
         button.configuration = configuration
-        button.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        let height = button.heightAnchor.constraint(equalToConstant: 52)
+        height.priority = UILayoutPriority(999)
+        height.isActive = true
         button.addTarget(self, action: action, for: .touchUpInside)
     }
 
@@ -204,6 +209,15 @@ final class PhotoPickerViewController: UIViewController {
     }
 
     private func setStage(_ stage: Stage) {
+        if stage != .result {
+            // Hidden stacks receive a zero-height constraint. Remove photo aspect
+            // constraints with their views instead of fighting that hidden height.
+            thumbnailsStack.arrangedSubviews.forEach {
+                thumbnailsStack.removeArrangedSubview($0)
+                $0.removeFromSuperview()
+            }
+            previewImageViews = []
+        }
         startButton.isHidden = stage != .configuring
         countStack.isHidden = stage != .configuring || candidates.isEmpty
         progressView.isHidden = stage != .analyzing && stage != .resolving
@@ -458,7 +472,8 @@ final class PhotoPickerViewController: UIViewController {
 
         confirmButton.configuration?.title = "선택한 \(selected.count)장 앨범에 저장"
         setStage(.result)
-        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        scrollView.setContentOffset(.zero, animated: false)
     }
 
     private var isUsingAesthetics: Bool {
@@ -472,6 +487,8 @@ final class PhotoPickerViewController: UIViewController {
         setStage(.configuring)
         updateCountLabel()
         statusLabel.text = "\(providers.count)장 중 뽑을 장수를 다시 정해 주세요."
+        view.layoutIfNeeded()
+        scrollView.setContentOffset(.zero, animated: false)
     }
 
     @objc private func chooseAlbum() {
@@ -565,7 +582,7 @@ final class PhotoPickerViewController: UIViewController {
                 currentTask = nil
                 if Task.isCancelled { return }
                 try? HanYangStaging.writeManifest(batchID: batchID, state: "staging", selectedFilenames: [])
-                setStage(.result)
+                renderSelection()
                 statusLabel.text = error.localizedDescription
             }
         }
