@@ -246,10 +246,11 @@ final class PhotoPickerViewController: UIViewController {
         providers = shareContext?
             .inputItems
             .compactMap { $0 as? NSExtensionItem }
-            .flatMap { $0.attachments ?? [] } ?? []
+            .flatMap { $0.attachments ?? [] }
+            .filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) } ?? []
 
         guard !providers.isEmpty else {
-            statusLabel.text = "가져올 수 있는 사진이 없습니다."
+            statusLabel.text = "선택한 파일에 사진이 없습니다. 사진을 선택한 뒤 다시 공유해 주세요."
             setStage(.failed)
             return
         }

@@ -42,8 +42,8 @@ final class ShareViewController: UIViewController {
         guard needsPhotoChoice, !didShowPhotoChoice else { return }
         didShowPhotoChoice = true
         let choice = UIAlertController(
-            title: "사진으로 무엇을 할까요?",
-            message: "한양이 좋은 사진을 골라 원본을 앨범에 정리하거나, 사진으로 영화를 만들 수 있습니다.",
+            title: "공유한 파일로 무엇을 할까요?",
+            message: "한양이 사진을 골라 앨범에 정리하거나, 사진과 영상으로 영화를 만들 수 있습니다. 사진 고르기에서는 영상을 제외합니다.",
             preferredStyle: .alert
         )
         choice.addAction(UIAlertAction(title: "한양 사진 고르기", style: .default) { [weak self] _ in
@@ -61,7 +61,7 @@ final class ShareViewController: UIViewController {
             ])
             picker.didMove(toParent: self)
         })
-        choice.addAction(UIAlertAction(title: "사진으로 영화 만들기", style: .default) { [weak self] _ in
+        choice.addAction(UIAlertAction(title: "영화 만들기", style: .default) { [weak self] _ in
             self?.statusLabel.text = "공유 파일을 HanClip으로 옮기는 중입니다."
             self?.importSharedAttachments()
         })
@@ -77,9 +77,8 @@ final class ShareViewController: UIViewController {
         let attachments = extensionContext?.inputItems
             .compactMap { $0 as? NSExtensionItem }
             .flatMap { $0.attachments ?? [] } ?? []
-        needsPhotoChoice = !attachments.isEmpty && attachments.allSatisfy {
+        needsPhotoChoice = attachments.contains {
             $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
-                && !$0.hasItemConformingToTypeIdentifier(UTType.movie.identifier)
         }
         if needsPhotoChoice {
             statusLabel.text = "사진 작업을 선택해 주세요."
