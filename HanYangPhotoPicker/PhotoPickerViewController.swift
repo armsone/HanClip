@@ -45,8 +45,11 @@ final class PhotoPickerViewController: UIViewController {
     private var providers: [NSItemProvider] = []
     private var candidates: [Candidate] = []
     private var previewURLs: [URL] = []
+    private var previewImageViews: [UIImageView] = []
     private var failedCount = 0
     private var selectedN = 1
+    private var recommendedN = 1
+    private var hasCustomCount = false
     private var currentTask: Task<Void, Never>?
     private var isCommitted = false
     private var isSaving = false
@@ -55,6 +58,25 @@ final class PhotoPickerViewController: UIViewController {
         super.viewDidLoad()
         configureView()
         loadAttachments()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        loadVisiblePhotoPreviews()
+    }
+
+    private func loadVisiblePhotoPreviews() {
+        guard !thumbnailsStack.isHidden else { return }
+        let visible = scrollView.bounds.insetBy(dx: 0, dy: -scrollView.bounds.height / 2)
+        for imageView in previewImageViews {
+            let position = imageView.tag
+            guard previewURLs.indices.contains(position) else { continue }
+            if imageView.convert(imageView.bounds, to: scrollView).intersects(visible) {
+                if imageView.image == nil, let image = ImageQualityAnalyzer.downsampledCGImage(
+                    at: previewURLs[position], maxPixelSize: 768
+                ) { imageView.image = UIImage(cgImage: image) }
+            } else { imageView.image = nil }
+        }
     }
 
     // MARK: - Layout
@@ -132,6 +154,7 @@ final class PhotoPickerViewController: UIViewController {
         stack.alignment = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
 
+        scrollView.delegate = self
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
         scrollView.addSubview(stack)
@@ -182,7 +205,7 @@ final class PhotoPickerViewController: UIViewController {
 
     private func setStage(_ stage: Stage) {
         startButton.isHidden = stage != .configuring
-        countStack.isHidden = stage != .configuring
+        countStack.isHidden = stage != .configuring || candidates.isEmpty
         progressView.isHidden = stage != .analyzing && stage != .resolving
         progressLabel.isHidden = stage != .analyzing && stage != .resolving
         thumbnailsStack.isHidden = stage != .result
@@ -218,18 +241,19 @@ final class PhotoPickerViewController: UIViewController {
         }
 
         countStepper.maximumValue = Double(providers.count)
-        countStepper.value = Double(min(5, providers.count))
-        selectedN = Int(countStepper.value)
-        updateCountLabel()
-        statusLabel.text = "\(providers.count)장을 선택했습니다. 뽑을 장수를 정해 주세요."
+        countStepper.value = 1
+        selectedN = 1
+        startButton.configuration?.title = "한양에게 추천받기"
+        statusLabel.text = "\(providers.count)장을 선택했습니다. 한양이 품질을 보고 추천 장수를 정합니다."
     }
 
     private func updateCountLabel() {
-        startButton.configuration?.title = "좋은 사진 \(Int(countStepper.value))장 고르기"
+        startButton.configuration?.title = "선택한 \(Int(countStepper.value))장 확인"
         countLabel.text = "\(Int(countStepper.value))장 뽑기 (전체 \(providers.count)장)"
     }
 
     @objc private func countChanged() {
+        hasCustomCount = true
         selectedN = Int(countStepper.value)
         updateCountLabel()
     }
@@ -360,7 +384,15 @@ final class PhotoPickerViewController: UIViewController {
             return
         }
 
+        let qualityCandidates = candidates.map {
+            ImageQualityCandidate(index: $0.index, sharpness: $0.measurement.sharpness,
+                exposureScore: $0.measurement.exposureScore, pixelCount: $0.measurement.pixelCount,
+                aestheticsScore: isUsingAesthetics ? $0.measurement.aestheticsScore : nil)
+        }
+        recommendedN = ImageTopNSelector.recommendedCount(candidates: qualityCandidates)
+        if !hasCustomCount { selectedN = recommendedN }
         countStepper.maximumValue = Double(candidates.count)
+        countStepper.value = Double(selectedN)
         renderSelection()
     }
 
@@ -380,7 +412,7 @@ final class PhotoPickerViewController: UIViewController {
             .filter { selectedIndices.contains($0.index) }
             .sorted { $0.index < $1.index }
 
-        var statusText = "요청한 \(selectedN)장 중 \(selected.count)장을 골랐습니다."
+        var statusText = "전체 \(providers.count)장 중 한양은 \(recommendedN)장을 추천합니다. \(selected.count)장을 골랐습니다."
         confirmButton.isEnabled = selected.count == selectedN && albumDestination != nil
         if selected.count < selectedN { statusText += " 개수를 줄이거나 다시 분석해 주세요." }
         if failedCount > 0 {
@@ -398,16 +430,8 @@ final class PhotoPickerViewController: UIViewController {
         }
 
         previewURLs = selected.map { $0.stagingURL }
-        var row: UIStackView?
+        previewImageViews = []
         for (position, candidate) in selected.enumerated() {
-            if position.isMultiple(of: 3) {
-                let newRow = UIStackView()
-                newRow.axis = .horizontal
-                newRow.spacing = 8
-                newRow.distribution = .fillEqually
-                thumbnailsStack.addArrangedSubview(newRow)
-                row = newRow
-            }
             let imageView = UIImageView()
             imageView.contentMode = .scaleAspectFit
             imageView.backgroundColor = .secondarySystemBackground
@@ -418,18 +442,23 @@ final class PhotoPickerViewController: UIViewController {
             imageView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openPhotoPreview(_:))))
             imageView.clipsToBounds = true
             imageView.layer.cornerRadius = 10
-            imageView.heightAnchor.constraint(equalToConstant: 96).isActive = true
             if let cgImage = ImageQualityAnalyzer.downsampledCGImage(
-                at: candidate.stagingURL,
-                maxPixelSize: ImageQualityAnalyzer.thumbnailMaxPixelSize
+                at: candidate.stagingURL, maxPixelSize: ImageQualityAnalyzer.thumbnailMaxPixelSize
             ) {
-                imageView.image = UIImage(cgImage: cgImage)
+                imageView.heightAnchor.constraint(
+                    equalTo: imageView.widthAnchor,
+                    multiplier: CGFloat(cgImage.height) / CGFloat(cgImage.width)
+                ).isActive = true
+            } else {
+                imageView.heightAnchor.constraint(equalToConstant: 160).isActive = true
             }
-            row?.addArrangedSubview(imageView)
+            thumbnailsStack.addArrangedSubview(imageView)
+            previewImageViews.append(imageView)
         }
 
         confirmButton.configuration?.title = "선택한 \(selected.count)장 앨범에 저장"
         setStage(.result)
+        view.setNeedsLayout()
     }
 
     private var isUsingAesthetics: Bool {
@@ -649,4 +678,9 @@ extension PhotoPickerViewController: QLPreviewControllerDataSource {
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem {
         previewURLs[index] as NSURL
     }
+}
+
+
+extension PhotoPickerViewController: UIScrollViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { loadVisiblePhotoPreviews() }
 }
