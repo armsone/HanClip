@@ -1,6 +1,7 @@
 import UIKit
 import UniformTypeIdentifiers
 import Photos
+import QuickLook
 
 /// 한양(HanAI) 사진 고르기: Photos에서 여러 장을 고른 뒤 이 화면에서 원하는
 /// 장수(N)를 정하면, 로컬에서만 품질을 채점해 상위 N장을 미리보기로 보여주고
@@ -43,6 +44,7 @@ final class PhotoPickerViewController: UIViewController {
     private var batchLease: HanYangBatchLease?
     private var providers: [NSItemProvider] = []
     private var candidates: [Candidate] = []
+    private var previewURLs: [URL] = []
     private var failedCount = 0
     private var selectedN = 1
     private var currentTask: Task<Void, Never>?
@@ -395,6 +397,7 @@ final class PhotoPickerViewController: UIViewController {
             $0.removeFromSuperview()
         }
 
+        previewURLs = selected.map { $0.stagingURL }
         var row: UIStackView?
         for (position, candidate) in selected.enumerated() {
             if position.isMultiple(of: 3) {
@@ -406,7 +409,13 @@ final class PhotoPickerViewController: UIViewController {
                 row = newRow
             }
             let imageView = UIImageView()
-            imageView.contentMode = .scaleAspectFill
+            imageView.contentMode = .scaleAspectFit
+            imageView.backgroundColor = .secondarySystemBackground
+            imageView.isUserInteractionEnabled = true
+            imageView.tag = position
+            imageView.accessibilityLabel = "고른 사진 \(position + 1) 크게 보기"
+            imageView.accessibilityTraits = .button
+            imageView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openPhotoPreview(_:))))
             imageView.clipsToBounds = true
             imageView.layer.cornerRadius = 10
             imageView.heightAnchor.constraint(equalToConstant: 96).isActive = true
@@ -533,6 +542,15 @@ final class PhotoPickerViewController: UIViewController {
         }
     }
 
+    @objc private func openPhotoPreview(_ gesture: UITapGestureRecognizer) {
+        guard let position = gesture.view?.tag, previewURLs.indices.contains(position) else { return }
+        let preview = QLPreviewController()
+        preview.dataSource = self
+        preview.currentPreviewItemIndex = position
+        preview.modalPresentationStyle = .fullScreen
+        present(preview, animated: true)
+    }
+
     // MARK: - Cancel
 
     @objc private func cancelFlow() {
@@ -621,5 +639,14 @@ private final class HanYangAlbumPicker: UITableViewController {
             self.dismiss(animated: true)
         })
         present(alert, animated: true)
+    }
+}
+
+
+extension PhotoPickerViewController: QLPreviewControllerDataSource {
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int { previewURLs.count }
+
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem {
+        previewURLs[index] as NSURL
     }
 }
