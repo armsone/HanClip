@@ -76,10 +76,9 @@
 		270000000000000000000001 /* HanClipLockWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000010 /* HanClipLockWidget.swift */; };
 		270000000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 270000000000000000000012 /* Assets.xcassets */; };
 		270000000000000000000003 /* HanClipWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 270000000000000000000013 /* HanClipWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		2D0000000000000000000001 /* PhotoPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000001 /* PhotoPickerViewController.swift */; };
-		2D0000000000000000000002 /* ImageQualityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000002 /* ImageQualityAnalyzer.swift */; };
-		2D0000000000000000000005 /* ImageTopNSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000006 /* ImageTopNSelector.swift */; };
-		2D0000000000000000000006 /* HanYangPhotoPicker.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000005 /* HanYangPhotoPicker.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2E0000000000000000000011 /* PhotoPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000001 /* PhotoPickerViewController.swift */; };
+		2E0000000000000000000012 /* ImageQualityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000002 /* ImageQualityAnalyzer.swift */; };
+		2E0000000000000000000013 /* ImageTopNSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000006 /* ImageTopNSelector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,13 +96,6 @@
 			remoteGlobalIDString = 500000000000000000000003;
 			remoteInfo = HanClipWidget;
 		};
-		300000000000000000000003 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 400000000000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 2F0000000000000000000001;
-			remoteInfo = HanYangPhotoPicker;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -115,7 +107,6 @@
 			files = (
 				10000000000000000000000F /* HanClipShare.appex in Embed App Extensions */,
 				270000000000000000000003 /* HanClipWidget.appex in Embed App Extensions */,
-				2D0000000000000000000006 /* HanYangPhotoPicker.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -200,9 +191,6 @@
 		270000000000000000000013 /* HanClipWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HanClipWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C0000000000000000000001 /* PhotoPickerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPickerViewController.swift; sourceTree = "<group>"; };
 		2C0000000000000000000002 /* ImageQualityAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageQualityAnalyzer.swift; sourceTree = "<group>"; };
-		2C0000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		2C0000000000000000000004 /* HanYangPhotoPicker.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HanYangPhotoPicker.entitlements; sourceTree = "<group>"; };
-		2C0000000000000000000005 /* HanYangPhotoPicker.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HanYangPhotoPicker.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2C0000000000000000000006 /* ImageTopNSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTopNSelector.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -222,13 +210,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		600000000000000000000009 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		600000000000000000000011 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -257,7 +238,6 @@
 				20000000000000000000000D /* HanClip.app */,
 				20000000000000000000000E /* HanClipShare.appex */,
 				270000000000000000000013 /* HanClipWidget.appex */,
-				2C0000000000000000000005 /* HanYangPhotoPicker.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -407,8 +387,6 @@
 			children = (
 				2C0000000000000000000001 /* PhotoPickerViewController.swift */,
 				2C0000000000000000000002 /* ImageQualityAnalyzer.swift */,
-				2C0000000000000000000003 /* Info.plist */,
-				2C0000000000000000000004 /* HanYangPhotoPicker.entitlements */,
 			);
 			path = HanYangPhotoPicker;
 			sourceTree = "<group>";
@@ -439,7 +417,6 @@
 			dependencies = (
 				900000000000000000000001 /* PBXTargetDependency */,
 				900000000000000000000002 /* PBXTargetDependency */,
-				900000000000000000000003 /* PBXTargetDependency */,
 			);
 			name = HanClip;
 			productName = HanClip;
@@ -480,23 +457,6 @@
 			productReference = 270000000000000000000013 /* HanClipWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		2F0000000000000000000001 /* HanYangPhotoPicker */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 800000000000000000000005 /* Build configuration list for PBXNativeTarget "HanYangPhotoPicker" */;
-			buildPhases = (
-				600000000000000000000010 /* Sources */,
-				600000000000000000000011 /* Frameworks */,
-				600000000000000000000012 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = HanYangPhotoPicker;
-			productName = HanYangPhotoPicker;
-			productReference = 2C0000000000000000000005 /* HanYangPhotoPicker.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -524,9 +484,6 @@
 					500000000000000000000003 = {
 						CreatedOnToolsVersion = 26.6;
 					};
-					2F0000000000000000000001 = {
-						CreatedOnToolsVersion = 26.6;
-					};
 				};
 			};
 			buildConfigurationList = 800000000000000000000001 /* Build configuration list for PBXProject "HanClip" */;
@@ -546,7 +503,6 @@
 				500000000000000000000001 /* HanClip */,
 				500000000000000000000002 /* HanClipShare */,
 				500000000000000000000003 /* HanClipWidget */,
-				2F0000000000000000000001 /* HanYangPhotoPicker */,
 			);
 		};
 /* End PBXProject section */
@@ -614,13 +570,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		600000000000000000000012 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -660,6 +609,9 @@
 				10000000000000000000000C /* ShareViewController.swift in Sources */,
 				10000000000000000000000D /* SharedImportRecord.swift in Sources */,
 				10000000000000000000000E /* SharedInbox.swift in Sources */,
+				2E0000000000000000000011 /* PhotoPickerViewController.swift in Sources */,
+				2E0000000000000000000012 /* ImageQualityAnalyzer.swift in Sources */,
+				2E0000000000000000000013 /* ImageTopNSelector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -668,16 +620,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				270000000000000000000001 /* HanClipLockWidget.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		600000000000000000000010 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				2D0000000000000000000001 /* PhotoPickerViewController.swift in Sources */,
-				2D0000000000000000000002 /* ImageQualityAnalyzer.swift in Sources */,
-				2D0000000000000000000005 /* ImageTopNSelector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -693,11 +635,6 @@
 			isa = PBXTargetDependency;
 			target = 500000000000000000000003 /* HanClipWidget */;
 			targetProxy = 300000000000000000000002 /* PBXContainerItemProxy */;
-		};
-		900000000000000000000003 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 2F0000000000000000000001 /* HanYangPhotoPicker */;
-			targetProxy = 300000000000000000000003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -827,7 +764,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
+				CURRENT_PROJECT_VERSION = 202610051010;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -854,7 +791,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
+				CURRENT_PROJECT_VERSION = 202610051010;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -881,7 +818,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
+				CURRENT_PROJECT_VERSION = 202610051010;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -908,7 +845,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
+				CURRENT_PROJECT_VERSION = 202610051010;
 				MARKETING_VERSION = 2.4.0;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -934,7 +871,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
+				CURRENT_PROJECT_VERSION = 202610051010;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -960,7 +897,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
+				CURRENT_PROJECT_VERSION = 202610051010;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -971,60 +908,6 @@
 				);
 				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		A00000000000000000000009 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = HanYangPhotoPicker/HanYangPhotoPicker.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
-				DEVELOPMENT_TEAM = T7B4EPLHPK;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = HanYangPhotoPicker/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 2.4.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.hanyang;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		A0000000000000000000000A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = HanYangPhotoPicker/HanYangPhotoPicker.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610050057;
-				DEVELOPMENT_TEAM = T7B4EPLHPK;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = HanYangPhotoPicker/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 2.4.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.hanyang;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -1070,15 +953,6 @@
 			buildConfigurations = (
 				A00000000000000000000007 /* Debug */,
 				A00000000000000000000008 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		800000000000000000000005 /* Build configuration list for PBXNativeTarget "HanYangPhotoPicker" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A00000000000000000000009 /* Debug */,
-				A0000000000000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

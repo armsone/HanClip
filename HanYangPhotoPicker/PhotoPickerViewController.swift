@@ -8,6 +8,8 @@ import Photos
 /// 기존 사진을 수정·삭제하지 않으며, 네트워크도 쓰지 않는다.
 @MainActor
 final class PhotoPickerViewController: UIViewController {
+    var suppliedExtensionContext: NSExtensionContext?
+    private var shareContext: NSExtensionContext? { suppliedExtensionContext ?? extensionContext }
     private struct Candidate {
         let index: Int
         let stagingURL: URL
@@ -202,7 +204,7 @@ final class PhotoPickerViewController: UIViewController {
             setStage(.failed)
             return
         }
-        providers = extensionContext?
+        providers = shareContext?
             .inputItems
             .compactMap { $0 as? NSExtensionItem }
             .flatMap { $0.attachments ?? [] } ?? []
@@ -477,6 +479,8 @@ final class PhotoPickerViewController: UIViewController {
         let indices = Set(ImageTopNSelector.selectTopN(candidates: inputs, n: selectedN).selectedIndices)
         let selected = candidates.filter { indices.contains($0.index) }.sorted { $0.index < $1.index }
         guard selected.count == selectedN, !selected.isEmpty else { return }
+        progressView.progress = 0
+        progressLabel.text = "원본 대조 준비 중"
         setStage(.resolving)
         statusLabel.text = "선택한 \(selected.count)장의 원본을 확인하는 중입니다."
         currentTask = Task {
@@ -548,7 +552,7 @@ final class PhotoPickerViewController: UIViewController {
     }
 
     private func completeExtension() {
-        extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+        shareContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
 }
 

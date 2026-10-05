@@ -34,10 +34,59 @@ final class ShareViewController: UIViewController {
     private var isOpeningHostApp = false
     private var didAttemptAutomaticOpen = false
 
+    private var needsPhotoChoice = false
+    private var didShowPhotoChoice = false
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard needsPhotoChoice, !didShowPhotoChoice else { return }
+        didShowPhotoChoice = true
+        let choice = UIAlertController(
+            title: "사진으로 무엇을 할까요?",
+            message: "한양이 좋은 사진을 골라 원본을 앨범에 정리하거나, 사진으로 영화를 만들 수 있습니다.",
+            preferredStyle: .alert
+        )
+        choice.addAction(UIAlertAction(title: "한양 사진 고르기", style: .default) { [weak self] _ in
+            guard let self else { return }
+            let picker = PhotoPickerViewController()
+            picker.suppliedExtensionContext = self.extensionContext
+            self.addChild(picker)
+            picker.view.translatesAutoresizingMaskIntoConstraints = false
+            self.view.addSubview(picker.view)
+            NSLayoutConstraint.activate([
+                picker.view.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                picker.view.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                picker.view.topAnchor.constraint(equalTo: self.view.topAnchor),
+                picker.view.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
+            ])
+            picker.didMove(toParent: self)
+        })
+        choice.addAction(UIAlertAction(title: "사진으로 영화 만들기", style: .default) { [weak self] _ in
+            self?.statusLabel.text = "공유 파일을 HanClip으로 옮기는 중입니다."
+            self?.importSharedAttachments()
+        })
+        choice.addAction(UIAlertAction(title: "취소", style: .cancel) { [weak self] _ in
+            self?.extensionContext?.completeRequest(returningItems: nil)
+        })
+        present(choice, animated: true)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         configureView()
-        importSharedAttachments()
+        let attachments = extensionContext?.inputItems
+            .compactMap { $0 as? NSExtensionItem }
+            .flatMap { $0.attachments ?? [] } ?? []
+        needsPhotoChoice = !attachments.isEmpty && attachments.allSatisfy {
+            $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+                && !$0.hasItemConformingToTypeIdentifier(UTType.movie.identifier)
+        }
+        if needsPhotoChoice {
+            statusLabel.text = "사진 작업을 선택해 주세요."
+            descriptionLabel.text = "사진 선별을 선택하면 영화 편집용 보관함으로 보내지 않습니다."
+        } else {
+            importSharedAttachments()
+        }
     }
 
     private func configureView() {

@@ -405,21 +405,10 @@ actor HanYangOriginalResolver {
         options.includeHiddenAssets = true
         options.includeAllBurstAssets = true
         let assets = PHAsset.fetchAssets(with: .image, options: options)
-        let suggestedBase = suggestedFilename.map {
-            (URL(fileURLWithPath: $0).lastPathComponent as NSString).deletingPathExtension.lowercased()
-        }
-        var preferredIndices: [Int] = []
-        var otherIndices: [Int] = []
-        for index in 0..<assets.count {
-            try Task.checkCancellation()
-            let resources = PHAssetResource.assetResources(for: assets.object(at: index))
-            if let name = suggestedBase, resources.contains(where: {
-                ($0.originalFilename as NSString).deletingPathExtension.lowercased() == name
-            }) { preferredIndices.append(index) }
-            else { otherIndices.append(index) }
-        }
-        // Filenames set read priority only. No asset is omitted from uniqueness checking.
-        let search = preferredIndices + otherIndices
+        // Every asset must be checked for uniqueness, so a separate filename
+        // priority pass only repeats Photos resource lookups and delays progress.
+        let search = 0..<assets.count
+        await progress(0, assets.count)
         var matches = Set<String>()
         var unresolved = false
         for (position, index) in search.enumerated() {

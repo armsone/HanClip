@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>HanClip으로 영상 만들기</string>
+	<string>HanClip</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,5 +28,7 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
 	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>한양이 고른 원본 사진을 지정한 앨범에 추가합니다. 사진을 복사하거나 삭제하지 않습니다.</string>
 </dict>
 </plist>
