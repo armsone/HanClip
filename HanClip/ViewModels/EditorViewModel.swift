@@ -209,7 +209,9 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var isQuickModeProject = false
     @Published private(set) var activeMoviePreset: MoviePreset?
     @Published var isQuickDurationPickerPresented = false
+    @Published var isQuickResultEditorPresented = false
     private var shouldReturnToQuickDurationPickerAfterPreview = false
+    private var isOpeningQuickResultEditor = false
     private var quickPickerCancelReturnsToEditor = false
     private var photoLibraryImportCancellationHandler: (() -> Void)?
     @Published private var expandedSimilarPhotoGroupIDs: Set<UUID> = []
@@ -219,6 +221,14 @@ final class EditorViewModel: ObservableObject {
         return savedProjects.first {
             $0.id == activeProjectID
         }?.kind == .aiShot
+    }
+
+    var isQuickResultPreview: Bool {
+        guard let projectID = newlySavedProjectID ?? activeProjectID else {
+            return false
+        }
+        return savedProjects.first { $0.id == projectID }?.initialMoviePreset
+            == .quick
     }
 
     @Published private(set) var initialCalendarMonth = Calendar.current
@@ -369,6 +379,10 @@ final class EditorViewModel: ObservableObject {
     }
 
     func shouldDisplayClip(_ clip: ClipItem) -> Bool {
+        Self.shouldDisplayClip(clip, in: clips)
+    }
+
+    static func shouldDisplayClip(_ clip: ClipItem, in clips: [ClipItem]) -> Bool {
         if clip.isSimilarPhotoGroupChild {
             guard let groupID = clip.similarPhotoGroupID,
                   let parent = clips.first(where: {
@@ -861,6 +875,45 @@ final class EditorViewModel: ObservableObject {
         isQuickDurationPickerPresented = true
     }
 
+    func beginQuickResultEditing() {
+        guard !isLoadingProject, !isExporting else { return }
+
+        let projectID = newlySavedProjectID
+            ?? activeProjectID
+            ?? savedProjects.max(by: { $0.updatedAt < $1.updatedAt })?.id
+        guard let projectID else { return }
+
+        // The preview owns no editable clips. Reopen its saved quick project,
+        // then let the view create a disposable editing draft.
+        shouldReturnToQuickDurationPickerAfterPreview = false
+        isOpeningQuickResultEditor = true
+        showPreview = false
+        loadProject(id: projectID) { [weak self] didLoad in
+            guard let self else { return }
+            self.isOpeningQuickResultEditor = false
+            guard didLoad, self.activeMoviePreset == .quick else { return }
+            self.isQuickResultEditorPresented = true
+        }
+    }
+
+    func cancelQuickResultEditing() {
+        isQuickResultEditorPresented = false
+        releaseEditingMemory()
+        isProjectOpen = false
+        showPreview = exportedURL != nil
+    }
+
+    func applyQuickResultEdits(_ editedClips: [ClipItem]) {
+        guard activeMoviePreset == .quick,
+              !editedClips.filter(\.isRenderableClip).isEmpty,
+              !isExporting
+        else { return }
+
+        clips = editedClips
+        isQuickResultEditorPresented = false
+        saveProjectAndOpenPreview()
+    }
+
     func quickEstimatedTotalDuration(for targetDuration: Double) -> Double {
         let endingDuration = quickEndingDuration
         let requestedContentDuration = max(0.1, targetDuration)
@@ -1344,8 +1397,8 @@ final class EditorViewModel: ObservableObject {
 
         let groupID = UUID()
         let rankedIndices = group.sorted {
-            photoRepresentativeScore(for: workingClips[$0])
-                > photoRepresentativeScore(for: workingClips[$1])
+            Self.photoRepresentativeScore(for: workingClips[$0])
+                > Self.photoRepresentativeScore(for: workingClips[$1])
         }
         let representativeIndex = rankedIndices.first
         let representativeCount = automaticSimilarPhotoRepresentativeCount(
@@ -1490,7 +1543,7 @@ final class EditorViewModel: ObservableObject {
         return abs(lhsDate.timeIntervalSince(rhsDate)) <= 45
     }
 
-    private func photoRepresentativeScore(for clip: ClipItem) -> Double {
+    static func photoRepresentativeScore(for clip: ClipItem) -> Double {
         let fingerprint = clip.photoSimilarityFingerprint.map(Double.init)
         guard !fingerprint.isEmpty else { return 0 }
 
@@ -1511,6 +1564,18 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func rebalanceSimilarPhotoGroup(_ groupID: UUID) {
+        Self.rebalanceSimilarPhotoGroup(
+            groupID,
+            in: &clips,
+            similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+        )
+    }
+
+    static func rebalanceSimilarPhotoGroup(
+        _ groupID: UUID,
+        in clips: inout [ClipItem],
+        similarPhotoRepresentativeInterval: Int
+    ) {
         let groupIndices = clips.indices.filter {
             clips[$0].similarPhotoGroupID == groupID
         }
@@ -1528,11 +1593,15 @@ final class EditorViewModel: ObservableObject {
         let groupMode = clips[groupIndices[0]].videoSegmentMode
         switch groupMode {
         case .single:
-            applyAutomaticSimilarPhotoSelection(groupID: groupID)
+            applyAutomaticSimilarPhotoSelection(
+                groupID: groupID,
+                in: &clips,
+                similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+            )
         case .multiple:
             break
         case .all:
-            setAllSimilarPhotosIncluded(groupID: groupID)
+            setAllSimilarPhotosIncluded(groupID: groupID, in: &clips)
         }
 
         let includedIndices = groupIndices.filter {
@@ -1555,6 +1624,16 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func automaticSimilarPhotoRepresentativeCount(total: Int) -> Int {
+        Self.automaticSimilarPhotoRepresentativeCount(
+            total: total,
+            similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+        )
+    }
+
+    static func automaticSimilarPhotoRepresentativeCount(
+        total: Int,
+        similarPhotoRepresentativeInterval: Int
+    ) -> Int {
         max(
             1,
             Int(
@@ -1567,6 +1646,18 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func applyAutomaticSimilarPhotoSelection(groupID: UUID) {
+        Self.applyAutomaticSimilarPhotoSelection(
+            groupID: groupID,
+            in: &clips,
+            similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+        )
+    }
+
+    static func applyAutomaticSimilarPhotoSelection(
+        groupID: UUID,
+        in clips: inout [ClipItem],
+        similarPhotoRepresentativeInterval: Int
+    ) {
         let rankedIndices = clips.indices
             .filter { clips[$0].similarPhotoGroupID == groupID }
             .sorted {
@@ -1574,7 +1665,8 @@ final class EditorViewModel: ObservableObject {
                     > photoRepresentativeScore(for: clips[$1])
             }
         let count = automaticSimilarPhotoRepresentativeCount(
-            total: rankedIndices.count
+            total: rankedIndices.count,
+            similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
         )
         let selected = Set(rankedIndices.prefix(count))
         for index in rankedIndices {
@@ -1583,6 +1675,10 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func setAllSimilarPhotosIncluded(groupID: UUID) {
+        Self.setAllSimilarPhotosIncluded(groupID: groupID, in: &clips)
+    }
+
+    static func setAllSimilarPhotosIncluded(groupID: UUID, in clips: inout [ClipItem]) {
         for index in clips.indices where clips[index].similarPhotoGroupID == groupID {
             clips[index].isSimilarPhotoGroupRepresentative = true
         }
@@ -1777,6 +1873,19 @@ final class EditorViewModel: ObservableObject {
     }
 
     func removeClip(id: UUID) {
+        clips = Self.removingClip(
+            id: id,
+            from: clips,
+            similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+        )
+    }
+
+    static func removingClip(
+        id: UUID,
+        from clips: [ClipItem],
+        similarPhotoRepresentativeInterval: Int
+    ) -> [ClipItem] {
+        var clips = clips
         let removedClip = clips.first { $0.id == id }
         let similarPhotoGroupID = removedClip?.similarPhotoGroupID
         let removesWholeSimilarGroup = removedClip?
@@ -1789,8 +1898,13 @@ final class EditorViewModel: ObservableObject {
                     && clip.similarPhotoGroupID == similarPhotoGroupID)
         }
         if let similarPhotoGroupID {
-            rebalanceSimilarPhotoGroup(similarPhotoGroupID)
+            rebalanceSimilarPhotoGroup(
+                similarPhotoGroupID,
+                in: &clips,
+                similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+            )
         }
+        return clips
     }
 
     func removeClips(at offsets: IndexSet) {
@@ -3658,6 +3772,7 @@ final class EditorViewModel: ObservableObject {
         quickPickerCancelReturnsToEditor = false
         activeMoviePreset = nil
         isQuickDurationPickerPresented = false
+        isQuickResultEditorPresented = false
         defaultDuration = Self.storedDefaultDuration()
         defaultVideoSegmentMode = .multiple
         outputAspectRatio = Self.storedDefaultAspectRatio()
@@ -4141,6 +4256,7 @@ final class EditorViewModel: ObservableObject {
 
     func previewDidDismiss() {
         guard !isLoadingProject else { return }
+        guard !isOpeningQuickResultEditor else { return }
         guard let previewSaveRequest else {
             if clips.isEmpty {
                 editLastSavedProject()

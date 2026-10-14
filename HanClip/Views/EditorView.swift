@@ -987,11 +987,23 @@ struct EditorView: View {
                 VideoPreviewView(
                     url: url,
                     onEdit: model.editLastSavedProject,
+                    onQuickResultEdit: model.beginQuickResultEditing,
+                    showsQuickResultEdit: model.isQuickResultPreview,
                     onSaveToPhotos:
                         model.saveToPhotosFromPreview(albumName:),
                     onSaveToFiles: model.saveToFilesFromPreview
                 )
             }
+        }
+        .fullScreenCover(isPresented: $model.isQuickResultEditorPresented) {
+            QuickResultEditorView(
+                clips: model.clips,
+                similarPhotoRepresentativeInterval:
+                    model.similarPhotoRepresentativeInterval,
+                onCancel: model.cancelQuickResultEditing,
+                onComplete: model.applyQuickResultEdits
+            )
+            .interactiveDismissDisabled()
         }
         .fullScreenCover(
             isPresented: $showImportantInfo,
@@ -1902,6 +1914,19 @@ struct EditorView: View {
                 .accessibilityHint("공유 공간의 대기 파일을 삭제합니다.")
             }
             .frame(maxWidth: .infinity)
+
+            Button(action: openAiShot) {
+                Label("AiShot으로 촬영하기", systemImage: "camera.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(
+                        HanClipTheme.secondary.opacity(0.10),
+                        in: Capsule()
+                    )
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(HanClipTheme.primaryText)
         }
         .foregroundStyle(.white)
         .padding(20)
@@ -17452,9 +17477,215 @@ private struct QuickMovieDurationPicker: View {
     }
 }
 
+private struct QuickResultEditorView: View {
+    @State private var draft: [ClipItem]
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var draggedClipID: UUID?
+
+    let similarPhotoRepresentativeInterval: Int
+    let onCancel: () -> Void
+    let onComplete: ([ClipItem]) -> Void
+
+    init(
+        clips: [ClipItem],
+        similarPhotoRepresentativeInterval: Int,
+        onCancel: @escaping () -> Void,
+        onComplete: @escaping ([ClipItem]) -> Void
+    ) {
+        _draft = State(initialValue: clips)
+        self.similarPhotoRepresentativeInterval = similarPhotoRepresentativeInterval
+        self.onCancel = onCancel
+        self.onComplete = onComplete
+    }
+
+    private var displayedClips: [(offset: Int, element: ClipItem)] {
+        Array(
+            draft.enumerated().filter {
+                EditorViewModel.shouldDisplayClip($0.element, in: draft)
+            }
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HanClipTitleLine(
+                    "결과 편집",
+                    systemImage: "slider.horizontal.3",
+                    leadingInset: 18,
+                    trailingInset: 20
+                )
+                .padding(.top, 8)
+
+                Text("사진을 선택해 제외하거나, 사진을 길게 눌러 끌어 순서를 바꾸세요.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(
+                            Array(displayedClips.enumerated()),
+                            id: \.element.element.id
+                        ) { displayPosition, entry in
+                            clipRow(entry.element, index: displayPosition)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 18)
+                }
+
+                editorActions
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+            }
+            .background(HanClipTheme.backgroundGradient.ignoresSafeArea())
+            .navigationTitle("퀵모드 결과")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("완료") {
+                        onComplete(draft)
+                    }
+                    .fontWeight(.bold)
+                    .disabled(draft.filter(\.isRenderableClip).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func clipRow(_ clip: ClipItem, index: Int) -> some View {
+        let isSelected = selectedIDs.contains(clip.id)
+        return HStack(spacing: 12) {
+            Button {
+                toggleSelection(clip.id)
+            } label: {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(isSelected ? HanClipTheme.primary : HanClipTheme.secondaryText.opacity(0.60))
+                    .frame(width: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isSelected ? "선택 해제" : "제외할 사진 선택")
+
+            Image(uiImage: clip.thumbnail)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 68, height: 68)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("사진 \(index + 1)")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(HanClipTheme.primaryText)
+                Text(clip.mediaKind == .video ? "동영상 클립" : "사진 클립")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(HanClipTheme.secondaryText)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(HanClipTheme.secondaryText.opacity(0.65))
+                .frame(width: 32)
+        }
+        .padding(10)
+        .background(
+            isSelected ? HanClipTheme.primary.opacity(0.12) : HanClipTheme.panelFill.opacity(0.72),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(isSelected ? HanClipTheme.primary.opacity(0.55) : Color.white.opacity(0.28), lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onDrag {
+            draggedClipID = clip.id
+            return NSItemProvider(object: clip.id.uuidString as NSString)
+        } preview: {
+            Image(uiImage: clip.thumbnail)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .onDrop(
+            of: [UTType.text],
+            delegate: ClipReorderDropDelegate(
+                targetID: clip.id,
+                clips: $draft,
+                draggedClipID: $draggedClipID
+            )
+        )
+        .accessibilityHint("길게 누른 뒤 끌어 원하는 위치로 옮깁니다.")
+    }
+
+    private var editorActions: some View {
+        HStack(spacing: 10) {
+            Button(role: .destructive) {
+                removeSelected()
+            } label: {
+                Label(
+                    selectedIDs.isEmpty
+                        ? "제외할 사진 선택"
+                        : "선택 \(selectedIDs.count)장 제외",
+                    systemImage: "trash"
+                )
+                .font(.system(size: 15, weight: .bold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+            }
+            .disabled(selectedIDs.isEmpty || selectedIDs.count >= draft.count)
+
+            Button {
+                onComplete(draft)
+            } label: {
+                Label("편집 완료", systemImage: "checkmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(HanClipTheme.primary, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(draft.filter(\.isRenderableClip).isEmpty)
+        }
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func removeSelected() {
+        for id in selectedIDs where draft.contains(where: { $0.id == id }) {
+            draft = EditorViewModel.removingClip(
+                id: id,
+                from: draft,
+                similarPhotoRepresentativeInterval: similarPhotoRepresentativeInterval
+            )
+        }
+        selectedIDs.removeAll()
+    }
+
+}
+
 private struct VideoPreviewView: View {
     let url: URL
     let onEdit: () -> Void
+    let onQuickResultEdit: () -> Void
+    let showsQuickResultEdit: Bool
     let onSaveToPhotos: (String) -> Void
     let onSaveToFiles: () -> Void
 
@@ -17468,11 +17699,15 @@ private struct VideoPreviewView: View {
     init(
         url: URL,
         onEdit: @escaping () -> Void,
+        onQuickResultEdit: @escaping () -> Void,
+        showsQuickResultEdit: Bool,
         onSaveToPhotos: @escaping (String) -> Void,
         onSaveToFiles: @escaping () -> Void
     ) {
         self.url = url
         self.onEdit = onEdit
+        self.onQuickResultEdit = onQuickResultEdit
+        self.showsQuickResultEdit = showsQuickResultEdit
         self.onSaveToPhotos = onSaveToPhotos
         self.onSaveToFiles = onSaveToFiles
         _player = State(initialValue: AVPlayer(url: url))
@@ -17655,65 +17890,78 @@ private struct VideoPreviewView: View {
 
             PersistentVideoProgressBar(player: player)
 
-            HStack(spacing: 12) {
-                Button {
-                    onEdit()
-                } label: {
-                    Label("다시 편집", systemImage: "chevron.backward")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(HanClipTheme.primaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(
-                            HanClipTheme.secondary.opacity(0.10),
-                            in: Capsule()
-                        )
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    player.pause()
-                    isSharePresented = true
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(HanClipTheme.primaryText)
-                        .frame(width: 54, height: 48)
-                        .background(
-                            HanClipTheme.secondary.opacity(0.10),
-                            in: Circle()
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("공유하기")
-                .accessibilityHint(
-                    "완성된 영상 파일을 다른 앱으로 공유합니다."
-                )
-
-                Button {
-                    player.pause()
-                    withAnimation(.snappy) {
-                        showSaveOptions = true
+            VStack(spacing: 10) {
+                if showsQuickResultEdit {
+                    Button {
+                        player.pause()
+                        onQuickResultEdit()
+                    } label: {
+                        Label("결과 편집", systemImage: "slider.horizontal.3")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(HanClipTheme.primary, in: Capsule())
                     }
-                } label: {
-                    Label("개봉하기", systemImage: "square.and.arrow.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(
-                            LinearGradient(
-                                colors: [
-                                    HanClipTheme.primary,
-                                    HanClipTheme.secondary.opacity(0.82)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: Capsule()
-                        )
+                    .buttonStyle(.plain)
+                    .accessibilityHint("사진을 제외하거나 순서를 바꿉니다.")
                 }
-                .buttonStyle(.plain)
+
+                HStack(spacing: 12) {
+                    Button {
+                        onEdit()
+                    } label: {
+                        Label("다시 편집", systemImage: "chevron.backward")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(HanClipTheme.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(
+                                HanClipTheme.secondary.opacity(0.10),
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        player.pause()
+                        isSharePresented = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(HanClipTheme.primaryText)
+                            .frame(width: 54, height: 48)
+                            .background(
+                                HanClipTheme.secondary.opacity(0.10),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("공유하기")
+                    .accessibilityHint("완성된 영상 파일을 다른 앱으로 공유합니다.")
+
+                    Button {
+                        player.pause()
+                        withAnimation(.snappy) {
+                            showSaveOptions = true
+                        }
+                    } label: {
+                        Label("개봉하기", systemImage: "square.and.arrow.down")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(
+                                LinearGradient(
+                                    colors: [HanClipTheme.primary, HanClipTheme.secondary.opacity(0.82)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 18)
         }
