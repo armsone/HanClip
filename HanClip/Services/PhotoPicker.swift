@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import HanAIApple
 import Photos
 import PhotosUI
 import SwiftUI
@@ -3271,9 +3272,15 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
             let asset = AVURLAsset(url: url)
             let duration = try await PhotoLibraryService.videoDuration(at: url)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            let cgImage = try generator.copyCGImage(at: .zero, actualTime: nil)
+            let sourcePixelSize = try await Self.naturalVideoPixelSize(
+                asset: asset
+            )
+            let cgImage = try await RepresentativeVideoFrame.extract(
+                asset: asset,
+                anchor: 0,
+                appliesPreferredTrackTransform: true,
+                maximumSize: CGSize(width: 640, height: 640)
+            )
             let thumbnail = UIImage(cgImage: cgImage)
             let analysis = try? await AudioAnalysisService.analyze(url: url)
             return VideoClipSegmenter.makeClips(
@@ -3283,7 +3290,28 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 selectedDuration: min(4, duration),
                 segmentCount: 1,
                 analysis: analysis,
-                sourcePixelSize: thumbnail.size
+                sourcePixelSize: sourcePixelSize
+            )
+        }
+
+        /// `RepresentativeVideoFrame.extract`의 `maximumSize` bound로 인해
+        /// 썸네일 크기가 원본 치수보다 작아질 수 있어, `sourcePixelSize`
+        /// 메타데이터는 썸네일 크기가 아닌 track의 실제(회전 반영) 크기에서
+        /// 구한다.
+        private static func naturalVideoPixelSize(
+            asset: AVURLAsset
+        ) async throws -> CGSize {
+            guard let track = try await asset.loadTracks(
+                withMediaType: .video
+            ).first else {
+                throw MediaError.videoTrackUnavailable
+            }
+            let naturalSize = try await track.load(.naturalSize)
+            let transform = try await track.load(.preferredTransform)
+            let transformedSize = naturalSize.applying(transform)
+            return CGSize(
+                width: abs(transformedSize.width),
+                height: abs(transformedSize.height)
             )
         }
     }

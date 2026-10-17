@@ -79,6 +79,10 @@
 		2E0000000000000000000011 /* PhotoPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000001 /* PhotoPickerViewController.swift */; };
 		2E0000000000000000000012 /* ImageQualityAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000002 /* ImageQualityAnalyzer.swift */; };
 		2E0000000000000000000013 /* ImageTopNSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0000000000000000000006 /* ImageTopNSelector.swift */; };
+		2F0000000000000000000003 /* Resources/Models/HanAIDino.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 2F0000000000000000000001 /* Resources/Models/HanAIDino.mlpackage */; };
+		2F0000000000000000000004 /* Resources/HanAILicenses in Resources */ = {isa = PBXBuildFile; fileRef = 2F0000000000000000000002 /* Resources/HanAILicenses */; };
+		2F0000000000000000000007 /* HanAIApple in Frameworks */ = {isa = PBXBuildFile; productRef = 2F0000000000000000000006 /* HanAIApple */; };
+		2F0000000000000000000008 /* PhotoDinoSimilarityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0000000000000000000009 /* PhotoDinoSimilarityGate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -192,6 +196,9 @@
 		2C0000000000000000000001 /* PhotoPickerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPickerViewController.swift; sourceTree = "<group>"; };
 		2C0000000000000000000002 /* ImageQualityAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageQualityAnalyzer.swift; sourceTree = "<group>"; };
 		2C0000000000000000000006 /* ImageTopNSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageTopNSelector.swift; sourceTree = "<group>"; };
+		2F0000000000000000000001 /* Resources/Models/HanAIDino.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Resources/Models/HanAIDino.mlpackage"; sourceTree = "<group>"; };
+		2F0000000000000000000002 /* Resources/HanAILicenses */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Resources/HanAILicenses"; sourceTree = "<group>"; };
+		2F0000000000000000000009 /* PhotoDinoSimilarityGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDinoSimilarityGate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -199,6 +206,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F0000000000000000000007 /* HanAIApple in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,6 +302,8 @@
 				200000000000000000000010 /* HanClip.entitlements */,
 				200000000000000000000013 /* Assets.xcassets */,
 				260000000000000000000002 /* HanClip.storekit */,
+				2F0000000000000000000001 /* Resources/Models/HanAIDino.mlpackage */,
+				2F0000000000000000000002 /* Resources/HanAILicenses */,
 			);
 			path = HanClip;
 			sourceTree = "<group>";
@@ -349,6 +359,7 @@
 				240000000000000000000001 /* AiShotCamera.swift */,
 				260000000000000000000001 /* CopyrightPurchaseManager.swift */,
 				290000000000000000000011 /* MovieCollectionStore.swift */,
+				2F0000000000000000000009 /* PhotoDinoSimilarityGate.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -419,6 +430,9 @@
 				900000000000000000000002 /* PBXTargetDependency */,
 			);
 			name = HanClip;
+			packageProductDependencies = (
+				2F0000000000000000000006 /* HanAIApple */,
+			);
 			productName = HanClip;
 			productReference = 20000000000000000000000D /* HanClip.app */;
 			productType = "com.apple.product-type.application";
@@ -459,6 +473,20 @@
 		};
 /* End PBXNativeTarget section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		2F0000000000000000000005 /* XCLocalSwiftPackageReference "../HanAI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../HanAI;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2F0000000000000000000006 /* HanAIApple */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HanAIApple;
+		};
+/* End XCSwiftPackageProductDependency section */
+
 /* Begin PBXProject section */
 		400000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
@@ -496,6 +524,9 @@
 			mainGroup = 700000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			packageReferences = (
+				2F0000000000000000000005 /* XCLocalSwiftPackageReference "../HanAI" */,
+			);
 			productRefGroup = 700000000000000000000002 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -551,6 +582,8 @@
 				130000000000000000000004 /* Resources/Audio/HanClipGolfLetsGo.wav in Resources */,
 				130000000000000000000005 /* Resources/Audio/HanClipJiwooFirstSnow.wav in Resources */,
 				130000000000000000000006 /* Resources/Audio/HanClipJiwooFirstSnowOriginal.mp3 in Resources */,
+				2F0000000000000000000003 /* Resources/Models/HanAIDino.mlpackage in Resources */,
+				2F0000000000000000000004 /* Resources/HanAILicenses in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -599,6 +632,7 @@
 				140000000000000000000001 /* AiShotCamera.swift in Sources */,
 				160000000000000000000001 /* CopyrightPurchaseManager.swift in Sources */,
 				290000000000000000000001 /* MovieCollectionStore.swift in Sources */,
+				2F0000000000000000000008 /* PhotoDinoSimilarityGate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -764,7 +798,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610141351;
+				CURRENT_PROJECT_VERSION = 202610170824;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -773,7 +807,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -791,7 +825,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HanClip/HanClip.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610141351;
+				CURRENT_PROJECT_VERSION = 202610170824;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClip/Info.plist;
@@ -800,7 +834,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -818,7 +852,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610141351;
+				CURRENT_PROJECT_VERSION = 202610170824;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -827,7 +861,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -845,8 +879,8 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = HanClipShare/HanClipShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610141351;
-				MARKETING_VERSION = 2.4.1;
+				CURRENT_PROJECT_VERSION = 202610170824;
+				MARKETING_VERSION = 2.5.0;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipShare/Info.plist;
@@ -871,7 +905,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610141351;
+				CURRENT_PROJECT_VERSION = 202610170824;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -880,7 +914,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -897,7 +931,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202610141351;
+				CURRENT_PROJECT_VERSION = 202610170824;
 				DEVELOPMENT_TEAM = T7B4EPLHPK;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HanClipWidget/Info.plist;
@@ -906,7 +940,7 @@
 					"$(inherited)",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.1;
+				MARKETING_VERSION = 2.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.intosharp.hanclip.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

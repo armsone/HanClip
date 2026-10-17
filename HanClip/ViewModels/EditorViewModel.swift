@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import CoreLocation
+import HanAIApple
 import ImageIO
 import Photos
 import SwiftUI
@@ -215,6 +216,11 @@ final class EditorViewModel: ObservableObject {
     private var quickPickerCancelReturnsToEditor = false
     private var photoLibraryImportCancellationHandler: (() -> Void)?
     @Published private var expandedSimilarPhotoGroupIDs: Set<UUID> = []
+    /// 새 project가 열리거나 현재 편집 세션이 버려질 때마다 증가한다.
+    /// off-main 배치 준비가 끝난 뒤 commit 직전에 이 값을 다시 확인해,
+    /// 이미 해제되었거나 다른 project로 전환된 세션의 결과가 현재
+    /// `clips`를 덮어쓰지 않도록 막는다.
+    private var editSessionGeneration = 0
 
     var isActiveAiShotProject: Bool {
         guard let activeProjectID else { return false }
@@ -1176,24 +1182,32 @@ final class EditorViewModel: ObservableObject {
     ) -> Task<Void, Never>? {
         guard !newItems.isEmpty else { return nil }
 
-        if clips.isEmpty, let first = newItems.first {
-            automaticSourceSize = first.sourcePixelSize
-            outputAspectRatio = Self.storedDefaultAspectRatio()
-        }
+        let shouldApplyAutomaticSizing = clips.isEmpty
+        let automaticSizingSource = newItems.first?.sourcePixelSize
 
         var updatedClips = clips
         var newClipIDs: [UUID] = []
         newClipIDs.reserveCapacity(newItems.count)
         updatedClips.reserveCapacity(updatedClips.count + newItems.count)
 
+        // sourcesAlreadyPersisted가 false일 때만 이 함수가 새로 만든 working
+        // copy이며, 그 경우에만 취소/세션 불일치 시 삭제해도 안전하다.
+        // sourcesAlreadyPersisted==true로 들어온 원본(photoAsset 등)은 이
+        // 함수가 소유하지 않으므로 절대 지우지 않는다.
+        var ownedPersistedSources: [ClipSource] = []
+
         for item in newItems {
             let stableItem: ClipItem
             do {
-                stableItem = sourcesAlreadyPersisted
-                    ? item
-                    : item.replacingSource(
-                        try WorkingClipSourceStore.persist(item.source)
+                if sourcesAlreadyPersisted {
+                    stableItem = item
+                } else {
+                    let persistedSource = try WorkingClipSourceStore.persist(
+                        item.source
                     )
+                    ownedPersistedSources.append(persistedSource)
+                    stableItem = item.replacingSource(persistedSource)
+                }
             } catch {
                 alertMessage = "가져온 원본 파일을 보관할 수 없습니다."
                 continue
@@ -1236,41 +1250,114 @@ final class EditorViewModel: ObservableObject {
         }
 
         guard !newClipIDs.isEmpty else { return nil }
-        applySimilarPhotoGrouping(to: newClipIDs, in: &updatedClips)
-        if activeMoviePreset == .travel || activeMoviePreset == .life {
-            let newIDSet = Set(newClipIDs)
-            for index in updatedClips.indices
-                where newIDSet.contains(updatedClips[index].id)
-                    && updatedClips[index].isLivePhoto {
-                let sourceDuration = updatedClips[index].sourceDuration
-                    ?? updatedClips[index].livePhotoDuration
-                    ?? updatedClips[index].duration
-                let selectedDuration = min(defaultDuration, sourceDuration)
-                updatedClips[index].livePhotoMode = .motion
-                updatedClips[index].sourceDuration = sourceDuration
-                updatedClips[index].livePhotoDuration = sourceDuration
-                updatedClips[index].duration = selectedDuration
-                updatedClips[index].photoDuration = selectedDuration
-                updatedClips[index].trimStart = max(
-                    0,
-                    (sourceDuration - selectedDuration) / 2
+
+        let generationAtStart = editSessionGeneration
+        let projectIDAtStart = activeProjectID
+        let newClipIDSet = Set(newClipIDs)
+
+        return Task { [weak self] in
+            guard let self else { return }
+
+            var finalClips = updatedClips
+            do {
+                try await self.applySimilarPhotoGroupingAsync(
+                    to: newClipIDs,
+                    in: &finalClips
                 )
+            } catch is CancellationError {
+                ownedPersistedSources.forEach {
+                    WorkingClipSourceStore.remove($0)
+                }
+                return
+            } catch {
+                // 그룹핑 자체의 비취소 오류는 기존 fingerprint 판정만으로
+                // 계속 진행한다 — finalClips는 이미 손상되지 않은 상태다.
+            }
+
+            guard !Task.isCancelled,
+                  self.editSessionGeneration == generationAtStart,
+                  self.activeProjectID == projectIDAtStart
+            else {
+                ownedPersistedSources.forEach {
+                    WorkingClipSourceStore.remove($0)
+                }
+                return
+            }
+
+            // 대기 중 사용자가 기존 clip을 편집했을 수 있으므로, 캡처해둔
+            // updatedClips 전체를 되돌려 commit하지 않고 현재 self.clips를
+            // 그대로 유지한 채 새로 완성된 newClipIDs 항목만 append한다.
+            var newItemsFinal = finalClips.filter {
+                newClipIDSet.contains($0.id)
+            }
+
+            guard newItemsFinal.count == newClipIDs.count,
+                  Set(newItemsFinal.map(\.id)) == newClipIDSet,
+                  Set(self.clips.map(\.id)).isDisjoint(with: newClipIDSet)
+            else {
+                ownedPersistedSources.forEach {
+                    WorkingClipSourceStore.remove($0)
+                }
+                return
+            }
+
+            if shouldApplyAutomaticSizing, let automaticSizingSource,
+               self.clips.isEmpty {
+                self.automaticSourceSize = automaticSizingSource
+                self.outputAspectRatio = Self.storedDefaultAspectRatio()
+            }
+
+            if self.activeMoviePreset == .travel
+                || self.activeMoviePreset == .life {
+                for index in newItemsFinal.indices
+                    where newItemsFinal[index].isLivePhoto {
+                    let sourceDuration = newItemsFinal[index].sourceDuration
+                        ?? newItemsFinal[index].livePhotoDuration
+                        ?? newItemsFinal[index].duration
+                    let selectedDuration = min(
+                        self.defaultDuration,
+                        sourceDuration
+                    )
+                    newItemsFinal[index].livePhotoMode = .motion
+                    newItemsFinal[index].sourceDuration = sourceDuration
+                    newItemsFinal[index].livePhotoDuration = sourceDuration
+                    newItemsFinal[index].duration = selectedDuration
+                    newItemsFinal[index].photoDuration = selectedDuration
+                    newItemsFinal[index].trimStart = max(
+                        0,
+                        (sourceDuration - selectedDuration) / 2
+                    )
+                }
+            }
+
+            var committedClips = self.clips
+            committedClips.append(contentsOf: newItemsFinal)
+
+            let segmentedParentIDs = self.defaultVideoSegmentMode == .multiple
+                ? self.applyDefaultVideoSegmentation(
+                    to: newClipIDs,
+                    in: &committedClips
+                )
+                : []
+
+            self.clips = committedClips
+            self.isProjectOpen = true
+
+            let thumbnailRefreshTask = segmentedParentIDs.isEmpty
+                ? nil
+                : self.refreshSegmentChildThumbnails(
+                    parentIDs: segmentedParentIDs
+                )
+            self.refreshLivePhotoDurations()
+
+            if let thumbnailRefreshTask {
+                await withTaskCancellationHandler {
+                    await thumbnailRefreshTask.value
+                } onCancel: {
+                    thumbnailRefreshTask.cancel()
+                }
             }
         }
-        let segmentedParentIDs = defaultVideoSegmentMode == .multiple
-            ? applyDefaultVideoSegmentation(
-                to: newClipIDs,
-                in: &updatedClips
-            )
-            : []
-        clips = updatedClips
-        isProjectOpen = true
-
-        let thumbnailRefreshTask = segmentedParentIDs.isEmpty
-            ? nil
-            : refreshSegmentChildThumbnails(parentIDs: segmentedParentIDs)
-        refreshLivePhotoDurations()
-        return thumbnailRefreshTask
     }
 
     private func applyDefaultVideoSegmentation(
@@ -1341,16 +1428,18 @@ final class EditorViewModel: ObservableObject {
         return segmentedParentIDs
     }
 
-    private func applySimilarPhotoGrouping(to ids: [UUID]) {
-        var updatedClips = clips
-        applySimilarPhotoGrouping(to: ids, in: &updatedClips)
-        clips = updatedClips
-    }
-
-    private func applySimilarPhotoGrouping(
+    /// 취소되면 `workingClips`는 그룹핑 전 상태로 되돌리지 않고 호출자가
+    /// 던진 `CancellationError`를 그대로 받게 된다 — 호출자는 이 경우
+    /// `workingClips`를 절대 commit해서는 안 된다. decode·preprocess·모델
+    /// 추론은 모두 `PhotoDinoSimilarityGate.prepareEmbeddings`가 off-main에서
+    /// 수행하며, 이 함수 자체의 그룹 경계 결정 로직은 순수 메모리 비교만
+    /// 한다.
+    private func applySimilarPhotoGroupingAsync(
         to ids: [UUID],
-        in workingClips: inout [ClipItem]
-    ) {
+        in workingClips: inout [ClipItem],
+        defaultDuration: Double? = nil
+    ) async throws {
+        let defaultDuration = defaultDuration ?? self.defaultDuration
         let newIDSet = Set(ids)
         let newIndices = workingClips.indices.filter {
             newIDSet.contains(workingClips[$0].id)
@@ -1364,11 +1453,43 @@ final class EditorViewModel: ObservableObject {
             workingClips[index].isSimilarPhotoGroupRepresentative = true
         }
 
+        // 배치 내 모든 사진의 DINO 임베딩을 얻었을 때만 veto가 활성화된다.
+        // 하나라도 실패하면 nil이며, 이때 vetoesSimilar(...)는 항상 false를
+        // 돌려주므로 기존 fingerprint 판정만으로 그룹핑이 진행된다. 취소는
+        // 배치 fallback으로 삼키지 않고 그대로 던져 호출자에게 전파한다.
+        // 그룹핑 대상이 아닌 항목(.video 등)은 배치에서 제외한다 —
+        // 그런 항목만으로 인해 사진 전원 배치가 항상 fallback되지 않도록.
+        let groupableIndices = newIndices.filter {
+            canGroupAsSimilarPhoto(workingClips[$0])
+        }
+        let dinoEmbeddings = try await PhotoDinoSimilarityGate.prepareEmbeddings(
+            for: groupableIndices.map { workingClips[$0] }
+        )
+        try Task.checkCancellation()
+
+        commitSimilarPhotoGroups(
+            newIndices: newIndices,
+            dinoEmbeddings: dinoEmbeddings,
+            in: &workingClips,
+            defaultDuration: defaultDuration
+        )
+    }
+
+    private func commitSimilarPhotoGroups(
+        newIndices: [Int],
+        dinoEmbeddings: [UUID: [Float]]?,
+        in workingClips: inout [ClipItem],
+        defaultDuration: Double
+    ) {
         var currentGroup: [Int] = []
 
         for index in newIndices {
             guard canGroupAsSimilarPhoto(workingClips[index]) else {
-                commitSimilarPhotoGroup(currentGroup, in: &workingClips)
+                commitSimilarPhotoGroup(
+                    currentGroup,
+                    in: &workingClips,
+                    defaultDuration: defaultDuration
+                )
                 currentGroup = []
                 continue
             }
@@ -1377,21 +1498,35 @@ final class EditorViewModel: ObservableObject {
                   areSimilarPhotos(
                     workingClips[previousIndex],
                     workingClips[index]
+                  ),
+                  !PhotoDinoSimilarityGate.vetoesSimilar(
+                    workingClips[previousIndex],
+                    workingClips[index],
+                    embeddings: dinoEmbeddings
                   )
             else {
-                commitSimilarPhotoGroup(currentGroup, in: &workingClips)
+                commitSimilarPhotoGroup(
+                    currentGroup,
+                    in: &workingClips,
+                    defaultDuration: defaultDuration
+                )
                 currentGroup = [index]
                 continue
             }
 
             currentGroup.append(index)
         }
-        commitSimilarPhotoGroup(currentGroup, in: &workingClips)
+        commitSimilarPhotoGroup(
+            currentGroup,
+            in: &workingClips,
+            defaultDuration: defaultDuration
+        )
     }
 
     private func commitSimilarPhotoGroup(
         _ group: [Int],
-        in workingClips: inout [ClipItem]
+        in workingClips: inout [ClipItem],
+        defaultDuration: Double
     ) {
         guard group.count > 1 else { return }
 
@@ -1439,31 +1574,43 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    private func reapplyCurrentProjectCriteria() {
+    /// `sourceClips`를 기준으로 유사사진 그룹을 다시 계산한 배열을
+    /// 반환한다. 어떤 공유 `self.clips` 상태도 수정하지 않으므로 호출자가
+    /// 결과를 받은 뒤 한 번에 commit할 수 있다. 취소되면 던지며, 이 경우
+    /// 호출자는 `sourceClips`를 그대로(미변경) 유지해야 한다.
+    private func regroupedClips(
+        _ sourceClips: [ClipItem],
+        defaultDuration: Double? = nil
+    ) async throws -> [ClipItem] {
+        var workingClips = sourceClips
         let previousGroupByClip = Dictionary(
-            uniqueKeysWithValues: clips.compactMap { clip in
+            uniqueKeysWithValues: workingClips.compactMap { clip in
                 clip.similarPhotoGroupID.map { (clip.id, $0) }
             }
         )
         let previouslyIncluded = Set(
-            clips.filter(\.isSimilarPhotoGroupRepresentative).map(\.id)
+            workingClips.filter(\.isSimilarPhotoGroupRepresentative).map(\.id)
         )
         var previousModeByGroup: [UUID: VideoSegmentMode] = [:]
-        for clip in clips where clip.similarPhotoGroupIndex == 0 {
+        for clip in workingClips where clip.similarPhotoGroupIndex == 0 {
             if let groupID = clip.similarPhotoGroupID {
                 previousModeByGroup[groupID] = clip.videoSegmentMode
             }
         }
 
-        applySimilarPhotoGrouping(to: clips.map(\.id))
+        try await applySimilarPhotoGroupingAsync(
+            to: workingClips.map(\.id),
+            in: &workingClips,
+            defaultDuration: defaultDuration
+        )
 
-        let currentGroupIDs = Set(clips.compactMap(\.similarPhotoGroupID))
+        let currentGroupIDs = Set(workingClips.compactMap(\.similarPhotoGroupID))
         for groupID in currentGroupIDs {
-            let indices = clips.indices.filter {
-                clips[$0].similarPhotoGroupID == groupID
+            let indices = workingClips.indices.filter {
+                workingClips[$0].similarPhotoGroupID == groupID
             }
             let previousGroupIDs = Set(indices.compactMap {
-                previousGroupByClip[clips[$0].id]
+                previousGroupByClip[workingClips[$0].id]
             })
             guard previousGroupIDs.count == 1,
                   let previousGroupID = previousGroupIDs.first,
@@ -1471,16 +1618,23 @@ final class EditorViewModel: ObservableObject {
                   let parentIndex = indices.first
             else { continue }
 
-            clips[parentIndex].videoSegmentMode = previousMode
+            workingClips[parentIndex].videoSegmentMode = previousMode
             if previousMode == .multiple {
                 for index in indices {
-                    clips[index].isSimilarPhotoGroupRepresentative =
-                        previouslyIncluded.contains(clips[index].id)
+                    workingClips[index].isSimilarPhotoGroupRepresentative =
+                        previouslyIncluded.contains(workingClips[index].id)
                 }
             }
-            rebalanceSimilarPhotoGroup(groupID)
+            Self.rebalanceSimilarPhotoGroup(
+                groupID,
+                in: &workingClips,
+                similarPhotoRepresentativeInterval:
+                    similarPhotoRepresentativeInterval
+            )
         }
+        return workingClips
     }
+
 
     private func canGroupAsSimilarPhoto(_ clip: ClipItem) -> Bool {
         switch clip.mediaKind {
@@ -3766,6 +3920,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func releaseEditingMemory() {
+        editSessionGeneration += 1
         clips = []
         WorkingClipSourceStore.clear()
         isQuickModeProject = false
@@ -3812,7 +3967,7 @@ final class EditorViewModel: ObservableObject {
                 projectLoadProgress = 0.97
                 progressMessage = "영화 설정과 묶음사진을 정리하는 중…"
                 await Task.yield()
-                applyLoadedProject(project)
+                try await applyLoadedProject(project)
                 finishProjectLoad()
                 completion?(true)
             } catch is CancellationError {
@@ -3827,11 +3982,21 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    private func applyLoadedProject(_ project: LoadedProject) {
-        clips = project.clips
-        defaultDuration = Self.normalizedDefaultDuration(
+    /// 저장된 project의 유사사진 그룹을 off-main에서 다시 계산한 뒤, 성공한
+    /// 경우에만 모든 project 상태를 한 번에 commit한다. 취소되면 아무
+    /// `@Published` 상태도 바꾸지 않는다.
+    private func applyLoadedProject(_ project: LoadedProject) async throws {
+        let targetDefaultDuration = Self.normalizedDefaultDuration(
             project.defaultDuration
         )
+        let regroupedProjectClips = try await regroupedClips(
+            project.clips,
+            defaultDuration: targetDefaultDuration
+        )
+        try Task.checkCancellation()
+
+        clips = regroupedProjectClips
+        defaultDuration = targetDefaultDuration
         defaultVideoSegmentMode = project.defaultVideoSegmentMode
         outputAspectRatio = project.outputAspectRatio
         automaticSourceSize = project.automaticSourceSize
@@ -3844,15 +4009,15 @@ final class EditorViewModel: ObservableObject {
         showPreview = false
         activeProjectID = project.id
         isProjectOpen = true
-        reapplyCurrentProjectCriteria()
+        editSessionGeneration += 1
         refreshLivePhotoDurations()
         openedProjectSignature = currentProjectSignature()
     }
 
-    private func loadProjectImmediately(id: UUID) {
+    private func loadProjectImmediately(id: UUID) async {
         do {
             let project = try ProjectStore.load(id: id)
-            applyLoadedProject(project)
+            try await applyLoadedProject(project)
         } catch {
             alertMessage = error.localizedDescription
             reloadProjects()
@@ -4514,17 +4679,31 @@ final class EditorViewModel: ObservableObject {
                         prepareNewProjectForSharedImport()
                     }
                 case .existingProject:
-                    prepareExistingProjectForSharedImport()
+                    await prepareExistingProjectForSharedImport()
                 case nil:
                     if !isProjectOpen {
                         beginNewProject()
                     }
                 }
                 if !imported.isEmpty {
-                    addPickedItems(
+                    if let addTask = addPickedItems(
                         imported,
                         sourcesAlreadyPersisted: true
-                    )
+                    ) {
+                        await withTaskCancellationHandler {
+                            await addTask.value
+                        } onCancel: {
+                            addTask.cancel()
+                        }
+                        guard !Task.isCancelled else {
+                            isImportingSharedItems = false
+                            progressMessage = ""
+                            sharedImportProgress = 0
+                            sharedImportThumbnail = nil
+                            sharedImportTask = nil
+                            return
+                        }
+                    }
                 }
                 let didImportMusic: Bool
                 if let selectedAudioURL {
@@ -4695,13 +4874,13 @@ final class EditorViewModel: ObservableObject {
         reloadProjects()
     }
 
-    private func prepareExistingProjectForSharedImport() {
+    private func prepareExistingProjectForSharedImport() async {
         guard !isProjectOpen else { return }
         reloadProjects()
         if let latestProject = savedProjects.max(by: {
             $0.updatedAt < $1.updatedAt
         }) {
-            loadProjectImmediately(id: latestProject.id)
+            await loadProjectImmediately(id: latestProject.id)
         } else {
             beginNewProject()
             alertMessage =
@@ -4744,7 +4923,14 @@ final class EditorViewModel: ObservableObject {
                 progressMessage =
                     "파일 \(index + 1)/\(urls.count)개를 가져오는 중…"
             }
-            addPickedItems(imported)
+            let addTask = addPickedItems(imported)
+            if let addTask {
+                await withTaskCancellationHandler {
+                    await addTask.value
+                } onCancel: {
+                    addTask.cancel()
+                }
+            }
             if imported.isEmpty {
                 alertMessage = "선택한 영상 파일을 가져올 수 없습니다."
             } else if isQuickModeProject {
@@ -5447,20 +5633,24 @@ final class EditorViewModel: ObservableObject {
         at seconds: Double = 0,
         maximumSize: CGSize = CGSize(width: 640, height: 640)
     ) async throws -> UIImage {
-        try await Task.detached {
+        let worker = Task.detached {
             let asset = AVURLAsset(url: url)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = maximumSize
-            let image = try generator.copyCGImage(
-                at: CMTime(
-                    seconds: max(0, seconds),
-                    preferredTimescale: 600
-                ),
-                actualTime: nil
+            let image = try await RepresentativeVideoFrame.extract(
+                asset: asset,
+                anchor: max(0, seconds),
+                appliesPreferredTrackTransform: true,
+                maximumSize: maximumSize
             )
             return UIImage(cgImage: image)
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            let image = try await worker.value
+            try Task.checkCancellation()
+            return image
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     private static func makePendingSharedThumbnails(

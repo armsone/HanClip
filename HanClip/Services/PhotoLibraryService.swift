@@ -3,6 +3,67 @@ import Foundation
 import Photos
 import UIKit
 
+/// `withTaskCancellationHandler`의 `onCancel`은 요청 등록 전/후 아무 때나
+/// 동시에 실행될 수 있고, PHImageManager의 completion은 취소 후에도 늦게
+/// 호출될 수 있다. 하나의 lock으로 requestID·continuation·완료 여부를
+/// 함께 보호해 등록/취소 race와 중복 resume을 모두 막는다.
+private final class PHImageDataRequestState {
+    private let lock = NSLock()
+    private var requestIDValue: PHImageRequestID?
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var completed = false
+    private var cancelledBeforeAssignment = false
+
+    var requestID: PHImageRequestID? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return requestIDValue
+        }
+        set {
+            lock.lock()
+            let shouldCancelImmediately = cancelledBeforeAssignment
+            requestIDValue = newValue
+            lock.unlock()
+            if shouldCancelImmediately, let newValue {
+                PHImageManager.default().cancelImageRequest(newValue)
+            }
+        }
+    }
+
+    func attach(_ continuation: CheckedContinuation<Data, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.continuation = continuation
+    }
+
+    func resumeOnce(_ result: Result<Data, Error>) {
+        lock.lock()
+        guard !completed, let continuation else {
+            lock.unlock()
+            return
+        }
+        completed = true
+        self.continuation = nil
+        lock.unlock()
+        continuation.resume(with: result)
+    }
+
+    func cancel() {
+        lock.lock()
+        let requestID = requestIDValue
+        cancelledBeforeAssignment = true
+        let shouldResume = !completed && continuation != nil
+        lock.unlock()
+        if let requestID {
+            PHImageManager.default().cancelImageRequest(requestID)
+        }
+        if shouldResume {
+            resumeOnce(.failure(CancellationError()))
+        }
+    }
+}
+
 enum PhotoLibraryService {
     static func requestReadAccess() async -> Bool {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -343,6 +404,43 @@ enum PhotoLibraryService {
                     continuation.resume(throwing: MediaError.imageUnavailable)
                 }
             }
+        }
+    }
+
+    /// 원본 해상도 이미지 Data를 반환한다. 320 UI 썸네일이 아니라 DINO 등
+    /// 실제 픽셀 분석이 필요한 호출자를 위한 것이다. `Task` 취소 시
+    /// `PHImageManager`에 등록된 요청도 함께 취소한다.
+    static func originalImageData(for asset: PHAsset) async throws -> Data {
+        let state = PHImageDataRequestState()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                state.attach(continuation)
+
+                let options = PHImageRequestOptions()
+                options.deliveryMode = .highQualityFormat
+                options.version = .current
+                options.isNetworkAccessAllowed = true
+                options.isSynchronous = false
+
+                let requestID = PHImageManager.default()
+                    .requestImageDataAndOrientation(
+                        for: asset,
+                        options: options
+                    ) { data, _, _, info in
+                        if info?[PHImageCancelledKey] as? Bool == true {
+                            state.resumeOnce(.failure(CancellationError()))
+                        } else if info?[PHImageErrorKey] as? Error != nil {
+                            state.resumeOnce(.failure(MediaError.imageUnavailable))
+                        } else if let data {
+                            state.resumeOnce(.success(data))
+                        } else {
+                            state.resumeOnce(.failure(MediaError.imageUnavailable))
+                        }
+                    }
+                state.requestID = requestID
+            }
+        } onCancel: {
+            state.cancel()
         }
     }
 
