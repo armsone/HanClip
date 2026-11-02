@@ -1516,14 +1516,17 @@ struct PhotoPicker: UIViewControllerRepresentable {
             let sourcePoint = collectionView.convert(point, to: nil)
             let isSelected = selectedIdentifierSet.contains(asset.localIdentifier)
 
+            let imageAssets = assetSections.flatMap(\.assets).filter { $0.mediaType == .image }
             let preview = MediaAssetPreviewViewController(
                 asset: asset,
+                imageAssets: imageAssets,
+                startSelectedIdentifier: asset.localIdentifier,
                 imageManager: imageManager,
                 showsCloseButton: false,
                 sourcePoint: sourcePoint,
-                onDelete: isSelected
-                    ? { [weak self] in
-                        self?.deselectAsset(identifier: asset.localIdentifier)
+                onDeleteAssetIdentifier: isSelected
+                    ? { [weak self] currentID in
+                        self?.deselectAsset(identifier: currentID)
                     }
                     : nil
             )
@@ -1908,43 +1911,82 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
     }
 
+    private final class MediaPreviewIconButton: UIButton {
+        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            let touchArea = bounds.insetBy(
+                dx: min(0, (bounds.width - 48) / 2),
+                dy: min(0, (bounds.height - 48) / 2)
+            )
+            return touchArea.contains(point)
+        }
+    }
+
     final class MediaAssetPreviewViewController: UIViewController,
         UIScrollViewDelegate,
         UIGestureRecognizerDelegate {
+        private let imageAssets: [PHAsset]
+        private var currentImageIndex: Int = 0
+        private var currentAsset: PHAsset {
+            if !imageAssets.isEmpty, currentImageIndex >= 0, currentImageIndex < imageAssets.count {
+                return imageAssets[currentImageIndex]
+            }
+            return asset
+        }
         private let asset: PHAsset
         private let imageManager: PHImageManager
         private let showsCloseButton: Bool
         private let sourcePoint: CGPoint?
         private let onDelete: (() -> Void)?
+        private let onDeleteAssetIdentifier: ((String) -> Void)?
         private let onDismiss: (() -> Void)?
-        private let scrollView = UIScrollView()
+
         private let previewSurfaceView = UIView()
+        private let scrollView = UIScrollView()
         private let imageView = UIImageView()
         private let livePhotoView = PHLivePhotoView()
-        private let playerViewController = AVPlayerViewController()
-        private let videoControlsView = UIVisualEffectView(
-            effect: UIBlurEffect(style: .systemThinMaterial)
-        )
-        private let playPauseButton = UIButton(type: .system)
-        private let progressSlider = UISlider()
-        private let loopButton = UIButton(type: .system)
+        private var videoHostingController: UIViewController?
         private var videoPlayer: AVPlayer?
-        private var videoEndObserver: NSObjectProtocol?
-        private var videoTimeObserver: Any?
-        private var isSeekingVideo = false
-        private var wasPlayingBeforeSeek = false
-        private var isVideoLooping = true
+
+        private let loadingIndicator = UIActivityIndicatorView(style: .large)
+        private let errorContainerView = UIView()
+        private let errorMessageLabel = UILabel()
+        private let retryButton = UIButton(type: .system)
+
+        private let topBarView = UIView()
+        private var topCloseButton: MediaPreviewIconButton!
+        private let titleLabel = UILabel()
+        private var topShareButton: MediaPreviewIconButton!
+        private let topDeleteButton = UIButton(type: .system)
+
+        private let bottomBarView = UIView()
+        private var previousButton: MediaPreviewIconButton!
+        private var imagePlayPauseButton: MediaPreviewIconButton!
+        private var nextButton: MediaPreviewIconButton!
+        private var settingsButton: MediaPreviewIconButton!
+
+        private var livePhotoPlayButton: MediaPreviewIconButton?
+        private let livePhotoProgressView = UIProgressView(progressViewStyle: .bar)
         private var livePhotoProgressTimer: Timer?
         private var livePhotoPlaybackStartedAt: Date?
         private var isLivePhotoPlaying = false
-        private var previewCenterYConstraint: NSLayoutConstraint?
+
+        private var isSlidePlaying: Bool = false
+        private var slideTimer: Timer?
+        private var controlsHideTimer: Timer?
+        private var areControlsVisible: Bool = true
+        private var currentImageRequestID: PHImageRequestID?
+        private var panIsVerticalDismiss: Bool = false
+        private var isImageLoading: Bool = true
 
         init(
             asset: PHAsset,
+            imageAssets: [PHAsset]? = nil,
+            startSelectedIdentifier: String? = nil,
             imageManager: PHImageManager,
             showsCloseButton: Bool = false,
             sourcePoint: CGPoint? = nil,
             onDelete: (() -> Void)? = nil,
+            onDeleteAssetIdentifier: ((String) -> Void)? = nil,
             onDismiss: (() -> Void)? = nil
         ) {
             self.asset = asset
@@ -1952,9 +1994,53 @@ struct PhotoPicker: UIViewControllerRepresentable {
             self.showsCloseButton = showsCloseButton
             self.sourcePoint = sourcePoint
             self.onDelete = onDelete
+            self.onDeleteAssetIdentifier = onDeleteAssetIdentifier
             self.onDismiss = onDismiss
+
+            let resolvedAssets: [PHAsset]
+            if asset.mediaType == .video {
+                resolvedAssets = []
+            } else if let imageAssets, !imageAssets.isEmpty {
+                resolvedAssets = imageAssets.filter { $0.mediaType == .image }
+            } else if asset.mediaType == .image {
+                resolvedAssets = [asset]
+            } else {
+                resolvedAssets = []
+            }
+            self.imageAssets = resolvedAssets
+
+            let targetID = startSelectedIdentifier ?? asset.localIdentifier
+            if let foundIndex = resolvedAssets.firstIndex(where: { $0.localIdentifier == targetID }) {
+                self.currentImageIndex = foundIndex
+            } else if let foundAssetIndex = resolvedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) {
+                self.currentImageIndex = foundAssetIndex
+            } else {
+                self.currentImageIndex = 0
+            }
+
             super.init(nibName: nil, bundle: nil)
-            preferredContentSize = CGSize(width: 360, height: 520)
+            modalPresentationStyle = .fullScreen
+        }
+
+        convenience init(
+            asset: PHAsset,
+            imageManager: PHImageManager,
+            showsCloseButton: Bool = false,
+            sourcePoint: CGPoint? = nil,
+            onDelete: (() -> Void)? = nil,
+            onDismiss: (() -> Void)? = nil
+        ) {
+            self.init(
+                asset: asset,
+                imageAssets: nil,
+                startSelectedIdentifier: nil,
+                imageManager: imageManager,
+                showsCloseButton: showsCloseButton,
+                sourcePoint: sourcePoint,
+                onDelete: onDelete,
+                onDeleteAssetIdentifier: nil,
+                onDismiss: onDismiss
+            )
         }
 
         @available(*, unavailable)
@@ -1962,11 +2048,19 @@ struct PhotoPicker: UIViewControllerRepresentable {
             fatalError("init(coder:) has not been implemented")
         }
 
+        override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+            UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
+        }
+
+        override var shouldAutorotate: Bool {
+            true
+        }
+
         override func viewDidLoad() {
             super.viewDidLoad()
-            view.backgroundColor = .clear
+            view.backgroundColor = .black
             configurePreviewSurface()
-            configureOutsideTapToDismiss()
+
             if asset.mediaType == .video {
                 configureVideoPreview()
             } else if asset.mediaSubtypes.contains(.photoLive) {
@@ -1975,221 +2069,644 @@ struct PhotoPicker: UIViewControllerRepresentable {
                 configureStillPhotoPreview()
             }
 
-            if showsCloseButton {
-                configureCloseButton()
-            }
-            if asset.mediaType != .video,
-               !asset.mediaSubtypes.contains(.photoLive) {
-                configureStandaloneDeleteButton()
-            }
-        }
-
-        private func configurePreviewSurface() {
-            previewSurfaceView.backgroundColor = UIColor(HanClipTheme.background)
-            previewSurfaceView.layer.cornerRadius = 18
-            previewSurfaceView.layer.cornerCurve = .continuous
-            previewSurfaceView.layer.borderWidth = 1.25
-            previewSurfaceView.layer.borderColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.38).cgColor
-            previewSurfaceView.clipsToBounds = true
-            previewSurfaceView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(previewSurfaceView)
-            let centerY = previewSurfaceView.centerYAnchor.constraint(
-                equalTo: view.centerYAnchor,
-                constant: -38
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleAppWillResignActive),
+                name: UIApplication.willResignActiveNotification,
+                object: nil
             )
-            previewCenterYConstraint = centerY
-            NSLayoutConstraint.activate([
-                previewSurfaceView.centerXAnchor.constraint(
-                    equalTo: view.centerXAnchor
-                ),
-                centerY,
-                previewSurfaceView.widthAnchor.constraint(
-                    equalTo: view.widthAnchor,
-                    multiplier: 0.70
-                ),
-                previewSurfaceView.heightAnchor.constraint(
-                    equalTo: previewSurfaceView.widthAnchor
-                )
-            ])
-        }
-
-        override func viewDidLayoutSubviews() {
-            super.viewDidLayoutSubviews()
-            positionPreviewNearSourcePoint()
-        }
-
-        private func positionPreviewNearSourcePoint() {
-            guard let sourcePoint, view.bounds.height > 0 else { return }
-            let previewWidth = view.bounds.width * 0.70
-            let controlsHeight: CGFloat = 68
-            let totalHeight = previewWidth + controlsHeight
-            let spacing: CGFloat = 14
-            let topLimit = view.safeAreaInsets.top + 8
-            let bottomLimit = view.bounds.height - view.safeAreaInsets.bottom - 8
-
-            let aboveCenter = sourcePoint.y - spacing - totalHeight / 2
-            let belowCenter = sourcePoint.y + spacing + totalHeight / 2
-            let targetCenter: CGFloat
-            if aboveCenter - totalHeight / 2 >= topLimit {
-                targetCenter = aboveCenter
-            } else {
-                targetCenter = min(
-                    bottomLimit - totalHeight / 2,
-                    max(topLimit + totalHeight / 2, belowCenter)
-                )
-            }
-            previewCenterYConstraint?.constant = targetCenter - view.bounds.midY
-        }
-
-        private func configureOutsideTapToDismiss() {
-            let tap = UITapGestureRecognizer(
-                target: self,
-                action: #selector(closePreview)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleAppDidBecomeActive),
+                name: UIApplication.didBecomeActiveNotification,
+                object: nil
             )
-            tap.cancelsTouchesInView = false
-            tap.delegate = self
-            view.addGestureRecognizer(tap)
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldReceive touch: UITouch
-        ) -> Bool {
-            guard let touchedView = touch.view else { return true }
-            if touchedView.isDescendant(of: videoControlsView)
-                || touchedView is UIControl {
-                return false
-            }
-            return true
-        }
-
-        override func accessibilityPerformEscape() -> Bool {
-            closePreview()
-            return true
-        }
-
-        override func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
-            if asset.mediaType == .video {
-                HanClipAudioSession.activatePlayback()
-                videoPlayer?.play()
-                updatePlayPauseButton()
-            } else if asset.mediaSubtypes.contains(.photoLive) {
-                startLivePhotoPlayback()
-            }
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
+            stopSlideShow()
+            controlsHideTimer?.invalidate()
+            controlsHideTimer = nil
             livePhotoView.stopPlayback()
             stopLivePhotoProgress()
             videoPlayer?.pause()
-            updatePlayPauseButton()
         }
 
         deinit {
-            if let videoTimeObserver {
-                videoPlayer?.removeTimeObserver(videoTimeObserver)
-            }
-            if let videoEndObserver {
-                NotificationCenter.default.removeObserver(videoEndObserver)
-            }
+            slideTimer?.invalidate()
+            controlsHideTimer?.invalidate()
             livePhotoProgressTimer?.invalidate()
+            if let currentImageRequestID {
+                imageManager.cancelImageRequest(currentImageRequestID)
+            }
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        private func configurePreviewSurface() {
+            previewSurfaceView.backgroundColor = .black
+            previewSurfaceView.clipsToBounds = true
+            previewSurfaceView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(previewSurfaceView)
+            NSLayoutConstraint.activate([
+                previewSurfaceView.topAnchor.constraint(equalTo: view.topAnchor),
+                previewSurfaceView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                previewSurfaceView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                previewSurfaceView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            ])
+
+            loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+            loadingIndicator.color = .white
+            loadingIndicator.hidesWhenStopped = true
+            view.addSubview(loadingIndicator)
+            NSLayoutConstraint.activate([
+                loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            ])
+
+            configureErrorView()
+        }
+
+        private func configureErrorView() {
+            errorContainerView.translatesAutoresizingMaskIntoConstraints = false
+            errorContainerView.backgroundColor = UIColor.black.withAlphaComponent(0.75)
+            errorContainerView.layer.cornerRadius = 16
+            errorContainerView.layer.borderWidth = 1
+            errorContainerView.layer.borderColor = UIColor.white.withAlphaComponent(0.20).cgColor
+            errorContainerView.isHidden = true
+            view.addSubview(errorContainerView)
+
+            errorMessageLabel.font = .systemFont(ofSize: 14, weight: .medium)
+            errorMessageLabel.textColor = .white
+            errorMessageLabel.textAlignment = .center
+            errorMessageLabel.numberOfLines = 2
+            errorMessageLabel.translatesAutoresizingMaskIntoConstraints = false
+
+            retryButton.setTitle("다시 시도", for: .normal)
+            retryButton.setTitleColor(.white, for: .normal)
+            retryButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold)
+            retryButton.backgroundColor = HanClipTheme.primaryUIColor
+            retryButton.layer.cornerRadius = 14
+            retryButton.translatesAutoresizingMaskIntoConstraints = false
+
+            let errorCloseButton = UIButton(type: .system)
+            errorCloseButton.setTitle("닫기", for: .normal)
+            errorCloseButton.setTitleColor(.white, for: .normal)
+            errorCloseButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+            errorCloseButton.backgroundColor = UIColor.white.withAlphaComponent(0.18)
+            errorCloseButton.layer.cornerRadius = 14
+            errorCloseButton.addTarget(self, action: #selector(closePreview), for: .touchUpInside)
+            errorCloseButton.translatesAutoresizingMaskIntoConstraints = false
+
+            let buttonStack = UIStackView(arrangedSubviews: [retryButton, errorCloseButton])
+            buttonStack.axis = .horizontal
+            buttonStack.spacing = 10
+            buttonStack.distribution = .fillEqually
+            buttonStack.translatesAutoresizingMaskIntoConstraints = false
+
+            let contentStack = UIStackView(arrangedSubviews: [errorMessageLabel, buttonStack])
+            contentStack.axis = .vertical
+            contentStack.spacing = 14
+            contentStack.translatesAutoresizingMaskIntoConstraints = false
+            errorContainerView.addSubview(contentStack)
+
+            NSLayoutConstraint.activate([
+                errorContainerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                errorContainerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+                errorContainerView.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
+
+                contentStack.topAnchor.constraint(equalTo: errorContainerView.topAnchor, constant: 18),
+                contentStack.bottomAnchor.constraint(equalTo: errorContainerView.bottomAnchor, constant: -18),
+                contentStack.leadingAnchor.constraint(equalTo: errorContainerView.leadingAnchor, constant: 18),
+                contentStack.trailingAnchor.constraint(equalTo: errorContainerView.trailingAnchor, constant: -18),
+                retryButton.heightAnchor.constraint(equalToConstant: 40),
+                errorCloseButton.heightAnchor.constraint(equalToConstant: 40)
+            ])
+        }
+
+        private let retryActionIdentifier = UIAction.Identifier("hanclip.preview.retry")
+
+        private func showError(message: String, retryAction: @escaping () -> Void) {
+            errorMessageLabel.text = message
+            retryButton.removeAction(identifiedBy: retryActionIdentifier, for: .touchUpInside)
+            retryButton.addAction(UIAction(identifier: retryActionIdentifier) { [weak self] _ in
+                self?.errorContainerView.isHidden = true
+                retryAction()
+            }, for: .touchUpInside)
+            errorContainerView.isHidden = false
+        }
+
+        private func makeCircleButton(
+            systemName: String,
+            accessibilityLabel: String
+        ) -> MediaPreviewIconButton {
+            let button = MediaPreviewIconButton(type: .system)
+            let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
+            button.setImage(UIImage(systemName: systemName, withConfiguration: config), for: .normal)
+            button.tintColor = .white
+            button.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+            button.layer.cornerRadius = 22
+            button.layer.borderWidth = 1
+            button.layer.borderColor = UIColor.white.withAlphaComponent(0.28).cgColor
+            button.clipsToBounds = true
+            button.accessibilityLabel = accessibilityLabel
+            button.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                button.widthAnchor.constraint(equalToConstant: 44),
+                button.heightAnchor.constraint(equalToConstant: 44)
+            ])
+            return button
+        }
+
+        private func configureTopBar() {
+            guard topBarView.superview == nil else {
+                updateTitle()
+                return
+            }
+            topBarView.translatesAutoresizingMaskIntoConstraints = false
+            topBarView.backgroundColor = .clear
+            view.addSubview(topBarView)
+
+            topCloseButton = makeCircleButton(systemName: "xmark", accessibilityLabel: "닫기")
+            topCloseButton.addTarget(self, action: #selector(closePreview), for: .touchUpInside)
+            topBarView.addSubview(topCloseButton)
+
+            titleLabel.font = .systemFont(ofSize: 16, weight: .bold)
+            titleLabel.textColor = .white
+            titleLabel.textAlignment = .center
+            titleLabel.translatesAutoresizingMaskIntoConstraints = false
+            topBarView.addSubview(titleLabel)
+
+            topShareButton = makeCircleButton(systemName: "square.and.arrow.up", accessibilityLabel: "공유")
+            topShareButton.addTarget(self, action: #selector(handleShareTapped), for: .touchUpInside)
+            topBarView.addSubview(topShareButton)
+
+            let hasDeleteHandler = onDelete != nil || onDeleteAssetIdentifier != nil
+            if hasDeleteHandler {
+                topDeleteButton.setTitle("선택 해제", for: .normal)
+                topDeleteButton.setTitleColor(UIColor(HanClipTheme.onSecondary), for: .normal)
+                topDeleteButton.titleLabel?.font = HanClipTypography.uiFont(textStyle: .footnote, weight: .semibold)
+                topDeleteButton.backgroundColor = HanClipTheme.secondaryUIColor.withAlphaComponent(0.86)
+                topDeleteButton.layer.cornerRadius = 18
+                topDeleteButton.layer.cornerCurve = .continuous
+                topDeleteButton.accessibilityLabel = "선택에서 제거"
+                topDeleteButton.addTarget(self, action: #selector(deletePreviewItem), for: .touchUpInside)
+                topDeleteButton.translatesAutoresizingMaskIntoConstraints = false
+                topBarView.addSubview(topDeleteButton)
+
+                NSLayoutConstraint.activate([
+                    topDeleteButton.trailingAnchor.constraint(equalTo: topShareButton.leadingAnchor, constant: -10),
+                    topDeleteButton.centerYAnchor.constraint(equalTo: topBarView.centerYAnchor),
+                    topDeleteButton.heightAnchor.constraint(equalToConstant: 44),
+                    topDeleteButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 72)
+                ])
+            }
+
+            NSLayoutConstraint.activate([
+                topBarView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+                topBarView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 14),
+                topBarView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -14),
+                topBarView.heightAnchor.constraint(equalToConstant: 44),
+
+                topCloseButton.leadingAnchor.constraint(equalTo: topBarView.leadingAnchor),
+                topCloseButton.centerYAnchor.constraint(equalTo: topBarView.centerYAnchor),
+
+                titleLabel.centerXAnchor.constraint(equalTo: topBarView.centerXAnchor),
+                titleLabel.centerYAnchor.constraint(equalTo: topBarView.centerYAnchor),
+                titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: topCloseButton.trailingAnchor, constant: 8),
+
+                topShareButton.trailingAnchor.constraint(equalTo: topBarView.trailingAnchor),
+                topShareButton.centerYAnchor.constraint(equalTo: topBarView.centerYAnchor)
+            ])
+
+            updateTitle()
+        }
+
+        private func configureBottomBar() {
+            bottomBarView.translatesAutoresizingMaskIntoConstraints = false
+            bottomBarView.backgroundColor = .clear
+            view.addSubview(bottomBarView)
+
+            previousButton = makeCircleButton(systemName: "chevron.left", accessibilityLabel: "이전")
+            previousButton.addTarget(self, action: #selector(advancePreviousImage), for: .touchUpInside)
+
+            imagePlayPauseButton = makeCircleButton(systemName: "play.fill", accessibilityLabel: "재생")
+            imagePlayPauseButton.addTarget(self, action: #selector(toggleImageSlidePlayback), for: .touchUpInside)
+
+            nextButton = makeCircleButton(systemName: "chevron.right", accessibilityLabel: "다음")
+            nextButton.addTarget(self, action: #selector(advanceNextImage), for: .touchUpInside)
+
+            settingsButton = makeCircleButton(systemName: "slider.horizontal.3", accessibilityLabel: "설정")
+            configureSettingsMenu()
+
+            let stack = UIStackView(arrangedSubviews: [
+                previousButton,
+                imagePlayPauseButton,
+                nextButton,
+                settingsButton
+            ])
+            stack.axis = .horizontal
+            stack.alignment = .center
+            stack.spacing = 16
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            bottomBarView.addSubview(stack)
+
+            NSLayoutConstraint.activate([
+                bottomBarView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
+                bottomBarView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                bottomBarView.heightAnchor.constraint(equalToConstant: 48),
+
+                stack.topAnchor.constraint(equalTo: bottomBarView.topAnchor),
+                stack.bottomAnchor.constraint(equalTo: bottomBarView.bottomAnchor),
+                stack.leadingAnchor.constraint(equalTo: bottomBarView.leadingAnchor),
+                stack.trailingAnchor.constraint(equalTo: bottomBarView.trailingAnchor)
+            ])
+
+            updateImagePlayPauseButton()
+        }
+
+        private func configureSettingsMenu() {
+            let currentInterval = HanClipCommonPlayerPreferences.imageInterval
+            let currentMode = HanClipCommonPlayerPreferences.imageRepeatMode
+
+            let intervalActions = HanClipCommonPlayerPreferences.imageIntervalOptions.map { seconds in
+                UIAction(
+                    title: "\(Int(seconds))초",
+                    state: abs(currentInterval - seconds) < 0.01 ? .on : .off
+                ) { [weak self] _ in
+                    HanClipCommonPlayerPreferences.imageInterval = seconds
+                    self?.configureSettingsMenu()
+                    if self?.isSlidePlaying == true {
+                        self?.restartSlideTimer()
+                    }
+                }
+            }
+            let intervalMenu = UIMenu(
+                title: "재생 간격",
+                options: .displayInline,
+                children: intervalActions
+            )
+
+            let modeActions = HanClipImageRepeatMode.allCases.map { mode in
+                UIAction(
+                    title: mode.title,
+                    state: currentMode == mode ? .on : .off
+                ) { [weak self] _ in
+                    HanClipCommonPlayerPreferences.imageRepeatMode = mode
+                    self?.configureSettingsMenu()
+                }
+            }
+            let modeMenu = UIMenu(
+                title: "반복 모드",
+                options: .displayInline,
+                children: modeActions
+            )
+
+            settingsButton.menu = UIMenu(
+                title: "슬라이드쇼 설정",
+                children: [intervalMenu, modeMenu]
+            )
+            settingsButton.showsMenuAsPrimaryAction = true
+        }
+
+        private func configureStillPhotoPreview() {
+            scrollView.delegate = self
+            scrollView.minimumZoomScale = 1.0
+            scrollView.maximumZoomScale = 6.0
+            scrollView.backgroundColor = .black
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.translatesAutoresizingMaskIntoConstraints = false
+            previewSurfaceView.addSubview(scrollView)
+
+            imageView.contentMode = .scaleAspectFit
+            imageView.isUserInteractionEnabled = true
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            scrollView.addSubview(imageView)
+
+            NSLayoutConstraint.activate([
+                scrollView.topAnchor.constraint(equalTo: previewSurfaceView.topAnchor),
+                scrollView.bottomAnchor.constraint(equalTo: previewSurfaceView.bottomAnchor),
+                scrollView.leadingAnchor.constraint(equalTo: previewSurfaceView.leadingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: previewSurfaceView.trailingAnchor),
+
+                imageView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+                imageView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+                imageView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+                imageView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+                imageView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor)
+            ])
+
+            let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleImageDoubleTap))
+            doubleTap.numberOfTapsRequired = 2
+            scrollView.addGestureRecognizer(doubleTap)
+
+            let singleTap = UITapGestureRecognizer(target: self, action: #selector(handleImageSingleTap))
+            singleTap.numberOfTapsRequired = 1
+            singleTap.require(toFail: doubleTap)
+            scrollView.addGestureRecognizer(singleTap)
+
+            configureTopBar()
+            configureBottomBar()
+            configurePanGesture()
+
+            loadCurrentImage()
         }
 
         private func configureVideoPreview() {
-            addChild(playerViewController)
-            playerViewController.showsPlaybackControls = false
-            playerViewController.videoGravity = .resizeAspect
-            playerViewController.view.backgroundColor = .black
-            playerViewController.view.translatesAutoresizingMaskIntoConstraints =
-                false
-            previewSurfaceView.addSubview(playerViewController.view)
-            NSLayoutConstraint.activate([
-                playerViewController.view.topAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor
-                ),
-                playerViewController.view.bottomAnchor.constraint(
-                    equalTo: previewSurfaceView.bottomAnchor
-                ),
-                playerViewController.view.leadingAnchor.constraint(
-                    equalTo: previewSurfaceView.leadingAnchor
-                ),
-                playerViewController.view.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor
-                )
-            ])
-            playerViewController.didMove(toParent: self)
-            configureVideoControls()
+            configureTopBar()
+            topShareButton.isHidden = true
+            bottomBarView.isHidden = true
+            loadingIndicator.startAnimating()
+
+            if let videoHostingController {
+                videoHostingController.willMove(toParent: nil)
+                videoHostingController.view.removeFromSuperview()
+                videoHostingController.removeFromParent()
+                self.videoHostingController = nil
+            }
+            videoPlayer?.pause()
+            videoPlayer = nil
 
             let options = PHVideoRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.version = .current
             options.isNetworkAccessAllowed = true
+
             imageManager.requestPlayerItem(
                 forVideo: asset,
                 options: options
-            ) { [weak self] playerItem, _ in
-                guard let self, let playerItem else { return }
+            ) { [weak self] playerItem, info in
+                guard let self else { return }
                 DispatchQueue.main.async {
-                    let player = AVPlayer(playerItem: playerItem)
-                    self.videoPlayer = player
-                    self.playerViewController.player = player
-                    self.observeVideoProgress(player)
-                    self.videoEndObserver = NotificationCenter.default
-                        .addObserver(
-                            forName: .AVPlayerItemDidPlayToEndTime,
-                            object: playerItem,
-                            queue: .main
-                        ) { [weak self, weak player] _ in
-                            guard let self else { return }
-                            if self.isVideoLooping {
-                                player?.seek(to: .zero)
-                                player?.play()
-                            } else {
-                                self.progressSlider.value = 1
-                                self.updatePlayPauseButton()
+                    self.loadingIndicator.stopAnimating()
+                    if let playerItem {
+                        self.embedFullscreenVideoPlayer(with: playerItem)
+                    } else {
+                        let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                        if !isDegraded {
+                            self.showError(message: "동영상을 불러올 수 없습니다.") { [weak self] in
+                                self?.configureVideoPreview()
                             }
                         }
-                    player.play()
-                    self.updatePlayPauseButton()
+                    }
                 }
             }
         }
 
-        private func configureCloseButton() {
-            let closeButton = UIButton(type: .system)
-            closeButton.setImage(
-                UIImage(systemName: "xmark.circle.fill"),
-                for: .normal
+        private func embedFullscreenVideoPlayer(with playerItem: AVPlayerItem) {
+            let player = AVPlayer(playerItem: playerItem)
+            self.videoPlayer = player
+
+            let shareURL = (playerItem.asset as? AVURLAsset)?.url.isFileURL == true ? (playerItem.asset as? AVURLAsset)?.url : nil
+            let config = HanClipFullscreenPlayerConfiguration(
+                title: assetTitle(for: asset),
+                shareURL: shareURL,
+                autoplay: true,
+                loop: HanClipCommonPlayerPreferences.isVideoLooping,
+                showsLoopControl: true,
+                allowsAspectModeToggle: true
             )
-            closeButton.tintColor = .white
-            closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.32)
-            closeButton.layer.cornerRadius = 22
-            closeButton.accessibilityLabel = "미리보기 닫기"
-            closeButton.addTarget(
-                self,
-                action: #selector(closePreview),
-                for: .touchUpInside
+
+            let playerView = HanClipFullscreenVideoPlayer(
+                player: player,
+                configuration: config,
+                onClose: { [weak self] in
+                    self?.closePreview()
+                }
             )
-            closeButton.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(closeButton)
+
+            let hostingController = UIHostingController(rootView: playerView)
+            self.videoHostingController = hostingController
+            addChild(hostingController)
+            hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+            hostingController.view.backgroundColor = .black
+            previewSurfaceView.addSubview(hostingController.view)
             NSLayoutConstraint.activate([
-                closeButton.topAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor,
-                    constant: 10
-                ),
-                closeButton.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor,
-                    constant: -10
-                ),
-                closeButton.widthAnchor.constraint(equalToConstant: 44),
-                closeButton.heightAnchor.constraint(equalToConstant: 44)
+                hostingController.view.topAnchor.constraint(equalTo: previewSurfaceView.topAnchor),
+                hostingController.view.bottomAnchor.constraint(equalTo: previewSurfaceView.bottomAnchor),
+                hostingController.view.leadingAnchor.constraint(equalTo: previewSurfaceView.leadingAnchor),
+                hostingController.view.trailingAnchor.constraint(equalTo: previewSurfaceView.trailingAnchor)
+            ])
+            hostingController.didMove(toParent: self)
+
+            topBarView.isHidden = true
+        }
+
+        private func configureLivePhotoPreview() {
+            configureTopBar()
+            configureLivePhotoControls()
+            configurePanGesture()
+
+            loadingIndicator.startAnimating()
+            if livePhotoView.superview == nil {
+                livePhotoView.contentMode = .scaleAspectFit
+                livePhotoView.translatesAutoresizingMaskIntoConstraints = false
+                previewSurfaceView.addSubview(livePhotoView)
+                NSLayoutConstraint.activate([
+                    livePhotoView.topAnchor.constraint(equalTo: previewSurfaceView.topAnchor),
+                    livePhotoView.bottomAnchor.constraint(equalTo: previewSurfaceView.bottomAnchor),
+                    livePhotoView.leadingAnchor.constraint(equalTo: previewSurfaceView.leadingAnchor),
+                    livePhotoView.trailingAnchor.constraint(equalTo: previewSurfaceView.trailingAnchor)
+                ])
+            }
+
+            let options = PHLivePhotoRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+
+            imageManager.requestLivePhoto(
+                for: asset,
+                targetSize: CGSize(width: 1_800, height: 1_800),
+                contentMode: .aspectFit,
+                options: options
+            ) { [weak self] livePhoto, info in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    self.loadingIndicator.stopAnimating()
+                    if let livePhoto {
+                        self.livePhotoView.livePhoto = livePhoto
+                        self.startLivePhotoPlayback()
+                    } else {
+                        let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                        if !isDegraded {
+                            self.showError(message: "라이브 포토를 불러올 수 없습니다.") { [weak self] in
+                                self?.configureLivePhotoPreview()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private func configureLivePhotoControls() {
+            bottomBarView.isHidden = true
+            guard livePhotoPlayButton == nil else { return }
+
+            let liveControls = UIStackView()
+            liveControls.axis = .horizontal
+            liveControls.alignment = .center
+            liveControls.spacing = 12
+            liveControls.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(liveControls)
+
+            let playButton = makeCircleButton(systemName: "play.fill", accessibilityLabel: "라이브 포토 재생")
+            playButton.addTarget(self, action: #selector(toggleLivePhotoPlayback), for: .touchUpInside)
+            self.livePhotoPlayButton = playButton
+
+            livePhotoProgressView.progressTintColor = UIColor(HanClipTheme.primary)
+            livePhotoProgressView.trackTintColor = UIColor.white.withAlphaComponent(0.24)
+            livePhotoProgressView.translatesAutoresizingMaskIntoConstraints = false
+
+            liveControls.addArrangedSubview(playButton)
+            liveControls.addArrangedSubview(livePhotoProgressView)
+
+            NSLayoutConstraint.activate([
+                liveControls.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+                liveControls.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 18),
+                liveControls.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18),
+                liveControls.heightAnchor.constraint(equalToConstant: 48),
+                livePhotoProgressView.heightAnchor.constraint(equalToConstant: 4)
             ])
         }
 
+        private func configurePanGesture() {
+            if let recognizers = view.gestureRecognizers, recognizers.contains(where: { $0 is UIPanGestureRecognizer }) {
+                return
+            }
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+            pan.delegate = self
+            view.addGestureRecognizer(pan)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            if scrollView.zoomScale > 1.01 {
+                return false
+            }
+            return true
+        }
+
+        @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+            if scrollView.zoomScale > 1.01 { return }
+
+            let translation = gesture.translation(in: view)
+            switch gesture.state {
+            case .began:
+                panIsVerticalDismiss = false
+            case .changed:
+                if !panIsVerticalDismiss {
+                    if translation.y > 12 && abs(translation.y) > abs(translation.x) {
+                        panIsVerticalDismiss = true
+                    }
+                }
+                if panIsVerticalDismiss {
+                    let offsetY = max(translation.y, 0)
+                    previewSurfaceView.transform = CGAffineTransform(translationX: 0, y: offsetY)
+                    let height = view.bounds.height > 0 ? view.bounds.height : 600
+                    let opacity = max(0.4, 1.0 - (offsetY / height) * 0.9)
+                    view.backgroundColor = UIColor.black.withAlphaComponent(opacity)
+                }
+            case .ended, .cancelled:
+                if panIsVerticalDismiss {
+                    if translation.y > 120 {
+                        closePreview()
+                    } else {
+                        UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseOut) {
+                            self.previewSurfaceView.transform = .identity
+                            self.view.backgroundColor = .black
+                        }
+                    }
+                    panIsVerticalDismiss = false
+                } else if !asset.mediaSubtypes.contains(.photoLive) {
+                    if translation.x < -60 {
+                        advanceNextImage()
+                    } else if translation.x > 60 {
+                        advancePreviousImage()
+                    }
+                }
+            default:
+                break
+            }
+        }
+
+        @objc private func handleImageSingleTap() {
+            revealControls()
+        }
+
+        @objc private func handleImageDoubleTap() {
+            let isDefaultScale = abs(scrollView.zoomScale - scrollView.minimumZoomScale) < 0.01
+            let isDefaultCenter = abs(scrollView.contentOffset.x) <= 0.01 && abs(scrollView.contentOffset.y) <= 0.01
+
+            if !isDefaultScale || !isDefaultCenter {
+                scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+                scrollView.setContentOffset(.zero, animated: true)
+            } else {
+                toggleImageSlidePlayback()
+            }
+        }
+
+        private func revealControls() {
+            setControlsVisible(true, animated: true)
+        }
+
+        private func setControlsVisible(_ visible: Bool, animated: Bool) {
+            areControlsVisible = visible
+            controlsHideTimer?.invalidate()
+            controlsHideTimer = nil
+
+            let updates = {
+                self.topBarView.alpha = visible ? 1.0 : 0.0
+                self.bottomBarView.alpha = visible ? 1.0 : 0.0
+                self.topBarView.isUserInteractionEnabled = visible
+                self.bottomBarView.isUserInteractionEnabled = visible
+            }
+
+            if animated {
+                UIView.animate(withDuration: 0.20, animations: updates)
+            } else {
+                updates()
+            }
+
+            if visible && isSlidePlaying {
+                scheduleControlsHide()
+            }
+        }
+
+        private func scheduleControlsHide() {
+            controlsHideTimer?.invalidate()
+            guard isSlidePlaying, !UIAccessibility.isVoiceOverRunning, !isImageLoading, imageView.image != nil, errorContainerView.isHidden, !scrollView.isZooming, !scrollView.isZoomBouncing, !scrollView.isDragging, !scrollView.isDecelerating else { return }
+            controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+                guard let self, self.isSlidePlaying, !UIAccessibility.isVoiceOverRunning, !self.isImageLoading, self.imageView.image != nil, self.errorContainerView.isHidden, !self.scrollView.isZooming, !self.scrollView.isZoomBouncing, !self.scrollView.isDragging, !self.scrollView.isDecelerating else { return }
+                self.setControlsVisible(false, animated: true)
+            }
+        }
+
+        @objc private func handleShareTapped() {
+            guard let currentImage = imageView.image else { return }
+            let activityVC = UIActivityViewController(
+                activityItems: [currentImage],
+                applicationActivities: nil
+            )
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = topShareButton
+                popover.sourceRect = topShareButton.bounds
+            }
+            present(activityVC, animated: true)
+        }
+
         @objc private func closePreview() {
+            stopSlideShow()
+            controlsHideTimer?.invalidate()
+            controlsHideTimer = nil
+            videoPlayer?.pause()
+            videoPlayer = nil
+            if let videoHostingController {
+                videoHostingController.willMove(toParent: nil)
+                videoHostingController.view.removeFromSuperview()
+                videoHostingController.removeFromParent()
+                self.videoHostingController = nil
+            }
             if let onDismiss {
                 onDismiss()
             } else {
@@ -2197,150 +2714,15 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
         }
 
-        private func configureVideoControls() {
-            videoControlsView.layer.cornerRadius = 18
-            videoControlsView.layer.borderWidth = 1
-            videoControlsView.layer.borderColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.28).cgColor
-            videoControlsView.contentView.backgroundColor = UIColor(
-                HanClipTheme.background
-            ).withAlphaComponent(0.42)
-            videoControlsView.clipsToBounds = true
-            videoControlsView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(videoControlsView)
-
-            playPauseButton.tintColor = HanClipTheme.secondaryUIColor
-            playPauseButton.accessibilityLabel = "재생"
-            playPauseButton.addTarget(
-                self,
-                action: #selector(toggleVideoPlayback),
-                for: .touchUpInside
-            )
-
-            progressSlider.minimumValue = 0
-            progressSlider.maximumValue = 1
-            progressSlider.minimumTrackTintColor = UIColor(
-                HanClipTheme.primary
-            )
-            progressSlider.maximumTrackTintColor = UIColor(HanClipTheme.text)
-                .withAlphaComponent(0.22)
-            progressSlider.addTarget(
-                self,
-                action: #selector(beginVideoSeek),
-                for: .touchDown
-            )
-            progressSlider.addTarget(
-                self,
-                action: #selector(seekVideo),
-                for: .valueChanged
-            )
-            progressSlider.addTarget(
-                self,
-                action: #selector(endVideoSeek),
-                for: [.touchUpInside, .touchUpOutside, .touchCancel]
-            )
-
-            loopButton.setImage(UIImage(systemName: "infinity"), for: .normal)
-            loopButton.accessibilityLabel = "무한 재생"
-            loopButton.addTarget(
-                self,
-                action: #selector(toggleVideoLooping),
-                for: .touchUpInside
-            )
-            updateLoopButton()
-
-            let controls = UIStackView(arrangedSubviews: [
-                playPauseButton,
-                progressSlider
-            ])
-            controls.addArrangedSubview(makePreviewActionButton())
-            controls.addArrangedSubview(loopButton)
-            controls.axis = .horizontal
-            controls.alignment = .center
-            controls.spacing = 10
-            controls.translatesAutoresizingMaskIntoConstraints = false
-            videoControlsView.contentView.addSubview(controls)
-
-            NSLayoutConstraint.activate([
-                videoControlsView.leadingAnchor.constraint(
-                    equalTo: previewSurfaceView.leadingAnchor
-                ),
-                videoControlsView.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor
-                ),
-                videoControlsView.bottomAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor,
-                    constant: -12
-                ),
-                videoControlsView.heightAnchor.constraint(equalToConstant: 56),
-                controls.leadingAnchor.constraint(
-                    equalTo: videoControlsView.contentView.leadingAnchor,
-                    constant: 8
-                ),
-                controls.trailingAnchor.constraint(
-                    equalTo: videoControlsView.contentView.trailingAnchor,
-                    constant: -8
-                ),
-                controls.topAnchor.constraint(
-                    equalTo: videoControlsView.contentView.topAnchor
-                ),
-                controls.bottomAnchor.constraint(
-                    equalTo: videoControlsView.contentView.bottomAnchor
-                ),
-                playPauseButton.widthAnchor.constraint(equalToConstant: 44),
-                playPauseButton.heightAnchor.constraint(equalToConstant: 44),
-                loopButton.widthAnchor.constraint(equalToConstant: 44),
-                loopButton.heightAnchor.constraint(equalToConstant: 44)
-            ])
-        }
-
-        private func configureStandaloneDeleteButton() {
-            let deleteButton = makePreviewActionButton()
-            deleteButton.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(deleteButton)
-            NSLayoutConstraint.activate([
-                deleteButton.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor
-                ),
-                deleteButton.bottomAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor,
-                    constant: -12
-                ),
-                deleteButton.widthAnchor.constraint(equalToConstant: 52),
-                deleteButton.heightAnchor.constraint(equalToConstant: 52)
-            ])
-        }
-
-        private func makePreviewActionButton() -> UIButton {
-            let button = UIButton(type: .system)
-            button.setTitle(onDelete == nil ? "닫기" : "제거", for: .normal)
-            button.setTitleColor(
-                UIColor(HanClipTheme.onSecondary),
-                for: .normal
-            )
-            button.titleLabel?.font = HanClipTypography.uiFont(
-                textStyle: .footnote,
-                weight: .semibold
-            )
-            button.titleLabel?.adjustsFontForContentSizeCategory = true
-            button.tintColor = UIColor(HanClipTheme.onSecondary)
-            button.backgroundColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.86)
-            button.layer.cornerRadius = 18
-            button.layer.cornerCurve = .continuous
-            button.accessibilityLabel = onDelete == nil
-                ? "미리보기 닫기"
-                : "선택에서 제거"
-            button.addTarget(
-                self,
-                action: #selector(deletePreviewItem),
-                for: .touchUpInside
-            )
-            return button
-        }
-
         @objc private func deletePreviewItem() {
-            if let onDelete {
+            stopSlideShow()
+            let currentID = currentAsset.localIdentifier
+            if let onDeleteAssetIdentifier {
+                onDeleteAssetIdentifier(currentID)
+                if onDismiss == nil {
+                    dismiss(animated: true)
+                }
+            } else if let onDelete {
                 onDelete()
                 if onDismiss == nil {
                     dismiss(animated: true)
@@ -2348,193 +2730,6 @@ struct PhotoPicker: UIViewControllerRepresentable {
             } else {
                 closePreview()
             }
-        }
-
-        private func observeVideoProgress(_ player: AVPlayer) {
-            videoTimeObserver = player.addPeriodicTimeObserver(
-                forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
-                queue: .main
-            ) { [weak self, weak player] time in
-                guard let self, let player else { return }
-                if !self.isSeekingVideo {
-                    let duration = player.currentItem?.duration.seconds ?? 0
-                    if duration.isFinite, duration > 0 {
-                        self.progressSlider.value = Float(time.seconds / duration)
-                    }
-                }
-                self.updatePlayPauseButton()
-            }
-        }
-
-        @objc private func toggleVideoPlayback() {
-            guard let videoPlayer else { return }
-            if videoPlayer.timeControlStatus == .playing {
-                videoPlayer.pause()
-            } else {
-                if progressSlider.value >= 0.999 {
-                    videoPlayer.seek(to: .zero)
-                }
-                HanClipAudioSession.activatePlayback()
-                videoPlayer.play()
-            }
-            updatePlayPauseButton()
-        }
-
-        @objc private func beginVideoSeek() {
-            isSeekingVideo = true
-            wasPlayingBeforeSeek = videoPlayer?.timeControlStatus == .playing
-            videoPlayer?.pause()
-        }
-
-        @objc private func seekVideo() {
-            guard let videoPlayer,
-                  let duration = videoPlayer.currentItem?.duration.seconds,
-                  duration.isFinite,
-                  duration > 0 else { return }
-            let target = duration * Double(progressSlider.value)
-            videoPlayer.seek(
-                to: CMTime(seconds: target, preferredTimescale: 600),
-                toleranceBefore: .zero,
-                toleranceAfter: .zero
-            )
-        }
-
-        @objc private func endVideoSeek() {
-            seekVideo()
-            isSeekingVideo = false
-            if wasPlayingBeforeSeek {
-                videoPlayer?.play()
-            }
-            updatePlayPauseButton()
-        }
-
-        @objc private func toggleVideoLooping() {
-            isVideoLooping.toggle()
-            updateLoopButton()
-        }
-
-        private func updatePlayPauseButton() {
-            let isPlaying = videoPlayer?.timeControlStatus == .playing
-            let symbol = isPlaying ? "pause.fill" : "play.fill"
-            playPauseButton.setImage(UIImage(systemName: symbol), for: .normal)
-            playPauseButton.accessibilityLabel = isPlaying ? "일시 정지" : "재생"
-        }
-
-        private func updateLoopButton() {
-            loopButton.tintColor = isVideoLooping
-                ? UIColor(HanClipTheme.primary)
-                : UIColor(HanClipTheme.text).withAlphaComponent(0.45)
-            loopButton.accessibilityValue = isVideoLooping ? "켬" : "끔"
-        }
-
-        private func configureLivePhotoPreview() {
-            livePhotoView.contentMode = .scaleAspectFit
-            livePhotoView.translatesAutoresizingMaskIntoConstraints = false
-            previewSurfaceView.addSubview(livePhotoView)
-            NSLayoutConstraint.activate([
-                livePhotoView.topAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor
-                ),
-                livePhotoView.bottomAnchor.constraint(
-                    equalTo: previewSurfaceView.bottomAnchor
-                ),
-                livePhotoView.leadingAnchor.constraint(
-                    equalTo: previewSurfaceView.leadingAnchor
-                ),
-                livePhotoView.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor
-                )
-            ])
-            configureLivePhotoControls()
-
-            let options = PHLivePhotoRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            imageManager.requestLivePhoto(
-                for: asset,
-                targetSize: CGSize(width: 1_800, height: 1_800),
-                contentMode: .aspectFit,
-                options: options
-            ) { [weak self] livePhoto, _ in
-                guard let self, let livePhoto else { return }
-                DispatchQueue.main.async {
-                    self.livePhotoView.livePhoto = livePhoto
-                    self.startLivePhotoPlayback()
-                }
-            }
-        }
-
-        private func configureLivePhotoControls() {
-            videoControlsView.layer.cornerRadius = 18
-            videoControlsView.layer.borderWidth = 1
-            videoControlsView.layer.borderColor = HanClipTheme.secondaryUIColor
-                .withAlphaComponent(0.28).cgColor
-            videoControlsView.contentView.backgroundColor = UIColor(
-                HanClipTheme.background
-            ).withAlphaComponent(0.42)
-            videoControlsView.clipsToBounds = true
-            videoControlsView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(videoControlsView)
-
-            playPauseButton.tintColor = HanClipTheme.secondaryUIColor
-            playPauseButton.setImage(
-                UIImage(systemName: "play.fill"),
-                for: .normal
-            )
-            playPauseButton.accessibilityLabel = "라이브 포토 재생"
-            playPauseButton.addTarget(
-                self,
-                action: #selector(toggleLivePhotoPlayback),
-                for: .touchUpInside
-            )
-
-            progressSlider.minimumValue = 0
-            progressSlider.maximumValue = 1
-            progressSlider.isUserInteractionEnabled = false
-            progressSlider.minimumTrackTintColor = UIColor(HanClipTheme.primary)
-            progressSlider.maximumTrackTintColor = UIColor(HanClipTheme.text)
-                .withAlphaComponent(0.22)
-
-            let controls = UIStackView(arrangedSubviews: [
-                playPauseButton,
-                progressSlider
-            ])
-            controls.addArrangedSubview(makePreviewActionButton())
-            controls.axis = .horizontal
-            controls.alignment = .center
-            controls.spacing = 10
-            controls.translatesAutoresizingMaskIntoConstraints = false
-            videoControlsView.contentView.addSubview(controls)
-
-            NSLayoutConstraint.activate([
-                videoControlsView.leadingAnchor.constraint(
-                    equalTo: previewSurfaceView.leadingAnchor
-                ),
-                videoControlsView.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor
-                ),
-                videoControlsView.bottomAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor,
-                    constant: -12
-                ),
-                videoControlsView.heightAnchor.constraint(equalToConstant: 56),
-                controls.leadingAnchor.constraint(
-                    equalTo: videoControlsView.contentView.leadingAnchor,
-                    constant: 8
-                ),
-                controls.trailingAnchor.constraint(
-                    equalTo: videoControlsView.contentView.trailingAnchor,
-                    constant: -8
-                ),
-                controls.topAnchor.constraint(
-                    equalTo: videoControlsView.contentView.topAnchor
-                ),
-                controls.bottomAnchor.constraint(
-                    equalTo: videoControlsView.contentView.bottomAnchor
-                ),
-                playPauseButton.widthAnchor.constraint(equalToConstant: 44),
-                playPauseButton.heightAnchor.constraint(equalToConstant: 44)
-            ])
         }
 
         @objc private func toggleLivePhotoPlayback() {
@@ -2550,7 +2745,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
             guard livePhotoView.livePhoto != nil else { return }
             livePhotoView.startPlayback(with: .full)
             isLivePhotoPlaying = true
-            progressSlider.value = 0
+            livePhotoProgressView.progress = 0
             livePhotoPlaybackStartedAt = Date()
             livePhotoProgressTimer?.invalidate()
             livePhotoProgressTimer = Timer.scheduledTimer(
@@ -2563,7 +2758,7 @@ struct PhotoPicker: UIViewControllerRepresentable {
                     ? self.asset.duration
                     : 3
                 let progress = Date().timeIntervalSince(startedAt) / duration
-                self.progressSlider.value = Float(min(1, progress))
+                self.livePhotoProgressView.progress = Float(min(1, progress))
                 if progress >= 1 {
                     self.stopLivePhotoProgress()
                 }
@@ -2580,82 +2775,247 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
 
         private func updateLivePhotoPlayButton() {
-            playPauseButton.setImage(
-                UIImage(
-                    systemName: isLivePhotoPlaying
-                        ? "pause.fill"
-                        : "play.fill"
-                ),
-                for: .normal
-            )
-            playPauseButton.accessibilityLabel = isLivePhotoPlaying
-                ? "라이브 포토 일시 정지"
-                : "라이브 포토 재생"
+            let symbol = isLivePhotoPlaying ? "pause.fill" : "play.fill"
+            let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
+            livePhotoPlayButton?.setImage(UIImage(systemName: symbol, withConfiguration: config), for: .normal)
+            livePhotoPlayButton?.accessibilityLabel = isLivePhotoPlaying ? "라이브 포토 일시정지" : "라이브 포토 재생"
         }
 
-        private func configureStillPhotoPreview() {
-            scrollView.delegate = self
-            scrollView.minimumZoomScale = 1
-            scrollView.maximumZoomScale = 5
-            scrollView.translatesAutoresizingMaskIntoConstraints = false
-            previewSurfaceView.addSubview(scrollView)
+        @objc private func toggleImageSlidePlayback() {
+            if isSlidePlaying {
+                stopSlideShow()
+            } else {
+                startSlideShow()
+            }
+        }
 
-            imageView.contentMode = .scaleAspectFit
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            scrollView.addSubview(imageView)
+        private func startSlideShow() {
+            guard imageAssets.count >= 2, !isImageLoading, imageView.image != nil, errorContainerView.isHidden else { return }
+            isSlidePlaying = true
+            updateImagePlayPauseButton()
+            scheduleControlsHide()
+            restartSlideTimer()
+        }
 
-            NSLayoutConstraint.activate([
-                scrollView.topAnchor.constraint(
-                    equalTo: previewSurfaceView.topAnchor
-                ),
-                scrollView.bottomAnchor.constraint(
-                    equalTo: previewSurfaceView.bottomAnchor
-                ),
-                scrollView.leadingAnchor.constraint(
-                    equalTo: previewSurfaceView.leadingAnchor
-                ),
-                scrollView.trailingAnchor.constraint(
-                    equalTo: previewSurfaceView.trailingAnchor
-                ),
-                imageView.topAnchor.constraint(
-                    equalTo: scrollView.contentLayoutGuide.topAnchor
-                ),
-                imageView.bottomAnchor.constraint(
-                    equalTo: scrollView.contentLayoutGuide.bottomAnchor
-                ),
-                imageView.leadingAnchor.constraint(
-                    equalTo: scrollView.contentLayoutGuide.leadingAnchor
-                ),
-                imageView.trailingAnchor.constraint(
-                    equalTo: scrollView.contentLayoutGuide.trailingAnchor
-                ),
-                imageView.widthAnchor.constraint(
-                    equalTo: scrollView.frameLayoutGuide.widthAnchor
-                ),
-                imageView.heightAnchor.constraint(
-                    equalTo: scrollView.frameLayoutGuide.heightAnchor
-                )
-            ])
+        private func restartSlideTimer() {
+            slideTimer?.invalidate()
+            guard isSlidePlaying, imageAssets.count >= 2, !isImageLoading, imageView.image != nil, errorContainerView.isHidden else { return }
+            let interval = HanClipCommonPlayerPreferences.imageInterval
+            slideTimer = Timer.scheduledTimer(
+                withTimeInterval: interval,
+                repeats: true
+            ) { [weak self] _ in
+                guard let self, !self.isImageLoading else { return }
+                self.advanceSlide()
+            }
+        }
+
+        private func stopSlideShow() {
+            isSlidePlaying = false
+            slideTimer?.invalidate()
+            slideTimer = nil
+            updateImagePlayPauseButton()
+            revealControls()
+        }
+
+        private func advanceSlide() {
+            guard imageAssets.count > 0 else { return }
+            let mode = HanClipCommonPlayerPreferences.imageRepeatMode
+
+            switch mode {
+            case .oneRepeat:
+                return
+            case .once:
+                if currentImageIndex >= imageAssets.count - 1 {
+                    stopSlideShow()
+                    return
+                }
+                currentImageIndex += 1
+                loadCurrentImage()
+            case .shuffle:
+                if imageAssets.count > 1 {
+                    var nextIndex = currentImageIndex
+                    while nextIndex == currentImageIndex {
+                        nextIndex = Int.random(in: 0..<imageAssets.count)
+                    }
+                    currentImageIndex = nextIndex
+                }
+                loadCurrentImage()
+            case .allRepeat:
+                currentImageIndex = (currentImageIndex + 1) % imageAssets.count
+                loadCurrentImage()
+            }
+        }
+
+        @objc private func advancePreviousImage() {
+            guard imageAssets.count > 1 else { return }
+            currentImageIndex = (currentImageIndex - 1 + imageAssets.count) % imageAssets.count
+            loadCurrentImage()
+            revealControls()
+        }
+
+        @objc private func advanceNextImage() {
+            guard imageAssets.count > 1 else { return }
+            currentImageIndex = (currentImageIndex + 1) % imageAssets.count
+            loadCurrentImage()
+            revealControls()
+        }
+
+        private func resetZoomAndPan() {
+            scrollView.zoomScale = scrollView.minimumZoomScale
+            scrollView.contentOffset = .zero
+        }
+
+        private func loadCurrentImage() {
+            guard !imageAssets.isEmpty else { return }
+            resetZoomAndPan()
+            updateTitle()
+
+            slideTimer?.invalidate()
+            slideTimer = nil
+            isImageLoading = true
+            imageView.image = nil
+
+            if let currentImageRequestID {
+                imageManager.cancelImageRequest(currentImageRequestID)
+                self.currentImageRequestID = nil
+            }
+
+            let assetToLoad = currentAsset
+            let expectedID = assetToLoad.localIdentifier
+
+            loadingIndicator.startAnimating()
+            errorContainerView.isHidden = true
 
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.resizeMode = .fast
             options.isNetworkAccessAllowed = true
-            imageManager.requestImage(
-                for: asset,
+
+            let requestID = imageManager.requestImage(
+                for: assetToLoad,
                 targetSize: CGSize(width: 1_800, height: 1_800),
                 contentMode: .aspectFit,
                 options: options
-            ) { [weak self] image, _ in
-                self?.imageView.image = image
+            ) { [weak self] image, info in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    guard self.currentAsset.localIdentifier == expectedID else { return }
+                    let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                    if isCancelled { return }
+                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                    if let image {
+                        self.imageView.image = image
+                        self.errorContainerView.isHidden = true
+                        if !isDegraded {
+                            self.loadingIndicator.stopAnimating()
+                            self.isImageLoading = false
+                            if self.isSlidePlaying {
+                                self.restartSlideTimer()
+                            }
+                        }
+                    } else if !isDegraded {
+                        self.loadingIndicator.stopAnimating()
+                        self.isImageLoading = false
+                        self.stopSlideShow()
+                        self.showError(message: "사진을 불러올 수 없습니다.") { [weak self] in
+                            self?.loadCurrentImage()
+                        }
+                    }
+                }
+            }
+            self.currentImageRequestID = requestID
+        }
+
+        private func updateTitle() {
+            if !imageAssets.isEmpty {
+                titleLabel.text = "\(currentImageIndex + 1) / \(imageAssets.count)"
+            } else if let title = assetTitle(for: currentAsset) {
+                titleLabel.text = title
+            } else {
+                titleLabel.text = ""
+            }
+        }
+
+        private func assetTitle(for asset: PHAsset) -> String? {
+            if let date = asset.creationDate {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "ko_KR")
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .short
+                return formatter.string(from: date)
+            }
+            return nil
+        }
+
+        private func updateImagePlayPauseButton() {
+            guard let imagePlayPauseButton, let previousButton, let nextButton else { return }
+            let symbol = isSlidePlaying ? "pause.fill" : "play.fill"
+            let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
+            imagePlayPauseButton.setImage(UIImage(systemName: symbol, withConfiguration: config), for: .normal)
+            imagePlayPauseButton.accessibilityLabel = isSlidePlaying ? "일시정지" : "재생"
+            imagePlayPauseButton.isEnabled = imageAssets.count > 1
+            imagePlayPauseButton.alpha = imageAssets.count > 1 ? 1.0 : 0.4
+            previousButton.isEnabled = imageAssets.count > 1
+            previousButton.alpha = imageAssets.count > 1 ? 1.0 : 0.4
+            nextButton.isEnabled = imageAssets.count > 1
+            nextButton.alpha = imageAssets.count > 1 ? 1.0 : 0.4
+        }
+
+        @objc private func handleAppWillResignActive() {
+            if isSlidePlaying {
+                slideTimer?.invalidate()
+                slideTimer = nil
+            }
+            videoPlayer?.pause()
+            livePhotoView.stopPlayback()
+            stopLivePhotoProgress()
+        }
+
+        @objc private func handleAppDidBecomeActive() {
+            if isSlidePlaying {
+                restartSlideTimer()
             }
         }
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             imageView
         }
-    }
 
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            let subView = imageView
+            let offsetX = max((scrollView.bounds.size.width - scrollView.contentSize.width) * 0.5, 0.0)
+            let offsetY = max((scrollView.bounds.size.height - scrollView.contentSize.height) * 0.5, 0.0)
+            subView.center = CGPoint(
+                x: scrollView.contentSize.width * 0.5 + offsetX,
+                y: scrollView.contentSize.height * 0.5 + offsetY
+            )
+        }
+
+        func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+            controlsHideTimer?.invalidate()
+            revealControls()
+        }
+
+        func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+            scheduleControlsHide()
+        }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            controlsHideTimer?.invalidate()
+            revealControls()
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate {
+                scheduleControlsHide()
+            }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            scheduleControlsHide()
+        }
+    }
     final class DragSelectionPhotoCell: UICollectionViewCell {
         enum MediaKind {
             case photo

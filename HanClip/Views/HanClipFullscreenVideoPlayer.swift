@@ -3,6 +3,82 @@ import MediaPlayer
 import SwiftUI
 import UIKit
 
+enum HanClipImageRepeatMode: String, CaseIterable {
+    case allRepeat = "ALL_REPEAT"
+    case shuffle = "SHUFFLE"
+    case oneRepeat = "ONE_REPEAT"
+    case once = "ONCE"
+
+    var title: String {
+        switch self {
+        case .allRepeat: return "전체 반복"
+        case .shuffle: return "임의 재생"
+        case .oneRepeat: return "한 항목 반복"
+        case .once: return "한 번 재생"
+        }
+    }
+}
+
+enum HanClipCommonPlayerPreferences {
+    private static let videoLoopKey = "HanClip.Player.VideoLoop"
+    private static let videoAspectFillKey = "HanClip.Player.VideoAspectFill"
+    private static let imageIntervalKey = "HanClip.Player.ImageInterval"
+    private static let imageRepeatModeKey = "HanClip.Player.ImageRepeatMode"
+
+    static let defaultImageIntervalSeconds: TimeInterval = 5.0
+    static let imageIntervalOptions: [TimeInterval] = [1, 2, 3, 5, 10, 15, 30]
+
+    static var isVideoLooping: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: videoLoopKey) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: videoLoopKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: videoLoopKey)
+        }
+    }
+
+    static var isVideoAspectFill: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: videoAspectFillKey) == nil {
+                return false
+            }
+            return UserDefaults.standard.bool(forKey: videoAspectFillKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: videoAspectFillKey)
+        }
+    }
+
+    static var imageInterval: TimeInterval {
+        get {
+            let saved = UserDefaults.standard.double(forKey: imageIntervalKey)
+            if saved > 0 && imageIntervalOptions.contains(saved) {
+                return saved
+            }
+            return defaultImageIntervalSeconds
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: imageIntervalKey)
+        }
+    }
+
+    static var imageRepeatMode: HanClipImageRepeatMode {
+        get {
+            if let saved = UserDefaults.standard.string(forKey: imageRepeatModeKey),
+               let mode = HanClipImageRepeatMode(rawValue: saved) {
+                return mode
+            }
+            return .allRepeat
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: imageRepeatModeKey)
+        }
+    }
+}
+
 enum HanClipPlayerAspectMode {
     case automatic
     case fit
@@ -25,10 +101,10 @@ struct HanClipFullscreenPlayerConfiguration {
         shareURL: URL? = nil,
         startTime: CMTime = .zero,
         autoplay: Bool = true,
-        loop: Bool = false,
-        showsLoopControl: Bool = false,
+        loop: Bool = true,
+        showsLoopControl: Bool = true,
         aspectMode: HanClipPlayerAspectMode = .fit,
-        allowsAspectModeToggle: Bool = false,
+        allowsAspectModeToggle: Bool = true,
         showsMiniProgress: Bool = false
     ) {
         self.title = title
@@ -45,9 +121,14 @@ struct HanClipFullscreenPlayerConfiguration {
 
 @MainActor
 enum HanClipFullscreenVideoOrientationPolicy {
+    private static var originalSupportedOrientationMask: UIInterfaceOrientationMask?
+
     static func prepareForPresentation() {
         guard UIDevice.current.userInterfaceIdiom != .pad else { return }
 
+        if originalSupportedOrientationMask == nil {
+            originalSupportedOrientationMask = HanClipAppDelegate.supportedOrientationMask
+        }
         HanClipAppDelegate.supportedOrientationMask = .allButUpsideDown
         invalidateOrientationPreferences()
     }
@@ -65,19 +146,25 @@ enum HanClipFullscreenVideoOrientationPolicy {
         }
     }
 
-    static func restorePortrait() {
+    static func restoreHostPolicy() {
         guard UIDevice.current.userInterfaceIdiom != .pad else { return }
 
-        HanClipAppDelegate.supportedOrientationMask = .portrait
+        let restoredMask = originalSupportedOrientationMask ?? .portrait
+        originalSupportedOrientationMask = nil
+        HanClipAppDelegate.supportedOrientationMask = restoredMask
         invalidateOrientationPreferences()
         guard let windowScene = activeWindowScene else { return }
         windowScene.requestGeometryUpdate(
-            .iOS(interfaceOrientations: .portrait)
+            .iOS(interfaceOrientations: restoredMask)
         ) { error in
             #if DEBUG
-            print("HanClip portrait restore failed: \(error)")
+            print("HanClip host orientation restore failed: \(error)")
             #endif
         }
+    }
+
+    static func restorePortrait() {
+        restoreHostPolicy()
     }
 
     private static func invalidateOrientationPreferences() {
@@ -262,7 +349,7 @@ private struct HanClipFullscreenPlayerPresenter<Content: View>:
             guard let presentedController else { return }
             presentedController.dismiss(animated: false)
             self.presentedController = nil
-            HanClipFullscreenVideoOrientationPolicy.restorePortrait()
+            HanClipFullscreenVideoOrientationPolicy.restoreHostPolicy()
         }
 
         func presentationControllerDidDismiss(
@@ -278,7 +365,7 @@ private struct HanClipFullscreenPlayerPresenter<Content: View>:
             if isPresented.wrappedValue {
                 isPresented.wrappedValue = false
             }
-            HanClipFullscreenVideoOrientationPolicy.restorePortrait()
+            HanClipFullscreenVideoOrientationPolicy.restoreHostPolicy()
             onDismiss()
         }
     }
@@ -294,7 +381,9 @@ private enum HanClipPlayerDragMode {
 struct HanClipFullscreenVideoPlayer: View {
     @Environment(\.dismiss) private var dismiss
 
-    let url: URL
+    let url: URL?
+    let playerItem: AVPlayerItem?
+    let customPlayer: AVPlayer?
     let configuration: HanClipFullscreenPlayerConfiguration
     let onClose: () -> Void
 
@@ -339,13 +428,57 @@ struct HanClipFullscreenVideoPlayer: View {
         onClose: @escaping () -> Void = {}
     ) {
         self.url = url
+        self.playerItem = nil
+        self.customPlayer = nil
         self.configuration = configuration
         self.onClose = onClose
+        let initialLoop = HanClipCommonPlayerPreferences.isVideoLooping
+        let initialAspectFill = HanClipCommonPlayerPreferences.isVideoAspectFill
         _player = State(initialValue: AVPlayer(url: url))
         _isPlaying = State(initialValue: configuration.autoplay)
-        _isLooping = State(initialValue: configuration.loop)
+        _isLooping = State(initialValue: initialLoop)
         _isAspectFill = State(
-            initialValue: configuration.aspectMode == .fill
+            initialValue: initialAspectFill
+        )
+    }
+
+    init(
+        playerItem: AVPlayerItem,
+        configuration: HanClipFullscreenPlayerConfiguration = .init(),
+        onClose: @escaping () -> Void = {}
+    ) {
+        self.url = nil
+        self.playerItem = playerItem
+        self.customPlayer = nil
+        self.configuration = configuration
+        self.onClose = onClose
+        let initialLoop = HanClipCommonPlayerPreferences.isVideoLooping
+        let initialAspectFill = HanClipCommonPlayerPreferences.isVideoAspectFill
+        _player = State(initialValue: AVPlayer(playerItem: playerItem))
+        _isPlaying = State(initialValue: configuration.autoplay)
+        _isLooping = State(initialValue: initialLoop)
+        _isAspectFill = State(
+            initialValue: initialAspectFill
+        )
+    }
+
+    init(
+        player: AVPlayer,
+        configuration: HanClipFullscreenPlayerConfiguration = .init(),
+        onClose: @escaping () -> Void = {}
+    ) {
+        self.url = nil
+        self.playerItem = player.currentItem
+        self.customPlayer = player
+        self.configuration = configuration
+        self.onClose = onClose
+        let initialLoop = HanClipCommonPlayerPreferences.isVideoLooping
+        let initialAspectFill = HanClipCommonPlayerPreferences.isVideoAspectFill
+        _player = State(initialValue: player)
+        _isPlaying = State(initialValue: configuration.autoplay)
+        _isLooping = State(initialValue: initialLoop)
+        _isAspectFill = State(
+            initialValue: initialAspectFill
         )
     }
 
@@ -533,13 +666,13 @@ struct HanClipFullscreenVideoPlayer: View {
                         isActive: isLooping
                     ) {
                         isLooping.toggle()
+                        HanClipCommonPlayerPreferences.isVideoLooping = isLooping
                         revealControls()
                     }
                     .accessibilityValue(isLooping ? "켬" : "끔")
                 }
 
-                if configuration.allowsAspectModeToggle,
-                   viewportSize.width > viewportSize.height {
+                if configuration.allowsAspectModeToggle {
                     circleButton(
                         systemImage: isAspectFill
                             ? "rectangle.arrowtriangle.2.inward"
@@ -552,6 +685,7 @@ struct HanClipFullscreenVideoPlayer: View {
                         aspectDetectionTask = nil
                         withAnimation(.easeInOut(duration: 0.18)) {
                             isAspectFill.toggle()
+                            HanClipCommonPlayerPreferences.isVideoAspectFill = isAspectFill
                         }
                         revealControls()
                     }
@@ -593,11 +727,11 @@ struct HanClipFullscreenVideoPlayer: View {
         isActive: Bool = false
     ) -> some View {
         Image(systemName: systemImage)
-            .font(.system(size: 16, weight: .bold))
+            .font(.system(size: 20, weight: .bold))
             .foregroundStyle(isActive ? .white : .white.opacity(0.94))
             .frame(width: 44, height: 44)
             .background(
-                isActive ? Color.white.opacity(0.18) : Color.clear,
+                isActive ? Color.white.opacity(0.18) : Color.black.opacity(0.35),
                 in: Circle()
             )
             .background(.ultraThinMaterial, in: Circle())
@@ -607,6 +741,8 @@ struct HanClipFullscreenVideoPlayer: View {
                     lineWidth: 1
                 )
             }
+            .frame(minWidth: 48, minHeight: 48)
+            .contentShape(Circle())
     }
 
     private func startPlayer() {
@@ -707,7 +843,7 @@ struct HanClipFullscreenVideoPlayer: View {
             return
         }
         controlsHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .milliseconds(2500))
             guard !Task.isCancelled,
                   player.timeControlStatus == .playing,
                   playerDragMode == nil,
@@ -792,44 +928,11 @@ struct HanClipFullscreenVideoPlayer: View {
         aspectDetectionTask?.cancel()
         aspectDetectionTask = nil
         didManuallySelectAspectMode = false
-        switch configuration.aspectMode {
-        case .fit:
-            isAspectFill = false
-        case .fill:
-            isAspectFill = true
-        case .automatic:
-            aspectDetectionTask = Task {
-                let asset = AVURLAsset(url: url)
-                guard let track = try? await asset.loadTracks(
-                    withMediaType: .video
-                ).first,
-                      let naturalSize = try? await track.load(.naturalSize),
-                      let preferredTransform = try? await track.load(
-                        .preferredTransform
-                      ),
-                      !Task.isCancelled
-                else { return }
-
-                let orientedRect = CGRect(
-                    origin: .zero,
-                    size: naturalSize
-                ).applying(preferredTransform)
-                await MainActor.run {
-                    guard !Task.isCancelled,
-                          !didManuallySelectAspectMode
-                    else { return }
-                    isAspectFill =
-                        abs(orientedRect.width) > abs(orientedRect.height)
-                    aspectDetectionTask = nil
-                }
-            }
-        }
+        isAspectFill = HanClipCommonPlayerPreferences.isVideoAspectFill
     }
 
     private func videoGravity(for viewportSize: CGSize) -> AVLayerVideoGravity {
-        guard viewportSize.width > viewportSize.height, isAspectFill
-        else { return .resizeAspect }
-        return .resizeAspectFill
+        isAspectFill ? .resizeAspectFill : .resizeAspect
     }
 
     private func playerInteractionGesture(
@@ -879,7 +982,11 @@ struct HanClipFullscreenVideoPlayer: View {
                     resetZoom(animated: true)
                     revealControls()
                 case .second:
-                    togglePlayback()
+                    if !areControlsVisible {
+                        revealControls()
+                    } else {
+                        togglePlayback()
+                    }
                 }
             }
     }
@@ -993,7 +1100,7 @@ struct HanClipFullscreenVideoPlayer: View {
             downwardDragOffset = max(translation.height, 0)
 
         case .volume:
-            let adjustmentHeight = max(viewportSize.height * 0.72, 160)
+            let adjustmentHeight: CGFloat = 360
             let translationDelta = translation.height
                 - volumeDragPreviousTranslationY
             volumeDragPreviousTranslationY = translation.height
@@ -1032,8 +1139,7 @@ struct HanClipFullscreenVideoPlayer: View {
     ) {
         let completedMode = playerDragMode
         let shouldDismiss = completedMode == .downwardDismiss
-            && value.translation.height
-                > max(55, viewportSize.height * 0.08)
+            && value.translation.height > 120
 
         if completedMode == .zoomPan {
             zoomDragStartOffset = zoomOffset

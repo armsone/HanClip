@@ -16255,24 +16255,35 @@ private struct CalendarThumbnailItem: Identifiable {
 
 private struct CalendarMediaPreviewController: UIViewControllerRepresentable {
     let assetIdentifier: String
+    var orderedImageIdentifiers: [String] = []
     let sourcePoint: CGPoint
     let onDelete: () -> Void
+    var onDeleteAssetIdentifier: ((String) -> Void)? = nil
     let onDismiss: () -> Void
 
     func makeUIViewController(context: Context) -> UIViewController {
+        let targetIdentifiers = orderedImageIdentifiers.isEmpty ? [assetIdentifier] : orderedImageIdentifiers
         let result = PHAsset.fetchAssets(
-            withLocalIdentifiers: [assetIdentifier],
+            withLocalIdentifiers: targetIdentifiers,
             options: nil
         )
-        guard let asset = result.firstObject else {
+        var assetDict: [String: PHAsset] = [:]
+        result.enumerateObjects { asset, _, _ in
+            assetDict[asset.localIdentifier] = asset
+        }
+        let orderedAssets = targetIdentifiers.compactMap { assetDict[$0] }
+        guard let asset = assetDict[assetIdentifier] ?? orderedAssets.first else {
             return UIViewController()
         }
         return PhotoPicker.MediaAssetPreviewViewController(
             asset: asset,
+            imageAssets: orderedAssets,
+            startSelectedIdentifier: assetIdentifier,
             imageManager: PHCachingImageManager(),
             showsCloseButton: false,
             sourcePoint: sourcePoint,
             onDelete: onDelete,
+            onDeleteAssetIdentifier: onDeleteAssetIdentifier,
             onDismiss: onDismiss
         )
     }
@@ -18722,10 +18733,16 @@ private struct CalendarMediaPickerView: View {
                 if let item = previewedThumbnailItem {
                     CalendarMediaPreviewController(
                         assetIdentifier: item.id,
+                        orderedImageIdentifiers: selectedThumbnails.map(\.id),
                         sourcePoint: previewSourcePoint,
                         onDelete: {
                             excludedAssetIdentifiers.insert(item.id)
                             selectedThumbnails.removeAll { $0.id == item.id }
+                            previewedThumbnailItem = nil
+                        },
+                        onDeleteAssetIdentifier: { currentID in
+                            excludedAssetIdentifiers.insert(currentID)
+                            selectedThumbnails.removeAll { $0.id == currentID }
                             previewedThumbnailItem = nil
                         },
                         onDismiss: {
