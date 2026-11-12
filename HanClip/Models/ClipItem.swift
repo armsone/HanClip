@@ -484,6 +484,13 @@ private extension UIImage {
     }
 }
 
+/// Stored audio evidence of one protected golf stroke. Kept only so saved projects round-trip.
+struct ClipProtectedAction: Codable, Equatable, Sendable {
+    let time: Double
+    let isLoud: Bool
+    let isSharpTransient: Bool
+}
+
 struct ClipItem: Identifiable {
     let id: UUID
     let source: ClipSource
@@ -502,6 +509,9 @@ struct ClipItem: Identifiable {
     var audioPeakTimes: [Double]
     var audioAvailability: ClipAudioAvailability
     var highlightSource: ClipHighlightSource
+    var protectedActions: [ClipProtectedAction]
+    /// Stored flag for a range kept whole around protected golf strokes; only round-tripped here.
+    var isProtectedActionSegment: Bool
     var videoSegmentMode: VideoSegmentMode
     var isVideoSegmentParent: Bool
     var videoSegmentParentID: UUID?
@@ -537,6 +547,8 @@ struct ClipItem: Identifiable {
         audioPeakTimes: [Double] = [],
         audioAvailability: ClipAudioAvailability = .unknown,
         highlightSource: ClipHighlightSource = .audio,
+        protectedActions: [ClipProtectedAction] = [],
+        isProtectedActionSegment: Bool = false,
         videoSegmentMode: VideoSegmentMode = .single,
         isVideoSegmentParent: Bool = false,
         videoSegmentParentID: UUID? = nil,
@@ -577,6 +589,8 @@ struct ClipItem: Identifiable {
         self.audioPeakTimes = audioPeakTimes
         self.audioAvailability = audioAvailability
         self.highlightSource = highlightSource
+        self.protectedActions = protectedActions
+        self.isProtectedActionSegment = isProtectedActionSegment
         self.videoSegmentMode = videoSegmentMode
         self.isVideoSegmentParent = isVideoSegmentParent
         self.videoSegmentParentID = videoSegmentParentID
@@ -653,6 +667,8 @@ struct ClipItem: Identifiable {
             audioPeakTimes: audioPeakTimes,
             audioAvailability: audioAvailability,
             highlightSource: highlightSource,
+            protectedActions: protectedActions,
+            isProtectedActionSegment: isProtectedActionSegment,
             videoSegmentMode: videoSegmentMode,
             isVideoSegmentParent: isVideoSegmentParent,
             videoSegmentParentID: videoSegmentParentID,
