@@ -1413,6 +1413,7 @@ final class EditorViewModel: ObservableObject {
                     audioPeakTimes: peaks,
                     audioAvailability: sourceClip.audioAvailability,
                     highlightSource: sourceClip.highlightSource,
+                    protectedActions: sourceClip.protectedActions,
                     videoSegmentMode: .single,
                     videoSegmentParentID: sourceClip.id,
                     isVideoSegmentSelected: true,
@@ -1960,6 +1961,7 @@ final class EditorViewModel: ObservableObject {
             }
 
             if clips[index].mediaKind == .video {
+                guard !clips[index].isProtectedActionSegment else { continue }
                 let sourceDuration = clips[index].sourceDuration
                     ?? clips[index].duration
                 let selectedDuration = min(defaultDuration, sourceDuration)
@@ -5339,6 +5341,7 @@ final class EditorViewModel: ObservableObject {
                 audioPeakTimes: peaks,
                 audioAvailability: sourceClip.audioAvailability,
                 highlightSource: sourceClip.highlightSource,
+                protectedActions: sourceClip.protectedActions,
                 videoSegmentMode: .single,
                 videoSegmentParentID: sourceClip.id,
                 isVideoSegmentSelected: true,
