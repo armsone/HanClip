@@ -38,10 +38,45 @@ enum PhotoDinoSimilarityGate {
             try await embeddingsOffMain(for: clips)
         }
 
-        return try await withTaskCancellationHandler {
-            try await worker.value
-        } onCancel: {
+        // 사진을 한 장씩 원본으로 읽어 추론하므로 대량 가져오기에서는
+        // 끝없이 걸릴 수 있다. 예산을 넘기면 배치 전체를 기존 판정으로
+        // 되돌린다(nil). 사용자 취소와 구분하기 위해 만료 여부를 기록한다.
+        let deadline = EmbeddingDeadline()
+        let timer = Task {
+            try await Task.sleep(for: embeddingTimeBudget)
+            deadline.expire()
             worker.cancel()
+        }
+        defer { timer.cancel() }
+
+        do {
+            return try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+        } catch is CancellationError {
+            if deadline.isExpired, !Task.isCancelled { return nil }
+            throw CancellationError()
+        }
+    }
+
+    private static let embeddingTimeBudget: Duration = .seconds(30)
+
+    private final class EmbeddingDeadline: @unchecked Sendable {
+        private let lock = NSLock()
+        private var expired = false
+
+        var isExpired: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return expired
+        }
+
+        func expire() {
+            lock.lock()
+            expired = true
+            lock.unlock()
         }
     }
 

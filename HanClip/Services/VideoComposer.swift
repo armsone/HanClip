@@ -426,6 +426,12 @@ final class VideoComposer {
             logger.error(
                 "내보내기 실패: 상태 \(exporter.status.rawValue), 도메인 \(error?.domain ?? "없음", privacy: .public), 코드 \(error?.code ?? 0), 내용 \(error?.localizedDescription ?? "알 수 없는 오류", privacy: .public)"
             )
+            if exporter.status == .cancelled || Task.isCancelled {
+                throw CancellationError()
+            }
+            if let error, Self.isNonRecoverableJobError(error) {
+                throw error
+            }
             throw MediaError.exportFailed(
                 error?.localizedDescription ?? "알 수 없는 오류"
             )
@@ -514,6 +520,9 @@ final class VideoComposer {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                if Self.isNonRecoverableJobError(error) {
+                    throw error
+                }
                 logger.error(
                     "중간 영상 실패: \(startIndex + 1)~\(endIndex)번째, \(error.localizedDescription, privacy: .public)"
                 )
@@ -522,7 +531,11 @@ final class VideoComposer {
                     originalStartIndex: startIndex,
                     renderSize: renderSize,
                     disabledWatermark: disabledWatermark
-                )
+                ) { recoveryProgress in
+                    await progressHandler(
+                        phaseStart + recoveryProgress * phaseLength
+                    )
+                }
                 intermediateItems.append(contentsOf: recovered.map(\.item))
                 intermediateURLs.append(
                     contentsOf: recovered.flatMap(\.cleanupURLs)
@@ -585,6 +598,9 @@ final class VideoComposer {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            if Self.isNonRecoverableJobError(error) {
+                throw error
+            }
             logger.error(
                 "중간 영상 결합 실패: \(error.localizedDescription, privacy: .public)"
             )
@@ -595,11 +611,40 @@ final class VideoComposer {
         }
     }
 
+    private static func isNonRecoverableJobError(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain {
+            if nsError.code == NSUserCancelledError { return true }
+            if nsError.code == CocoaError.fileWriteOutOfSpace.rawValue { return true }
+            if nsError.code == CocoaError.fileReadNoPermission.rawValue
+                || nsError.code == CocoaError.fileWriteNoPermission.rawValue { return true }
+        }
+        if nsError.domain == NSPOSIXErrorDomain {
+            if nsError.code == Int(POSIXError.ENOSPC.rawValue)
+                || nsError.code == Int(POSIXError.EDQUOT.rawValue)
+                || nsError.code == Int(POSIXError.EACCES.rawValue)
+                || nsError.code == Int(POSIXError.EPERM.rawValue)
+                || nsError.code == Int(POSIXError.ENOMEM.rawValue) {
+                return true
+            }
+        }
+        if nsError.domain == AVFoundationErrorDomain {
+            if nsError.code == AVError.operationCancelled.rawValue { return true }
+            if nsError.code == AVError.diskFull.rawValue { return true }
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            if isNonRecoverableJobError(underlying) { return true }
+        }
+        return false
+    }
+
     private func recoverFailedGroup(
         items: [ClipItem],
         originalStartIndex: Int,
         renderSize: CGSize,
-        disabledWatermark: WatermarkSettings
+        disabledWatermark: WatermarkSettings,
+        progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> [RecoveredIntermediate] {
         try Task.checkCancellation()
         do {
@@ -608,7 +653,9 @@ final class VideoComposer {
                 renderSize: renderSize,
                 watermarkSettings: disabledWatermark,
                 backgroundMusicSettings: .empty
-            ) { _ in }
+            ) { subProgress in
+                await progressHandler(subProgress)
+            }
             let result = try await storeRecoveredIntermediate(
                 generatedURL: generatedURL,
                 thumbnail: items[0].thumbnail,
@@ -619,6 +666,9 @@ final class VideoComposer {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            if Self.isNonRecoverableJobError(error) {
+                throw error
+            }
             guard items.count == 1 else {
                 let leftCount = items.count / 2
                 let leftItems = Array(items[..<leftCount])
@@ -626,18 +676,23 @@ final class VideoComposer {
                 logger.info(
                     "디코딩 실패 구간 재분할: \(originalStartIndex + 1)~\(originalStartIndex + items.count)번째"
                 )
+                let leftScale = Double(leftCount) / Double(items.count)
                 let left = try await recoverFailedGroup(
                     items: leftItems,
                     originalStartIndex: originalStartIndex,
                     renderSize: renderSize,
                     disabledWatermark: disabledWatermark
-                )
+                ) { leftProgress in
+                    await progressHandler(leftProgress * leftScale)
+                }
                 let right = try await recoverFailedGroup(
                     items: rightItems,
                     originalStartIndex: originalStartIndex + leftCount,
                     renderSize: renderSize,
                     disabledWatermark: disabledWatermark
-                )
+                ) { rightProgress in
+                    await progressHandler(leftScale + rightProgress * (1.0 - leftScale))
+                }
                 return left + right
             }
 
@@ -650,7 +705,8 @@ final class VideoComposer {
                     items[0],
                     mediaNumber: mediaNumber,
                     renderSize: renderSize,
-                    disabledWatermark: disabledWatermark
+                    disabledWatermark: disabledWatermark,
+                    progressHandler: progressHandler
                 )
             ]
         }
@@ -660,7 +716,8 @@ final class VideoComposer {
         _ item: ClipItem,
         mediaNumber: Int,
         renderSize: CGSize,
-        disabledWatermark: WatermarkSettings
+        disabledWatermark: WatermarkSettings,
+        progressHandler: @escaping @Sendable (Double) async -> Void
     ) async throws -> RecoveredIntermediate {
         let imageURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -688,7 +745,9 @@ final class VideoComposer {
                 renderSize: renderSize,
                 watermarkSettings: disabledWatermark,
                 backgroundMusicSettings: .empty
-            ) { _ in }
+            ) { stillProgress in
+                await progressHandler(stillProgress)
+            }
             return try await storeRecoveredIntermediate(
                 generatedURL: generatedURL,
                 thumbnail: item.thumbnail,
@@ -698,6 +757,9 @@ final class VideoComposer {
             )
         } catch {
             try? FileManager.default.removeItem(at: imageURL)
+            if Self.isNonRecoverableJobError(error) {
+                throw error
+            }
             throw MediaError.exportFailed(
                 "\(mediaNumber)번째 미디어를 정지 화면으로도 복구할 수 없습니다. "
                     + error.localizedDescription
@@ -1030,16 +1092,38 @@ final class VideoComposer {
                 }
             }
 
+            let stallLimit: TimeInterval = 180.0
+            var lastObservedProgress = -1.0, accumulatedStallSeconds = 0.0
+            var lastPollUptime = ProcessInfo.processInfo.systemUptime
+
             while exporter.status == .unknown
                 || exporter.status == .waiting
                 || exporter.status == .exporting {
                 try Task.checkCancellation()
-                await progressHandler(
-                    min(0.99, max(0, Double(exporter.progress)))
-                )
+                let rawProgress = Double(exporter.progress)
+                await progressHandler(min(0.99, max(0, rawProgress)))
+
+                let now = ProcessInfo.processInfo.systemUptime
+                let step = now - lastPollUptime
+                lastPollUptime = now
+                if step > 0 && step <= 2.0 { accumulatedStallSeconds += step }
+
+                if rawProgress > lastObservedProgress + 0.0005 {
+                    lastObservedProgress = rawProgress
+                    accumulatedStallSeconds = 0.0
+                } else if accumulatedStallSeconds > stallLimit {
+                    logger.error(
+                        "내보내기 진행 중단 감지: \(stallLimit, privacy: .public)초 동안 진행률 변화 없음"
+                    )
+                    cancellationSession.value.cancelExport()
+                    exportTask.cancel()
+                    throw MediaError.exportFailed("영상 내보내기 진행이 장시간 중단되었습니다.")
+                }
+
                 try await Task.sleep(for: .milliseconds(250))
             }
 
+            try Task.checkCancellation()
             await exportTask.value
         } onCancel: {
             cancellationSession.value.cancelExport()
@@ -1177,6 +1261,12 @@ final class VideoComposer {
             logger.error(
                 "워터마크 내보내기 실패: 상태 \(exporter.status.rawValue), 도메인 \(error?.domain ?? "없음", privacy: .public), 코드 \(error?.code ?? 0), 내용 \(error?.localizedDescription ?? "알 수 없는 오류", privacy: .public)"
             )
+            if exporter.status == .cancelled || Task.isCancelled {
+                throw CancellationError()
+            }
+            if let error, Self.isNonRecoverableJobError(error) {
+                throw error
+            }
             throw MediaError.exportFailed(
                 error?.localizedDescription ?? "워터마크를 합성할 수 없습니다."
             )
@@ -1310,11 +1400,12 @@ final class VideoComposer {
                 outputURL: outputURL,
                 fileType: .mp4
             )
+            var isSuccess = false
             defer {
                 if writer.status == .writing {
                     writer.cancelWriting()
                 }
-                if Task.isCancelled {
+                if !isSuccess || Task.isCancelled {
                     try? FileManager.default.removeItem(at: outputURL)
                 }
             }
@@ -1367,8 +1458,29 @@ final class VideoComposer {
 
             for frame in 0..<frameCount {
                 try Task.checkCancellation()
+                var waitAttempts = 0
                 while !input.isReadyForMoreMediaData {
+                    try Task.checkCancellation()
+                    if writer.status == .failed {
+                        if let error = writer.error, Self.isNonRecoverableJobError(error) {
+                            throw error
+                        }
+                        throw MediaError.exportFailed(
+                            writer.error?.localizedDescription
+                                ?? "사진 프레임 기록기가 실패했습니다."
+                        )
+                    }
+                    if writer.status == .cancelled {
+                        throw CancellationError()
+                    }
+                    if writer.status == .completed {
+                        break
+                    }
                     try await Task.sleep(for: .milliseconds(2))
+                    waitAttempts += 1
+                    if waitAttempts > 15_000 {
+                        throw MediaError.exportFailed("사진 프레임 기록기 응답 대기 시간이 초과되었습니다.")
+                    }
                 }
                 var optionalBuffer: CVPixelBuffer?
                 CVPixelBufferPoolCreatePixelBuffer(
@@ -1406,6 +1518,9 @@ final class VideoComposer {
                 let time = CMTime(value: CMTimeValue(frame), timescale: fps)
                 guard adaptor.append(pixelBuffer, withPresentationTime: time)
                 else {
+                    if let error = writer.error, Self.isNonRecoverableJobError(error) {
+                        throw error
+                    }
                     throw MediaError.exportFailed(
                         writer.error?.localizedDescription
                             ?? "사진 프레임을 기록할 수 없습니다."
@@ -1423,11 +1538,15 @@ final class VideoComposer {
             await writer.finishWriting()
 
             guard writer.status == .completed else {
+                if let error = writer.error, Self.isNonRecoverableJobError(error) {
+                    throw error
+                }
                 throw MediaError.exportFailed(
                     writer.error?.localizedDescription
                         ?? "사진 영상을 완성할 수 없습니다."
                 )
             }
+            isSuccess = true
             return outputURL
         }
 

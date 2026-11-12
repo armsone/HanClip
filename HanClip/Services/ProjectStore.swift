@@ -174,7 +174,13 @@ enum ProjectStore {
                             .isSimilarPhotoGroupRepresentative,
                         sourceCreatedAt: clip.sourceCreatedAt,
                         sourceWidth: clip.sourcePixelSize.width,
-                        sourceHeight: clip.sourcePixelSize.height
+                        sourceHeight: clip.sourcePixelSize.height,
+                        protectedActions: clip.protectedActions.isEmpty
+                            ? nil
+                            : clip.protectedActions,
+                        isProtectedActionSegment: clip.isProtectedActionSegment
+                            ? true
+                            : nil
                     )
                 )
                 progressHandler?(
@@ -402,6 +408,9 @@ enum ProjectStore {
                     highlightSource: storedClip.highlightSource
                         .flatMap(ClipHighlightSource.init(rawValue:))
                         ?? .audio,
+                    protectedActions: storedClip.protectedActions ?? [],
+                    isProtectedActionSegment: storedClip
+                        .isProtectedActionSegment ?? false,
                     videoSegmentMode: storedClip.videoSegmentMode
                         .map(VideoSegmentMode.init(storedValue:)) ?? .single,
                     isVideoSegmentParent: storedClip.isVideoSegmentParent
@@ -921,6 +930,8 @@ private struct StoredClip: Codable {
     let sourceCreatedAt: Date?
     let sourceWidth: Double
     let sourceHeight: Double
+    let protectedActions: [ClipProtectedAction]?
+    let isProtectedActionSegment: Bool?
 }
 
 private struct StoredSource: Codable {
