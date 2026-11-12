@@ -29,35 +29,25 @@ enum ClipHighlightSource: String, Codable, Sendable {
     }
 }
 
-/// Audio evidence of one possible golf stroke whose context HanAI keeps whole.
-struct ClipProtectedAction: Codable, Equatable, Sendable {
-    let time: Double
-    let isLoud: Bool
-    let isSharpTransient: Bool
-}
-
 struct AudioAnalysisResult: Sendable {
     let waveform: [Double]
     let peakTime: Double
     let peakTimes: [Double]
     let audioAvailability: ClipAudioAvailability
     let highlightSource: ClipHighlightSource
-    let protectedActions: [ClipProtectedAction]
 
     init(
         waveform: [Double],
         peakTime: Double,
         peakTimes: [Double]? = nil,
         audioAvailability: ClipAudioAvailability = .present,
-        highlightSource: ClipHighlightSource = .audio,
-        protectedActions: [ClipProtectedAction] = []
+        highlightSource: ClipHighlightSource = .audio
     ) {
         self.waveform = waveform
         self.peakTime = peakTime
         self.peakTimes = peakTimes ?? [peakTime]
         self.audioAvailability = audioAvailability
         self.highlightSource = highlightSource
-        self.protectedActions = protectedActions
     }
 }
 
@@ -263,11 +253,7 @@ enum AudioAnalysisService {
                     (Double($0.index) + 0.5) / Double(bucketCount) * duration
                 },
                 audioAvailability: .present,
-                highlightSource: .audio,
-                protectedActions: AudioImpactClassifier.protectedActionEvidence(
-                    frames: impactFrames,
-                    rankedTimes: classifiedPeaks
-                )
+                highlightSource: .audio
             )
         }.value
     }

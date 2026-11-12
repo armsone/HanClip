@@ -31,10 +31,6 @@ struct AudioImpactFrame: Sendable {
 struct AudioImpactDecision: Sendable {
     let isTriggered: Bool
     let confidence: Double
-    /// Strong-impact level score and peak.
-    var isLoud = false
-    /// Sudden, high-crest click shape.
-    var isSharpTransient = false
 }
 
 enum GolfSwingMotionPhase: Equatable, Sendable {
@@ -1050,105 +1046,8 @@ enum AudioImpactClassifier {
         return AudioImpactDecision(
             isTriggered: !isSpeechLikePrompt
                 && (isStrongImpact || isDistantSharpImpact),
-            confidence: isSpeechLikePrompt ? 0 : confidence,
-            isLoud: score >= strongScoreRequirement
-                && metrics.peak >= strongPeakRequirement,
-            isSharpTransient: suddenRise >= thresholds.distantRise
-                && crestFactor >= thresholds.distantCrestFactor
+            confidence: isSpeechLikePrompt ? 0 : confidence
         )
-    }
-
-    private static func impactDecisions(
-        frames: [AudioImpactFrame]
-    ) -> [AudioImpactDecision] {
-        var baseline = 0.008
-        var recentLevel = 0.008
-        return frames.map { frame in
-            let score = frame.metrics.impactScore
-            let previousRecentLevel = recentLevel
-            let baselineSample = min(score, max(0.004, baseline * 1.35))
-            baseline = baseline * 0.985
-                + max(0.002, baselineSample) * 0.015
-            recentLevel = recentLevel * 0.72 + max(0.002, score) * 0.28
-            return detectImpact(
-                metrics: frame.metrics,
-                baseline: baseline,
-                previousRecentLevel: previousRecentLevel,
-                sensitivity: .automatic
-            )
-        }
-    }
-
-    /// Action evidence for HanAI protected actions: every frame the classifier
-    /// treats as a possible impact, without the ranking cap, so a quiet shot is
-    /// not dropped for a louder one elsewhere. Only a triggered loud and sharp
-    /// impact counts as a confirmed stroke; anything else may be a practice or
-    /// quiet sound before a silent real stroke, so it gets the longer follow
-    /// window. With no possible impact at all, the ranked fallback times are used.
-    static func protectedActionEvidence(
-        frames: [AudioImpactFrame],
-        rankedTimes: [Double]
-    ) -> [ClipProtectedAction] {
-        let decisions = impactDecisions(frames: frames)
-        let candidates = impactCandidates(frames: frames, decisions: decisions)
-        guard !candidates.isEmpty else {
-            return rankedTimes.sorted().map {
-                ClipProtectedAction(time: $0, isLoud: false, isSharpTransient: false)
-            }
-        }
-        return candidates.map { candidate in
-            let decision = decisions[candidate.index]
-            return ClipProtectedAction(
-                time: frames[candidate.index].time,
-                isLoud: decision.isTriggered && decision.isLoud,
-                isSharpTransient: decision.isTriggered && decision.isSharpTransient
-            )
-        }
-    }
-
-    /// Frames passing the classifier's possible-impact gate, with combined score.
-    private static func impactCandidates(
-        frames: [AudioImpactFrame],
-        decisions: [AudioImpactDecision]
-    ) -> [(index: Int, score: Double)] {
-        frames.indices.compactMap { index in
-            let decision = decisions[index]
-            let highlightScore = generalHighlightScore(
-                frames: frames,
-                index: index
-            )
-            let memorableMomentScore = memorableMomentScore(
-                frames: frames,
-                index: index
-            )
-            let combinedScore = combinedImpactScore(
-                frames: frames,
-                index: index,
-                decision: decision,
-                highlightScore: highlightScore,
-                memorableMomentScore: memorableMomentScore
-            )
-            guard decision.isTriggered
-                || highlightScore > 0.82
-                || memorableMomentScore > 0.78
-                || combinedScore > 1.02
-            else { return nil }
-            return (index, combinedScore)
-        }
-    }
-
-    private static func combinedImpactScore(
-        frames: [AudioImpactFrame],
-        index: Int,
-        decision: AudioImpactDecision,
-        highlightScore: Double,
-        memorableMomentScore: Double
-    ) -> Double {
-        decision.confidence
-            + localContrastScore(frames: frames, index: index) * 0.45
-            + highlightScore * 0.75
-            + memorableMomentScore * 0.58
-            + frames[index].metrics.impactScore * 0.12
     }
 
     static func rankedImpactTimes(
@@ -1158,29 +1057,55 @@ enum AudioImpactClassifier {
     ) -> [Double] {
         guard !frames.isEmpty else { return [] }
 
-        let decisions = impactDecisions(frames: frames)
-        var candidates = impactCandidates(frames: frames, decisions: decisions)
-            .map { (time: frames[$0.index].time, score: $0.score) }
+        var baseline = 0.008
+        var recentLevel = 0.008
+        var candidates: [(time: Double, score: Double)] = []
+        var fallback: [(time: Double, score: Double)] = []
+
+        for (index, frame) in frames.enumerated() {
+            let metrics = frame.metrics
+            let score = metrics.impactScore
+            let previousRecentLevel = recentLevel
+            let baselineSample = min(score, max(0.004, baseline * 1.35))
+            baseline = baseline * 0.985
+                + max(0.002, baselineSample) * 0.015
+            recentLevel = recentLevel * 0.72 + max(0.002, score) * 0.28
+
+            let decision = detectImpact(
+                metrics: metrics,
+                baseline: baseline,
+                previousRecentLevel: previousRecentLevel,
+                sensitivity: .automatic
+            )
+            let neighborhoodScore = localContrastScore(
+                frames: frames,
+                index: index
+            )
+            let highlightScore = generalHighlightScore(
+                frames: frames,
+                index: index
+            )
+            let memorableMomentScore = memorableMomentScore(
+                frames: frames,
+                index: index
+            )
+            let combinedScore = decision.confidence
+                + neighborhoodScore * 0.45
+                + highlightScore * 0.75
+                + memorableMomentScore * 0.58
+                + score * 0.12
+
+            fallback.append((frame.time, combinedScore))
+            if decision.isTriggered
+                || highlightScore > 0.82
+                || memorableMomentScore > 0.78
+                || combinedScore > 1.02 {
+                candidates.append((frame.time, combinedScore))
+            }
+        }
 
         if candidates.isEmpty {
-            candidates = frames.indices.map { index in
-                (
-                    time: frames[index].time,
-                    score: combinedImpactScore(
-                        frames: frames,
-                        index: index,
-                        decision: decisions[index],
-                        highlightScore: generalHighlightScore(
-                            frames: frames,
-                            index: index
-                        ),
-                        memorableMomentScore: memorableMomentScore(
-                            frames: frames,
-                            index: index
-                        )
-                    )
-                )
-            }
+            candidates = fallback
         }
 
         let minimumSeparation = max(0.45, duration / 160)

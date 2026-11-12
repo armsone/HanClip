@@ -599,15 +599,11 @@ final class EditorViewModel: ObservableObject {
         else { return false }
 
         let sourceDuration = clip.sourceDuration ?? clip.duration
-        return canSplitVideo(into: videoSegmentRanges(
+        return normalizedPeakTimes(
             for: clip,
-            peaks: normalizedPeakTimes(
-                for: clip,
-                sourceDuration: sourceDuration,
-                selectedDuration: min(defaultDuration, sourceDuration)
-            ),
-            sourceDuration: sourceDuration
-        ))
+            sourceDuration: sourceDuration,
+            selectedDuration: min(defaultDuration, sourceDuration)
+        ).count > 1
     }
 
     func selectOutputAspectRatio(_ ratio: OutputAspectRatio?) {
@@ -1387,37 +1383,36 @@ final class EditorViewModel: ObservableObject {
                 for: sourceClip,
                 sourceDuration: sourceDuration
             )
-            let ranges = videoSegmentRanges(
+            let peaks = normalizedPeakTimes(
                 for: sourceClip,
-                peaks: normalizedPeakTimes(
-                    for: sourceClip,
-                    sourceDuration: sourceDuration,
-                    selectedDuration: segmentDuration
-                ),
-                sourceDuration: sourceDuration
+                sourceDuration: sourceDuration,
+                selectedDuration: segmentDuration
             )
-            guard canSplitVideo(into: ranges) else { continue }
+            guard peaks.count > 1 else { continue }
 
             workingClips[parentIndex].videoSegmentMode = .multiple
             workingClips[parentIndex].isVideoSegmentParent = true
-            let childClips = ranges.map { range in
-                ClipItem(
+            let childClips = peaks.map { peak in
+                let duration = min(segmentDuration, sourceDuration)
+                let start = max(
+                    0,
+                    min(sourceDuration - duration, peak - duration / 2)
+                )
+                return ClipItem(
                     source: sourceClip.source,
                     photoLibraryAssetIdentifier:
                         sourceClip.photoLibraryAssetIdentifier,
                     thumbnail: sourceClip.thumbnail,
-                    duration: range.duration,
-                    photoDuration: range.duration,
+                    duration: duration,
+                    photoDuration: duration,
                     mediaKind: .video,
                     sourceDuration: sourceDuration,
-                    trimStart: range.start,
+                    trimStart: start,
                     audioWaveform: sourceClip.audioWaveform,
-                    audioPeakTime: range.peak,
-                    audioPeakTimes: ranges.map(\.peak),
+                    audioPeakTime: peak,
+                    audioPeakTimes: peaks,
                     audioAvailability: sourceClip.audioAvailability,
                     highlightSource: sourceClip.highlightSource,
-                    protectedActions: sourceClip.protectedActions,
-                    isProtectedActionSegment: range.isProtectedAction,
                     videoSegmentMode: .single,
                     videoSegmentParentID: sourceClip.id,
                     isVideoSegmentSelected: true,
@@ -1885,7 +1880,6 @@ final class EditorViewModel: ObservableObject {
                     audioPeakTimes: analysis?.peakTimes ?? [triggerTime],
                     audioAvailability: analysis?.audioAvailability ?? .unknown,
                     highlightSource: analysis?.highlightSource ?? .audio,
-                    protectedActions: analysis?.protectedActions ?? [],
                     sourcePixelSize: thumbnail.size
                 )
 
@@ -1966,7 +1960,6 @@ final class EditorViewModel: ObservableObject {
             }
 
             if clips[index].mediaKind == .video {
-                guard !clips[index].isProtectedActionSegment else { continue }
                 let sourceDuration = clips[index].sourceDuration
                     ?? clips[index].duration
                 let selectedDuration = min(defaultDuration, sourceDuration)
@@ -5175,24 +5168,20 @@ final class EditorViewModel: ObservableObject {
         let sourceClip = clips[index]
         let sourceDuration = sourceClip.sourceDuration
             ?? sourceClip.duration
-        let ranges = videoSegmentRanges(
+        let peaks = normalizedPeakTimes(
             for: sourceClip,
-            peaks: normalizedPeakTimes(
+            sourceDuration: sourceDuration,
+            selectedDuration: segmentSelectionDuration(
                 for: sourceClip,
-                sourceDuration: sourceDuration,
-                selectedDuration: segmentSelectionDuration(
-                    for: sourceClip,
-                    sourceDuration: sourceDuration
-                )
-            ),
-            sourceDuration: sourceDuration
+                sourceDuration: sourceDuration
+            )
         )
-        guard canSplitVideo(into: ranges) else {
+        guard peaks.count > 1 else {
             reanalyzeAndSplitVideoClip(sourceClip)
             return
         }
 
-        splitVideoClip(at: index, sourceClip: sourceClip, ranges: ranges)
+        splitVideoClip(at: index, sourceClip: sourceClip, peaks: peaks)
     }
 
     @discardableResult
@@ -5251,27 +5240,22 @@ final class EditorViewModel: ObservableObject {
                 clips[index].audioPeakTimes = analysis.peakTimes
                 clips[index].audioAvailability = analysis.audioAvailability
                 clips[index].highlightSource = analysis.highlightSource
-                clips[index].protectedActions = analysis.protectedActions
             }
 
             let updatedClip = clips[index]
             let sourceDuration = updatedClip.sourceDuration
                 ?? updatedClip.duration
-            let ranges = videoSegmentRanges(
+            let peaks = normalizedPeakTimes(
                 for: updatedClip,
-                peaks: normalizedPeakTimes(
-                    for: updatedClip,
-                    sourceDuration: sourceDuration
-                ),
                 sourceDuration: sourceDuration
             )
 
-            guard canSplitVideo(into: ranges) else {
+            guard peaks.count > 1 else {
                 resetVideoSegmentModeAfterMissingPeaks(id: updatedClip.id)
                 return
             }
 
-            splitVideoClip(at: index, sourceClip: updatedClip, ranges: ranges)
+            splitVideoClip(at: index, sourceClip: updatedClip, peaks: peaks)
         }
     }
 
@@ -5292,24 +5276,20 @@ final class EditorViewModel: ObservableObject {
         let sourceClip = clips[index]
         let sourceDuration = sourceClip.sourceDuration
             ?? sourceClip.duration
-        let ranges = videoSegmentRanges(
+        let peaks = normalizedPeakTimes(
             for: sourceClip,
-            peaks: normalizedPeakTimes(
+            sourceDuration: sourceDuration,
+            selectedDuration: segmentSelectionDuration(
                 for: sourceClip,
-                sourceDuration: sourceDuration,
-                selectedDuration: segmentSelectionDuration(
-                    for: sourceClip,
-                    sourceDuration: sourceDuration
-                )
-            ),
-            sourceDuration: sourceDuration
+                sourceDuration: sourceDuration
+            )
         )
-        guard canSplitVideo(into: ranges) else {
+        guard peaks.count > 1 else {
             resetVideoSegmentModeAfterMissingPeaks(id: id)
             return
         }
 
-        splitVideoClip(at: index, sourceClip: sourceClip, ranges: ranges)
+        splitVideoClip(at: index, sourceClip: sourceClip, peaks: peaks)
     }
 
     private func isActiveVideoSegmentChild(_ clip: ClipItem) -> Bool {
@@ -5325,7 +5305,7 @@ final class EditorViewModel: ObservableObject {
     private func splitVideoClip(
         at index: Int,
         sourceClip: ClipItem,
-        ranges: [VideoSegmentRange]
+        peaks: [Double]
     ) {
         let sourceDuration = sourceClip.sourceDuration
             ?? sourceClip.duration
@@ -5335,23 +5315,30 @@ final class EditorViewModel: ObservableObject {
 
         clips[parentIndex].videoSegmentMode = .multiple
         clips[parentIndex].isVideoSegmentParent = true
+        let segmentDuration = segmentSelectionDuration(
+            for: sourceClip,
+            sourceDuration: sourceDuration
+        )
 
-        let childClips = ranges.map { range in
-            ClipItem(
+        let childClips = peaks.map { peak in
+            let duration = min(segmentDuration, sourceDuration)
+            let start = max(
+                0,
+                min(sourceDuration - duration, peak - duration / 2)
+            )
+            return ClipItem(
                 source: sourceClip.source,
                 thumbnail: sourceClip.thumbnail,
-                duration: range.duration,
-                photoDuration: range.duration,
+                duration: duration,
+                photoDuration: duration,
                 mediaKind: .video,
                 sourceDuration: sourceDuration,
-                trimStart: range.start,
+                trimStart: start,
                 audioWaveform: sourceClip.audioWaveform,
-                audioPeakTime: range.peak,
-                audioPeakTimes: ranges.map(\.peak),
+                audioPeakTime: peak,
+                audioPeakTimes: peaks,
                 audioAvailability: sourceClip.audioAvailability,
                 highlightSource: sourceClip.highlightSource,
-                protectedActions: sourceClip.protectedActions,
-                isProtectedActionSegment: range.isProtectedAction,
                 videoSegmentMode: .single,
                 videoSegmentParentID: sourceClip.id,
                 isVideoSegmentSelected: true,
@@ -5486,42 +5473,6 @@ final class EditorViewModel: ObservableObject {
         if didUpdate {
             clips = updatedClips
         }
-    }
-
-    /// Child ranges for a split video. Golf movies keep every possible stroke
-    /// whole through HanAI protected actions; other presets keep the existing
-    /// peak-centered windows.
-    private func videoSegmentRanges(
-        for clip: ClipItem,
-        peaks: [Double],
-        sourceDuration: Double
-    ) -> [VideoSegmentRange] {
-        let duration = min(
-            segmentSelectionDuration(for: clip, sourceDuration: sourceDuration),
-            sourceDuration
-        )
-        if activeMoviePreset == .golf,
-           let ranges = ProtectedActionSegmenter.ranges(
-               peaks: peaks,
-               protectedActions: clip.protectedActions,
-               sourceDuration: sourceDuration,
-               segmentDuration: duration
-           ) {
-            return ranges
-        }
-        return peaks.map { peak in
-            VideoSegmentRange(
-                start: max(0, min(sourceDuration - duration, peak - duration / 2)),
-                duration: duration,
-                peak: peak,
-                isProtectedAction: false
-            )
-        }
-    }
-
-    /// A single protected range still replaces the default one-moment window.
-    private func canSplitVideo(into ranges: [VideoSegmentRange]) -> Bool {
-        ranges.count > 1 || ranges.contains(where: \.isProtectedAction)
     }
 
     private func normalizedPeakTimes(
